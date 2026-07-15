@@ -1,0 +1,487 @@
+"""Bi-temporal Engine behavior layer (owned by #2).
+
+``BiTemporalEngine`` orchestrates the Persistence Layer (#6) via the
+``EpisodeRepository`` Protocol: it derives ``subject``/``fact_id``, runs the
+write-time guards (I1-I11), detects I11 collisions, and emits ``AuditEvent``s.
+It never moves frontier symbols (``WriteResult`` / ``FreshnessView`` live in
+``seahorse.contracts.engine`` and are imported, not relocated).
+
+MVP-0 implements ``apply_fact``; ``remember`` / ``forget`` / ``improve`` /
+readers / freshness are added in later phases of the same component.
+
+References:
+- f5-02 (bi-temporal engine design)
+- f6-signoffs.md SO-3 (apply_fact fail-loud, AuditEvent store)
+- f6-signoffs.md SO-8c (WriteResult(ep_id, fact_id), TD #14 bridge equality)
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import re
+import sqlite3
+import threading
+from datetime import UTC, datetime
+
+from seahorse.contracts.engine import (
+    AuditEvent,
+    EpisodeRepository,
+    FreshnessView,
+    NotFound,
+    WriteResult,
+)
+from seahorse.contracts.episode import Episode
+from seahorse.contracts.persistence import AuditEventRepository
+from seahorse.engine import errors
+from seahorse.engine.canonical import canonical_body_hash
+from seahorse.engine.collision import CollisionDetector, derive_subject, fact_id_for
+from seahorse.engine.guards import WriteGuards
+from seahorse.engine.ids import deterministic_id, new_uuid7
+
+_STATUS_ACTIVE = "ACTIVE"
+_STATUS_PENDING = "PENDING_INGEST"
+_STATUS_COLLISION = "COLLISION"
+_STATUS_NOOP = "NOOP"
+
+# Semver 2.0.0 with optional patch and pre-release/build (f5-02 §6.4 border
+# contract). Accepts "1.1" (no patch) so existing #6 episodes pass.
+_SEMVER_RE = re.compile(
+    r"^\d+\.\d+(\.\d+)?(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"
+)
+
+
+class BiTemporalEngine:
+    """Orchestrates #6 storage behind the bi-temporal write/read primitives."""
+
+    def __init__(
+        self,
+        repo: EpisodeRepository,
+        audit: AuditEventRepository,
+        *,
+        guards: WriteGuards | None = None,
+        collision: CollisionDetector | None = None,
+    ) -> None:
+        self._repo = repo
+        self._audit = audit
+        self._guards = guards or WriteGuards()
+        self._collision = collision or CollisionDetector()
+        # Engine-level single-writer serialization backstop (f5-02 §8.9). The
+        # ConnectionManager serves a FastAPI threadpool, so cross-thread
+        # interleaving of mutators is a real deployment scenario even though
+        # MVP-0 declares single-writer semantics. This reentrant lock serializes
+        # the whole mutator span (get -> validate -> write); it nests cleanly
+        # with the per-transaction ConnectionManager lock used by repo.atomic().
+        self._lock = threading.RLock()
+
+    @staticmethod
+    def _now(now: datetime | None) -> datetime:
+        return now if now is not None else datetime.now(UTC)
+
+    def apply_fact(self, candidate: Episode, *, now: datetime | None = None) -> WriteResult:
+        """Append a candidate episode, fail-loud on I11 collision (SO-3b/SO-8c).
+
+        Derives ``subject``/``fact_id``, force-sets ``created_at=now``,
+        ``expired_at=None`` (I1/I4) and ``invalid_at=None`` (I3 — written null at
+        ingest, f5-02 §2 l.123), runs the write guards, then detects
+        collisions and appends INSIDE ``repo.atomic()`` so detect+append share
+        one transaction (closes the TOCTOU window; f5-02 §7.9 l.884). On
+        collision: NO append, return ``WriteResult(ep_id=None, fact_id=None,
+        status="COLLISION", ...)``. The I11 partial unique index is the data
+        backstop: a concurrent slip surfaces as ``sqlite3.IntegrityError``,
+        caught and translated to the same COLLISION result (SO-3b never raises).
+        """
+        now = self._now(now)
+        subject = _derive_subject(candidate)
+        fact_id = fact_id_for(candidate.body, title=candidate.title)
+        ep = dataclasses.replace(
+            candidate,
+            created_at=now,
+            expired_at=None,
+            invalid_at=None,
+            subject=subject,
+            fact_id=fact_id,
+        )
+        with self._lock:
+            self._guards.validate(ep, repo=self._repo, op="apply_fact", now=now)
+            collisions = self._collision.detect(ep, self._repo)
+            if not collisions:
+                # SO-3b: detect+append in one transaction so a concurrent
+                # append cannot slip between them. The I11 partial unique
+                # index is the data-integrity backstop; IntegrityError is
+                # translated to the fail-loud COLLISION result.
+                try:
+                    with self._repo.atomic():
+                        collisions = self._collision.detect(ep, self._repo)
+                        if not collisions:
+                            self._repo.append(ep)
+                except sqlite3.IntegrityError:
+                    collisions = self._collision.detect(ep, self._repo)
+            if collisions:
+                return WriteResult(
+                    ep_id=None,
+                    fact_id=None,
+                    status=_STATUS_COLLISION,
+                    collisions_detected=collisions,
+                )
+            self._audit.append(
+                AuditEvent(
+                    primitive="apply",
+                    target_id=ep.id,
+                    transaction_time=now,
+                    result="added",
+                    agent_id=_prov(candidate, "agent_id"),
+                    session_id=_prov(candidate, "session_id"),
+                    valid_time=ep.valid_at,
+                    cognitive_type=ep.cognitive_type,
+                )
+            )
+            status = (
+                _STATUS_PENDING
+                if ep.valid_at is not None and ep.valid_at > now
+                else _STATUS_ACTIVE
+            )
+            return WriteResult(
+                ep_id=ep.id,
+                fact_id=ep.fact_id,
+                status=status,
+                collisions_detected=[],
+            )
+
+    def remember(
+        self,
+        *,
+        body: str,
+        by: dict,
+        valid_at: datetime | None = None,
+        cognitive_type: str | None = None,
+        schema_version: str = "1.1",
+        title: str | None = None,
+        now: datetime | None = None,
+    ) -> WriteResult:
+        """Single write entry point (ADR-09). Picks the id by source (SO-4b).
+
+        Importer path (``source_type == "importer"`` with ``importer_vendor``
+        set) uses a deterministic UUIDv5 so re-import yields the same id; every
+        other source uses a fresh UUIDv7. Idempotency is check-then-skip: if the
+        derived id already exists with the same canonical body hash, the call is
+        a NOOP (no append, no audit). Otherwise an ``Episode`` is built and
+        delegated to ``apply_fact``.
+        """
+        now = self._now(now)
+        source_type = by.get("source_type")
+        importer_vendor = by.get("importer_vendor")
+        if source_type == "importer" and importer_vendor is not None:
+            source_record_id = by.get("source_record_id") or ""
+            ep_id = deterministic_id(
+                importer_vendor, source_record_id, canonical_body_hash(body)
+            )
+        else:
+            ep_id = new_uuid7()
+
+        with self._lock:
+            # Serialize the idempotency check-then-skip end-to-end so a
+            # concurrent re-import of the same importer payload cannot slip a
+            # PK dup between our get and our apply_fact.
+            existing = self._repo.get(ep_id)
+            if existing is not None and canonical_body_hash(existing.body) == canonical_body_hash(
+                body
+            ):
+                return WriteResult(
+                    ep_id=ep_id,
+                    fact_id=existing.fact_id,
+                    status=_STATUS_NOOP,
+                    collisions_detected=[],
+                )
+
+            ep = Episode(
+                id=ep_id,
+                created_at=now,
+                schema_version=schema_version,
+                provenance=by,
+                body=body,
+                valid_at=valid_at,
+                invalid_at=None,
+                expired_at=None,
+                supersedes=None,
+                cognitive_type=cognitive_type,
+                source_type=source_type,
+                title=title,
+            )
+            return self.apply_fact(ep, now=now)
+
+    def forget(
+        self,
+        ep_id: str,
+        *,
+        reason: str,
+        by: dict,
+        now: datetime | None = None,
+    ) -> Episode:
+        """Op 1 — soft-delete bi-temporal. I3/I6/I7; reason lives in audit only.
+
+        Marks ``invalid_at = now`` once (null->now). Preserves the row (I6),
+        never touches ``expired_at`` (I7) or the body/subject. The invalidation
+        metadata (``reason``, ``agent_id``) is written ONLY to the ``AuditEvent``
+        (I10/I3), never to the episode row.
+        """
+        now = self._now(now)
+        with self._lock:
+            ep = self._repo.get(ep_id)
+            if ep is None:
+                raise NotFound(ep_id)
+            self._guards.validate(ep, repo=self._repo, op="forget", now=now)
+            # Storage-level idempotency backstop: WHERE invalid_at IS NULL. 0 rows
+            # (already invalidated between our get and the update) -> InvalidationConflictError.
+            self._repo.set_invalid_at(ep_id, now)
+            self._audit.append(
+                AuditEvent(
+                    primitive="forget",
+                    target_id=ep_id,
+                    transaction_time=now,
+                    result="invalidated",
+                    agent_id=_dict_str(by, "agent_id"),
+                    session_id=_dict_str(by, "session_id"),
+                    reason=reason,
+                    valid_time=ep.valid_at,
+                    cognitive_type=ep.cognitive_type,
+                )
+            )
+            return dataclasses.replace(ep, invalid_at=now)
+
+    def improve(
+        self,
+        ep_id: str,
+        new_body: str,
+        *,
+        by: dict,
+        valid_at: datetime | None = None,
+        reason: str = "correction",
+        now: datetime | None = None,
+    ) -> Episode:
+        """Op 3 — human edit = invalidate-then-append atomically (I8, TD #8).
+
+        Invalidates the old episode and appends a new one with
+        ``supersedes=old`` inside ``repo.atomic()``. If the new body's subject
+        collides with a THIRD vigente episode (not the target, already
+        invalidated), raises ``E_COLLISION_EXISTS`` and the whole transaction
+        rolls back — the target is NOT invalidated, the new episode is NOT
+        appended. Preserves the signed ``-> Episode`` return type.
+        """
+        now = self._now(now)
+        with self._lock:
+            old = self._repo.get(ep_id)
+            if old is None:
+                raise NotFound(ep_id)
+            self._guards.validate(old, repo=self._repo, op="forget", now=now)
+            new_ep = Episode(
+                id=new_uuid7(),
+                created_at=now,
+                schema_version=old.schema_version,
+                provenance=by,
+                body=new_body,
+                valid_at=valid_at or now,
+                invalid_at=None,
+                expired_at=None,
+                supersedes=ep_id,
+                cognitive_type=old.cognitive_type,
+                source_type=by.get("source_type"),
+            )
+            # Derive subject/fact_id from the new body — apply_fact does this via
+            # dataclasses.replace, but improve appends directly, so it must
+            # replicate the derivation or the successor is stored with fact_id=None.
+            new_ep = dataclasses.replace(
+                new_ep,
+                subject=_derive_subject(new_ep),
+                fact_id=fact_id_for(new_ep.body, title=new_ep.title),
+            )
+            with self._repo.atomic():  # I8: rollback completo si la 2da escritura falla
+                self._repo.set_invalid_at(ep_id, now)  # invalidate-then-append order
+                self._guards.validate(new_ep, repo=self._repo, op="improve", now=now)
+                collisions = self._collision.detect(new_ep, self._repo)
+                if collisions:
+                    # TD #8: fail-loud consistent with SO-3b. Rollback: target stays
+                    # vigente, new episode not appended. Caller (#12.improve) decides.
+                    raise errors.EngineError(errors.E_COLLISION_EXISTS, collisions=collisions)
+                self._repo.append(new_ep)
+            self._audit.append(
+                AuditEvent(
+                    primitive="improve",
+                    target_id=ep_id,
+                    transaction_time=now,
+                    result="updated",
+                    agent_id=_dict_str(by, "agent_id"),
+                    session_id=_dict_str(by, "session_id"),
+                    successor_id=new_ep.id,
+                    reason=reason,
+                    valid_time=new_ep.valid_at,
+                    cognitive_type=new_ep.cognitive_type,
+                )
+            )
+            return new_ep
+
+    # ---------- readers (Phase 9) ------------------------------------------
+
+    def get_vigente(
+        self, subject: str | None = None, *, now: datetime | None = None
+    ) -> list[Episode]:
+        """Activo ahora: vigente rows whose valid_at has come into effect.
+
+        ``repo.query_vigent`` returns the I11 partial-index set (``invalid_at
+        IS NULL AND expired_at IS NULL``), which INCLUDES ``PENDING_INGEST``
+        (``valid_at`` in the future). This reader post-filters to *activo
+        ahora*: ``valid_at IS NULL OR valid_at <= now`` (f5-02 §3, l.132).
+        """
+        now = self._now(now)
+        return [
+            ep
+            for ep in self._repo.query_vigent(subject)
+            if ep.valid_at is None or ep.valid_at <= now
+        ]
+
+    def follow_supersedes_chain(self, ep_id: str) -> list[Episode]:
+        """Bidirectional supersedes closure for ``ep_id`` (delegates to #6)."""
+        return self._repo.chain_from(ep_id)
+
+    def is_valid_at(self, ep_id: str, point_in_time: datetime) -> bool:
+        """PIT real-world predicate (F3.1 l.880-885), NULL-safe.
+
+        ``valid_at IS NULL`` means "from forever" -> valid at any ``t`` while
+        not yet invalidated. Unknown episode -> ``False``. ``point_in_time`` is
+        normalized to UTC via ``astimezone`` exactly as F3.1 l.882 does (a naive
+        datetime is interpreted as local time, then converted).
+        """
+        ep = self._repo.get(ep_id)
+        if ep is None:
+            return False
+        pit = point_in_time.astimezone(UTC)
+        after_valid = ep.valid_at is None or ep.valid_at <= pit
+        before_invalid = ep.invalid_at is None or pit < ep.invalid_at
+        return after_valid and before_invalid
+
+    def is_known_at(self, ep_id: str, point_in_time: datetime) -> bool:
+        """PIT system predicate (F3.1 l.887-892), NULL-safe.
+
+        Was the fact known to the system at ``t``? Requires ``created_at <= t``
+        and not yet expired. Unknown episode -> ``False``. ``point_in_time`` is
+        normalized to UTC via ``astimezone`` exactly as F3.1 l.889 does.
+        """
+        ep = self._repo.get(ep_id)
+        if ep is None:
+            return False
+        pit = point_in_time.astimezone(UTC)
+        after_created = ep.created_at <= pit
+        before_expired = ep.expired_at is None or pit < ep.expired_at
+        return after_created and before_expired
+
+    def audit_log(self, ep_id: str) -> list[AuditEvent]:
+        """Audit events whose ``target_id`` is ``ep_id`` (delegates to #6)."""
+        return self._audit.query(target_id=ep_id)
+
+    def freshness_view(self, ep_id: str, *, now: datetime | None = None) -> FreshnessView:
+        """Pure derivation of an episode's freshness snapshot (no external state).
+
+        ``fact_id`` is the subject hash (``ep.fact_id``), consistent with
+        ``WriteResult.fact_id`` (TD #14 bridge). ``stale`` = already
+        invalidated; ``pending_ingest`` = scheduled for the future.
+        """
+        now = self._now(now)
+        ep = self._repo.get(ep_id)
+        if ep is None:
+            raise NotFound(ep_id)
+        return FreshnessView(
+            fact_id=ep.fact_id,
+            age_days=(now - ep.created_at).days,
+            stale=ep.invalid_at is not None,
+            pending_ingest=ep.valid_at is not None and ep.valid_at > now,
+            regime=ep.source_type or "unknown",
+        )
+
+    # ---------- MVP-1 axis stubs (signed seam, fail-loud) -----------------
+    # These accessors are part of the engine surface (SO-1 safeguard 2) but
+    # revisable until MVP-1. MVP-0 refuses to over-claim behavior that
+    # depends on a signed conflict policy (ADR-10). See policy.py.
+
+    def state_at(self, t: datetime, *, subject: str | None = None) -> list[Episode]:
+        """PIT bulk query: reconstruct the valid state at ``t`` (MVP-1)."""
+        raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="state_at")
+
+    def recall_pit(self, ep_id: str, t: datetime) -> Episode | None:
+        """PIT recall: the episode known to the system at ``t`` (MVP-1)."""
+        raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="recall_pit")
+
+    def detect_collisions(self, candidate: Episode) -> list:
+        """Public collision detection (MVP-1). Internal ``_collision.detect``
+        already powers ``apply_fact``/``improve`` fail-loud in MVP-0; this
+        public accessor is signed for #13/#16 but revisable until MVP-1."""
+        raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="detect_collisions")
+
+    def resolve_conflict(self, *, collision: object) -> object:
+        """Dispatch a collision to the ConflictPolicy (MVP-1)."""
+        raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="resolve_conflict")
+
+    def revalidate(self, ep_id: str, *, by: dict, now: datetime | None = None) -> Episode:
+        """SUPERSEDED -> ACTIVE via a new episode (MVP-1, TD #8 sibling)."""
+        raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="revalidate")
+
+    def expire(self, ep_id: str, *, now: datetime | None = None) -> Episode:
+        """Decay (reserve, ADR-10). Sets ``expired_at`` (MVP mediano)."""
+        raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="expire")
+
+    # ---------- #5 skip-path border contract ------------------------------
+
+    def is_valid_skip_path(self, ep: Episode) -> bool:
+        """Pure border validator for the #5 deterministic skip-path (f5-02 §6.4).
+
+        A payload whose ``provenance["extraction_mode"] == "skip"`` is routable
+        down the deterministic skip-path ONLY if it satisfies the contract:
+        ``created_at`` present, ``invalid_at``/``expired_at`` null,
+        ``valid_at <= created_at`` when ``valid_at`` is non-null, and a semver
+        ``schema_version``. The validator reads no repo/audit state.
+
+        Reconciliation with ``-> bool`` (l.745-758):
+
+        - ``extraction_mode != "skip"`` -> ``False`` (not a skip payload; #5
+          uses another path, not an error).
+        - ``extraction_mode == "skip"`` + contract holds -> ``True``.
+        - ``extraction_mode == "skip"`` + contract BROKEN -> raise
+          ``EngineError("E_SKIP_CONTRACT_VIOLATED")``: the payload claims skip
+          but cannot be deterministically skipped, so #5 re-routes to ``llm``.
+        """
+        extraction_mode = ep.provenance.get("extraction_mode")
+        if extraction_mode != "skip":
+            return False
+        if ep.created_at is None:
+            raise errors.EngineError(
+                errors.E_SKIP_CONTRACT_VIOLATED, field="created_at"
+            )
+        if ep.invalid_at is not None:
+            raise errors.EngineError(
+                errors.E_SKIP_CONTRACT_VIOLATED, field="invalid_at"
+            )
+        if ep.expired_at is not None:
+            raise errors.EngineError(
+                errors.E_SKIP_CONTRACT_VIOLATED, field="expired_at"
+            )
+        if ep.valid_at is not None and ep.valid_at > ep.created_at:
+            raise errors.EngineError(
+                errors.E_SKIP_CONTRACT_VIOLATED, field="valid_at"
+            )
+        if not _SEMVER_RE.match(ep.schema_version):
+            raise errors.EngineError(
+                errors.E_SKIP_CONTRACT_VIOLATED, field="schema_version"
+            )
+        return True
+
+
+def _derive_subject(ep: Episode) -> str | None:
+    return derive_subject(ep.body, title=ep.title)
+
+
+def _dict_str(d: dict, key: str) -> str | None:
+    """Read a string-typed value from a provenance dict, else None."""
+    value = d.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _prov(ep: Episode, key: str) -> str | None:
+    return _dict_str(ep.provenance, key)
