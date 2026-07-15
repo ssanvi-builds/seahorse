@@ -4,18 +4,19 @@
 
 ## Current phase
 
-**Fase 6 — Implementation** (about to start).
+**Fase 6 — Implementation** (in progress).
 
 - Fase 5 detailed design: COMPLETE (16/16 components, `f5-01`..`f5-16`).
 - F6 sign-off sprint: COMPLETE (8/8 blocking decisions signed, ranks 1-8; ranks 9-15 close inline during F6). Register: `Claude/f6-signoffs.md`.
 - Repo bootstrap: `3c655fe chore: initial scaffold` on `main` (LICENSE Apache-2.0, README, .gitignore, pyproject.toml).
+- **#6 Persistence Layer: COMPLETE** (2026-07-15). MVP-0 relacional + Protocols completos. 149 tests / coverage 96.56% / ruff+mypy clean / no runtime deps (stdlib `sqlite3` only). 9 commits on `main` (`858b41b`→`be05746`), not pushed (git-conservative). Frontier package `seahorse/contracts/` materializes the symbols of #1/#2/#8/#10 with `OWNED BY` headers — later components import from there, no breaking moves. See vault session note `session-2026-07-15-f6-06-persistence-layer.md`.
 
 ## F6 execution order
 
-Iterative, TDD (test first), 80% coverage minimum. Start with:
+Iterative, TDD (test first), 80% coverage minimum.
 
-1. **#6 Persistence Layer** — materialize the co-finalized DDL of SO-3 (`episodes` + contract #2 indexes + `episode_index` + `episode_paths` + `vec0` + FTS5 external content + `audit_events`) and the SO-7 lateral DDLs (`vec_episodes_meta`, `embeddings_cache`, `reindex_jobs`) over SQLite WAL, single-writer/multi-reader, single connection (ADR-04).
-2. **#2 Bi-temporal Engine** — `apply_fact` / episode lifecycle on top of #6, with the SO-8c correction (`WriteResult(ep_id, fact_id)`).
+1. ✅ **#6 Persistence Layer** — COMPLETE 2026-07-15. SQLite WAL relational DDL (8 idempotent migrations: `episodes` + #2 indexes + `episode_index` + `episode_paths` + `audit_events` + 3 SO-7 laterals) over `ConnectionManager` (single writer RLock-reentrant + N WAL readers). 6 SQLite repos + `Storage` composition root with the single shared `atomic()` (SO-7a.6). Vector/FTS are signed Protocols with `NotImplementedError` stubs (MVP-1; no `sqlite-vec` runtime dep in MVP-0). Review: 28-agent adversarial Workflow, 0 CRITICAL/0 HIGH, 8 non-critical fixes applied.
+2. ▶️ **#2 Bi-temporal Engine** — `apply_fact` / episode lifecycle on top of #6, with the SO-8c correction (`WriteResult(ep_id, fact_id)`). Consumes `seahorse.contracts` + #6 repos without relocating symbols. Pre-work: Phase 0 promotions touching #2 (SO-3 `apply_fact` fail-loud, SO-8c) in `f5-02`.
 
 Protocols to land with #6: `EpisodeIndexRepository` (SO-1), `VectorIndexRepository` (SO-7, fold-into-upsert + `distinct_model_identities`), `EmbeddingsCacheRepository`, `ReindexJobRepository`.
 
