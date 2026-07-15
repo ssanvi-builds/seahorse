@@ -45,4 +45,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --cov=seahorse --cov-fail-under=80 --cov-report=term-missing"
+markers = [
+    "mvp1_axis: TIMELINE MVP-1 accessors signed now but revisable until MVP-1 (SO-1 safeguard 2)",
+]
