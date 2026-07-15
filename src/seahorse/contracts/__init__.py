@@ -15,8 +15,10 @@ Ownership:
 from seahorse.contracts.engine import (
     AuditEvent,
     EpisodeRepository,
+    FreshnessView,
     InvalidationConflictError,
     NotFound,
+    WriteResult,
 )
 from seahorse.contracts.episode import Episode
 from seahorse.contracts.index import (
@@ -46,6 +48,7 @@ __all__ = [
     "Episode",
     "EpisodeIndexRepository",
     "EpisodeRepository",
+    "FreshnessView",
     "FtsDoc",
     "FullTextHit",
     "FullTextIndexRepository",
@@ -60,4 +63,5 @@ __all__ = [
     "SidecarIndexRepository",
     "VectorHit",
     "VectorIndexRepository",
+    "WriteResult",
 ]

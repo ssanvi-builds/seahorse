@@ -7,10 +7,14 @@ The AuditEvent field set is inferred by #6 from the ``audit_events`` DDL
 (f5-06 §3.4.5) and SO-3c. #2 must confirm the 11-field set matches when it ships;
 additive extension is non-breaking, a rename/removal is breaking (R3).
 
+#2 EXTENDS this frontier (2026-07-15, Phase 0/1 F6 #2) with ``WriteResult`` and
+``FreshnessView`` — additive, non-breaking (R3). Consumed by #12/#13/#14/#16.
+
 References:
-- f5-02 §6.1 (EpisodeRepository Protocol)
+- f5-02 §6.1 (EpisodeRepository Protocol, WriteResult, FreshnessView)
 - f5-06 §3.4.5 (audit_events DDL — 11 columns)
 - f6-signoffs.md SO-3 (3c AuditEvent store, 3b apply_fact fail-loud)
+- f6-signoffs.md SO-8c (WriteResult(ep_id, fact_id) correction, TD #14)
 """
 
 from __future__ import annotations
@@ -80,3 +84,45 @@ class EpisodeRepository(Protocol):
 
     @contextmanager
     def atomic(self) -> Iterator[None]: ...
+
+
+@dataclass(frozen=True)
+class WriteResult:
+    """Result of an Engine write primitive (``apply_fact`` / ``remember``).
+
+    SO-8c separates the episode UUID (``ep_id``) from the subject hash
+    (``fact_id = SHA-256(subject)[:32]``). ``WriteResult.fact_id`` equals
+    ``IndexRow.fact_id`` by construction — the #16 bridge (TD #14).
+
+    On collision (SO-3b fail-loud) ``ep_id`` and ``fact_id`` are ``None`` and
+    ``status == "COLLISION"``; the candidate was NOT appended and the unique
+    partial index ``uq_one_active_per_subject`` was never relaxed.
+
+    ``collisions_detected`` is ``list`` (not ``list[Collision]``) because
+    ``Collision`` is an Engine-internal type, not a frontier symbol.
+    """
+
+    ep_id: str | None
+    fact_id: str | None
+    status: str  # ACTIVE | PENDING_INGEST | NOOP | COLLISION
+    collisions_detected: list  # list[Collision]; [] when clean
+
+
+@dataclass(frozen=True)
+class FreshnessView:
+    """Derived freshness snapshot of an episode (#13 MCP exposes it MVP-1).
+
+    Pure derivation from the episode's frontmatter — no state outside the
+    format. ``stale`` means already invalidated; ``pending_ingest`` means the
+    fact is scheduled for the future (``valid_at > now``).
+
+    ``fact_id`` is ``str | None``: an episode whose body has no derivable
+    subject (no ``title``, no first H1) carries ``fact_id=None``. Mirrors
+    ``WriteResult.fact_id`` and ``Episode.fact_id`` for bridge consistency.
+    """
+
+    fact_id: str | None
+    age_days: int
+    stale: bool
+    pending_ingest: bool
+    regime: str
