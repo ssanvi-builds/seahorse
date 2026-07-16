@@ -28,6 +28,13 @@ class TestExpireStub:
         assert engine.freshness_calls == []
         assert write_path.ingest_calls == []
 
+    def test_expire_no_read_calls(self, facade, engine) -> None:
+        with pytest.raises(SeahorseError):
+            facade.expire("e1")
+        # Read-side engine methods must also be untouched on the error path.
+        assert engine.get_vigente_calls == []
+        assert engine.chain_calls == []
+
 
 class TestRevalidateStub:
     def test_raises_not_in_mvp(self, facade) -> None:
@@ -43,3 +50,14 @@ class TestRevalidateStub:
         assert engine.improve_calls == []
         assert engine.forget_calls == []
         assert write_path.ingest_calls == []
+
+    def test_revalidate_no_engine_calls(self, facade, engine) -> None:
+        with pytest.raises(SeahorseError):
+            facade.revalidate("e1", by={"source_type": "agent"})
+        # Full engine call-set must be empty on the error path.
+        assert engine.improve_calls == []
+        assert engine.forget_calls == []
+        assert engine.audit_calls == []
+        assert engine.freshness_calls == []
+        assert engine.get_vigente_calls == []
+        assert engine.chain_calls == []

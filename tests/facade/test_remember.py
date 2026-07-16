@@ -47,6 +47,11 @@ class TestRememberDelegation:
         )
         assert facade.remember(_payload()).ep_id == "ep-7"
 
+    def test_forwards_payload_verbatim(self, facade, write_path) -> None:
+        p = _payload(body="hi", cognitive_type="semantic")
+        facade.remember(p)
+        assert write_path.ingest_calls[0]["payload"] is p  # identity — no swap
+
     def test_emits_primitive_log(self, write_path) -> None:
         from tests.facade.conftest import make_facade as _mf
 
@@ -89,6 +94,13 @@ class TestRememberResolveMode:
             facade.remember(_payload(), extraction_mode="llm_partial")  # type: ignore[arg-type]
         assert exc.value.code == E_INVALID_EXTRACTION_MODE
 
+    def test_invalid_mode_before_write_path(self, facade, write_path) -> None:
+        # Invalid extraction_mode raises BEFORE #5 is touched (no ingest call).
+        with pytest.raises(SeahorseError) as exc:
+            facade.remember(_payload(), extraction_mode="llm_partial")  # type: ignore[arg-type]
+        assert exc.value.code == E_INVALID_EXTRACTION_MODE
+        assert write_path.ingest_calls == []
+
 
 class TestRememberBoundaryValidation:
     def test_empty_body_rejected(self, facade) -> None:
@@ -120,6 +132,14 @@ class TestRememberBoundaryValidation:
         facade.remember(_payload(cognitive_type="fact"))
         assert len(write_path.ingest_calls) == 1
 
+    def test_does_not_validate_source_type_enum(self, facade, write_path) -> None:
+        # #12 does NOT enforce SOURCE_TYPES — engine/#1 are the authority.
+        # 'robot' is outside the SOURCE_TYPES vocabulary but passes the facade
+        # (presence-only check, not membership).
+        p = RememberPayload(body="hi", by={"source_type": "robot"})
+        facade.remember(p)
+        assert len(write_path.ingest_calls) == 1
+
 
 class TestRememberForwardsNow:
     def test_explicit_now_forwarded(self, facade, write_path) -> None:
@@ -144,3 +164,62 @@ class TestRememberDoesNotReplicateGuard:
         p = RememberPayload(body="hi", by={"source_type": "importer"})
         facade.remember(p, extraction_mode="llm")
         assert write_path.ingest_calls[0]["extraction_mode"] == "llm"
+
+    def test_remember_does_not_add_effective_provenance_to_payload_by(
+        self, facade, write_path
+    ) -> None:
+        # remember forwards the caller's by untouched — it does NOT build
+        # effective provenance (#5 run_skip_path owns that). improve is the only
+        # primitive that injects extraction_mode/model_used/prompt_hash/confidence.
+        by = {"source_type": "agent", "agent_id": "a1"}
+        p = RememberPayload(body="hello world", by=by)
+        facade.remember(p)
+        forwarded_by = write_path.ingest_calls[0]["payload"].by
+        # The exact same dict object is forwarded (no copy-with-extras).
+        assert forwarded_by is by
+        # No effective-provenance keys injected.
+        assert set(forwarded_by.keys()) == {"source_type", "agent_id"}
+        assert "extraction_mode" not in forwarded_by
+        assert "model_used" not in forwarded_by
+        assert "prompt_hash" not in forwarded_by
+        assert "confidence" not in forwarded_by
+
+
+class TestRememberDoesNotValidateValidAt:
+    def test_far_future_valid_at_passed_through(self, facade, write_path) -> None:
+        # The valid_at guard is engine/#5-owned. #12 must NOT reject a
+        # far-future value at the border — it forwards it untouched.
+        t = datetime(9999, 1, 1, tzinfo=UTC)
+        p = RememberPayload(body="hi", by={"source_type": "agent"}, valid_at=t)
+        facade.remember(p)
+        assert len(write_path.ingest_calls) == 1
+        assert write_path.ingest_calls[0]["payload"].valid_at == t
+
+    def test_none_valid_at_passed_through(self, facade, write_path) -> None:
+        p = RememberPayload(body="hi", by={"source_type": "agent"}, valid_at=None)
+        facade.remember(p)
+        assert write_path.ingest_calls[0]["payload"].valid_at is None
+
+
+class TestRememberLogHonesty:
+    def test_logs_real_status_on_collision(self) -> None:
+        from seahorse.contracts.engine import WriteResult
+        from tests.facade.conftest import make_facade as _mf
+
+        f, log = _mf()
+        f._write_path.result = WriteResult(
+            ep_id=None, fact_id=None, status="COLLISION", collisions_detected=[{"k": 1}]
+        )
+        f.remember(_payload())
+        assert log == [("remember", "collision")]
+
+    def test_logs_real_status_on_noop(self) -> None:
+        from seahorse.contracts.engine import WriteResult
+        from tests.facade.conftest import make_facade as _mf
+
+        f, log = _mf()
+        f._write_path.result = WriteResult(
+            ep_id=None, fact_id=None, status="NOOP", collisions_detected=[]
+        )
+        f.remember(_payload())
+        assert log == [("remember", "noop")]

@@ -42,9 +42,7 @@ from seahorse.contracts.engine import (
 from seahorse.contracts.index import PITKind
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import (
-    MAX_FULL_BATCH,
     TOP_K,
-    FullBatchTooLarge,
     FullDetail,
     IndexRow,
     PITPoint,
@@ -289,12 +287,12 @@ class MemoryFacade:
     ) -> list[FullDetail]:
         """Recall the FULL level (delegates to #8 ``materialize_full``).
 
-        ``len(ep_ids) > MAX_FULL_BATCH`` raises ``FullBatchTooLarge`` BEFORE any
-        fetch. PIT in FULL is not supported in MVP-0 (``PitFullNotSupported``
-        from #8 propagates).
+        Border shape-validation only: ``pit.kind`` is validated here. The
+        ``MAX_FULL_BATCH`` cap and ``PitFullNotSupported`` are #8's domain
+        contract — #8 raises ``FullBatchTooLarge`` (before any fetch) and
+        ``PitFullNotSupported`` (PIT in FULL is MVP-1). #12 does NOT replicate
+        the batch guard (delegation purity: MAX_FULL_BATCH is owned by #8).
         """
-        if len(ep_ids) > MAX_FULL_BATCH:
-            raise FullBatchTooLarge(len(ep_ids), MAX_FULL_BATCH)
         if pit is not None:
             self._validate_pit_kind(pit.kind)
         return self._shaper.materialize_full(ep_ids, pit=pit, now=self._clock())

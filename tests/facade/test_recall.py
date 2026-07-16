@@ -40,6 +40,14 @@ class TestRecallDelegation:
         assert shaper.full_calls == []
         assert shaper.timeline_calls == []
 
+    def test_forwards_clock_now_to_get_vigente(self, facade, engine) -> None:
+        facade.recall("sergio")
+        assert engine.get_vigente_calls[0]["now"] == datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+
+    def test_forwards_clock_now_to_materialize_index(self, facade, shaper) -> None:
+        facade.recall("sergio")
+        assert shaper.index_calls[0]["now"] == datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+
     def test_returns_shaper_result_verbatim(self, facade, shaper) -> None:
         from seahorse.disclosure.types import IndexRow
 

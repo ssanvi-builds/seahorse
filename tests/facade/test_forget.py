@@ -45,6 +45,11 @@ class TestForgetDelegation:
         assert call["reason"] == "outdated"
         assert call["by"]["source_type"] == "human"
 
+    def test_forwards_ep_id(self, facade, engine) -> None:
+        engine.forget_result = make_episode("e1")
+        facade.forget("e1", reason="stale", by=_by())
+        assert engine.forget_calls[0]["ep_id"] == "e1"
+
 
 class TestForgetPropagation:
     def test_pending_cannot_invalidate_propagated(self, facade, engine) -> None:
@@ -62,6 +67,35 @@ class TestForgetPropagation:
         engine.forget_raise = NotFound("e1")
         with pytest.raises(NotFound):
             facade.forget("e1", reason="x", by=_by())
+
+
+class TestForgetLogSuppression:
+    def test_log_not_emitted_on_pending_cannot_invalidate(self) -> None:
+        from tests.facade.conftest import make_facade as _mf
+
+        f, log = _mf()
+        f._engine.forget_raise = EngineError(E_PENDING_CANNOT_INVALIDATE)
+        with pytest.raises(EngineError):
+            f.forget("e1", reason="x", by=_by())
+        assert log == []
+
+    def test_log_not_emitted_on_invalidation_conflict(self) -> None:
+        from tests.facade.conftest import make_facade as _mf
+
+        f, log = _mf()
+        f._engine.forget_raise = InvalidationConflictError()
+        with pytest.raises(InvalidationConflictError):
+            f.forget("e1", reason="x", by=_by())
+        assert log == []
+
+    def test_log_not_emitted_on_not_found(self) -> None:
+        from tests.facade.conftest import make_facade as _mf
+
+        f, log = _mf()
+        f._engine.forget_raise = NotFound("e1")
+        with pytest.raises(NotFound):
+            f.forget("e1", reason="x", by=_by())
+        assert log == []
 
 
 class TestForgetLog:
@@ -90,7 +124,44 @@ class TestForgetBoundaryValidation:
             facade.forget("e1", reason="x", by={})
         assert exc.value.code == E_MISSING_SOURCE_TYPE
 
+    def test_does_not_validate_source_type_enum(self, facade, engine) -> None:
+        engine.forget_result = make_episode("e1")
+        facade.forget("e1", reason="done", by={"source_type": "robot"})
+        assert len(engine.forget_calls) == 1
+
     def test_validation_before_engine(self, facade, engine) -> None:
         with pytest.raises(SeahorseError):
             facade.forget("e1", reason="", by=_by())
         assert engine.forget_calls == []
+
+
+class TestForgetForwardsNow:
+    def test_forwards_now_to_engine(self, facade, engine) -> None:
+        engine.forget_result = make_episode(
+            "e1", invalid_at=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+        t = datetime(2026, 1, 1, tzinfo=UTC)
+        facade.forget("e1", reason="stale", by=_by(), now=t)
+        assert engine.forget_calls[0]["now"] == t
+
+
+class TestForgetDoesNotMutateCallerBy:
+    def test_forget_does_not_mutate_caller_by(self, facade, engine) -> None:
+        """Guard the facade's defensive dict(by) copy: the caller's by-dict must
+        not be mutated even when the engine mutates the dict it receives."""
+        engine.forget_result = make_episode("e1")
+        real_forget = engine.forget
+
+        def mutating_forget(ep_id, *, reason, by, now=None):  # type: ignore[no-untyped-def]
+            by["extraction_mode"] = "skip"
+            by["confidence"] = 1.0
+            return real_forget(ep_id, reason=reason, by=by, now=now)
+
+        engine.forget = mutating_forget  # type: ignore[method-assign]
+
+        caller_by = {"source_type": "agent", "agent_id": "a1"}
+        snapshot = dict(caller_by)
+        facade.forget("e1", reason="stale", by=caller_by)
+        assert caller_by == snapshot
+        assert "extraction_mode" not in caller_by
+        assert "confidence" not in caller_by

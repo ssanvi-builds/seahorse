@@ -42,6 +42,13 @@ class TestImproveDelegation:
         engine.improve_result = new_ep
         assert facade.improve("e1", "new body", by=_by()) is new_ep
 
+    def test_forwards_ep_id_and_new_body(self, facade, engine) -> None:
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())
+        call = engine.improve_calls[0]
+        assert call["ep_id"] == "e1"
+        assert call["new_body"] == "new body"
+
 
 class TestImproveEffectiveProvenance:
     def test_sets_four_skip_keys(self, facade, engine) -> None:
@@ -73,6 +80,26 @@ class TestImproveEffectiveProvenance:
         t = datetime(2026, 1, 1, tzinfo=UTC)
         facade.improve("e1", "new body", by=_by(), valid_at=t)
         assert engine.improve_calls[0]["valid_at"] == t
+
+    def test_overrides_caller_supplied_skip_keys(self, facade, engine) -> None:
+        engine.improve_result = make_episode("e2")
+        caller_by = {
+            "source_type": "human",
+            "agent_id": "a1",
+            "extraction_mode": "llm",
+            "model_used": "gpt-4",
+            "prompt_hash": "abc",
+            "confidence": 0.3,
+        }
+        facade.improve("e1", "new body", by=caller_by)
+        by = engine.improve_calls[0]["by"]
+        assert by["extraction_mode"] == "skip"
+        assert by["model_used"] is None
+        assert by["prompt_hash"] is None
+        assert by["confidence"] == 1.0
+        # caller-supplied non-skip keys are still preserved
+        assert by["source_type"] == "human"
+        assert by["agent_id"] == "a1"
 
 
 class TestImproveCollisionPropagation:
@@ -124,3 +151,36 @@ class TestImproveBoundaryValidation:
         with pytest.raises(SeahorseError):
             facade.improve("e1", "", by=_by())
         assert engine.improve_calls == []
+
+    def test_does_not_validate_source_type_enum(self, facade, engine) -> None:
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by={"source_type": "robot"})
+        assert len(engine.improve_calls) == 1
+
+
+class TestImproveDoesNotValidateValidAt:
+    def test_far_future_valid_at_passed_through(self, facade, engine) -> None:
+        # The valid_at guard is #2-owned. #12 must NOT reject a far-future
+        # value at the border — it forwards it untouched to engine.improve.
+        engine.improve_result = make_episode("e2")
+        t = datetime(9999, 1, 1, tzinfo=UTC)
+        facade.improve("e1", "new body", by=_by(), valid_at=t)
+        assert engine.improve_calls[0]["valid_at"] == t
+
+    def test_none_valid_at_passed_through(self, facade, engine) -> None:
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by(), valid_at=None)
+        assert engine.improve_calls[0]["valid_at"] is None
+
+
+class TestImproveForwardsNow:
+    def test_forwards_now_to_engine(self, facade, engine) -> None:
+        engine.improve_result = make_episode("e2")
+        t = datetime(2026, 1, 1, tzinfo=UTC)
+        facade.improve("e1", "new body", by=_by(), now=t)
+        assert engine.improve_calls[0]["now"] == t
+
+    def test_clock_used_when_now_none(self, facade, engine) -> None:
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())
+        assert engine.improve_calls[0]["now"] == datetime(2026, 7, 16, 12, 0, tzinfo=UTC)

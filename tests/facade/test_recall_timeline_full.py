@@ -2,9 +2,11 @@
 
 ``recall_timeline`` delegates to ``materialize_timeline(anchor, axis, pit)``
 (no ``now``). ``recall_full`` delegates to ``materialize_full(ep_ids, pit,
-now)``; ``len > MAX_FULL_BATCH`` raises ``FullBatchTooLarge`` BEFORE any fetch;
+now)``; the ``MAX_FULL_BATCH`` cap is #8's domain guard (the facade does NOT
+replicate it — it delegates verbatim and surfaces #8's ``FullBatchTooLarge``);
 PIT in FULL surfaces as #8's ``PitFullNotSupported``. PIT kinds are validated
-at the border.
+at the border (the facade's only FULL-level check), and that border check fires
+before #8's batch guard.
 """
 
 from __future__ import annotations
@@ -78,16 +80,28 @@ class TestRecallFull:
         # RecordingShaper returns [] by default
         assert facade.recall_full(["e1"]) == []
 
-    def test_batch_too_large_before_fetch(self, facade, shaper) -> None:
+    def test_batch_too_large_owned_by_shaper(self, facade, shaper) -> None:
+        """#12 must NOT pre-empt #8's MAX_FULL_BATCH check (owned by #8).
+
+        The facade delegates verbatim and surfaces #8's FullBatchTooLarge. The
+        call reaches the shaper — #12 does not short-circuit #8's domain guard.
+        """
         too_many = [f"e{i}" for i in range(MAX_FULL_BATCH + 1)]
+        shaper.full_raise = FullBatchTooLarge(len(too_many), MAX_FULL_BATCH)
         with pytest.raises(FullBatchTooLarge):
             facade.recall_full(too_many)
-        assert shaper.full_calls == []
+        assert len(shaper.full_calls) == 1
+        assert shaper.full_calls[0]["ep_ids"] == too_many
 
     def test_batch_at_cap_ok(self, facade, shaper) -> None:
         at_cap = [f"e{i}" for i in range(MAX_FULL_BATCH)]
         facade.recall_full(at_cap)
         assert len(shaper.full_calls) == 1
+
+    def test_batch_at_cap_forwards_ep_ids(self, facade, shaper) -> None:
+        at_cap = [f"e{i}" for i in range(MAX_FULL_BATCH)]
+        facade.recall_full(at_cap)
+        assert shaper.full_calls[0]["ep_ids"] == at_cap
 
     def test_pit_full_surfaces_shaper_error(self, facade, shaper) -> None:
         # #8 raises PitFullNotSupported when pit is provided to FULL.
@@ -96,10 +110,30 @@ class TestRecallFull:
         with pytest.raises(PitFullNotSupported):
             facade.recall_full(["e1"], pit=pit)
 
+    def test_pit_forwarded_to_full(self, facade, shaper) -> None:
+        # Guard against a regression where the facade drops pit to None before
+        # delegating. Inspect the recorded call, not just the raised exception.
+        pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
+        shaper.full_raise = PitFullNotSupported()
+        with pytest.raises(PitFullNotSupported):
+            facade.recall_full(["e1"], pit=pit)
+        assert len(shaper.full_calls) == 1
+        assert shaper.full_calls[0]["pit"] is pit  # forwarded verbatim
+
     def test_invalid_pit_kind_rejected_before_shaper(self, facade, shaper) -> None:
         pit = PITPoint(kind="future", t=datetime(2026, 1, 1, tzinfo=UTC))  # type: ignore[arg-type]
         with pytest.raises(InvalidPITKind):
             facade.recall_full(["e1"], pit=pit)
+        assert shaper.full_calls == []
+
+    def test_invalid_pit_kind_wins_over_oversized_batch(self, facade, shaper) -> None:
+        # Border validation (pit.kind, facade-owned) fires BEFORE delegation to
+        # #8's domain batch guard: an invalid pit kind raises InvalidPITKind and
+        # #8 is never reached, even with an oversized batch.
+        too_many = [f"e{i}" for i in range(MAX_FULL_BATCH + 1)]
+        pit = PITPoint(kind="future", t=datetime(2026, 1, 1, tzinfo=UTC))  # type: ignore[arg-type]
+        with pytest.raises(InvalidPITKind):
+            facade.recall_full(too_many, pit=pit)
         assert shaper.full_calls == []
 
     def test_now_from_clock(self, facade, shaper) -> None:

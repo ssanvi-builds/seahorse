@@ -53,6 +53,14 @@ class TestBuildPitValidation:
             facade.build_pit(pit_kind="state_at")
         assert exc.value.code == E_PIT_REQUIRES_T
 
+    def test_invalid_kind_without_t_raises_requires_t_first(self, facade) -> None:
+        # Invalid pit_kind AND missing t: the t-check fires before kind
+        # validation, so E_PIT_REQUIRES_T wins. The caller must supply a t
+        # before learning the kind is invalid.
+        with pytest.raises(SeahorseError) as exc:
+            facade.build_pit(pit_kind="future")  # type: ignore[arg-type]
+        assert exc.value.code == E_PIT_REQUIRES_T
+
     def test_kind_without_t_before_construction(self, facade) -> None:
         # No PITPoint is built when t is missing.
         with pytest.raises(SeahorseError):
