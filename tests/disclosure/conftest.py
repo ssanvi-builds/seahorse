@@ -13,6 +13,7 @@ PIT predicates mirror #6's ``_pit_predicate`` exactly (ADR-03, never mix axes):
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
@@ -203,3 +204,71 @@ def index() -> FakeIndexRepo:
 @pytest.fixture()
 def repo() -> FakeEpisodeRepo:
     return FakeEpisodeRepo()
+
+
+# ---------------------------------------------------------------------------
+# Recording doubles — structurally enforce #8's delegation / guard-order
+# invariants that outcome-only tests cannot catch (adversarial review #2, #4).
+# ---------------------------------------------------------------------------
+
+
+class RecordingIndex(FakeIndexRepo):
+    """``FakeIndexRepo`` that counts per-accessor calls.
+
+    Used to prove #8 DELEGATES PIT to #6's typed accessors
+    (``get_rows_state_at`` / ``get_rows_known_at``) instead of inlining the
+    predicate (drift-prevention, ADR-03), and that guards fire BEFORE any
+    index fetch.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: dict[str, int] = defaultdict(int)
+
+    def get_rows(self, ep_ids: Sequence[str]) -> list[IndexRowData]:
+        self.calls["get_rows"] += 1
+        return super().get_rows(ep_ids)
+
+    def get_rows_state_at(self, ep_ids: Sequence[str], t: datetime) -> list[IndexRowData]:
+        self.calls["get_rows_state_at"] += 1
+        return super().get_rows_state_at(ep_ids, t)
+
+    def get_rows_known_at(self, ep_ids: Sequence[str], t: datetime) -> list[IndexRowData]:
+        self.calls["get_rows_known_at"] += 1
+        return super().get_rows_known_at(ep_ids, t)
+
+    def chain_rows_from(self, ep_id: str) -> list[IndexRowData]:
+        self.calls["chain_rows_from"] += 1
+        return super().chain_rows_from(ep_id)
+
+    def find_vigent_row_by_fact_id(
+        self, fact_id: str, exclude: str | None = None
+    ) -> IndexRowData | None:
+        self.calls["find_vigent_row_by_fact_id"] += 1
+        return super().find_vigent_row_by_fact_id(fact_id, exclude)
+
+
+class CountingEpisodeRepo(FakeEpisodeRepo):
+    """``FakeEpisodeRepo`` that counts ``get`` calls.
+
+    Used to prove the FULL-level guards (``FullBatchTooLarge``,
+    ``PitFullNotSupported``) fire BEFORE any episode fetch.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.get_calls = 0
+
+    def get(self, ep_id: str) -> Episode | None:
+        self.get_calls += 1
+        return super().get(ep_id)
+
+
+@pytest.fixture()
+def rec_index() -> RecordingIndex:
+    return RecordingIndex()
+
+
+@pytest.fixture()
+def counting_repo() -> CountingEpisodeRepo:
+    return CountingEpisodeRepo()

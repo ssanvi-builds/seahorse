@@ -417,3 +417,166 @@ def test_full_freshness_stale_for_invalidated(index, repo):
     repo.add(_episode("e1", invalid_at=NOW - timedelta(hours=1)))
     out = _shaper(index, repo).materialize_full(["e1"], now=NOW)
     assert out[0].freshness.stale is True
+
+
+# ---------------------------------------------------------------------------
+# Adversarial-review gap closures (PIT delegation, expired_at half,
+# fact_id_scope+PIT, guard-before-fetch ordering).
+# ---------------------------------------------------------------------------
+
+
+# #1 — known_at: the expired_at transaction-time half of the predicate is
+# never exercised by the existing suite (only created_at varies). Mirror the
+# state_at invalid_at test for known_at expired_at, at both levels.
+def test_index_pit_known_at_drops_expired_before_t(index, repo):
+    # expired_at is the transaction-time expiry half of known_at; a row
+    # created before t but expired before t is NOT known at t.
+    index.add(
+        _idx_row("gone", created_at=NOW - timedelta(days=10), expired_at=NOW - timedelta(days=1))
+    )
+    index.add(_idx_row("live", created_at=NOW - timedelta(days=10)))  # expired_at None
+    pit = PITPoint(kind="known_at", t=NOW)
+    rows = _shaper(index, repo).materialize_index(
+        [
+            FusedCandidate(ep_id="gone", score=0.1, sources=("vector",)),
+            FusedCandidate(ep_id="live", score=0.2, sources=("vector",)),
+        ],
+        pit=pit,
+        now=NOW,
+    )
+    assert [r.ep_id for r in rows] == ["live"]
+
+
+def test_timeline_pit_known_at_drops_expired_before_t(index, repo):
+    index.add(_idx_row("e1", fact_id="f1", created_at=NOW - timedelta(days=3)))  # live
+    index.add(
+        _idx_row(
+            "e2",
+            fact_id="f1",
+            created_at=NOW - timedelta(days=2),
+            expired_at=NOW - timedelta(days=1),  # expired before t
+            supersedes="e1",
+        )
+    )
+    pit = PITPoint(kind="known_at", t=NOW)
+    win = _shaper(index, repo).materialize_timeline("e1", axis="supersedes_chain", pit=pit)
+    assert [e.ep_id for e in win.entries] == ["e1"]
+
+
+# #2 — drift-prevention: structurally enforce that #8 DELEGATES PIT to #6's
+# typed accessors instead of inlining the predicate. An inlined predicate
+# produces identical outcomes and passes every outcome-only test.
+def test_index_pit_delegates_to_state_at_accessor_not_get_rows(rec_index, repo):
+    rec_index.add(_idx_row("a", valid_at=NOW - timedelta(days=1)))
+    _shaper(rec_index, repo).materialize_index(
+        [FusedCandidate(ep_id="a", score=0.1, sources=("vector",))],
+        pit=PITPoint(kind="state_at", t=NOW),
+        now=NOW,
+    )
+    assert rec_index.calls["get_rows_state_at"] == 1
+    assert rec_index.calls["get_rows"] == 0
+
+
+def test_index_pit_delegates_to_known_at_accessor_not_get_rows(rec_index, repo):
+    rec_index.add(_idx_row("a", created_at=NOW - timedelta(days=1)))
+    _shaper(rec_index, repo).materialize_index(
+        [FusedCandidate(ep_id="a", score=0.1, sources=("vector",))],
+        pit=PITPoint(kind="known_at", t=NOW),
+        now=NOW,
+    )
+    assert rec_index.calls["get_rows_known_at"] == 1
+    assert rec_index.calls["get_rows"] == 0
+
+
+def test_timeline_pit_filter_delegates_to_pit_accessor(rec_index, repo):
+    # supersedes_chain + pit: chain_rows_from gathers rows, then _pit_filter
+    # must route through get_rows_state_at (NOT get_rows) to reuse #6's predicate.
+    rec_index.add(_idx_row("e1", fact_id="f1", created_at=NOW - timedelta(days=2)))
+    rec_index.add(
+        _idx_row("e2", fact_id="f1", created_at=NOW - timedelta(days=1), supersedes="e1")
+    )
+    _shaper(rec_index, repo).materialize_timeline(
+        "e1", axis="supersedes_chain", pit=PITPoint(kind="state_at", t=NOW)
+    )
+    assert rec_index.calls["chain_rows_from"] == 1
+    assert rec_index.calls["get_rows_state_at"] == 1
+    assert rec_index.calls["get_rows"] == 0
+
+
+# #3 — fact_id_scope + PIT is completely untested (both PIT tests use
+# supersedes_chain). The vigent row found by find_vigent_row_by_fact_id must
+# still survive PIT composition.
+def test_timeline_fact_id_scope_with_pit_drops_not_yet_valid(index, repo):
+    # Currently-vigent row for f1 is e2 (invalid_at None, expired_at None),
+    # but e2 is not yet valid at t (valid_at > t). state_at(t) drops it -> empty.
+    index.add(
+        _idx_row(
+            "e1",
+            fact_id="f1",
+            created_at=NOW - timedelta(days=2),
+            invalid_at=NOW - timedelta(days=1),
+        )
+    )
+    index.add(
+        _idx_row(
+            "e2",
+            fact_id="f1",
+            created_at=NOW - timedelta(days=1),
+            valid_at=NOW + timedelta(days=1),
+        )
+    )
+    pit = PITPoint(kind="state_at", t=NOW)
+    win = _shaper(index, repo).materialize_timeline("e1", axis="fact_id_scope", pit=pit)
+    assert [e.ep_id for e in win.entries] == []
+    assert win.pit == pit
+
+
+def test_timeline_fact_id_scope_with_pit_keeps_valid_vigent(index, repo):
+    # Positive complement: vigent row valid at t survives PIT composition.
+    index.add(
+        _idx_row(
+            "e1",
+            fact_id="f1",
+            created_at=NOW - timedelta(days=2),
+            invalid_at=NOW - timedelta(days=1),
+        )
+    )
+    index.add(
+        _idx_row(
+            "e2",
+            fact_id="f1",
+            created_at=NOW - timedelta(days=1),
+            valid_at=NOW - timedelta(hours=1),
+        )
+    )
+    pit = PITPoint(kind="state_at", t=NOW)
+    win = _shaper(index, repo).materialize_timeline("e1", axis="fact_id_scope", pit=pit)
+    assert [e.ep_id for e in win.entries] == ["e2"]
+
+
+# #4 — guards must fire BEFORE any fetch. The existing tests use empty repos,
+# so even a guard that fired after a no-op fetch would pass. Use recording
+# doubles to assert no fetch occurs before the guard raises.
+def test_full_batch_cap_raises_before_any_fetch(index, counting_repo):
+    for i in range(MAX_FULL_BATCH + 1):
+        counting_repo.add(_episode(f"e{i}"))
+    ep_ids = [f"e{i}" for i in range(MAX_FULL_BATCH + 1)]
+    with pytest.raises(FullBatchTooLarge):
+        _shaper(index, counting_repo).materialize_full(ep_ids, now=NOW)
+    assert counting_repo.get_calls == 0
+
+
+def test_full_pit_raises_before_any_fetch(index, counting_repo):
+    counting_repo.add(_episode("e1"))
+    with pytest.raises(PitFullNotSupported):
+        _shaper(index, counting_repo).materialize_full(
+            ["e1"], pit=PITPoint(kind="state_at", t=NOW), now=NOW
+        )
+    assert counting_repo.get_calls == 0
+
+
+def test_timeline_mvp1_axis_raises_before_any_fetch(rec_index, repo):
+    rec_index.add(_idx_row("e1"))
+    with pytest.raises(NotInMVP0):
+        _shaper(rec_index, repo).materialize_timeline("e1", axis="graph_bfs")  # type: ignore[arg-type]
+    assert sum(rec_index.calls.values()) == 0
