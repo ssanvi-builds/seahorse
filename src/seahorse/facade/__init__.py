@@ -1,9 +1,8 @@
 """#12 Memory-Native Primitives Facade — the canonical Python API.
 
-Re-exports the payload types, error vocabulary, and the bi-temporal / disclosure
-symbols the facade surface needs. ``MemoryFacade`` itself lands in a later
-commit of this component (``facade.py``). #13 (MCP) and #14 (CLI) import the
-canonical shapes from here — no transformation.
+Re-exports the payload types, error vocabulary, the bi-temporal / disclosure
+symbols the facade surface needs, and ``MemoryFacade`` itself. #13 (MCP) and
+#14 (CLI) import the canonical shapes from here — no transformation.
 """
 
 from __future__ import annotations
@@ -32,6 +31,7 @@ from seahorse.facade.errors import (
     PitRecallNotSupportedMVP0,
     SeahorseError,
 )
+from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import (
     COGNITIVE_TYPES,
     SOURCE_TYPES,
@@ -42,6 +42,8 @@ from seahorse.facade.types import (
 )
 
 __all__ = [
+    # facade
+    "MemoryFacade",
     # payloads + config
     "Provenance",
     "RememberPayload",
