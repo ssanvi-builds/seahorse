@@ -20,6 +20,10 @@ invariants, and #12 is a clean delegation layer (it does not replicate engine
 invariants). This avoids the drift where engine tests use ``cognitive_type=
 "fact"`` (a value outside the f5-01 enum).
 
+The canonical home for these vocabularies is ``seahorse/constants.py`` (the
+shared module #13 and #14 import, per SO-14-03 / f5-14 §Pins). This module
+re-exports them so the #12 public API stays stable.
+
 References:
 - f5-12 §3 (payload shapes, Provenance facade-owned)
 - f5-01 §2.4 (cognitive_type vocabulary)
@@ -33,6 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, TypedDict
 
+from seahorse.constants import COGNITIVE_TYPES, SOURCE_TYPES
 from seahorse.disclosure.types import TOP_K, PITPoint
 
 ExtractionMode = Literal["skip", "llm"]
@@ -60,19 +65,8 @@ class Provenance(TypedDict, total=False):
 
 
 # Informative vocabularies (NOT enforced by #12 in MVP-0; engine/#1 authority).
-# Active + reserved cognitive types per f5-01 §2.4.
-COGNITIVE_TYPES: frozenset[str] = frozenset(
-    {
-        "episodic",  # active
-        "semantic",  # active
-        "social",  # active
-        "project_doc",  # active
-        "procedural",  # reserved (MVP-1)
-        "working",  # reserved (MVP-1)
-    }
-)
-
-SOURCE_TYPES: frozenset[str] = frozenset({"agent", "human", "importer", "system"})
+# Active + reserved cognitive types per f5-01 §2.4. Defined in
+# ``seahorse/constants.py`` (shared with #13/#14) and re-exported here.
 
 
 @dataclass(frozen=True)

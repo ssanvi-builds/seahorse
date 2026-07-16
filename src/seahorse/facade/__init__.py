@@ -32,6 +32,7 @@ from seahorse.facade.errors import (
     SeahorseError,
 )
 from seahorse.facade.facade import MemoryFacade
+from seahorse.facade.factory import build_facade
 from seahorse.facade.types import (
     COGNITIVE_TYPES,
     SOURCE_TYPES,
@@ -44,6 +45,7 @@ from seahorse.facade.types import (
 __all__ = [
     # facade
     "MemoryFacade",
+    "build_facade",
     # payloads + config
     "Provenance",
     "RememberPayload",
