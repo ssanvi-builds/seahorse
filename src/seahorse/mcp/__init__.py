@@ -30,6 +30,7 @@ from seahorse.mcp.deserialize import (
     parse_pit_point,
 )
 from seahorse.mcp.errors import CAT_A, CAT_B, WireShapeError, translate, wire_shape_response
+from seahorse.mcp.profile import PROFILE_URI, build_server, handle_request, serve
 from seahorse.mcp.serialize import (
     _iso_z,
     success_response,
@@ -37,6 +38,7 @@ from seahorse.mcp.serialize import (
     to_text_content,
     to_wire,
 )
+from seahorse.mcp.tools import TOOL_HANDLERS, TOOL_LIST, dispatch
 from seahorse.mcp.validate import validate
 from seahorse.mcp.wire_schema import (
     BUILD_PIT_SCHEMA,
@@ -52,6 +54,15 @@ from seahorse.mcp.wire_schema import (
 )
 
 __all__ = [
+    # profile / server
+    "PROFILE_URI",
+    "build_server",
+    "handle_request",
+    "serve",
+    # tools
+    "TOOL_HANDLERS",
+    "TOOL_LIST",
+    "dispatch",
     # wire schema
     "DEFS",
     "REMEMBER_SCHEMA",

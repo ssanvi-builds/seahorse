@@ -195,6 +195,106 @@ def make_pit(kind: str = "state_at") -> PITPoint:
     return PITPoint(kind=kind, t=datetime(2026, 7, 16, 12, 0, 0, tzinfo=UTC))
 
 
+# ---------------------------------------------------------------------------
+# RecordingFacade — records the 7 facade method calls (delegation-purity double).
+#
+# This double structurally enforces #13's delegation invariants that
+# outcome-only tests cannot catch: it asserts WHAT facade method was called,
+# with WHICH kwargs, in WHICH order — and that guards fire BEFORE any read
+# (call counts stay zero on the wire-shape error path). It is NOT a real
+# facade; it returns configurable results so handlers can be tested in
+# isolation from #2/#5/#8.
+# ---------------------------------------------------------------------------
+
+
+class RecordingFacade:
+    """Records the 7 facade method calls; returns configurable results."""
+
+    def __init__(self) -> None:
+        self.remember_calls: list[dict[str, Any]] = []
+        self.recall_calls: list[dict[str, Any]] = []
+        self.recall_timeline_calls: list[dict[str, Any]] = []
+        self.recall_full_calls: list[dict[str, Any]] = []
+        self.improve_calls: list[dict[str, Any]] = []
+        self.forget_calls: list[dict[str, Any]] = []
+        self.build_pit_calls: list[dict[str, Any]] = []
+
+        # configurable returns
+        self.remember_result = make_write_result()
+        self.recall_result: list = []
+        self.timeline_result = make_timeline_window()
+        self.full_result: list = []
+        self.improve_result = make_episode("ep-2", supersedes="ep-1")
+        self.forget_result = make_episode(
+            "ep-1", invalid_at=datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+        )
+        self.build_pit_result: PITPoint | None = None
+        self.build_pit_raise: Exception | None = None
+        self.remember_raise: Exception | None = None
+        self.recall_raise: Exception | None = None
+
+    # The facade method names + signatures #13 calls.
+    def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
+        self.remember_calls.append(
+            {
+                "payload": payload,
+                "skip_extraction": skip_extraction,
+                "extraction_mode": extraction_mode,
+                "now": now,
+            }
+        )
+        if self.remember_raise is not None:
+            raise self.remember_raise
+        return self.remember_result
+
+    def recall(self, query, *, pit=None, k=None, cognitive_type=None, subject_filter=None):
+        self.recall_calls.append(
+            {
+                "query": query,
+                "pit": pit,
+                "k": k,
+                "cognitive_type": cognitive_type,
+                "subject_filter": subject_filter,
+            }
+        )
+        if self.recall_raise is not None:
+            raise self.recall_raise
+        return list(self.recall_result)
+
+    def recall_timeline(self, anchor_ep_id, *, axis="supersedes_chain", pit=None):
+        self.recall_timeline_calls.append({"anchor": anchor_ep_id, "axis": axis, "pit": pit})
+        return self.timeline_result
+
+    def recall_full(self, ep_ids, *, pit=None):
+        self.recall_full_calls.append({"ep_ids": list(ep_ids), "pit": pit})
+        return list(self.full_result)
+
+    def improve(self, ep_id, new_body, *, by, valid_at=None, reason="correction", now=None):
+        self.improve_calls.append(
+            {
+                "ep_id": ep_id,
+                "new_body": new_body,
+                "by": dict(by),
+                "valid_at": valid_at,
+                "reason": reason,
+                "now": now,
+            }
+        )
+        return self.improve_result
+
+    def forget(self, ep_id, *, reason, by, now=None):
+        self.forget_calls.append(
+            {"ep_id": ep_id, "reason": reason, "by": dict(by), "now": now}
+        )
+        return self.forget_result
+
+    def build_pit(self, pit=None, *, pit_kind=None, t=None):
+        self.build_pit_calls.append({"pit": pit, "pit_kind": pit_kind, "t": t})
+        if self.build_pit_raise is not None:
+            raise self.build_pit_raise
+        return self.build_pit_result
+
+
 __all__ = [
     "_advancing_clock",
     "real_facade",
@@ -205,4 +305,5 @@ __all__ = [
     "make_full_detail",
     "make_write_result",
     "make_pit",
+    "RecordingFacade",
 ]

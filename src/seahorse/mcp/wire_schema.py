@@ -179,10 +179,13 @@ FORGET_SCHEMA: dict[str, Any] = {
 BUILD_PIT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    # At least one of: a pit object, a (pit_kind,t) pair, or all-null/absent.
+    # At least one of: a pit object, a pit_kind (with optional t), or all-null.
+    # t is NOT required alongside pit_kind at the wire — the facade owns the
+    # "pit_kind requires t" invariant (E_PIT_REQUIRES_T, t-before-kind). Forcing
+    # it here would pre-empt the facade's fail-loud and break delegation purity.
     "anyOf": [
         {"required": ["pit"]},
-        {"required": ["pit_kind", "pit_t"]},
+        {"required": ["pit_kind"]},
         {"properties": {"pit": {"type": "null"}, "pit_kind": {"type": "null"}}},
     ],
     "properties": {

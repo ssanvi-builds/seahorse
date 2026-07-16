@@ -248,8 +248,9 @@ class TestBuildPitSchema:
     def test_any_of_allows_pit_only(self) -> None:
         assert {"required": ["pit"]} in BUILD_PIT_SCHEMA["anyOf"]
 
-    def test_any_of_allows_loose_pair(self) -> None:
-        assert {"required": ["pit_kind", "pit_t"]} in BUILD_PIT_SCHEMA["anyOf"]
+    def test_any_of_allows_loose_pit_kind(self) -> None:
+        # t is NOT required alongside pit_kind — the facade owns E_PIT_REQUIRES_T.
+        assert {"required": ["pit_kind"]} in BUILD_PIT_SCHEMA["anyOf"]
 
     def test_uses_t_not_pit_t(self) -> None:
         # build_pit's loose timestamp field is "t" (not "pit_t")
