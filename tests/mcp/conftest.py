@@ -1,0 +1,208 @@
+"""Shared fixtures + payload builders for #13 MCP tests.
+
+Two layers:
+- **Real-stack facade** (``real_facade``): a ``MemoryFacade`` over real
+  ``BiTemporalEngine`` + ``DisclosureShaperImpl`` + SQLite ``Storage`` +
+  ``StubWritePath`` with an advancing clock — used by ``test_e2e_smoke`` (the
+  stdio loop drives the real lifecycle). Mirrors
+  ``tests/facade/test_e2e_smoke.py``.
+- **Payload builders** (``make_episode`` / ``make_index_row`` /
+  ``make_timeline_window`` / ``make_full_detail`` / ``make_write_result``):
+  construct realistic frozen dataclass instances for the pure codec tests
+  (``test_serialize`` / ``test_deserialize``) without spinning up storage.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import pytest
+
+from seahorse.contracts.engine import Episode, FreshnessView, WriteResult
+from seahorse.disclosure.shaper import DisclosureShaperImpl
+from seahorse.disclosure.types import (
+    FullDetail,
+    IndexRow,
+    PITPoint,
+    TimelineEntry,
+    TimelineWindow,
+)
+from seahorse.engine.engine import BiTemporalEngine
+from seahorse.facade.facade import MemoryFacade
+from seahorse.facade.types import FacadeConfig
+from seahorse.persistence.storage import Storage
+from seahorse.write_path.stub import StubWritePath
+
+# ---------------------------------------------------------------------------
+# Real-stack facade (for the in-process stdio E2E smoke).
+# ---------------------------------------------------------------------------
+
+
+def _advancing_clock(start: datetime, step: timedelta):
+    """Clock that advances ``step`` on every read → distinct ``created_at``."""
+    state = {"t": start}
+
+    def _now() -> datetime:
+        t = state["t"]
+        state["t"] = t + step
+        return t
+
+    return _now
+
+
+@pytest.fixture()
+def real_facade(tmp_path):
+    storage = Storage(tmp_path / "mcp_e2e.db")
+    engine = BiTemporalEngine(repo=storage.episodes, audit=storage.audit)
+    shaper = DisclosureShaperImpl(
+        index_repo=storage.episode_index, episode_repo=storage.episodes
+    )
+    write_path = StubWritePath(engine=engine)
+    clock = _advancing_clock(datetime(2026, 7, 16, 12, 0, tzinfo=UTC), timedelta(seconds=10))
+    f = MemoryFacade(
+        engine=engine,
+        write_path=write_path,
+        shaper=shaper,
+        clock=clock,
+        config=FacadeConfig(),
+    )
+    yield f
+    storage.close()
+
+
+def agent_by() -> dict[str, Any]:
+    """The standard agent provenance used across MCP tests."""
+    return {"source_type": "agent", "agent_id": "a1", "session_id": "s1"}
+
+
+# ---------------------------------------------------------------------------
+# Payload builders (pure, no storage).
+# ---------------------------------------------------------------------------
+
+
+def make_episode(
+    ep_id: str = "ep-1",
+    *,
+    created_at: datetime | None = None,
+    body: str = "Sergio lives in Madrid",
+    subject: str | None = "Sergio",
+    fact_id: str | None = "fact-1",
+    cognitive_type: str | None = "semantic",
+    source_type: str | None = "agent",
+    valid_at: datetime | None = None,
+    invalid_at: datetime | None = None,
+    supersedes: str | None = None,
+    title: str | None = "Title",
+    provenance: dict[str, Any] | None = None,
+) -> Episode:
+    return Episode(
+        id=ep_id,
+        created_at=created_at or datetime(2026, 7, 16, 12, 0, 0, tzinfo=UTC),
+        schema_version="1.1",
+        provenance=provenance if provenance is not None else {"source_type": source_type},
+        body=body,
+        subject=subject,
+        fact_id=fact_id,
+        valid_at=valid_at,
+        invalid_at=invalid_at,
+        expired_at=None,
+        supersedes=supersedes,
+        cognitive_type=cognitive_type,
+        source_type=source_type,
+        title=title,
+    )
+
+
+def make_index_row(ep_id: str = "ep-1") -> IndexRow:
+    return IndexRow(
+        ep_id=ep_id,
+        fact_id="fact-1",
+        subject="Sergio",
+        title="Title",
+        summary="a summary",
+        cognitive_type="semantic",
+        skip_extraction=False,
+        valid_at=None,
+        invalid_at=None,
+        created_at=datetime(2026, 7, 16, 12, 0, 0, tzinfo=UTC),
+        score=0.0,
+        stale=False,
+        pending_ingest=False,
+    )
+
+
+def make_timeline_window(anchor: str = "ep-2") -> TimelineWindow:
+    return TimelineWindow(
+        anchor_ep_id=anchor,
+        axis="supersedes_chain",
+        entries=(
+            TimelineEntry(
+                ep_id="ep-1",
+                fact_id="fact-1",
+                subject="Sergio",
+                title="Title",
+                summary="old",
+                cognitive_type="semantic",
+                valid_at=None,
+                invalid_at=None,
+                created_at=datetime(2026, 7, 16, 11, 0, 0, tzinfo=UTC),
+                supersedes=None,
+            ),
+            TimelineEntry(
+                ep_id="ep-2",
+                fact_id="fact-1",
+                subject="Sergio",
+                title="Title",
+                summary="new",
+                cognitive_type="semantic",
+                valid_at=None,
+                invalid_at=None,
+                created_at=datetime(2026, 7, 16, 12, 0, 0, tzinfo=UTC),
+                supersedes="ep-1",
+            ),
+        ),
+        pit=None,
+    )
+
+
+def make_full_detail() -> FullDetail:
+    from seahorse.disclosure.types import EpisodeProvenance
+
+    return FullDetail(
+        episode=make_episode(),
+        provenance=EpisodeProvenance(
+            agent_id="a1",
+            session_id="s1",
+            source_type="agent",
+            extraction_mode="skip",
+            model_used=None,
+        ),
+        freshness=FreshnessView(
+            fact_id="fact-1", age_days=0, stale=False, pending_ingest=False, regime="agent"
+        ),
+        pit=None,
+    )
+
+
+def make_write_result(status: str = "ACTIVE") -> WriteResult:
+    return WriteResult(
+        ep_id="ep-1", fact_id="fact-1", status=status, collisions_detected=[]
+    )
+
+
+def make_pit(kind: str = "state_at") -> PITPoint:
+    return PITPoint(kind=kind, t=datetime(2026, 7, 16, 12, 0, 0, tzinfo=UTC))
+
+
+__all__ = [
+    "_advancing_clock",
+    "real_facade",
+    "agent_by",
+    "make_episode",
+    "make_index_row",
+    "make_timeline_window",
+    "make_full_detail",
+    "make_write_result",
+    "make_pit",
+]
