@@ -29,6 +29,7 @@ from seahorse.contracts.engine import (
     FreshnessView,
     NotFound,
     WriteResult,
+    freshness_of,
 )
 from seahorse.contracts.episode import Episode
 from seahorse.contracts.persistence import AuditEventRepository
@@ -380,21 +381,16 @@ class BiTemporalEngine:
     def freshness_view(self, ep_id: str, *, now: datetime | None = None) -> FreshnessView:
         """Pure derivation of an episode's freshness snapshot (no external state).
 
-        ``fact_id`` is the subject hash (``ep.fact_id``), consistent with
-        ``WriteResult.fact_id`` (TD #14 bridge). ``stale`` = already
-        invalidated; ``pending_ingest`` = scheduled for the future.
+        Fetches the episode via the repository and delegates the pure derivation
+        to ``freshness_of`` (single source of truth shared with #8's disclosure
+        shaper). ``fact_id`` is the subject hash (``ep.fact_id``), consistent
+        with ``WriteResult.fact_id`` (TD #14 bridge).
         """
         now = self._now(now)
         ep = self._repo.get(ep_id)
         if ep is None:
             raise NotFound(ep_id)
-        return FreshnessView(
-            fact_id=ep.fact_id,
-            age_days=(now - ep.created_at).days,
-            stale=ep.invalid_at is not None,
-            pending_ingest=ep.valid_at is not None and ep.valid_at > now,
-            regime=ep.source_type or "unknown",
-        )
+        return freshness_of(ep, now)
 
     # ---------- MVP-1 axis stubs (signed seam, fail-loud) -----------------
     # These accessors are part of the engine surface (SO-1 safeguard 2) but

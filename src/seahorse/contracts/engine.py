@@ -126,3 +126,24 @@ class FreshnessView:
     stale: bool
     pending_ingest: bool
     regime: str
+
+
+def freshness_of(episode: Episode, now: datetime) -> FreshnessView:
+    """Pure derivation of an episode's freshness snapshot (no external state).
+
+    Single source of truth for the freshness formula: ``BiTemporalEngine.
+    freshness_view`` (#2) and ``DisclosureShaper.materialize_full`` (#8) both
+    delegate here so the ``stale``/``pending_ingest``/``age_days``/``regime``
+    derivation cannot drift between the engine and the disclosure shaper.
+
+    ``stale`` = already invalidated (``invalid_at is not None``);
+    ``pending_ingest`` = scheduled for the future (``valid_at is not None and
+    valid_at > now``); ``regime`` = ``source_type`` or ``"unknown"``.
+    """
+    return FreshnessView(
+        fact_id=episode.fact_id,
+        age_days=(now - episode.created_at).days,
+        stale=episode.invalid_at is not None,
+        pending_ingest=episode.valid_at is not None and episode.valid_at > now,
+        regime=episode.source_type or "unknown",
+    )
