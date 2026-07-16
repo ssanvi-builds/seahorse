@@ -8,7 +8,9 @@ Ownership:
 - Episode                -> #1 (contracts.episode)
 - EpisodeRepository      -> #2 (contracts.engine)
 - AuditEvent             -> #2 (contracts.engine)
+- freshness_of          -> #2 pure derivation (contracts.engine); shared with #8
 - IndexRowData, PITKind  -> #8 / #10 (contracts.index)
+- FusedCandidate         -> #11, materialized by #8 (contracts.retrieval)
 - 9 repository Protocols -> #6 (contracts.persistence)
 """
 
@@ -19,6 +21,7 @@ from seahorse.contracts.engine import (
     InvalidationConflictError,
     NotFound,
     WriteResult,
+    freshness_of,
 )
 from seahorse.contracts.episode import Episode
 from seahorse.contracts.index import (
@@ -40,6 +43,7 @@ from seahorse.contracts.persistence import (
     VectorHit,
     VectorIndexRepository,
 )
+from seahorse.contracts.retrieval import FusedCandidate
 
 __all__ = [
     "AuditEvent",
@@ -52,6 +56,7 @@ __all__ = [
     "FtsDoc",
     "FullTextHit",
     "FullTextIndexRepository",
+    "FusedCandidate",
     "HopsCapExceeded",
     "InvalidationConflictError",
     "MAX_HOPS_MVP1",
@@ -64,4 +69,5 @@ __all__ = [
     "VectorHit",
     "VectorIndexRepository",
     "WriteResult",
+    "freshness_of",
 ]
