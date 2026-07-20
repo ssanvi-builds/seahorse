@@ -17,9 +17,16 @@ classifiers = [
 ]
 
 # Dependencies land incrementally per component during Fase 6 (persistence, engine,
-# llm, write-path, retrieval, graph). The repo is intentionally empty of runtime
-# deps until the first component (#6 Persistence Layer) is implemented.
-dependencies = []
+# llm, write-path, retrieval, graph). #14 CLI Bootstrap is the first component to
+# introduce a runtime dep: Typer is the terminal surface (L6, ADR-06) — the human
+# and the scripter invoke `seahorse ...`. The stdlib-only contract is preserved
+# for the core (engine/facade/mcp/persistence): Typer lives ONLY in the CLI layer.
+dependencies = [
+    "typer>=0.12",
+]
+
+[project.scripts]
+seahorse = "seahorse.cli.app:main"
 
 [project.optional-dependencies]
 dev = [
