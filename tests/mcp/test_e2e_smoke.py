@@ -179,3 +179,88 @@ class TestFullLifecycle:
             ],
         )
         assert resps[0]["error"]["data"]["seahorse_code"] == "E_NOT_IN_MVP_0_1"
+
+    def test_full_lifecycle_single_session(self, real_facade) -> None:
+        # ONE stdin stream, ONE serve() call: initialize → tools/list →
+        # remember → recall → build_pit. Proves the stdio loop stays coherent
+        # across a mixed-method client session (handshake + list + two calls +
+        # a third call) and returns the full ordered response stream in order.
+        # The improve/forget arc needs the remembered ep_id, which the engine
+        # generates at write time — that substitution is exercised by
+        # test_remember_recall_improve_forget across _run passes instead.
+        remember_args = {
+            "body": "Sergio lives in Madrid",
+            "by": {"agent_id": "a", "session_id": "s", "source_type": "agent"},
+        }
+        lines = [
+            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                        "params": {"name": "remember", "arguments": remember_args}}),
+            json.dumps({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                        "params": {"name": "recall", "arguments": {"query": "madrid"}}}),
+            json.dumps({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                        "params": {"name": "build_pit", "arguments": {}}}),
+        ]
+        stdin = io.StringIO("".join(line + "\n" for line in lines))
+        stdout = io.StringIO()
+        serve(real_facade, stdin=stdin, stdout=stdout)
+        resps = _responses(stdout)
+        assert len(resps) == 5
+        # ordered: handshake → list → remember → recall → build_pit
+        assert resps[0]["id"] == 1
+        assert resps[0]["result"]["protocolVersion"] == "2025-11-25"
+        assert len(resps[1]["result"]["tools"]) == 7
+        wr = self._content(resps[2])
+        assert wr["status"] == "ACTIVE"
+        old_id = wr["ep_id"]
+        assert old_id in [r["ep_id"] for r in self._content(resps[3])]
+        assert self._content(resps[4]) is None  # build_pit all-None → null
+
+    def test_recall_timeline_and_full_real_stack(self, real_facade) -> None:
+        # recall_timeline + recall_full against the REAL #8 shaper (the two
+        # tools the original e2e smoke did not exercise). Asserts the
+        # TimelineWindow and FullDetail wire shapes come back canonicalized.
+        remember_args = {
+            "body": "Sergio lives in Madrid",
+            "by": {"agent_id": "a", "session_id": "s", "source_type": "agent"},
+        }
+        resps = self._run(
+            real_facade,
+            [
+                json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                            "params": {"name": "remember", "arguments": remember_args}}),
+                json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                            "params": {"name": "recall", "arguments": {"query": "madrid"}}}),
+            ],
+        )
+        old_id = self._content(resps[0])["ep_id"]
+
+        # recall_timeline on the anchor → TimelineWindow with entries
+        tl = self._run(
+            real_facade,
+            [
+                json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                            "params": {"name": "recall_timeline",
+                                       "arguments": {"anchor_ep_id": old_id}}}),
+            ],
+        )
+        window = self._content(tl[0])
+        assert window["anchor_ep_id"] == old_id
+        assert window["axis"] == "supersedes_chain"
+        assert isinstance(window["entries"], list)
+        assert any(e["ep_id"] == old_id for e in window["entries"])
+
+        # recall_full on the ep_id → list[FullDetail] with the hydrated episode
+        full = self._run(
+            real_facade,
+            [
+                json.dumps({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                            "params": {"name": "recall_full",
+                                       "arguments": {"ep_ids": [old_id]}}}),
+            ],
+        )
+        details = self._content(full[0])
+        assert isinstance(details, list)
+        assert details[0]["episode"]["id"] == old_id
+        assert details[0]["episode"]["body"] == "Sergio lives in Madrid"

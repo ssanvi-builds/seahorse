@@ -117,6 +117,16 @@ class TestObject:
             },
         )
 
+    def test_additional_properties_false_no_properties_rejects_keys(self) -> None:
+        # Regression: ``{"additionalProperties": false}`` with NO ``properties``
+        # means any non-empty object is invalid (every key is extra). The guard
+        # must NOT short-circuit on an empty props dict.
+        with pytest.raises(WireShapeError):
+            validate({"anything": 1}, {"type": "object", "additionalProperties": False})
+
+    def test_additional_properties_false_no_properties_allows_empty(self) -> None:
+        validate({}, {"type": "object", "additionalProperties": False})
+
     def test_nested_property_validated(self) -> None:
         with pytest.raises(WireShapeError):
             validate(
@@ -139,6 +149,14 @@ class TestDateTimeFormat:
     def test_garbage_rejected(self) -> None:
         with pytest.raises(WireShapeError):
             validate("not-a-date", {"type": "string", "format": "date-time"})
+
+    def test_naive_error_message_does_not_claim_utc(self) -> None:
+        # The validator accepts any tz-aware offset (not UTC-only); the error
+        # message must NOT claim "UTC 'Z'" — that would mislead clients. The
+        # serializer canonicalizes to UTC Z on output regardless.
+        with pytest.raises(WireShapeError) as exc:
+            validate("2026-07-16T12:00:00", {"type": "string", "format": "date-time"})
+        assert "UTC" not in str(exc.value)
 
 
 class TestRef:

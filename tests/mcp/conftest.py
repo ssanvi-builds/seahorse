@@ -232,6 +232,7 @@ class RecordingFacade:
         self.build_pit_raise: Exception | None = None
         self.remember_raise: Exception | None = None
         self.recall_raise: Exception | None = None
+        self.recall_full_raise: Exception | None = None
 
     # The facade method names + signatures #13 calls.
     def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
@@ -247,16 +248,12 @@ class RecordingFacade:
             raise self.remember_raise
         return self.remember_result
 
-    def recall(self, query, *, pit=None, k=None, cognitive_type=None, subject_filter=None):
-        self.recall_calls.append(
-            {
-                "query": query,
-                "pit": pit,
-                "k": k,
-                "cognitive_type": cognitive_type,
-                "subject_filter": subject_filter,
-            }
-        )
+    def recall(self, query, **kwargs):
+        # **kwargs capture: only the keys the handler actually forwarded are
+        # recorded. This structurally enforces the "only forwarded when present"
+        # invariant (absent keys are ABSENT in the recording, not collapsed to
+        # None) — outcome-only dicts cannot distinguish the two.
+        self.recall_calls.append({"query": query, **kwargs})
         if self.recall_raise is not None:
             raise self.recall_raise
         return list(self.recall_result)
@@ -267,6 +264,8 @@ class RecordingFacade:
 
     def recall_full(self, ep_ids, *, pit=None):
         self.recall_full_calls.append({"ep_ids": list(ep_ids), "pit": pit})
+        if self.recall_full_raise is not None:
+            raise self.recall_full_raise
         return list(self.full_result)
 
     def improve(self, ep_id, new_body, *, by, valid_at=None, reason="correction", now=None):

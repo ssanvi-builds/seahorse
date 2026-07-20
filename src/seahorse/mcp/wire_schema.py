@@ -30,19 +30,26 @@ from typing import Any
 from seahorse.constants import (
     BODY_MAX_CHARS,
     COGNITIVE_TYPES,
+    EP_ID_MAX_CHARS,
+    PROVENANCE_ID_MAX_CHARS,
+    PROVENANCE_SHORT_MAX_CHARS,
     QUERY_MAX_CHARS,
     REASON_MAX_CHARS,
     SOURCE_TYPES,
+    SUBJECT_FILTER_MAX_CHARS,
+    TAG_MAX_CHARS,
     TAGS_MAX_ITEMS,
 )
+from seahorse.contracts.index import PIT_KIND_VALUES
 from seahorse.disclosure.types import MAX_FULL_BATCH
 
 # F3.1-aligned cognitive_type enum (6 values + null). Single source: constants.
 _COGNITIVE_ENUM: list[Any] = sorted(COGNITIVE_TYPES) + [None]
 _SOURCE_ENUM: list[Any] = sorted(SOURCE_TYPES)
 
-# PIT kinds (ADR-03: the two axes are never mixed).
-_PIT_KIND_ENUM: list[Any] = ["state_at", "known_at", None]
+# PIT kinds (ADR-03: the two axes are never mixed). Single source: the PITKind
+# Literal via PIT_KIND_VALUES — a future ADR-03 change lives in one place.
+_PIT_KIND_ENUM: list[Any] = sorted(PIT_KIND_VALUES) + [None]
 _EXTRACTION_MODE_ENUM: list[Any] = ["skip", "llm", None]
 _REASON_ENUM: list[Any] = ["contradiction", "correction", "merge", "revalidation"]
 _AXIS_ENUM: list[Any] = ["supersedes_chain", "fact_id_scope"]
@@ -66,22 +73,34 @@ DEFS: dict[str, dict[str, Any]] = {
         "additionalProperties": False,
         "required": ["agent_id", "session_id", "source_type"],
         "properties": {
-            "agent_id": {"type": "string"},
-            "session_id": {"type": "string"},
+            "agent_id": {"type": "string", "maxLength": PROVENANCE_ID_MAX_CHARS},
+            "session_id": {"type": "string", "maxLength": PROVENANCE_ID_MAX_CHARS},
             "source_type": {"type": "string", "enum": _SOURCE_ENUM},
             "extraction_mode": {"type": ["string", "null"], "enum": _EXTRACTION_MODE_ENUM},
-            "model_used": {"type": ["string", "null"]},
-            "prompt_hash": {"type": ["string", "null"]},
+            "model_used": {
+                "type": ["string", "null"],
+                "maxLength": PROVENANCE_SHORT_MAX_CHARS,
+            },
+            "prompt_hash": {
+                "type": ["string", "null"],
+                "maxLength": PROVENANCE_SHORT_MAX_CHARS,
+            },
             "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
-            "importer_vendor": {"type": ["string", "null"]},
-            "source_record_id": {"type": ["string", "null"]},
+            "importer_vendor": {
+                "type": ["string", "null"],
+                "maxLength": PROVENANCE_SHORT_MAX_CHARS,
+            },
+            "source_record_id": {
+                "type": ["string", "null"],
+                "maxLength": PROVENANCE_SHORT_MAX_CHARS,
+            },
         },
     },
 }
 
 # A reusable PIT-input fragment (pit object OR loose pit_kind + pit_t).
-# ``pit`` wins over ``pit_kind``+``pit_t`` at the deserialize layer (#12
-# build_pit precedence), not at the wire layer.
+# ``pit`` wins over ``pit_kind``+``pit_t`` at the FACADE layer (facade.build_pit
+# precedence, invoked by the handlers), NOT at the wire or deserialize layer.
 _PIT_INPUT_PROPS: dict[str, Any] = {
     "pit": {"oneOf": [{"$ref": "#/$defs/PITPoint"}, {"type": "null"}]},
     "pit_kind": {"type": ["string", "null"], "enum": _PIT_KIND_ENUM},
@@ -102,7 +121,11 @@ REMEMBER_SCHEMA: dict[str, Any] = {
         "by": {"$ref": "#/$defs/Provenance"},
         "valid_at": {"type": ["string", "null"], "format": "date-time"},
         "cognitive_type": {"type": ["string", "null"], "enum": _COGNITIVE_ENUM},
-        "tags": {"type": "array", "items": {"type": "string"}, "maxItems": TAGS_MAX_ITEMS},
+        "tags": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": TAG_MAX_CHARS},
+            "maxItems": TAGS_MAX_ITEMS,
+        },
         "skip_extraction": {"type": ["boolean", "null"]},
         "extraction_mode": {"type": ["string", "null"], "enum": _EXTRACTION_MODE_ENUM},
     },
@@ -116,7 +139,7 @@ RECALL_SCHEMA: dict[str, Any] = {
         "query": {"type": "string", "minLength": 1, "maxLength": QUERY_MAX_CHARS},
         "k": {"type": "integer", "minimum": 1},
         "cognitive_type": {"type": ["string", "null"], "enum": _COGNITIVE_ENUM},
-        "subject_filter": {"type": ["string", "null"]},
+        "subject_filter": {"type": ["string", "null"], "maxLength": SUBJECT_FILTER_MAX_CHARS},
         **_PIT_INPUT_PROPS,
     },
 }
@@ -126,7 +149,7 @@ RECALL_TIMELINE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "required": ["anchor_ep_id"],
     "properties": {
-        "anchor_ep_id": {"type": "string", "minLength": 1},
+        "anchor_ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
         "axis": {"type": "string", "enum": _AXIS_ENUM},
         **_PIT_INPUT_PROPS,
     },
@@ -139,7 +162,7 @@ RECALL_FULL_SCHEMA: dict[str, Any] = {
     "properties": {
         "ep_ids": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {"type": "string", "maxLength": EP_ID_MAX_CHARS},
             "minItems": 1,
             "maxItems": MAX_FULL_BATCH,
         },
@@ -152,7 +175,7 @@ IMPROVE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "required": ["ep_id", "new_body", "by"],
     "properties": {
-        "ep_id": {"type": "string", "minLength": 1},
+        "ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
         "new_body": {"type": "string", "minLength": 1, "maxLength": BODY_MAX_CHARS},
         "by": {"$ref": "#/$defs/Provenance"},
         "valid_at": {"type": ["string", "null"], "format": "date-time"},
@@ -170,7 +193,7 @@ FORGET_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "required": ["ep_id", "reason", "by"],
     "properties": {
-        "ep_id": {"type": "string", "minLength": 1},
+        "ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
         "reason": {"type": "string", "minLength": 1, "maxLength": REASON_MAX_CHARS},
         "by": {"$ref": "#/$defs/Provenance"},
     },

@@ -178,6 +178,62 @@ class TestToolsCallDispatch:
             {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"arguments": {}}},
         )
         assert resp["error"]["code"] == -32602
+        assert resp["error"]["data"]["wire_shape_error"] is True
+        assert resp["error"]["data"]["component"] == "#13"
+
+    def test_call_params_not_object_carries_wire_shape_error(self, tmp_path) -> None:
+        facade = self._facade(tmp_path)
+        resp = handle_request(
+            facade,
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": "nope"},
+        )
+        assert resp["error"]["code"] == -32602
+        assert resp["error"]["data"]["wire_shape_error"] is True
+        assert resp["error"]["data"]["component"] == "#13"
+
+    def test_call_arguments_not_object_carries_wire_shape_error(self, tmp_path) -> None:
+        facade = self._facade(tmp_path)
+        resp = handle_request(
+            facade,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "remember", "arguments": "nope"},
+            },
+        )
+        assert resp["error"]["code"] == -32602
+        assert resp["error"]["data"]["wire_shape_error"] is True
+        assert resp["error"]["data"]["component"] == "#13"
+
+
+class TestProtocolConformance:
+    """JSON-RPC 2.0 envelope rigor: jsonrpc version + id:null semantics."""
+
+    def test_explicit_null_id_gets_response(self) -> None:
+        # JSON-RPC 2.0: an explicit id:null is a Request (gets a response with
+        # id:null), NOT a notification. Only an ABSENT id is a notification.
+        resp = handle_request(None, {"jsonrpc": "2.0", "id": None, "method": "tools/list"})
+        assert resp is not None
+        assert resp["id"] is None
+        assert resp["result"]["tools"]
+
+    def test_missing_jsonrpc_rejected(self) -> None:
+        resp = handle_request(None, {"id": 9, "method": "tools/list"})
+        assert resp["error"]["code"] == -32600
+
+    def test_wrong_jsonrpc_version_rejected(self) -> None:
+        resp = handle_request(None, {"jsonrpc": "1.0", "id": 9, "method": "tools/list"})
+        assert resp["error"]["code"] == -32600
+
+    def test_initialize_without_id_returns_response_with_null_id(self) -> None:
+        # initialize is a Request method (not a notification): an id-less
+        # initialize is malformed in practice, but we still answer with id:null
+        # rather than silently dropping the handshake.
+        resp = handle_request(None, {"jsonrpc": "2.0", "method": "initialize"})
+        assert resp is not None
+        assert resp["id"] is None
+        assert resp["result"]["protocolVersion"] == "2025-11-25"
 
 
 def test_profile_module_assertion_held() -> None:

@@ -61,6 +61,18 @@ BODY_MAX_CHARS: int = 32_768  # remember body / improve new_body
 QUERY_MAX_CHARS: int = 2_048  # recall query
 REASON_MAX_CHARS: int = 512  # forget reason / improve reason
 TAGS_MAX_ITEMS: int = 32  # remember tags
+TAG_MAX_CHARS: int = 256  # remember tags per-item length
+
+# Identifier / free-text caps. The wire is the DoS + token-budget guard per the
+# module docstring, so every free-text field the engine persists verbatim needs
+# a wire-level maxLength — otherwise a multi-megabyte agent_id passes wire-shape
+# and is stored. These are sized for realistic identifiers, not tight semantic
+# limits (the engine may impose additional constraints).
+EP_ID_MAX_CHARS: int = 64  # ep_id / anchor_ep_id (UUID-sized)
+PROVENANCE_ID_MAX_CHARS: int = 256  # agent_id / session_id
+# model_used / prompt_hash / importer_vendor / source_record_id
+PROVENANCE_SHORT_MAX_CHARS: int = 128
+SUBJECT_FILTER_MAX_CHARS: int = QUERY_MAX_CHARS  # recall subject_filter (reuses query budget)
 
 
 __all__ = [
@@ -70,4 +82,9 @@ __all__ = [
     "QUERY_MAX_CHARS",
     "REASON_MAX_CHARS",
     "TAGS_MAX_ITEMS",
+    "TAG_MAX_CHARS",
+    "EP_ID_MAX_CHARS",
+    "PROVENANCE_ID_MAX_CHARS",
+    "PROVENANCE_SHORT_MAX_CHARS",
+    "SUBJECT_FILTER_MAX_CHARS",
 ]

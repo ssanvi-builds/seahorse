@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+import pytest
+
 from seahorse.disclosure.types import PITPoint
 from seahorse.facade.errors import PitRecallNotSupportedMVP0, SeahorseError
 from seahorse.facade.types import RememberPayload
@@ -83,6 +85,25 @@ class TestRememberHandler:
         assert resp["error"]["code"] == -32602
         assert len(facade.remember_calls) == 0
 
+    def test_clock_not_overridden(self) -> None:
+        # Mirror of forget's now=None invariant: remember never overrides the
+        # clock (the wire has no now); the facade owns it.
+        facade = RecordingFacade()
+        dispatch("remember", {"body": "hi", "by": _by()}, facade, 1)
+        assert facade.remember_calls[0]["now"] is None
+
+    def test_rejects_now_at_wire(self) -> None:
+        # `now` is NOT in the schema → additionalProperties: false rejects it.
+        facade = RecordingFacade()
+        resp = dispatch(
+            "remember",
+            {"body": "hi", "by": _by(), "now": "2020-01-01T00:00:00Z"},
+            facade,
+            1,
+        )
+        assert resp["error"]["code"] == -32602
+        assert len(facade.remember_calls) == 0
+
 
 # ---------------------------------------------------------------------------
 # recall
@@ -132,14 +153,39 @@ class TestRecallHandler:
         facade = RecordingFacade()
         facade.build_pit_result = None
         dispatch("recall", {"query": "x"}, facade, 1)
-        # k absent → handler does NOT pass k=None (would clobber facade default)
-        assert facade.recall_calls[0]["k"] is None
+        # k absent → handler does NOT pass k (would clobber facade default).
+        # Structural: the key is ABSENT from the recording, not collapsed to None.
+        assert "k" not in facade.recall_calls[0]
 
     def test_k_forwarded_when_present(self) -> None:
         facade = RecordingFacade()
         facade.build_pit_result = None
         dispatch("recall", {"query": "x", "k": 5}, facade, 1)
         assert facade.recall_calls[0]["k"] == 5
+
+    def test_cognitive_type_forwarded_when_present(self) -> None:
+        facade = RecordingFacade()
+        facade.build_pit_result = None
+        dispatch("recall", {"query": "x", "cognitive_type": "semantic"}, facade, 1)
+        assert facade.recall_calls[0]["cognitive_type"] == "semantic"
+
+    def test_cognitive_type_absent_when_missing(self) -> None:
+        facade = RecordingFacade()
+        facade.build_pit_result = None
+        dispatch("recall", {"query": "x"}, facade, 1)
+        assert "cognitive_type" not in facade.recall_calls[0]
+
+    def test_subject_filter_forwarded_when_present(self) -> None:
+        facade = RecordingFacade()
+        facade.build_pit_result = None
+        dispatch("recall", {"query": "x", "subject_filter": "Sergio"}, facade, 1)
+        assert facade.recall_calls[0]["subject_filter"] == "Sergio"
+
+    def test_subject_filter_absent_when_missing(self) -> None:
+        facade = RecordingFacade()
+        facade.build_pit_result = None
+        dispatch("recall", {"query": "x"}, facade, 1)
+        assert "subject_filter" not in facade.recall_calls[0]
 
     def test_pit_recall_surfaces_mvp0_refusal(self) -> None:
         # A resolved pit → recall raises PitRecallNotSupportedMVP0 (MVP-1 path).
@@ -191,6 +237,21 @@ class TestRecallTimelineHandler:
         assert resp["error"]["code"] == -32602
         assert len(facade.recall_timeline_calls) == 0
 
+    def test_resolves_loose_pit_via_build_pit(self) -> None:
+        # Structural: recall_timeline receives the RESOLVED PITPoint (not raw
+        # pit_kind) when the caller sends the loose pit_kind + pit_t pair.
+        facade = RecordingFacade()
+        facade.build_pit_result = make_pit("state_at")
+        dispatch(
+            "recall_timeline",
+            {"anchor_ep_id": "ep-1", "pit_kind": "state_at", "pit_t": "2026-07-16T12:00:00Z"},
+            facade,
+            1,
+        )
+        pit = facade.recall_timeline_calls[0]["pit"]
+        assert isinstance(pit, PITPoint)
+        assert pit.kind == "state_at"
+
 
 class TestRecallFullHandler:
     def test_delegates_ep_ids_and_pit(self) -> None:
@@ -213,6 +274,40 @@ class TestRecallFullHandler:
         resp = dispatch("recall_full", {"ep_ids": ["e"] * (MAX_FULL_BATCH + 1)}, facade, 1)
         assert resp["error"]["code"] == -32602
         assert len(facade.recall_full_calls) == 0
+
+    def test_resolves_loose_pit_via_build_pit(self) -> None:
+        # Structural: recall_full receives the RESOLVED PITPoint when the caller
+        # sends the loose pit_kind + pit_t pair (mirrors recall's path).
+        facade = RecordingFacade()
+        facade.build_pit_result = make_pit("state_at")
+        dispatch(
+            "recall_full",
+            {"ep_ids": ["ep-1"], "pit_kind": "state_at", "pit_t": "2026-07-16T12:00:00Z"},
+            facade,
+            1,
+        )
+        pit = facade.recall_full_calls[0]["pit"]
+        assert isinstance(pit, PITPoint)
+        assert pit.kind == "state_at"
+
+    def test_resolved_pit_surfaces_pit_full_not_supported(self) -> None:
+        # A resolved pit → recall_full raises PitFullNotSupported (#8 MVP-0
+        # refusal). #13 translates it to -32050 with exception_class, no
+        # synthetic seahorse_code.
+        from seahorse.disclosure.types import PitFullNotSupported
+
+        facade = RecordingFacade()
+        facade.build_pit_result = make_pit("state_at")
+        facade.recall_full_raise = PitFullNotSupported()
+        resp = dispatch(
+            "recall_full",
+            {"ep_ids": ["ep-1"], "pit_kind": "state_at", "pit_t": "2026-07-16T12:00:00Z"},
+            facade,
+            1,
+        )
+        assert resp["error"]["code"] == -32050
+        assert resp["error"]["data"]["exception_class"] == "PitFullNotSupported"
+        assert "seahorse_code" not in resp["error"]["data"]
 
 
 # ---------------------------------------------------------------------------
@@ -400,3 +495,28 @@ class TestHandlerDirectCall:
         out = json.loads(text)
         assert out["kind"] == "state_at"
         assert out["t"] == "2026-07-16T12:00:00Z"
+
+    @pytest.mark.parametrize(
+        "tool,args,record_attr",
+        [
+            ("remember", {"body": "hi", "by": _by()}, "remember_calls"),
+            ("recall", {"query": "x"}, "recall_calls"),
+            ("recall_timeline", {"anchor_ep_id": "ep-1"}, "recall_timeline_calls"),
+            ("recall_full", {"ep_ids": ["ep-1"]}, "recall_full_calls"),
+            ("improve", {"ep_id": "ep-1", "new_body": "new", "by": _by()}, "improve_calls"),
+            ("forget", {"ep_id": "ep-1", "reason": "wrong", "by": _by()}, "forget_calls"),
+            ("build_pit", {}, "build_pit_calls"),
+        ],
+    )
+    def test_all_handlers_direct_callable(self, tool, args, record_attr) -> None:
+        # Every handler is callable directly (not just via dispatch) and
+        # produces a non-error tools/call envelope + records the facade call.
+        from seahorse.mcp.tools import TOOL_HANDLERS
+
+        facade = RecordingFacade()
+        facade.build_pit_result = None
+        resp = TOOL_HANDLERS[tool](facade, dict(args), 1)
+        assert resp["jsonrpc"] == "2.0"
+        assert resp["id"] == 1
+        assert resp["result"]["isError"] is False
+        assert len(getattr(facade, record_attr)) == 1

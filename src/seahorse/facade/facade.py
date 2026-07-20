@@ -39,7 +39,7 @@ from seahorse.contracts.engine import (
     FreshnessView,
     WriteResult,
 )
-from seahorse.contracts.index import PITKind
+from seahorse.contracts.index import PIT_KIND_VALUES, PITKind
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import (
     TOP_K,
@@ -68,7 +68,7 @@ from seahorse.facade.types import (
 
 _logger = logging.getLogger("seahorse.facade")
 
-_VALID_PIT_KINDS: frozenset[str] = frozenset({"state_at", "known_at"})
+_VALID_PIT_KINDS: frozenset[str] = PIT_KIND_VALUES  # single-source from PITKind Literal
 _VALID_MODES: frozenset[str] = frozenset({"skip", "llm"})
 
 

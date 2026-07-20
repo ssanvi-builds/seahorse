@@ -8,9 +8,14 @@ from seahorse import constants
 from seahorse.constants import (
     BODY_MAX_CHARS,
     COGNITIVE_TYPES,
+    EP_ID_MAX_CHARS,
+    PROVENANCE_ID_MAX_CHARS,
+    PROVENANCE_SHORT_MAX_CHARS,
     QUERY_MAX_CHARS,
     REASON_MAX_CHARS,
     SOURCE_TYPES,
+    SUBJECT_FILTER_MAX_CHARS,
+    TAG_MAX_CHARS,
     TAGS_MAX_ITEMS,
 )
 
@@ -56,8 +61,31 @@ class TestWireCaps:
     def test_tags_cap(self) -> None:
         assert TAGS_MAX_ITEMS == 32
 
+    def test_tag_item_cap(self) -> None:
+        assert TAG_MAX_CHARS == 256
+
+    def test_ep_id_cap(self) -> None:
+        assert EP_ID_MAX_CHARS == 64
+
+    def test_provenance_caps(self) -> None:
+        assert PROVENANCE_ID_MAX_CHARS == 256
+        assert PROVENANCE_SHORT_MAX_CHARS == 128
+
+    def test_subject_filter_reuses_query_budget(self) -> None:
+        assert SUBJECT_FILTER_MAX_CHARS == QUERY_MAX_CHARS
+
     def test_all_caps_are_ints(self) -> None:
-        for cap in (BODY_MAX_CHARS, QUERY_MAX_CHARS, REASON_MAX_CHARS, TAGS_MAX_ITEMS):
+        for cap in (
+            BODY_MAX_CHARS,
+            QUERY_MAX_CHARS,
+            REASON_MAX_CHARS,
+            TAGS_MAX_ITEMS,
+            TAG_MAX_CHARS,
+            EP_ID_MAX_CHARS,
+            PROVENANCE_ID_MAX_CHARS,
+            PROVENANCE_SHORT_MAX_CHARS,
+            SUBJECT_FILTER_MAX_CHARS,
+        ):
             assert isinstance(cap, int)
             assert cap > 0
 
@@ -92,5 +120,10 @@ class TestImmutability:
             "QUERY_MAX_CHARS",
             "REASON_MAX_CHARS",
             "TAGS_MAX_ITEMS",
+            "TAG_MAX_CHARS",
+            "EP_ID_MAX_CHARS",
+            "PROVENANCE_ID_MAX_CHARS",
+            "PROVENANCE_SHORT_MAX_CHARS",
+            "SUBJECT_FILTER_MAX_CHARS",
         }
         assert set(constants.__all__) == expected

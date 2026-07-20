@@ -12,7 +12,18 @@ Locks the reconciled drift:
 
 from __future__ import annotations
 
-from seahorse.constants import COGNITIVE_TYPES, SOURCE_TYPES
+from typing import get_args
+
+from seahorse.constants import (
+    COGNITIVE_TYPES,
+    EP_ID_MAX_CHARS,
+    PROVENANCE_ID_MAX_CHARS,
+    PROVENANCE_SHORT_MAX_CHARS,
+    SOURCE_TYPES,
+    SUBJECT_FILTER_MAX_CHARS,
+    TAG_MAX_CHARS,
+)
+from seahorse.contracts.index import PITKind
 from seahorse.disclosure.types import MAX_FULL_BATCH
 from seahorse.mcp.wire_schema import (
     BUILD_PIT_SCHEMA,
@@ -260,3 +271,48 @@ class TestBuildPitSchema:
     def test_pit_kind_enum_includes_null(self) -> None:
         enum = BUILD_PIT_SCHEMA["properties"]["pit_kind"]["enum"]
         assert set(enum) == {"state_at", "known_at", None}
+
+    def test_pit_kind_enum_derived_from_contract(self) -> None:
+        # Single-source: the wire enum (minus null) == the PITKind Literal args.
+        # A future ADR-03 change to PITKind must flow here automatically —
+        # hardcoding would silently drift.
+        enum = BUILD_PIT_SCHEMA["properties"]["pit_kind"]["enum"]
+        assert {v for v in enum if v is not None} == set(get_args(PITKind))
+
+
+class TestWireCaps:
+    """maxLength on every free-text field the engine persists verbatim.
+
+    The wire is the DoS + receiver token-budget guard (constants.py docstring),
+    so each free-text field needs a wire-level cap — otherwise a multi-megabyte
+    agent_id passes wire-shape and is stored.
+    """
+
+    def test_tags_item_max_length(self) -> None:
+        items = REMEMBER_SCHEMA["properties"]["tags"]["items"]
+        assert items["maxLength"] == TAG_MAX_CHARS
+
+    def test_provenance_id_fields_max_length(self) -> None:
+        props = DEFS["Provenance"]["properties"]
+        assert props["agent_id"]["maxLength"] == PROVENANCE_ID_MAX_CHARS
+        assert props["session_id"]["maxLength"] == PROVENANCE_ID_MAX_CHARS
+
+    def test_provenance_short_fields_max_length(self) -> None:
+        props = DEFS["Provenance"]["properties"]
+        for field in ("model_used", "prompt_hash", "importer_vendor", "source_record_id"):
+            assert props[field]["maxLength"] == PROVENANCE_SHORT_MAX_CHARS, field
+
+    def test_subject_filter_max_length(self) -> None:
+        sf = RECALL_SCHEMA["properties"]["subject_filter"]
+        assert sf["maxLength"] == SUBJECT_FILTER_MAX_CHARS
+
+    def test_anchor_ep_id_max_length(self) -> None:
+        assert RECALL_TIMELINE_SCHEMA["properties"]["anchor_ep_id"]["maxLength"] == EP_ID_MAX_CHARS
+
+    def test_ep_id_max_length_improve_and_forget(self) -> None:
+        assert IMPROVE_SCHEMA["properties"]["ep_id"]["maxLength"] == EP_ID_MAX_CHARS
+        assert FORGET_SCHEMA["properties"]["ep_id"]["maxLength"] == EP_ID_MAX_CHARS
+
+    def test_recall_full_ep_id_items_max_length(self) -> None:
+        items = RECALL_FULL_SCHEMA["properties"]["ep_ids"]["items"]
+        assert items["maxLength"] == EP_ID_MAX_CHARS

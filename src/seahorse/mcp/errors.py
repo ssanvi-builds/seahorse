@@ -92,7 +92,9 @@ CAT_B: dict[str, int] = {
     "FullBatchTooLarge": -32602,  # invalid params: len > MAX_FULL_BATCH
     "PitFullNotSupported": -32050,  # server error: full + pit MVP-0
     "NotInMVP0": -32602,  # invalid params: axis not in MVP-0 set
-    "InvalidationConflictError": -32603,  # internal: 0 rows (already invalidated)
+    # State conflict (already-in-state), NOT an implementation bug — sits in the
+    # server-defined band next to NotFound (-32052), not on -32603 (Internal).
+    "InvalidationConflictError": -32051,
     "NotFound": -32052,  # server error: no vigente to mutate
     "IntegrityError": -32603,  # internal: storage constraint
 }

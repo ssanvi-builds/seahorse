@@ -14,12 +14,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Literal, get_args
 
 PITKind = Literal["state_at", "known_at"]
 """ADR-03: two PIT axes, never mixed. ``state_at`` filters the valid_time axis
 (valid_at/invalid_at); ``known_at`` filters the transaction_time axis
 (created_at/expired_at)."""
+
+PIT_KIND_VALUES: frozenset[str] = frozenset(get_args(PITKind))
+"""Single-source set of PIT kind strings, derived from ``PITKind``.
+
+Consumers that need the kind set (#12 facade validation, #13 wire enum + the
+deserialize codec) import this instead of hardcoding ``{"state_at","known_at"}``
+again — so a future ADR-03 change lives in one place (the ``PITKind`` Literal).
+``frozenset`` order is undefined; wire enums that need a stable order sort it."""
 
 MAX_HOPS_MVP1: int = 2
 """BFS hop cap for MVP-1 (SO-8a). ``hops > MAX_HOPS_MVP1`` raises HopsCapExceeded."""

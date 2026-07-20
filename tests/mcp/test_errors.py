@@ -115,6 +115,14 @@ class TestCatB:
         assert resp["error"]["code"] == CAT_B["InvalidationConflictError"]
         assert resp["error"]["data"]["component"] == "#2"
 
+    def test_invalidation_conflict_is_state_conflict_not_internal(self) -> None:
+        # InvalidationConflictError is a legitimate state conflict (already
+        # invalidated), NOT an implementation bug — so it sits in the
+        # server-defined band (-32051), not on -32603 (Internal error).
+        resp = _err(InvalidationConflictError("ep-1"))
+        assert resp["error"]["code"] == -32051
+        assert resp["error"]["code"] != -32603
+
     def test_integrity_error_sqlite3(self) -> None:
         # stdlib sqlite3.IntegrityError is what #6 actually raises
         resp = _err(sqlite3.IntegrityError("uq_one_active_per_subject"))
@@ -177,3 +185,63 @@ class TestResponseEnvelope:
     def test_all_cat_a_codes_in_server_range(self) -> None:
         for code in CAT_A.values():
             assert -32099 <= code <= -32000
+
+
+class TestCatADriftGuard:
+    """CAT_A must cover EVERY E_* code the facade and engine can raise.
+
+    Without this guard, a new ``E_*`` added to ``facade/errors.py`` or
+    ``engine/errors.py`` but not to ``CAT_A`` would silently fall through
+    ``translate`` to the generic -32603 fallback (losing the stable
+    ``seahorse_code``). The guard fails loud until CAT_A is updated.
+    """
+
+    def test_cat_a_covers_all_facade_codes(self) -> None:
+        from seahorse.facade.errors import (
+            E_EMPTY_BODY,
+            E_EMPTY_QUERY,
+            E_INVALID_EXTRACTION_MODE,
+            E_INVALID_PIT_KIND,
+            E_MISSING_SOURCE_TYPE,
+            E_NOT_IN_MVP_0_1,
+            E_PIT_RECALL_MVP_0,
+            E_PIT_REQUIRES_T,
+        )
+
+        facade_codes = {
+            E_EMPTY_BODY,
+            E_MISSING_SOURCE_TYPE,
+            E_INVALID_EXTRACTION_MODE,
+            E_EMPTY_QUERY,
+            E_INVALID_PIT_KIND,
+            E_PIT_REQUIRES_T,
+            E_NOT_IN_MVP_0_1,
+            E_PIT_RECALL_MVP_0,
+        }
+        assert set(CAT_A) >= facade_codes
+
+    def test_cat_a_covers_all_engine_codes(self) -> None:
+        from seahorse.engine.errors import (
+            E_COLLISION_EXISTS,
+            E_CREATED_AT_ENGINE_OWNED,
+            E_DANGLING_SUPERSEDES,
+            E_EXPIRED_AT_NON_NULL,
+            E_MONOTONICITY_VIOLATED,
+            E_NOT_IN_MVP_0,
+            E_PENDING_CANNOT_INVALIDATE,
+            E_SKIP_CONTRACT_VIOLATED,
+            E_VALID_AT_HUMAN_ONLY,
+        )
+
+        engine_codes = {
+            E_COLLISION_EXISTS,
+            E_PENDING_CANNOT_INVALIDATE,
+            E_DANGLING_SUPERSEDES,
+            E_VALID_AT_HUMAN_ONLY,
+            E_SKIP_CONTRACT_VIOLATED,
+            E_NOT_IN_MVP_0,
+            E_EXPIRED_AT_NON_NULL,
+            E_CREATED_AT_ENGINE_OWNED,
+            E_MONOTONICITY_VIOLATED,
+        }
+        assert set(CAT_A) >= engine_codes

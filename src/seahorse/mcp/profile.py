@@ -63,16 +63,31 @@ def _tools_list_response(request_id: Any) -> dict:
 def _tools_call(facade: MemoryFacade, request: dict[str, Any], request_id: Any) -> dict:
     params = request.get("params") or {}
     if not isinstance(params, dict):
-        return _error(request_id, -32602, "Invalid params", {"detail": "params must be an object"})
+        return _error(
+            request_id,
+            -32602,
+            "Invalid params",
+            {"wire_shape_error": True, "detail": "params must be an object", "component": "#13"},
+        )
     name = params.get("name")
     if not isinstance(name, str):
         return _error(
-            request_id, -32602, "Invalid params", {"detail": "tools/call requires 'name'"}
+            request_id,
+            -32602,
+            "Invalid params",
+            {"wire_shape_error": True, "detail": "tools/call requires 'name'", "component": "#13"},
         )
     arguments = params.get("arguments", {})
     if not isinstance(arguments, dict):
         return _error(
-            request_id, -32602, "Invalid params", {"detail": "'arguments' must be an object"}
+            request_id,
+            -32602,
+            "Invalid params",
+            {
+                "wire_shape_error": True,
+                "detail": "'arguments' must be an object",
+                "component": "#13",
+            },
         )
     return dispatch(name, arguments, facade, request_id)
 
@@ -82,18 +97,33 @@ def handle_request(facade: MemoryFacade, request: Any) -> dict | None:
 
     Pure function: no I/O. ``serve`` drives the stdio loop and calls this per
     line, which makes the protocol logic unit-testable without spawning pipes.
+
+    JSON-RPC 2.0: a Notification is a Request with the ``id`` member *absent*
+    — an explicit ``id: null`` is a Request that gets a response with
+    ``id: null``. We distinguish the two with ``"id" in request`` (not
+    ``request.get("id") is None``, which conflates absent with explicit null).
     """
     if not isinstance(request, dict):
         return _error(None, -32600, "Invalid request", {"detail": "request must be an object"})
-    request_id = request.get("id")
+    if request.get("jsonrpc") != "2.0":
+        return _error(
+            request.get("id"),
+            -32600,
+            "Invalid request",
+            {"detail": "jsonrpc must be \"2.0\""},
+        )
+    request_id = request.get("id")  # None for absent OR explicit null
+    has_id = "id" in request  # distinguishes explicit id:null from absent
     method = request.get("method")
 
     if not isinstance(method, str):
         return _error(request_id, -32600, "Invalid request", {"detail": "missing 'method'"})
 
-    # Notifications (no id) get NO response — per JSON-RPC 2.0 / MCP.
-    if request_id is None and method != "initialize":
-        # initialize always carries an id; anything id-less is a notification.
+    # Notifications (id member ABSENT) get NO response — per JSON-RPC 2.0 / MCP.
+    # ``initialize`` is a Request method (not a notification): an id-less
+    # initialize is malformed in practice, but we still answer it with
+    # ``id: null`` rather than silently dropping the handshake.
+    if not has_id and method != "initialize":
         if method == "notifications/initialized":
             return None
         # Unknown notification: swallow (no response). Known notifications would

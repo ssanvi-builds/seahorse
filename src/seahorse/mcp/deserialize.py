@@ -23,8 +23,6 @@ from typing import Any, cast
 from seahorse.disclosure.types import PITPoint
 from seahorse.facade.types import Provenance, RememberPayload
 
-_PIT_KINDS: frozenset[str] = frozenset({"state_at", "known_at"})
-
 
 def parse_dt(value: str) -> datetime:
     """Parse an ISO-8601 wire string (with ``Z``) into a timezone-aware datetime.

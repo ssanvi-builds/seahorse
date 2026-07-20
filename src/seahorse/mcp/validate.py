@@ -92,7 +92,7 @@ def _check_format(value: Any, schema: Any, path: str) -> None:
             raise WireShapeError(f"invalid date-time {value!r}: {exc}", field=path) from exc
         if dt.tzinfo is None:
             raise WireShapeError(
-                f"date-time {value!r} must include a timezone (UTC 'Z')", field=path
+                f"date-time {value!r} must include a timezone", field=path
             )
 
 
@@ -178,7 +178,11 @@ def _validate_schema(
             for req in schema["required"]:
                 if req not in value:
                     raise WireShapeError(f"missing required field {req!r}", field=path)
-        if schema.get("additionalProperties") is False and props:
+        if schema.get("additionalProperties") is False:
+            # When ``properties`` is empty/absent, every key is extra — that is
+            # the correct JSON Schema semantics for ``{"additionalProperties":
+            # false}`` with no declared properties (any non-empty object is
+            # invalid). The guard must NOT short-circuit on an empty props dict.
             extra = set(value) - set(props)
             if extra:
                 raise WireShapeError(
