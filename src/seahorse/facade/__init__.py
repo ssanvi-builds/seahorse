@@ -17,6 +17,7 @@ from seahorse.disclosure.types import (
     PITPoint,
     TimelineWindow,
 )
+from seahorse.engine.ids import new_uuid7
 from seahorse.facade.errors import (
     E_EMPTY_BODY,
     E_EMPTY_QUERY,
@@ -75,4 +76,7 @@ __all__ = [
     "FullBatchTooLarge",
     "PitFullNotSupported",
     "NotInMVP0",
+    # id generation re-exported so #14 (CLI) does not reach into #2 (engine)
+    # directly — the facade is the only seam (f5-14 §1, §2.3 uuid_extensions).
+    "new_uuid7",
 ]
