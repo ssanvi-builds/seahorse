@@ -48,7 +48,10 @@ def test_get_vigente_excludes_pending_ingest(engine):
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\n")                 # ACTIVE (valid_at=None)
     _apply(eng, "e2", "# Python\n", valid_at=FUTURE)  # PENDING_INGEST
-    vigent = {e.id for e in eng.get_vigente()}
+    # Pass ``now=NOW`` explicitly: the engine's default clock is the wall clock,
+    # so once the real date passes FUTURE the "pending" episode would correctly
+    # become vigente and rot this assertion. The writes already pin ``now=NOW``.
+    vigent = {e.id for e in eng.get_vigente(now=NOW)}
     assert vigent == {"e1"}
 
 
