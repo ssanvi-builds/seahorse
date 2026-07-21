@@ -31,6 +31,8 @@ from pathlib import Path
 from typing import Any, Literal, TextIO
 from uuid import UUID
 
+from pydantic import BaseModel
+
 from seahorse.contracts.engine import WriteResult
 from seahorse.contracts.episode import Episode
 from seahorse.facade import FullDetail, IndexRow, TimelineWindow
@@ -61,6 +63,15 @@ def to_jsonable(obj: Any) -> Any:
         # UUID slipping through serializes canonically rather than falling to
         # the default ``str(obj)`` tail (which yields the same, but explicit).
         return str(obj)
+    if isinstance(obj, BaseModel) and not isinstance(obj, type):
+        # Pydantic Episode (F3.1 canonical, sister-parity with #13's to_wire):
+        # getattr reads exclude=True fields (body/subject/fact_id) so they
+        # travel the JSON output; __pydantic_extra__ carries x-* frontmatter.
+        out = {name: to_jsonable(getattr(obj, name)) for name in type(obj).model_fields}
+        extra = getattr(obj, "__pydantic_extra__", None)
+        if extra:
+            out.update({str(k): to_jsonable(v) for k, v in extra.items()})
+        return out
     if is_dataclass(obj) and not isinstance(obj, type):
         return {f.name: to_jsonable(getattr(obj, f.name)) for f in fields(obj)}
     if isinstance(obj, (tuple, list, set, frozenset)):
@@ -205,7 +216,7 @@ def render_full_details(
         out.write(f"  created_at: {_fmt_dt(ep.created_at)}\n")
         out.write(f"  stale={d.freshness.stale} pending={d.freshness.pending_ingest}\n")
         out.write("  body:\n")
-        for line in ep.body.splitlines():
+        for line in (ep.body or "").splitlines():
             out.write(f"    {line}\n")
         out.write("\n")
 

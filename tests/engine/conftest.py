@@ -71,11 +71,16 @@ def _episode(
     schema_version: str = "3.1",
     provenance: dict | None = None,
 ) -> Episode:
-    return Episode(
+    # ``created_at`` is required (non-None) on the Pydantic model (F3.1
+    # non-nullable, DDL NOT NULL). Tests that exercise guard I1 / the skip-path
+    # validator on a missing created_at pass ``created_at=None``; build with a
+    # valid datetime then null it via ``model_copy`` (skips validation) so the
+    # guard — not the model — is the enforcement point under test.
+    requested = datetime(2026, 1, 1, tzinfo=UTC) if created_at is _UNSET else created_at
+    effective = requested if requested is not None else datetime(2026, 1, 1, tzinfo=UTC)
+    ep = Episode(
         id=ep_id,
-        created_at=(
-            datetime(2026, 1, 1, tzinfo=UTC) if created_at is _UNSET else created_at
-        ),
+        created_at=effective,
         schema_version=schema_version,
         provenance=provenance if provenance is not None else {"agent": "test"},
         body=body,
@@ -90,3 +95,6 @@ def _episode(
         title=title,
         summary=summary,
     )
+    if requested is None:
+        ep = ep.model_copy(update={"created_at": None})
+    return ep

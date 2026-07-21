@@ -9,6 +9,7 @@ import inspect
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from seahorse.contracts import (
     AuditEvent,
@@ -28,7 +29,10 @@ from seahorse.contracts.persistence import (
 
 
 def test_episode_has_signed_field_set():
-    names = {f.name for f in dataclasses.fields(Episode)}
+    # SO-2 superset: #3 ships the canonical Pydantic model; the field set is a
+    # superset of what #6 materialized (adds supersedes_reason, the portable
+    # frontmatter key from f5-03 §12.3).
+    names = set(Episode.model_fields)
     expected = {
         "id",
         "created_at",
@@ -41,6 +45,7 @@ def test_episode_has_signed_field_set():
         "invalid_at",
         "expired_at",
         "supersedes",
+        "supersedes_reason",
         "cognitive_type",
         "source_type",
         "title",
@@ -50,12 +55,34 @@ def test_episode_has_signed_field_set():
     assert names == expected
 
 
-def test_episode_body_is_required_non_null():
-    # DDL: body_md TEXT NOT NULL (f5-02 §3). The contract must NOT default body;
-    # an Episode without body would fail INSERT with a NOT NULL violation.
-    body_field = next(f for f in dataclasses.fields(Episode) if f.name == "body")
-    assert body_field.default is dataclasses.MISSING
-    assert body_field.type is str or body_field.type == "str"
+def test_episode_body_is_excluded_from_dump():
+    # f5-03 §5.8: body is Optional (str | None, default None) and exclude=True.
+    # parse_file (#3) constructs an Episode from frontmatter WITHOUT body (body
+    # is not in the YAML); hydrate attaches it lazily via model_copy. The DDL
+    # NOT NULL on body_md is enforced at storage write, not at construction.
+    # The wire serializers read body via getattr so it still travels #13/#14's
+    # wire; model_dump (the YAML round-trip) omits it.
+    body_field = Episode.model_fields["body"]
+    assert body_field.exclude is True
+    assert body_field.is_required() is False  # Optional: defaults to None
+    ep = Episode(
+        id="e1",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        schema_version="3.1",
+        provenance={},
+        body="# body",
+    )
+    assert "body" not in ep.model_dump(mode="json")
+    assert ep.body == "# body"  # getattr still reads it
+    # parse_file-style construction without body is valid (lazy hydration):
+    ep_no_body = Episode(
+        id="e2",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        schema_version="3.1",
+        provenance={},
+    )
+    assert ep_no_body.body is None
+    assert "body" not in ep_no_body.model_dump(mode="json")
 
 
 def test_episode_provenance_json_serializes_sorted():
@@ -78,8 +105,26 @@ def test_episode_is_frozen():
         provenance={},
         body="# body",
     )
-    with pytest.raises(dataclasses.FrozenInstanceError):
+    # Pydantic frozen=True raises ValidationError (frozen_instance) on setattr.
+    with pytest.raises(ValidationError):
         ep.id = "x"  # type: ignore[misc]
+
+
+def test_episode_model_copy_preserves_frozen():
+    # The engine mutates via model_copy (immutable update), not in-place.
+    ep = Episode(
+        id="e1",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        schema_version="3.1",
+        provenance={},
+        body="# body",
+    )
+    ep2 = ep.model_copy(update={"subject": "Sergio"})
+    assert ep2.subject == "Sergio"
+    assert ep.subject is None  # original untouched (immutability)
+    assert ep2.id == ep.id  # unchanged fields preserved
+    with pytest.raises(ValidationError):
+        ep2.id = "y"  # type: ignore[misc]
 
 
 def test_audit_event_has_eleven_fields():

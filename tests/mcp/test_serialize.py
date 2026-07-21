@@ -119,6 +119,33 @@ class TestDataclassSerialization:
         assert out["schema_version"] == "1.1"
         assert out["expired_at"] is None  # exclude_none=False
 
+    def test_episode_exclude_fields_travel_wire(self) -> None:
+        # Regression guard for the Pydantic migration (commit 1): body/subject/
+        # fact_id are Field(exclude=True) — model_dump omits them, but the wire
+        # walker reads via getattr so they STILL travel the wire. If someone
+        # switches the walker to model_dump, body would silently vanish from
+        # recall-full and this test fails.
+        from tests.mcp.conftest import make_episode
+
+        ep = make_episode(body="# Madrid\n", subject="Sergio", fact_id="fact-1")
+        out = to_wire(ep)
+        assert out["body"] == "# Madrid\n"
+        assert out["subject"] == "Sergio"
+        assert out["fact_id"] == "fact-1"
+        # ... and model_dump omits them (the YAML round-trip target):
+        assert "body" not in ep.model_dump(mode="json")
+        assert "subject" not in ep.model_dump(mode="json")
+        assert "fact_id" not in ep.model_dump(mode="json")
+
+    def test_episode_supersedes_reason_travels_wire_as_null(self) -> None:
+        # supersedes_reason is NEW (commit 1): travels the wire as null until
+        # commit 4 persists it. Locks the additive wire key.
+        from tests.mcp.conftest import make_episode
+
+        out = to_wire(make_episode())
+        assert "supersedes_reason" in out
+        assert out["supersedes_reason"] is None
+
     def test_nested_full_detail_recurses(self) -> None:
         fd = make_full_detail()
         out = to_wire(fd)

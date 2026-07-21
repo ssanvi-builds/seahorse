@@ -17,7 +17,6 @@ References:
 
 from __future__ import annotations
 
-import dataclasses
 import re
 import sqlite3
 import threading
@@ -93,14 +92,15 @@ class BiTemporalEngine:
         """
         now = self._now(now)
         subject = _derive_subject(candidate)
-        fact_id = fact_id_for(candidate.body, title=candidate.title)
-        ep = dataclasses.replace(
-            candidate,
-            created_at=now,
-            expired_at=None,
-            invalid_at=None,
-            subject=subject,
-            fact_id=fact_id,
+        fact_id = fact_id_for(candidate.body or "", title=candidate.title)
+        ep = candidate.model_copy(
+            update={
+                "created_at": now,
+                "expired_at": None,
+                "invalid_at": None,
+                "subject": subject,
+                "fact_id": fact_id,
+            }
         )
         with self._lock:
             self._guards.validate(ep, repo=self._repo, op="apply_fact", now=now)
@@ -184,9 +184,9 @@ class BiTemporalEngine:
             # concurrent re-import of the same importer payload cannot slip a
             # PK dup between our get and our apply_fact.
             existing = self._repo.get(ep_id)
-            if existing is not None and canonical_body_hash(existing.body) == canonical_body_hash(
-                body
-            ):
+            if existing is not None and canonical_body_hash(
+                existing.body or ""
+            ) == canonical_body_hash(body):
                 return WriteResult(
                     ep_id=ep_id,
                     fact_id=existing.fact_id,
@@ -247,7 +247,7 @@ class BiTemporalEngine:
                     cognitive_type=ep.cognitive_type,
                 )
             )
-            return dataclasses.replace(ep, invalid_at=now)
+            return ep.model_copy(update={"invalid_at": now})
 
     def improve(
         self,
@@ -288,12 +288,13 @@ class BiTemporalEngine:
                 source_type=by.get("source_type"),
             )
             # Derive subject/fact_id from the new body — apply_fact does this via
-            # dataclasses.replace, but improve appends directly, so it must
-            # replicate the derivation or the successor is stored with fact_id=None.
-            new_ep = dataclasses.replace(
-                new_ep,
-                subject=_derive_subject(new_ep),
-                fact_id=fact_id_for(new_ep.body, title=new_ep.title),
+            # model_copy, but improve appends directly, so it must replicate the
+            # derivation or the successor is stored with fact_id=None.
+            new_ep = new_ep.model_copy(
+                update={
+                    "subject": _derive_subject(new_ep),
+                    "fact_id": fact_id_for(new_ep.body or "", title=new_ep.title),
+                }
             )
             with self._repo.atomic():  # I8: rollback completo si la 2da escritura falla
                 self._repo.set_invalid_at(ep_id, now)  # invalidate-then-append order
@@ -470,7 +471,7 @@ class BiTemporalEngine:
 
 
 def _derive_subject(ep: Episode) -> str | None:
-    return derive_subject(ep.body, title=ep.title)
+    return derive_subject(ep.body or "", title=ep.title)
 
 
 def _dict_str(d: dict, key: str) -> str | None:

@@ -85,6 +85,20 @@ def test_jsonable_dataclass():
     assert out["created_at"] == "2026-07-16T12:00:00Z"
 
 
+def test_jsonable_episode_exclude_fields_travel_wire():
+    # Regression guard for the Pydantic migration (commit 1): body/subject/
+    # fact_id are Field(exclude=True) — model_dump omits them, but the CLI
+    # walker reads via getattr so they STILL travel the JSON output (sister
+    # parity with #13's to_wire). Locks the invariant; fails if the walker
+    # ever switches to model_dump.
+    ep = make_episode("ep-1", body="Sergio lives in Madrid", subject="Sergio")
+    out = to_jsonable(ep)
+    assert out["body"] == "Sergio lives in Madrid"
+    assert out["subject"] == "Sergio"
+    assert out["fact_id"] == "fact-1"  # hardcoded by the builder
+    assert out["supersedes_reason"] is None  # NEW additive wire key (commit 1)
+
+
 def test_to_json_is_compact_and_nulls_explicit():
     """exclude_none=False: nulls present (shape stable MVP-0 → MVP-1)."""
     ep = make_episode("ep-1")  # subject="Sergio", title=None

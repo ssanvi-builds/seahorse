@@ -68,7 +68,7 @@ class CollisionDetector:
         return fact_id_for(body, title=title)
 
     def detect(self, new_ep: Episode, repo: EpisodeRepository) -> list[Collision]:
-        fact_id = fact_id_for(new_ep.body, title=new_ep.title)
+        fact_id = fact_id_for(new_ep.body or "", title=new_ep.title)
         if fact_id is None:
             return []
         other = repo.find_vigent_by_fact_id(fact_id, exclude=new_ep.id)

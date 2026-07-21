@@ -17,12 +17,21 @@ classifiers = [
 ]
 
 # Dependencies land incrementally per component during Fase 6 (persistence, engine,
-# llm, write-path, retrieval, graph). #14 CLI Bootstrap is the first component to
-# introduce a runtime dep: Typer is the terminal surface (L6, ADR-06) — the human
-# and the scripter invoke `seahorse ...`. The stdlib-only contract is preserved
-# for the core (engine/facade/mcp/persistence): Typer lives ONLY in the CLI layer.
+# llm, write-path, retrieval, graph). #14 CLI Bootstrap introduced the first
+# runtime dep: Typer is the terminal surface (L6, ADR-06) — the human and the
+# scripter invoke `seahorse ...`.
+#
+# #3 (frontmatter adapter/migrator) ships the canonical F3.1 `Episode` as a
+# Pydantic v2 model and migrates #6 to import it (B1 — single `Episode` type
+# system-wide). Pydantic therefore lands in the CORE (contracts → engine/
+# persistence/facade/mcp transitively). This relaxes the stdlib-only-core
+# contract; accepted deviation (F4 recommends Pydantic v2 canonical; B1 forces
+# it). Only `ruamel.yaml` + `python-frontmatter` stay confined to
+# `seahorse/frontmatter/` (they do NOT propagate to the core). Typer still lives
+# ONLY in the CLI layer.
 dependencies = [
     "typer>=0.12",
+    "pydantic>=2",
 ]
 
 [project.scripts]

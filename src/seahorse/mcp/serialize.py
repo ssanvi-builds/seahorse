@@ -11,6 +11,13 @@ All payload types are ``@dataclass(frozen=True)`` (some with nested dataclasses:
 through dataclasses and converts datetimes inside, without using
 ``dataclasses.asdict`` (which leaves ``datetime`` as ``datetime``).
 
+``Episode`` is a Pydantic v2 ``BaseModel(frozen=True, extra="allow")`` (F3.1
+canonical model, shipped by #3/#1). It is NOT a dataclass, so the walker has a
+dedicated ``BaseModel`` branch: it walks ``model_fields`` via ``getattr`` (so
+``exclude=True`` fields like ``body``/``subject``/``fact_id`` still travel the
+wire) and merges ``__pydantic_extra__`` (the ``x-*`` frontmatter keys accepted
+by ``extra="allow"``). The wire keeps nulls explicit (``exclude_none=False``).
+
 ``SeahorseError`` uses ``__slots__`` (not a dataclass) → serialized manually as
 ``{"code", "detail"}``.
 """
@@ -22,6 +29,8 @@ from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
+
+from pydantic import BaseModel
 
 from seahorse.facade.errors import SeahorseError
 
@@ -60,6 +69,15 @@ def to_wire(obj: Any) -> Any:
         return str(obj)
     if isinstance(obj, SeahorseError):
         return {"code": obj.code, "detail": obj.detail}
+    if isinstance(obj, BaseModel) and not isinstance(obj, type):
+        # Pydantic Episode (F3.1 canonical). getattr reads exclude=True fields
+        # (body/subject/fact_id) so they travel the wire; __pydantic_extra__
+        # carries the x-* frontmatter keys accepted by extra="allow".
+        out = {name: to_wire(getattr(obj, name)) for name in type(obj).model_fields}
+        extra = getattr(obj, "__pydantic_extra__", None)
+        if extra:
+            out.update({str(k): to_wire(v) for k, v in extra.items()})
+        return out
     if is_dataclass(obj) and not isinstance(obj, type):
         return {f.name: to_wire(getattr(obj, f.name)) for f in fields(obj)}
     if isinstance(obj, (tuple, list, set, frozenset)):
