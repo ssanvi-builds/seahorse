@@ -8,20 +8,28 @@ the caller (``apply_fact`` / ``improve``) decides whether to skip or raise.
 Subject derivation (SO-2 2d): ``title > first H1 > None`` normalized with NFC +
 casefold + strip + whitespace collapse. ``fact_id = SHA-256(subject)[:32]``
 (128-bit hex). ``Collision`` is an Engine-internal type (not a frontier symbol).
+
+The subject-derivation primitives (``raw_subject``, ``normalize_subject``,
+``fact_id_of``) are owned by ``seahorse.frontmatter.subject`` (#3, the
+syntactic, file-aware derivation with the filename-stem fallback). The engine
+has no ``path``, so it wraps them into a body-only signature that returns
+``None`` when no title/H1 is found (the engine's "no subject → not indexed"
+contract). No derivation logic is duplicated — the engine composes the same
+primitives. ``fact_id_for`` stays here: it is the semantic fact-id (owned by #2)
+that hashes the derived subject.
 """
 
 from __future__ import annotations
 
-import hashlib
-import re
-import unicodedata
 from dataclasses import dataclass
 
 from seahorse.contracts.engine import EpisodeRepository
 from seahorse.contracts.episode import Episode
-
-# First ATX H1 heading: a line starting with a single '#' then whitespace.
-_H1_RE = re.compile(r"(?m)^#\s+(.+)$")
+from seahorse.frontmatter.subject import (
+    fact_id_of,
+    normalize_subject,
+    raw_subject,
+)
 
 
 @dataclass(frozen=True)
@@ -34,17 +42,16 @@ class Collision:
 
 
 def derive_subject(body: str, title: str | None = None) -> str | None:
-    """Return the normalized subject: ``title > first H1 > None``."""
-    raw: str | None = None
-    if title is not None and title.strip():
-        raw = title
-    else:
-        match = _H1_RE.search(body)
-        if match is None:
-            return None
-        raw = match.group(1)
-    normalized = unicodedata.normalize("NFC", raw).casefold().strip()
-    normalized = re.sub(r"\s+", " ", normalized)
+    """Engine view: ``title > first H1 > None`` (no filename fallback).
+
+    The engine has no ``path``, so it cannot fall back to a filename stem. When
+    neither a non-empty ``title`` nor an H1 is present, this returns ``None`` and
+    ``fact_id_for`` returns ``None`` — the episode is not indexed by subject.
+    """
+    raw = raw_subject(title, body)
+    if raw is None:
+        return None
+    normalized = normalize_subject(raw)
     return normalized or None
 
 
@@ -53,7 +60,7 @@ def fact_id_for(body: str, title: str | None = None) -> str | None:
     subject = derive_subject(body, title=title)
     if subject is None:
         return None
-    return hashlib.sha256(subject.encode("utf-8")).hexdigest()[:32]
+    return fact_id_of(subject)
 
 
 class CollisionDetector:

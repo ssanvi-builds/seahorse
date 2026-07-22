@@ -32,6 +32,8 @@ classifiers = [
 dependencies = [
     "typer>=0.12",
     "pydantic>=2",
+    "ruamel.yaml>=0.18",
+    "python-frontmatter>=1",
 ]
 
 [project.scripts]

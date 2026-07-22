@@ -22,17 +22,23 @@ the model and travels the wire from commit 1, but its SQLite column lands in
 commit 4 (migration 009) — until then it is model+wire only, not yet persisted by
 ``SqliteEpisodeRepository``.
 
-Permissive storage model: the model only enforces types + ``frozen`` +
-``extra="allow"`` + the ISO-8601 UTC ``Z`` serializers. The strict F3.1
-write-time validators (naive-datetime rejection, expired-null MVP-0, UUIDv7
-shape, self-supersede) are deferred to commit 2, where
-``frontmatter/schema.py::validate_for_write`` wires them via
-``model_validate(..., context={"mvp": ...})`` (f5-03 §4.1/§7.2). The engine guards
-(I1-I11) enforce bi-temporal invariants at write time regardless. The model is
-intentionally permissive so the existing tests keep constructing episodes with
-``expired_at`` non-null (guard tests), ``id="e1"`` (fixtures), and
-``supersedes == id`` self-loops (chain-traversal cycle tests). Tests that
-exercise a guard on a missing ``created_at`` build the episode via
+Permissive storage model: the model enforces types + ``frozen`` +
+``extra="allow"`` + the ISO-8601 UTC ``Z`` serializers + two read-path
+validators. ``_reject_naive`` (f5-03 §4.6) rejects naive datetimes on every
+validation — the engine always supplies aware UTC, so it only fires on the read
+path (a hand-edited timestamp without ``Z``). ``_expired_null_mvp0`` (guard I4,
+f5-03 §7.2) is context-gated: it rejects a non-null ``expired_at`` ONLY when the
+caller passes ``context={"mvp": "0"}`` (``parse_file`` / ``validate_for_write``);
+constructing ``Episode(...)`` with no context passes through, so the guard tests
+that build a non-null ``expired_at`` to exercise I4 still work. The remaining
+strict F3.1 write-time validators (UUIDv7 shape, self-supersede) are NOT on the
+canonical model — they would break the existing fixtures (``id="e1"``,
+``supersedes == id`` self-loops in chain-traversal cycle tests) and would make
+legacy migrated notes ilegible on the read path. They live in
+``frontmatter/schema.py::validate_for_write`` (commit 2), applied by the
+migrator (commit 3) on the write path only. The engine guards (I1-I11) enforce
+bi-temporal invariants at write time regardless. Tests that exercise a guard on
+a missing ``created_at`` build the episode via
 ``model_copy(update={"created_at": None})``, which skips validation (Pydantic-
 idiomatic for "construct an instance that violates the schema, to test the guard
 that catches it").
@@ -54,7 +60,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class Episode(BaseModel):
@@ -105,6 +111,42 @@ class Episode(BaseModel):
             return None
         aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
         return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+    @field_validator("created_at", "valid_at", "invalid_at", "expired_at")
+    @classmethod
+    def _reject_naive(cls, v: datetime | None) -> datetime | None:
+        """Reject naive datetimes at validation time (f5-03 §4.6/§7.2).
+
+        Naive datetimes have no timezone and would silently mis-compare in the
+        bi-temporal guards (I1-I11), so they must fail when loaded from a file
+        via ``parse_file``/``model_validate`` — not merely when serialized. The
+        engine write path always supplies aware UTC datetimes, so this never
+        fires there; it guards the read path (a human hand-editing a timestamp
+        without a ``Z`` suffix becomes a loud ``FrontmatterInvalid``).
+        """
+        if v is not None and v.tzinfo is None:
+            raise ValueError("naive datetime rejected; UTC tzinfo required")
+        return v
+
+    @field_validator("expired_at")
+    @classmethod
+    def _expired_null_mvp0(
+        cls, v: datetime | None, info: object
+    ) -> datetime | None:
+        """Guard I4: ``expired_at`` must be null in MVP-0 (ADR-10).
+
+        Context-gated so the canonical model stays permissive for the engine
+        and existing tests (which construct ``Episode(...)`` with no validation
+        context — ``info.context`` is ``None`` and the validator passes through,
+        including the guard tests that build a non-null ``expired_at`` to
+        exercise I4). It only fires when ``parse_file`` /
+        ``validate_for_write`` pass ``context={"mvp": "0"}``. MVP-1 passes
+        ``"1"`` and accepts non-null (decay, mediano).
+        """
+        ctx = getattr(info, "context", None)
+        if v is not None and ctx and ctx.get("mvp") == "0":
+            raise ValueError("expired_at must be null in MVP-0 (ADR-10)")
+        return v
 
     def provenance_json(self) -> str:
         """Serialize provenance for the TEXT column with ``json_valid`` CHECK."""
