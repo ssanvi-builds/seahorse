@@ -28,6 +28,7 @@ def make_episode(
     supersedes: str | None = None,
     supersedes_reason: str | None = None,
     provenance: dict | None = None,
+    valid_at: datetime | None = None,
 ) -> Episode:
     """A valid F3.1 episode for frontmatter round-trip tests."""
     return Episode(
@@ -49,6 +50,7 @@ def make_episode(
         expired_at=expired_at,
         supersedes=supersedes,
         supersedes_reason=supersedes_reason,
+        valid_at=valid_at,
     )
 
 
