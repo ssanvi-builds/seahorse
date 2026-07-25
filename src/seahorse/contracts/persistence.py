@@ -14,13 +14,14 @@ References:
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from seahorse.contracts.engine import AuditEvent
+from seahorse.contracts.episode import Episode
 from seahorse.contracts.index import IndexRowData, PITKind
 
 # ---------------------------------------------------------------------------
@@ -179,6 +180,68 @@ class AuditEventRepository(Protocol):
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ParsedNote:
+    """Ruamel-free payload for ``SidecarIndexRepository.rebuild_all`` (§7a.5).
+
+    Built by the frontmatter orchestrator (#3) from ``adapter.parse_file`` and
+    handed to the sidecar so #6 repopulates ``episode_index`` + ``episode_paths``
+    WITHOUT importing ruamel (ruamel-confinement invariant: the codec is
+    confined to ``frontmatter.handler``/``frontmatter.adapter``; the sidecar is
+    core and stays ruamel-free). Carries the parsed ``Episode`` (a core contract,
+    ruamel-free) plus the file metadata the sidecar owns.
+
+    ``skip_extraction`` is derived by the sidecar from
+    ``episode.provenance["extraction_mode"] == "skip"`` (ADR-09), matching the
+    disclosure shaper (#16) — so a migrated note (migrator default
+    ``extraction_mode=skip``) lands with ``skip_extraction=1`` (excluded from the
+    MVP-1 FTS5 + embedding queue).
+    """
+
+    episode: Episode
+    file_path: str
+    mtime_ms: int
+    size: int
+
+
+@dataclass(frozen=True)
+class RebuildConflict:
+    """A note skipped during rebuild because it would violate an invariant.
+
+    f5-06 §7a.5 + ADR-10: rebuild is NOT silent and does NOT auto-resolve. A
+    duplicate vigent ``fact_id`` (the I11 partial unique
+    ``uq_episode_index_active_per_subject``) is reported, not picked — the
+    operator decides which note wins. ALL members of a conflict group are
+    skipped (no auto-pick of a winner), so the index never carries an arbitrary
+    choice the vault did not make.
+    """
+
+    ep_id: str
+    file_path: str
+    fact_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class RebuildReport:
+    """Result of ``SidecarIndexRepository.rebuild_all`` (clear-then-rebuild).
+
+    Clear-then-rebuild (not upsert) keeps ``.md`` the source of truth and the
+    SQLite index a derived cache: ``episode_index`` + ``episode_paths`` are
+    wiped and repopulated from the parsed notes each rebuild, so deletions and
+    edits in the vault propagate without a diff. ``rebuild_all`` does NOT touch
+    ``episodes`` (B3=(i) austere: ``episodes`` is the engine hot-path cache,
+    populated by ``remember``; the index is the vault-backed surface).
+
+    ``indexed`` counts the notes that landed in the index; ``skipped`` lists
+    the conflict group members left out. A non-empty ``skipped`` is a signal to
+    the operator, never a silent no-op (ADR-10).
+    """
+
+    indexed: int
+    skipped: list[RebuildConflict] = field(default_factory=list)
+
+
 @runtime_checkable
 class SidecarIndexRepository(Protocol):
     def put_path(self, ep_id: str, file_path: str, mtime_ms: int, size: int) -> None: ...
@@ -186,6 +249,11 @@ class SidecarIndexRepository(Protocol):
 
     @contextmanager
     def reindex(self, ep_id: str, file_path: str, mtime_ms: int, size: int) -> Iterator[None]: ...
+
+    def rebuild_all(self, notes: Iterable[ParsedNote]) -> RebuildReport: ...
+        # Clear episode_index + episode_paths and repopulate from notes (ruamel-free;
+        # the caller #3 builds ParsedNote from parsed .md files). See RebuildReport
+        # + RebuildConflict for the honesty contract (ADR-10: never silent).
 
 
 # ---------------------------------------------------------------------------

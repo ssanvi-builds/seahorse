@@ -141,7 +141,7 @@ def test_e2e_smoke_full_flow(storage: Storage) -> None:
         storage._cm.writer.execute(  # noqa: SLF001
             "SELECT version FROM schema_version"
         ).fetchall()[-1][0]
-        == 8
+        == 9
     )
 
     # 2. append an episode (with a real fact_id + title/summary).
@@ -238,7 +238,7 @@ def test_open_is_idempotent(storage: Storage) -> None:
             "SELECT version FROM schema_version ORDER BY version"
         ).fetchall()
     ]
-    assert versions == list(range(1, 9))
+    assert versions == list(range(1, 10))
 
 
 def test_storage_context_manager(tmp_path) -> None:

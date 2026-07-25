@@ -36,15 +36,23 @@ def _ordered_migrations() -> list[tuple[int, Path]]:
     return [(int(f.stem.split("_", 1)[0]), f) for f in files]
 
 
-def apply_migrations(conn: sqlite3.Connection) -> int:
-    """Apply all pending migrations to ``conn``.
+def apply_migrations(conn: sqlite3.Connection, *, up_to: int | None = None) -> int:
+    """Apply pending migrations to ``conn``.
 
     Returns the number of newly applied migrations. Idempotent: re-running on an
     already-migrated database applies zero migrations and returns 0.
+
+    ``up_to`` caps the highest migration version to apply (inclusive). ``None``
+    (default) applies all pending migrations. This seam lets tests pin a
+    database at an older schema version (e.g. ``up_to=8``) and then apply the
+    next migration in isolation — exercising the real legacy upgrade path that
+    existing deployments hit, rather than only the fresh-DB path.
     """
     conn.executescript(_SCHEMA_VERSION_DDL)
     applied = 0
     for version, path in _ordered_migrations():
+        if up_to is not None and version > up_to:
+            break
         already = conn.execute(
             "SELECT 1 FROM schema_version WHERE version = ?", (version,)
         ).fetchone()

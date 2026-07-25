@@ -46,14 +46,14 @@ def _req_dt(value: str) -> datetime:
 
 _EPISODES_INSERT = (
     "INSERT INTO episodes (id, subject, fact_id, body_md, valid_at, invalid_at, "
-    "created_at, expired_at, supersedes, cognitive_type, source_type, "
-    "schema_version, provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    "created_at, expired_at, supersedes, supersedes_reason, cognitive_type, "
+    "source_type, schema_version, provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 _INDEX_INSERT = (
     "INSERT INTO episode_index (ep_id, subject, fact_id, valid_at, invalid_at, "
-    "created_at, expired_at, supersedes, cognitive_type, source_type, "
-    "schema_version, skip_extraction, title, summary) "
-    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    "created_at, expired_at, supersedes, supersedes_reason, cognitive_type, "
+    "source_type, schema_version, skip_extraction, title, summary) "
+    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 _SELECT_WITH_INDEX = (
     "SELECT e.*, ix.title AS ix_title, ix.summary AS ix_summary "
@@ -94,6 +94,7 @@ class SqliteEpisodeRepository:
                     _fmt_dt(episode.created_at),
                     _fmt_dt(episode.expired_at),
                     episode.supersedes,
+                    episode.supersedes_reason,
                     episode.cognitive_type,
                     episode.source_type,
                     episode.schema_version,
@@ -111,6 +112,7 @@ class SqliteEpisodeRepository:
                     _fmt_dt(episode.created_at),
                     _fmt_dt(episode.expired_at),
                     episode.supersedes,
+                    episode.supersedes_reason,
                     episode.cognitive_type,
                     episode.source_type,
                     episode.schema_version,
@@ -157,6 +159,7 @@ class SqliteEpisodeRepository:
             invalid_at=_parse_dt(row["invalid_at"]),
             expired_at=_parse_dt(row["expired_at"]),
             supersedes=row["supersedes"],
+            supersedes_reason=row["supersedes_reason"],
             cognitive_type=row["cognitive_type"],
             source_type=row["source_type"],
             title=row["ix_title"],

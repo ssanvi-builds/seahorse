@@ -161,16 +161,16 @@ def test_current_version_tracks_migrations() -> None:
     c = sqlite3.connect(":memory:")
     assert current_version(c) == 0  # before schema_version table exists
     apply_migrations(c)
-    # 008_reindex_jobs.sql is the highest-numbered migration in MVP-0.
-    assert current_version(c) == 8
+    # 009_supersedes_reason.sql is the highest-numbered migration in MVP-0.
+    assert current_version(c) == 9
     c.close()
 
 
-def test_all_eight_migrations_recorded(conn: sqlite3.Connection) -> None:
+def test_all_migrations_recorded(conn: sqlite3.Connection) -> None:
     versions = [
         row[0] for row in conn.execute("SELECT version FROM schema_version ORDER BY version")
     ]
-    assert versions == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 # --- MVP-0 boundary: vec0 / FTS5 NOT created ---------------------------------

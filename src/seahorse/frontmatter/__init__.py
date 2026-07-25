@@ -1,17 +1,21 @@
 """Frontmatter adapter/migrator — the ``.md`` ↔ ``Episode`` codec (#3, F3.3).
 
 Confinement (load-bearing): ``ruamel.yaml`` and ``python-frontmatter`` are
-imported ONLY by ``seahorse.frontmatter.handler`` and ``seahorse.frontmatter.adapter``.
-This package ``__init__`` does NOT import those modules, so importing any
+imported ONLY by modules of this package that touch the codec —
+``seahorse.frontmatter.handler``, ``seahorse.frontmatter.adapter``,
+``seahorse.frontmatter.migrator`` (transitively, via ``adapter``/``handler``),
+and ``seahorse.frontmatter.rebuild`` (transitively, via ``adapter``). This
+package ``__init__`` does NOT import those modules, so importing any
 stdlib-only submodule (``subject``, ``errors``, ``schema``) — which the core
 (``engine.collision``) does — never pulls ruamel/frontmatter into the core.
 
 The ruamel-backed adapter functions (``parse_file``/``write_file``/``hydrate``/
 ``serialize``) and ``RuamelRTHandler`` are therefore NOT re-exported here; non-core
-consumers (the migrator, the CLI) import them directly::
+consumers (the migrator, the rebuild orchestrator, the CLI) import them directly::
 
     from seahorse.frontmatter.adapter import parse_file, write_file, hydrate, serialize
     from seahorse.frontmatter.handler import RuamelRTHandler
+    from seahorse.frontmatter.rebuild import rebuild_from_vault
 
 The symbols re-exported below are ruamel-free (stdlib + pydantic + contracts).
 """

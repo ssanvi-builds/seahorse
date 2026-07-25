@@ -44,6 +44,7 @@ def _episode(
     invalid_at: datetime | None = None,
     expired_at: datetime | None = None,
     supersedes: str | None = None,
+    supersedes_reason: str | None = None,
     body: str = "body",
     title: str | None = "Title",
     summary: str | None = "Summary",
@@ -64,6 +65,7 @@ def _episode(
         invalid_at=invalid_at,
         expired_at=expired_at,
         supersedes=supersedes,
+        supersedes_reason=supersedes_reason,
         cognitive_type=cognitive_type,
         source_type=source_type,
         title=title,
@@ -254,6 +256,40 @@ def test_atomic_reentrant_single_tx_for_improve_pattern(
         repo.append(_episode("e2", fact_id="f1", supersedes="e1"))
     assert repo.get("e2") is not None
     assert repo.get("e1").invalid_at == datetime(2026, 1, 5, tzinfo=UTC)
+
+
+# --- supersedes_reason round-trip (migration 009) --------------------------
+
+
+def test_supersedes_reason_round_trip(repo: SqliteEpisodeRepository) -> None:
+    # The portable supersedes_reason (f5-03 §12.3) lands in storage via migration 009
+    # and round-trips through append → get. The successor carries the taxonomy of
+    # the replacement; the predecessor only receives invalid_at (I3).
+    repo.append(_episode("e0", fact_id="f0"))
+    repo.set_invalid_at("e0", datetime(2026, 1, 5, tzinfo=UTC))
+    repo.append(
+        _episode("e1", fact_id="f0", supersedes="e0", supersedes_reason="correction")
+    )
+    fetched = repo.get("e1")
+    assert fetched is not None
+    assert fetched.supersedes_reason == "correction"
+
+
+def test_supersedes_reason_none_round_trips(repo: SqliteEpisodeRepository) -> None:
+    # A note with no supersedes_reason persists NULL (not a sentinel string).
+    repo.append(_episode("e1", fact_id="f1"))
+    fetched = repo.get("e1")
+    assert fetched is not None
+    assert fetched.supersedes_reason is None
+
+
+def test_append_still_raises_on_duplicate_vigent_fact_id_after_009(
+    repo: SqliteEpisodeRepository,
+) -> None:
+    # Regression: the new column must not break the I11 partial unique index.
+    repo.append(_episode("e1", fact_id="fact-1"))
+    with pytest.raises(sqlite3.IntegrityError):
+        repo.append(_episode("e2", fact_id="fact-1"))
 
 
 # --- fact_id bridge equality (SO-8c) ---------------------------------------

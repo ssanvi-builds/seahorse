@@ -4,15 +4,28 @@ Implements ``seahorse.contracts.persistence.SidecarIndexRepository``. ``put_path
 is an UPSERT (file rename = UPDATE, allowed because episode_paths is mutable and
 separate from the append-only episodes table). ``reindex`` wraps the path update
 in the shared atomic so the caller's indexing work commits with the metadata.
-``rebuild_all`` is the vault-backed repopulation seam — it is wired by #3 in a
-later phase and raises ``NotImplementedError`` here. No own ``atomic()`` (SO-7a.6).
+``rebuild_all`` repopulates ``episode_index`` + ``episode_paths`` from ruamel-free
+``ParsedNote`` payloads (clear-then-rebuild, B3=(i) austere). No own ``atomic()``
+(SO-7a.6); ``rebuild_all`` borrows the shared ``ConnectionManager.atomic()``.
+
+Ruamel-confinement invariant: this module is CORE and must NOT import
+``ruamel.yaml``/``python-frontmatter``. The frontmatter codec is confined to
+``frontmatter.handler``/``frontmatter.adapter``; the caller (#3) builds
+``ParsedNote`` from parsed ``.md`` and hands it here. ``Episode`` is a core
+contract (ruamel-free), so the sidecar may import it freely.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from datetime import datetime
 
+from seahorse.contracts.persistence import (
+    ParsedNote,
+    RebuildConflict,
+    RebuildReport,
+)
 from seahorse.persistence.connection import ConnectionManager
 
 _PUT_PATH_SQL = (
@@ -20,6 +33,33 @@ _PUT_PATH_SQL = (
     "ON CONFLICT(ep_id) DO UPDATE SET file_path=excluded.file_path, "
     "mtime_ms=excluded.mtime_ms, size=excluded.size"
 )
+# Full episode_index column set (003 + 009): includes the denormalized
+# file_path/mtime_ms/size + title/summary + skip_extraction + supersedes_reason.
+# The engine's _INDEX_INSERT leaves file_path/mtime_ms/size NULL (hot path);
+# rebuild owns them (.md is the source of truth).
+_REBUILD_INDEX_INSERT = (
+    "INSERT INTO episode_index ("
+    "ep_id, subject, fact_id, valid_at, invalid_at, created_at, expired_at, "
+    "supersedes, supersedes_reason, cognitive_type, source_type, schema_version, "
+    "skip_extraction, file_path, mtime_ms, size, title, summary"
+    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+)
+_DELETE_INDEX_SQL = "DELETE FROM episode_index"
+_DELETE_PATHS_SQL = "DELETE FROM episode_paths"
+_DUPLICATE_VIGENT_REASON = "duplicate-vigent-fact_id"
+_DUPLICATE_EP_ID_REASON = "duplicate-ep_id"
+
+
+def _fmt_dt(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt is not None else None
+
+
+def _skip_extraction(note: ParsedNote) -> int:
+    # ADR-09: skip_extraction=1 excludes from the MVP-1 FTS5 + embedding queue.
+    # Derived from provenance["extraction_mode"] == "skip" (matches #16 shaper).
+    # The migrator default is extraction_mode=skip, so migrated notes land at 1.
+    mode = note.episode.provenance.get("extraction_mode")
+    return 1 if mode == "skip" else 0
 
 
 class SqliteSidecarIndexRepository:
@@ -49,16 +89,108 @@ class SqliteSidecarIndexRepository:
             self._cm.writer.execute(_PUT_PATH_SQL, (ep_id, file_path, mtime_ms, size))
             yield
 
-    def rebuild_all(self, vault: object | None = None) -> None:
-        """Repopulate episode_index from the vault (vault-backed mode).
+    def rebuild_all(self, notes: Iterable[ParsedNote]) -> RebuildReport:
+        """Clear ``episode_index`` + ``episode_paths`` and repopulate from ``notes``.
 
-        Wired by #3 (Frontmatter adapter) in a later phase. The seam exists so #6's
-        contract is complete; it raises ``NotImplementedError`` until #3 supplies the
-        VaultFileAdapter. This is the documented MVP-0 vault-backed gap, not a bug.
+        Clear-then-rebuild (not upsert): ``.md`` is the source of truth, the SQLite
+        index a derived cache, so both tables are wiped and repopulated each call
+        — vault deletions/edits propagate without a diff. Does NOT touch
+        ``episodes`` (B3=(i) austere).
+
+        Conflict policy (f5-06 §7a.5 + ADR-10): a duplicate vigent ``fact_id``
+        (the I11 partial unique ``uq_episode_index_active_per_subject``) is NOT
+        auto-resolved — ALL members of the conflict group are skipped and
+        reported in ``RebuildReport.skipped``. The operator decides which note
+        wins; the index never carries an arbitrary choice. ``fact_id IS NULL``
+        notes never conflict (SQLite treats NULLs as distinct in a UNIQUE index).
+
+        Atomicity: the clear + repopulate is ONE ``ConnectionManager.atomic()``,
+        so a mid-stream DB error (e.g. a CHECK violation the pre-pass does not
+        screen) rolls back the DELETE too — the prior index is preserved, not
+        half-wiped.
         """
-        raise NotImplementedError(
-            "rebuild_all(vault) is wired by #3 (Frontmatter adapter) in a later phase"
-        )
+        materialized = list(notes)
+        conflict_ep_ids, ep_id_reason = self._conflict_group_ids(materialized)
+        indexed = 0
+        skipped: list[RebuildConflict] = []
+        with self._cm.atomic() as w:
+            w.execute(_DELETE_INDEX_SQL)
+            w.execute(_DELETE_PATHS_SQL)
+            for note in materialized:
+                ep = note.episode
+                reason = ep_id_reason.get(ep.id)
+                if reason is None and ep.id in conflict_ep_ids:
+                    reason = _DUPLICATE_VIGENT_REASON
+                if reason is not None:
+                    skipped.append(
+                        RebuildConflict(
+                            ep_id=ep.id,
+                            file_path=note.file_path,
+                            fact_id=ep.fact_id or "",
+                            reason=reason,
+                        )
+                    )
+                    continue
+                w.execute(
+                    _REBUILD_INDEX_INSERT,
+                    (
+                        ep.id,
+                        ep.subject,
+                        ep.fact_id,
+                        _fmt_dt(ep.valid_at),
+                        _fmt_dt(ep.invalid_at),
+                        _fmt_dt(ep.created_at),
+                        _fmt_dt(ep.expired_at),
+                        ep.supersedes,
+                        ep.supersedes_reason,
+                        ep.cognitive_type,
+                        ep.source_type,
+                        ep.schema_version,
+                        _skip_extraction(note),
+                        note.file_path,
+                        note.mtime_ms,
+                        note.size,
+                        ep.title,
+                        ep.summary,
+                    ),
+                )
+                w.execute(_PUT_PATH_SQL, (ep.id, note.file_path, note.mtime_ms, note.size))
+                indexed += 1
+        return RebuildReport(indexed=indexed, skipped=skipped)
+
+    @staticmethod
+    def _conflict_group_ids(notes: list[ParsedNote]) -> tuple[set[str], dict[str, str]]:
+        # Pre-pass for two integrity conflicts the DB would otherwise reject
+        # mid-rebuild (raising an opaque IntegrityError instead of a report):
+        #
+        # 1. Duplicate vigent fact_id (I11 partial unique
+        #    uq_episode_index_active_per_subject): group VIGENT notes
+        #    (invalid_at + expired_at both NULL) by non-NULL fact_id; any group
+        #    with >1 member is a conflict — ALL members skipped (no auto-pick).
+        #    NULL fact_ids never conflict (SQLite treats NULLs as distinct).
+        # 2. Duplicate ep_id (PRIMARY KEY): two .md notes carrying the same id.
+        #    The whole group is skipped + reported so the operator fixes the
+        #    vault rather than receiving a raw IntegrityError.
+        #
+        # Returns the set of conflicting ep_ids and a per-ep_id reason map (the
+        # reason map takes precedence so an ep_id in BOTH groups is reported with
+        # the more specific duplicate-ep_id reason).
+        vigent_groups: dict[str, list[str]] = {}
+        ep_id_seen: dict[str, list[str]] = {}
+        for note in notes:
+            ep = note.episode
+            ep_id_seen.setdefault(ep.id, []).append(note.file_path)
+            if ep.fact_id is None or ep.invalid_at is not None or ep.expired_at is not None:
+                continue
+            vigent_groups.setdefault(ep.fact_id, []).append(ep.id)
+        conflict_ep_ids = {
+            ep_id for members in vigent_groups.values() if len(members) > 1 for ep_id in members
+        }
+        reason_map: dict[str, str] = {}
+        for ep_id, paths in ep_id_seen.items():
+            if len(paths) > 1:
+                reason_map[ep_id] = _DUPLICATE_EP_ID_REASON
+        return conflict_ep_ids, reason_map
 
 
 __all__ = ["SqliteSidecarIndexRepository"]
