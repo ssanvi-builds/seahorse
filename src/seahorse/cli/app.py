@@ -51,6 +51,7 @@ from seahorse.cli.primitives import (
     run_recall_timeline,
     run_remember,
 )
+from seahorse.cli.vault_ops import run_index_rebuild, run_inspect, run_migrate
 from seahorse.contracts.index import PIT_KIND_VALUES
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.factory import build_facade
@@ -367,15 +368,20 @@ def uuid7(ctx: typer.Context) -> None:
 
 
 @app.command(name="migrate")
-def migrate_cmd(ctx: typer.Context) -> None:
-    """Migrate an Obsidian vault into Seahorse — RESERVED in MVP-0."""
-    run_reserved("migrate")
+def migrate_cmd(
+    ctx: typer.Context,
+    up_to: int | None = typer.Option(
+        None, "--up-to", help="Cap the highest migration version to apply (inclusive)."
+    ),
+) -> None:
+    """Apply SCHEMA migrations to the sidecar DB (DDL 001–009)."""
+    run_migrate(ctx.obj.resolved_config(), up_to=up_to, fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command()
 def inspect(ctx: typer.Context) -> None:
-    """Deep-inspect a vault — RESERVED in MVP-0."""
-    run_reserved("inspect")
+    """Read-only sidecar snapshot (schema_version, counts, vigentes vs activos-ahora)."""
+    run_inspect(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command(name="vigentes")
@@ -397,8 +403,8 @@ app.add_typer(index_app, name="index")
 
 @index_app.command(name="rebuild")
 def index_rebuild_cmd(ctx: typer.Context) -> None:
-    """Rebuild search indexes from the vault — RESERVED in MVP-0."""
-    run_reserved("index-rebuild")
+    """Rebuild the sidecar index from the vault's .md notes (clear-then-rebuild)."""
+    run_index_rebuild(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @index_app.command(name="verify")

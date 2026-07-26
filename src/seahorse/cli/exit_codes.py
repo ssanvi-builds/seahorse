@@ -41,11 +41,22 @@ not exposed in MVP-0 (the facade rejects non-empty tags with
 Exit-code layout (64–99, ``sysexits.h`` application band):
 
 - ``0``  success, ``1`` general/unhandled, ``2`` usage/argparse.
-- Cat A (17): 64–74, 76–81 (75 skipped — Cat C anchor).
-- Cat C (3):  75 ``CLI_NOT_IN_MVP_0``, 82 ``CLI_VAULT_NOT_FOUND``,
-  83 ``CLI_CONFIG_INVALID``.
+- Cat A (21): 64–74, 76–81 (75 skipped — Cat C anchor), 90–93 (frontmatter #3,
+  commit 5). The 4 frontmatter codes live in the previously-reserved 90–93 band
+  because they are a distinct component origin (#3, not #12/#2) and the 64–81
+  band was already full.
+- Cat C (4):  75 ``CLI_NOT_IN_MVP_0``, 82 ``CLI_VAULT_NOT_FOUND``,
+  83 ``CLI_CONFIG_INVALID``, 75 ``CLI_REBUILD_CONFLICTS`` (overloaded — see note).
 - Cat B (6):  84–89.
-- Reserved:   90–99 for future #12 codes or CLI-owned codes.
+
+NOTE — 75 overload (commit 5, reconciled for commit 6): ``CLI_NOT_IN_MVP_0`` and
+``CLI_REBUILD_CONFLICTS`` share exit code 75. The two are distinguishable on
+the structured payload (``cli_code`` symbolic name differs) and on stderr
+(``CLI_NOT_IN_MVP_0`` vs ``CLI_REBUILD_CONFLICTS`` header). Commit 6 will split
+``CLI_REBUILD_CONFLICTS`` onto a fresh code in the 90–99 band (frontmatter codes
+took 90–93, so the next free CLI-owned slot is 94) to remove the overload. Both
+are CLI-owned Cat C (never Cat A), so they never collide with the 21-code Cat A
+table.
 
 References:
 - f5-14 §3.3 (exit-code table, as-designed — reconciled here against real code)
@@ -95,7 +106,17 @@ _CAT_A_ENGINE = {
     "E_MONOTONICITY_VIOLATED": 81,
 }
 
-CAT_A: dict[str, int] = {**_CAT_A_FACADE, **_CAT_A_ENGINE}
+# Frontmatter codes (4) — owned by #3 (commit 5), distinct component origin.
+# Placed in the 90–93 band (previously reserved) so they do not displace the
+# 64–81 domain band. Mirrors seahorse.mcp.errors._CAT_A_FRONTMATTER.
+_CAT_A_FRONTMATTER = {
+    "E_FRONTMATTER_INVALID": 90,
+    "E_MIGRATION_ABORTED": 91,
+    "E_X_RESERVED_COLLISION": 92,
+    "E_SUBJECT_EMPTY": 93,
+}
+
+CAT_A: dict[str, int] = {**_CAT_A_FACADE, **_CAT_A_ENGINE, **_CAT_A_FRONTMATTER}
 
 # ---------------------------------------------------------------------------
 # Cat B — exception class (no stable code) → exit code.
@@ -116,6 +137,10 @@ CAT_B: dict[str, int] = {
 CLI_NOT_IN_MVP_0 = 75  # SO-14-05: expire/revalidate + unbuilt-dependency stubs
 CLI_VAULT_NOT_FOUND = 82
 CLI_CONFIG_INVALID = 83
+# CLI_REBUILD_CONFLICTS reuses 75 (overloaded — see module docstring; commit 6
+# will split it onto a fresh 90–99 slot). ADR-10 honesty: index rebuild reports
+# conflicts and fails loud rather than auto-picking a winner.
+CLI_REBUILD_CONFLICTS = 75
 
 # ---------------------------------------------------------------------------
 # Component-of-origin attribution for stderr ``component:`` (parity with #13).
@@ -132,6 +157,11 @@ _ORIGIN_BY_CLASS = {
     "NotFound": "#2",
     "InvalidationConflictError": "#2",
     "IntegrityError": "#6",
+    # frontmatter (#3, commit 5)
+    "FrontmatterInvalid": "#3",
+    "MigrationError": "#3",
+    "XReservedCollision": "#3",
+    "SubjectEmpty": "#3",
 }
 
 _MESSAGE_BY_CODE = {
@@ -152,6 +182,11 @@ _MESSAGE_BY_CODE = {
     "E_EXPIRED_AT_NON_NULL": "expired_at non-null",
     "E_CREATED_AT_ENGINE_OWNED": "created_at engine-owned",
     "E_MONOTONICITY_VIOLATED": "Monotonicity violated",
+    # frontmatter (#3, commit 5)
+    "E_FRONTMATTER_INVALID": "Frontmatter invalid",
+    "E_MIGRATION_ABORTED": "Migration aborted",
+    "E_X_RESERVED_COLLISION": "X reserved collision",
+    "E_SUBJECT_EMPTY": "Subject empty",
 }
 
 _MESSAGE_BY_CLASS = {
@@ -244,6 +279,7 @@ __all__ = [
     "CLI_NOT_IN_MVP_0",
     "CLI_VAULT_NOT_FOUND",
     "CLI_CONFIG_INVALID",
+    "CLI_REBUILD_CONFLICTS",
     "translate",
     "message_for",
 ]

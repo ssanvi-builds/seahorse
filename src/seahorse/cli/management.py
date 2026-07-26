@@ -1,20 +1,22 @@
 """Management commands for the CLI (#14) — init / status / uuid7 + reserved stubs.
 
-These are the vault-lifecycle and operational commands (f5-14 §2.3). Three are
+These are the vault-lifecycle and operational commands (f5-14 §2.3). Five are
 REAL in MVP-0 (their dependencies are built):
 
 - ``init <vault>``   — write ``.seahorse/seahorse.toml`` (config.write_default_config).
 - ``status``         — render resolved vault / db_path / config / init flag.
 - ``uuid7``          — emit a fresh UUIDv7 (``seahorse.facade.new_uuid7`` — the
   facade re-exports it so #14 never reaches into #2 engine directly).
+- ``migrate``        — apply SCHEMA migrations to the sidecar DB (commit 5; lives
+  in ``cli/vault_ops.py`` so this module stays free of #6 SQL).
+- ``inspect``        — read-only sidecar snapshot (commit 5; ``vault_ops``).
+- ``index rebuild``  — regenerate the sidecar from the vault (commit 5;
+  ``vault_ops``; ADR-10: reports conflicts, does not auto-pick).
 
-The rest are RESERVED STUBS (Cat C ``CLI_NOT_IN_MVP_0`` = 75): their
-dependencies are not built in MVP-0 and the surface must fail-loud rather than
-silently disappear (ADR-10 honesty):
+The REMAINING commands are RESERVED STUBS (Cat C ``CLI_NOT_IN_MVP_0`` = 75):
+their dependencies are not built in MVP-0 and the surface must fail-loud rather
+than silently disappear (ADR-10 honesty):
 
-- ``migrate``        — needs #3 (Frontmatter adapter / migrator).
-- ``inspect``        — needs #1/#3 deep inspection (F3.1 parser + sidecar).
-- ``index rebuild``  — ``sidecar.rebuild_all(vault)`` is wired by #3 (raises).
 - ``index verify``   — needs #3 + #7 (vec0 integrity).
 - ``vigentes``       — MVP-1 full vigente set with freshness (decay-aware).
 - ``activos-ahora``  — mediano decay-aware active set (needs ``expire``).
@@ -32,10 +34,9 @@ from seahorse.facade import new_uuid7
 
 # Reserved management commands → Cat C CLI_NOT_IN_MVP_0 (75), with the reason
 # each is deferred. Single source so app.py and tests agree on the surface.
+# Commit 5 promoted migrate/inspect/index-rebuild to real commands (vault_ops),
+# so the reserved surface is the remaining honest-stub set.
 RESERVED_COMMANDS: dict[str, str] = {
-    "migrate": "Frontmatter migrator (#3) is not built in MVP-0",
-    "inspect": "deep inspection needs the F3.1 parser (#1) + sidecar (#3)",
-    "index-rebuild": "sidecar.rebuild_all(vault) is wired by #3 in a later phase",
     "index-verify": "index integrity check needs #3 + vec0 (#7)",
     "vigentes": "full vigente set with freshness is MVP-1",
     "activos-ahora": "decay-aware active set is mediano (needs expire)",

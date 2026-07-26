@@ -149,11 +149,8 @@ def test_uuid7_command():
     [
         ["expire", "01J"],
         ["revalidate", "01J"],
-        ["migrate"],
-        ["inspect"],
         ["vigentes"],
         ["activos-ahora"],
-        ["index", "rebuild"],
         ["index", "verify"],
     ],
 )

@@ -76,4 +76,16 @@ def current_version(conn: sqlite3.Connection) -> int:
     return int(value) if value is not None else 0
 
 
-__all__ = ["apply_migrations", "current_version"]
+def latest_available_version() -> int:
+    """Highest migration version shipped in this build (no connection needed).
+
+    Used by ``seahorse migrate`` to report the ceiling so the operator can see
+    whether ``--up-to`` capped below the build's available set (honest reporting:
+    ``up_to`` is a CAP, not a requirement — a value beyond ``latest_available``
+    applies all available migrations rather than erroring).
+    """
+    versions = [v for v, _ in _ordered_migrations()]
+    return max(versions) if versions else 0
+
+
+__all__ = ["apply_migrations", "current_version", "latest_available_version"]

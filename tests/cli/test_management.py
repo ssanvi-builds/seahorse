@@ -130,7 +130,7 @@ def test_reserved_stubs_raise_cli_not_in_mvp0(command):
     with pytest.raises(CliNotInMVP0) as exc_info:
         run_reserved(command)
     assert exc_info.value.exit_code == 75
-    # display form uses spaces (index-rebuild → "index rebuild").
+    # display form uses spaces (index-verify → "index verify").
     assert command.replace("-", " ") in exc_info.value.detail
 
 
@@ -139,10 +139,18 @@ def test_reserved_unknown_command_still_raises():
         run_reserved("nope")
 
 
-def test_reserved_commands_covers_all_stubs():
-    """The reserved surface matches the f5-14 §2.3 stub list."""
-    expected = {
-        "migrate", "inspect", "index-rebuild", "index-verify",
-        "vigentes", "activos-ahora",
-    }
-    assert expected <= set(RESERVED_COMMANDS)
+def test_reserved_commands_covers_remaining_stubs():
+    """Commit 5 un-stubbed migrate/inspect/index-rebuild (now real).
+
+    The reserved surface is the remaining honest-stub set: index-verify
+    (needs #7 vec0), vigentes (MVP-1), activos-ahora (mediano, needs expire).
+    migrate/inspect/index-rebuild are NO LONGER reserved.
+    """
+    expected = {"index-verify", "vigentes", "activos-ahora"}
+    assert set(RESERVED_COMMANDS) == expected
+
+
+def test_reserved_commands_no_longer_contains_unstubbed_ones():
+    """migrate/inspect/index-rebuild were promoted to real commands."""
+    promoted = {"migrate", "inspect", "index-rebuild"}
+    assert promoted.isdisjoint(set(RESERVED_COMMANDS))

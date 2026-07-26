@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,7 @@ from seahorse.cli.errors import (
     CliConfigInvalid,
     CliError,
     CliNotInMVP0,
+    CliRebuildConflicts,
     CliUsageError,
     CliVaultNotFound,
 )
@@ -27,6 +29,7 @@ from seahorse.cli.exit_codes import (
     CAT_B,
     CLI_CONFIG_INVALID,
     CLI_NOT_IN_MVP_0,
+    CLI_REBUILD_CONFLICTS,
     CLI_VAULT_NOT_FOUND,
     EXIT_GENERAL,
     EXIT_SUCCESS,
@@ -44,6 +47,12 @@ from seahorse.facade.errors import (
     InvalidPITKind,
     PitRecallNotSupportedMVP0,
     SeahorseError,
+)
+from seahorse.frontmatter.errors import (
+    FrontmatterInvalid,
+    MigrationError,
+    SubjectEmpty,
+    XReservedCollision,
 )
 
 # ``IntegrityError`` in CAT_B is stdlib ``sqlite3.IntegrityError`` — #6 raises
@@ -94,13 +103,35 @@ def test_cat_a_code_maps_to_exit(code, exc_cls):
     assert "component" in info
 
 
-def test_cat_a_table_is_17_codes_no_collision_with_75():
-    """17 Cat A codes, all in 64–81, none using 75 (reserved for Cat C)."""
-    assert len(CAT_A) == 17
+def test_cat_a_frontmatter_codes_map_to_exit():
+    """The 4 frontmatter Cat A codes (#3, commit 5) → 90–93 with seahorse_code.
+
+    These mirror ``seahorse.mcp.errors`` (parity, single point of change) and
+    carry ``.code`` as a class attribute (``FrontmatterInvalid`` etc.).
+    """
+    cases = [
+        ("E_FRONTMATTER_INVALID", FrontmatterInvalid(Path("/n.md"), ValueError("bad"))),
+        ("E_MIGRATION_ABORTED", MigrationError("boom")),
+        ("E_X_RESERVED_COLLISION", XReservedCollision(Path("/n.md"), "x-valid-at")),
+        ("E_SUBJECT_EMPTY", SubjectEmpty(Path("/n.md"))),
+    ]
+    for code, exc in cases:
+        exit_code, info = translate(exc)
+        assert exit_code == CAT_A[code], code
+        assert info["seahorse_code"] == code
+        assert info["component"] == "#3"
+        assert info["exit_code"] == exit_code
+
+
+def test_cat_a_table_is_21_codes_no_collision_with_75():
+    """21 Cat A codes (17 domain + 4 frontmatter), unique, none using 75."""
+    assert len(CAT_A) == 21
     exits = list(CAT_A.values())
-    assert len(set(exits)) == 17  # unique
-    assert all(64 <= e <= 81 for e in exits)
+    assert len(set(exits)) == 21  # unique
+    # 17 domain codes in 64–81, 4 frontmatter codes in 90–93 (the future band).
+    assert all(64 <= e <= 93 for e in exits)
     assert 75 not in exits
+    assert {90, 91, 92, 93} <= set(exits)
 
 
 def test_invalid_pit_kind_carries_code():
@@ -151,6 +182,7 @@ def test_cat_b_table_is_six_classes():
         (CliVaultNotFound(), CLI_VAULT_NOT_FOUND),
         (CliConfigInvalid("bad"), CLI_CONFIG_INVALID),
         (CliUsageError("--body too long"), EXIT_USAGE),
+        (CliRebuildConflicts(2), CLI_REBUILD_CONFLICTS),
     ],
 )
 def test_cat_c_cli_error_short_circuits(exc, expected):
@@ -168,6 +200,7 @@ def test_cli_error_subclasses_are_cli_error():
         CliVaultNotFound(),
         CliConfigInvalid("z"),
         CliUsageError("w"),
+        CliRebuildConflicts(1),
     ):
         assert isinstance(exc, CliError)
 
@@ -207,3 +240,42 @@ def test_message_for_cat_b():
 
 def test_message_for_unknown_is_internal_error():
     assert message_for(RuntimeError("x")) == "Internal error"
+
+
+# ---------------------------------------------------------------------------
+# #13 parity — the CLI Cat A table mirrors seahorse.mcp.errors.CAT_A (single
+# point of change). The two sister projections translate the SAME catalog.
+# ---------------------------------------------------------------------------
+
+
+def test_cli_cat_a_keys_mirrors_mcp_cat_a_keys():
+    """Every CLI Cat A code has a matching MCP Cat A code (parity, f5-14 §3.3)."""
+    from seahorse.mcp.errors import CAT_A as MCP_CAT_A
+
+    assert set(CAT_A) == set(MCP_CAT_A)
+
+
+def test_frontmatter_cat_a_origin_is_component_3():
+    """The 4 frontmatter codes attribute to #3 (not #12/#2)."""
+    from seahorse.mcp.errors import _ORIGIN_BY_CLASS as MCP_ORIGIN
+
+    for cls in ("FrontmatterInvalid", "MigrationError", "XReservedCollision", "SubjectEmpty"):
+        assert MCP_ORIGIN.get(cls) == "#3", cls
+
+
+def test_message_for_frontmatter_cat_a():
+    assert (
+        message_for(FrontmatterInvalid(Path("/n"), ValueError("x")))
+        == "Frontmatter invalid"
+    )
+    assert message_for(MigrationError("x")) == "Migration aborted"
+    assert message_for(XReservedCollision(Path("/n"), "x-valid-at")) == "X reserved collision"
+    assert message_for(SubjectEmpty(Path("/n"))) == "Subject empty"
+
+
+def test_rebuild_conflicts_message_includes_count():
+    exc = CliRebuildConflicts(3)
+    code, info = translate(exc)
+    assert code == 75
+    assert info["cli_code"] == "CLI_REBUILD_CONFLICTS"
+    assert "3" in info["detail"]

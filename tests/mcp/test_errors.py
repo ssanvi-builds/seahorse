@@ -85,6 +85,51 @@ class TestCatAEngine:
         assert "message" in resp["error"]
 
 
+class TestCatAFrontmatter:
+    """The 4 frontmatter codes (#3, commit 5) mirror the CLI table (parity).
+
+    ``#13`` does not currently surface frontmatter errors (the MCP tools do not
+    call the frontmatter codec), but the codes are mirrored here so the two
+    sister projections share a single point of change — a future MCP surface
+    that surfaces a frontmatter error already has a stable ``-32xxx`` code.
+    """
+
+    def test_frontmatter_invalid(self) -> None:
+        from pathlib import Path
+
+        from seahorse.frontmatter.errors import FrontmatterInvalid
+
+        resp = _err(FrontmatterInvalid(Path("/n.md"), ValueError("bad")))
+        assert resp["error"]["code"] == CAT_A["E_FRONTMATTER_INVALID"] == -32018
+        assert resp["error"]["data"]["seahorse_code"] == "E_FRONTMATTER_INVALID"
+        assert resp["error"]["data"]["component"] == "#3"
+
+    def test_migration_aborted(self) -> None:
+        from seahorse.frontmatter.errors import MigrationError
+
+        resp = _err(MigrationError("boom"))
+        assert resp["error"]["code"] == CAT_A["E_MIGRATION_ABORTED"] == -32019
+        assert resp["error"]["data"]["component"] == "#3"
+
+    def test_x_reserved_collision(self) -> None:
+        from pathlib import Path
+
+        from seahorse.frontmatter.errors import XReservedCollision
+
+        resp = _err(XReservedCollision(Path("/n.md"), "x-valid-at"))
+        assert resp["error"]["code"] == CAT_A["E_X_RESERVED_COLLISION"] == -32020
+        assert resp["error"]["data"]["component"] == "#3"
+
+    def test_subject_empty(self) -> None:
+        from pathlib import Path
+
+        from seahorse.frontmatter.errors import SubjectEmpty
+
+        resp = _err(SubjectEmpty(Path("/n.md")))
+        assert resp["error"]["code"] == CAT_A["E_SUBJECT_EMPTY"] == -32021
+        assert resp["error"]["data"]["component"] == "#3"
+
+
 class TestCatB:
     """Propagated exceptions without a stable code → exception_class, no synthetic code."""
 

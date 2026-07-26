@@ -29,6 +29,7 @@ from typing import Any
 from seahorse.cli.exit_codes import (
     CLI_CONFIG_INVALID,
     CLI_NOT_IN_MVP_0,
+    CLI_REBUILD_CONFLICTS,
     CLI_VAULT_NOT_FOUND,
     EXIT_USAGE,
 )
@@ -116,10 +117,38 @@ class CliUsageError(CliError):
         )
 
 
+class CliRebuildConflicts(CliError):
+    """``seahorse index rebuild`` found conflicts — ADR-10 honesty (commit 5).
+
+    The rebuild pre-pass detects conflicting facts (duplicate vigent ``fact_id``
+    or duplicate ``ep_id``) and refuses to auto-pick a winner. Instead it reports
+    the conflict list (via ``info()["conflicts"]``) and fails loud at exit 75 so a
+    human decides. No silent no-op, no silent drop (ADR-10).
+
+    ``count`` is the number of skipped/conflicting facts; the structured payload
+    carries the human-readable conflict summary so ``--json`` consumers can list
+    them without re-running the rebuild.
+    """
+
+    def __init__(self, count: int) -> None:
+        self.count = count
+        super().__init__(
+            exit_code=CLI_REBUILD_CONFLICTS,
+            name="CLI_REBUILD_CONFLICTS",
+            detail=f"index rebuild stopped: {count} conflicting fact(s) require human resolution",
+        )
+
+    def info(self) -> dict[str, Any]:
+        payload = super().info()
+        payload["conflicts"] = self.count
+        return payload
+
+
 __all__ = [
     "CliError",
     "CliNotInMVP0",
     "CliVaultNotFound",
     "CliConfigInvalid",
     "CliUsageError",
+    "CliRebuildConflicts",
 ]

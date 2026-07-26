@@ -82,7 +82,20 @@ _CAT_A_ENGINE = {
     "E_MONOTONICITY_VIOLATED": -32017,
 }
 
-CAT_A: dict[str, int] = {**_CAT_A_FACADE, **_CAT_A_ENGINE}
+# Frontmatter codes (4) — owned by #3 (commit 5), mirrored in the CLI sister
+# projection (cli/exit_codes.py) as exit codes 90–93. ``#13`` does not currently
+# surface frontmatter errors (the MCP tools do not call the frontmatter codec),
+# but the codes are mirrored here so the two sister projections share a single
+# point of change — a future MCP surface that surfaces a frontmatter error
+# already has a stable ``-32xxx`` code.
+_CAT_A_FRONTMATTER = {
+    "E_FRONTMATTER_INVALID": -32018,
+    "E_MIGRATION_ABORTED": -32019,
+    "E_X_RESERVED_COLLISION": -32020,
+    "E_SUBJECT_EMPTY": -32021,
+}
+
+CAT_A: dict[str, int] = {**_CAT_A_FACADE, **_CAT_A_ENGINE, **_CAT_A_FRONTMATTER}
 
 # ---------------------------------------------------------------------------
 # Cat B — exception_class → JSON-RPC code (no stable code).
@@ -120,6 +133,11 @@ _ORIGIN_BY_CLASS = {
     "InvalidationConflictError": "#2",
     # storage → #6
     "IntegrityError": "#6",
+    # frontmatter (#3, commit 5)
+    "FrontmatterInvalid": "#3",
+    "MigrationError": "#3",
+    "XReservedCollision": "#3",
+    "SubjectEmpty": "#3",
 }
 
 
@@ -219,6 +237,11 @@ _MESSAGE_BY_CODE = {
     "E_EXPIRED_AT_NON_NULL": "expired_at non-null",
     "E_CREATED_AT_ENGINE_OWNED": "created_at engine-owned",
     "E_MONOTONICITY_VIOLATED": "Monotonicity violated",
+    # frontmatter (#3, commit 5)
+    "E_FRONTMATTER_INVALID": "Frontmatter invalid",
+    "E_MIGRATION_ABORTED": "Migration aborted",
+    "E_X_RESERVED_COLLISION": "X reserved collision",
+    "E_SUBJECT_EMPTY": "Subject empty",
 }
 
 _MESSAGE_BY_CLASS = {
