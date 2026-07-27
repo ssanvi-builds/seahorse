@@ -276,6 +276,29 @@ def test_message_for_frontmatter_cat_a():
 def test_rebuild_conflicts_message_includes_count():
     exc = CliRebuildConflicts(3)
     code, info = translate(exc)
-    assert code == 75
+    assert code == CLI_REBUILD_CONFLICTS
     assert info["cli_code"] == "CLI_REBUILD_CONFLICTS"
     assert "3" in info["detail"]
+
+
+def test_cli_rebuild_conflicts_distinct_from_not_in_mvp0():
+    """Commit 6 split: ``CLI_REBUILD_CONFLICTS`` no longer overloads 75.
+
+    ``CLI_NOT_IN_MVP_0`` (75) is the honest-stub code for reserved commands
+    (``index verify`` / ``vigentes`` / ``activos-ahora`` / ``expire`` /
+    ``revalidate``). ``CLI_REBUILD_CONFLICTS`` is the ADR-10 honesty code for
+    ``index rebuild`` conflicts — a distinct concern that previously shared 75
+    and was only disambiguated by the symbolic ``cli_code``. Commit 6 splits it
+    onto a fresh 90–99 slot (94) so the two are distinct even on the int exit
+    code. Both stay Cat C (CLI-owned), never Cat A.
+    """
+    assert CLI_REBUILD_CONFLICTS == 94  # fresh slot, pinned for the regression guard
+    assert CLI_NOT_IN_MVP_0 == 75
+    assert CLI_REBUILD_CONFLICTS != CLI_NOT_IN_MVP_0
+    # 94 lives in the 90–99 band (frontmatter Cat A took 90–93; 94 is the next
+    # free CLI-owned slot). It must NOT collide with any Cat A exit.
+    assert 94 not in CAT_A.values()
+    # And the rebuild-conflicts exception still carries the symbolic name.
+    code, info = translate(CliRebuildConflicts(1))
+    assert code == 94
+    assert info["cli_code"] == "CLI_REBUILD_CONFLICTS"

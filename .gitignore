@@ -64,3 +64,8 @@ seahorse.sqlite*
 
 # --- Build outputs ---
 *.log
+
+# --- Claude Code session artifacts ---
+# Workflow scripts persist here per session; they are reproducible from the
+# conversation, not source. Do not commit.
+.claude-workflows/

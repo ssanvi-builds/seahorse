@@ -2,8 +2,8 @@
 
 Orchestrates ``frontmatter.rebuild.rebuild_from_vault`` over the vault's ``.md``
 notes + reports ``RebuildReport`` / ``RebuildConflict``. ADR-10 honesty: conflicts
-→ exit 75 (``CLI_REBUILD_CONFLICTS``); a parse failure → Cat A
-``E_FRONTMATTER_INVALID`` (exit 90).
+→ exit 94 (``CLI_REBUILD_CONFLICTS``, commit 6 split from the 75 overload); a
+parse failure → Cat A ``E_FRONTMATTER_INVALID`` (exit 90).
 """
 
 from __future__ import annotations
@@ -73,11 +73,11 @@ def test_index_rebuild_empty_vault_clean(tmp_path, vault):
     assert obj["skipped"] == 0
 
 
-def test_index_rebuild_conflicts_exit_75(tmp_path, vault):
+def test_index_rebuild_conflicts_exit_94(tmp_path, vault):
     _write_note(vault, "c1", ep_id=_uuid7("01"), title="same-subject")
     _write_note(vault, "c2", ep_id=_uuid7("02"), title="same-subject")
     code, out, err = invoke(["--vault", str(vault), "--json", "index", "rebuild"])
-    assert code == 75, err
+    assert code == 94, err
     # The report is on stdout (operator sees the conflict list)...
     obj = json.loads(out)
     assert obj["indexed"] == 0
@@ -86,14 +86,15 @@ def test_index_rebuild_conflicts_exit_75(tmp_path, vault):
     assert "CLI_REBUILD_CONFLICTS" in err
 
 
-def test_index_rebuild_conflicts_exit_75_not_the_reserved_meaning(tmp_path, vault):
-    # The int 75 is shared with CLI_NOT_IN_MVP_0, but the symbolic cli_code
-    # disambiguates: rebuild conflicts is CLI_REBUILD_CONFLICTS, NOT the
-    # "reserved in MVP-0" message of the stub commands.
+def test_index_rebuild_conflicts_exit_distinct_from_reserved(tmp_path, vault):
+    # Commit 6 split: rebuild conflicts exit 94 is DISTINCT from the reserved-
+    # stub exit 75 (CLI_NOT_IN_MVP_0). Before the split they shared 75 and were
+    # only disambiguated by the symbolic cli_code; now the int itself differs.
     _write_note(vault, "c1", ep_id=_uuid7("01"), title="same-subject")
     _write_note(vault, "c2", ep_id=_uuid7("02"), title="same-subject")
     code, out, err = invoke(["--vault", str(vault), "index", "rebuild"])
-    assert code == 75, err
+    assert code == 94, err
+    assert code != CLI_NOT_IN_MVP_0
     assert "CLI_REBUILD_CONFLICTS" in err
     assert "reserved in MVP-0" not in err
 
@@ -107,11 +108,11 @@ def test_index_rebuild_unparseable_note_is_cat_a_90(tmp_path, vault):
     assert "seahorse_code" in err
 
 
-def test_index_rebuild_quiet_still_exits_75_on_conflicts(tmp_path, vault):
+def test_index_rebuild_quiet_still_exits_94_on_conflicts(tmp_path, vault):
     _write_note(vault, "c1", ep_id=_uuid7("01"), title="same-subject")
     _write_note(vault, "c2", ep_id=_uuid7("02"), title="same-subject")
     code, out, err = invoke(["--vault", str(vault), "--quiet", "index", "rebuild"])
-    assert code == 75, err
+    assert code == 94, err
     # --quiet suppresses stdout (no report), but the error still hits stderr.
     assert out == ""
     assert "CLI_REBUILD_CONFLICTS" in err

@@ -45,18 +45,19 @@ Exit-code layout (64–99, ``sysexits.h`` application band):
   commit 5). The 4 frontmatter codes live in the previously-reserved 90–93 band
   because they are a distinct component origin (#3, not #12/#2) and the 64–81
   band was already full.
-- Cat C (4):  75 ``CLI_NOT_IN_MVP_0``, 82 ``CLI_VAULT_NOT_FOUND``,
-  83 ``CLI_CONFIG_INVALID``, 75 ``CLI_REBUILD_CONFLICTS`` (overloaded — see note).
+- Cat C (4):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty, SO-14-05),
+  82 ``CLI_VAULT_NOT_FOUND``, 83 ``CLI_CONFIG_INVALID``,
+  94 ``CLI_REBUILD_CONFLICTS`` (ADR-10 index-rebuild conflict honesty).
 - Cat B (6):  84–89.
 
-NOTE — 75 overload (commit 5, reconciled for commit 6): ``CLI_NOT_IN_MVP_0`` and
-``CLI_REBUILD_CONFLICTS`` share exit code 75. The two are distinguishable on
-the structured payload (``cli_code`` symbolic name differs) and on stderr
-(``CLI_NOT_IN_MVP_0`` vs ``CLI_REBUILD_CONFLICTS`` header). Commit 6 will split
-``CLI_REBUILD_CONFLICTS`` onto a fresh code in the 90–99 band (frontmatter codes
-took 90–93, so the next free CLI-owned slot is 94) to remove the overload. Both
-are CLI-owned Cat C (never Cat A), so they never collide with the 21-code Cat A
-table.
+NOTE — 75 overload resolved (commit 6): ``CLI_NOT_IN_MVP_0`` and
+``CLI_REBUILD_CONFLICTS`` shared exit code 75 in commit 5 (distinguishable only
+on the structured ``cli_code`` payload, not on the int). Commit 6 split
+``CLI_REBUILD_CONFLICTS`` onto a fresh 90–99 slot (94 — frontmatter Cat A took
+90–93, so 94 is the next free CLI-owned slot) so the two are distinct even on
+the int exit code. Both stay CLI-owned Cat C (never Cat A), so they never
+collide with the 21-code Cat A table; 94 is also outside the Cat A
+64–81 / 90–93 set.
 
 References:
 - f5-14 §3.3 (exit-code table, as-designed — reconciled here against real code)
@@ -137,10 +138,11 @@ CAT_B: dict[str, int] = {
 CLI_NOT_IN_MVP_0 = 75  # SO-14-05: expire/revalidate + unbuilt-dependency stubs
 CLI_VAULT_NOT_FOUND = 82
 CLI_CONFIG_INVALID = 83
-# CLI_REBUILD_CONFLICTS reuses 75 (overloaded — see module docstring; commit 6
-# will split it onto a fresh 90–99 slot). ADR-10 honesty: index rebuild reports
-# conflicts and fails loud rather than auto-picking a winner.
-CLI_REBUILD_CONFLICTS = 75
+# ADR-10 honesty: index rebuild reports conflicts and fails loud (no auto-pick).
+# Commit 6 split this off the 75 overload (shared with CLI_NOT_IN_MVP_0) onto a
+# fresh 90–99 slot so the rebuild-conflict concern is distinct from the
+# reserved-stub 75 even on the int exit code. Both stay Cat C (never Cat A).
+CLI_REBUILD_CONFLICTS = 94
 
 # ---------------------------------------------------------------------------
 # Component-of-origin attribution for stderr ``component:`` (parity with #13).

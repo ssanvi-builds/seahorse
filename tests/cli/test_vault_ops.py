@@ -2,7 +2,8 @@
 
 Unit-level: calls ``run_migrate`` / ``run_inspect`` / ``run_index_rebuild``
 directly with a resolved ``SeahorseConfig`` and a ``StringIO`` sink, asserting
-the rendered payload + the ADR-10 honesty contract (conflicts → exit 75, parse
+the rendered payload + the ADR-10 honesty contract (conflicts → exit 94
+``CLI_REBUILD_CONFLICTS``, commit 6 split from the 75 overload; parse
 failure → ``FrontmatterInvalid`` → Cat A). The invoke-harness end-to-end tests
 (exit codes, ``--json``, stderr) live in ``test_migrate_cli.py`` /
 ``test_inspect_cli.py`` / ``test_index_rebuild_cli.py``.
@@ -224,16 +225,18 @@ def test_index_rebuild_empty_vault_is_clean_zero(tmp_path):
     assert obj["skipped"] == 0
 
 
-def test_index_rebuild_conflicts_raise_cli_rebuild_conflicts_exit_75(tmp_path):
+def test_index_rebuild_conflicts_raise_cli_rebuild_conflicts_exit_94(tmp_path):
     # two vigent notes with the same title -> duplicate vigent fact_id -> the
-    # whole group is skipped + reported (ADR-10: NO auto-pick). Exit 75.
+    # whole group is skipped + reported (ADR-10: NO auto-pick). Exit 94
+    # (CLI_REBUILD_CONFLICTS — commit 6 split it off the 75 overload so the
+    # rebuild-conflict concern is distinct from the reserved-stub 75).
     v, cfg = _config(tmp_path)
     _write_note(v, "c1", ep_id=_uuid7("01"), title="same-subject")
     _write_note(v, "c2", ep_id=_uuid7("02"), title="same-subject")
     o = _out()
     with pytest.raises(CliRebuildConflicts) as exc_info:
         run_index_rebuild(cfg, fmt="json", out=o)
-    assert exc_info.value.exit_code == 75
+    assert exc_info.value.exit_code == 94
     # the report is rendered to stdout BEFORE the error is raised, so the
     # operator sees the conflict list.
     obj = json.loads(o.getvalue())

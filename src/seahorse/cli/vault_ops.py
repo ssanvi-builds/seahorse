@@ -19,7 +19,7 @@ The three management commands whose dependencies ARE built in MVP-0:
   via ``frontmatter.rebuild.rebuild_from_vault`` (commit 4). ADR-10 honesty: the
   rebuild pre-pass detects conflicting facts (duplicate vigent ``fact_id`` /
   duplicate ``ep_id``) and refuses to auto-pick a winner. The report is rendered
-  to stdout FIRST, then ``CliRebuildConflicts`` is raised (exit 75) so the
+  to stdout FIRST, then ``CliRebuildConflicts`` is raised (exit 94) so the
   operator sees the conflict list AND the error. A parse failure surfaces as
   ``FrontmatterInvalid`` (Cat A exit 90) — never a silent skip.
 
@@ -150,7 +150,7 @@ def run_index_rebuild(
     Delegates to ``frontmatter.rebuild.rebuild_from_vault`` (commit 4) over the
     real ``Storage`` sidecar. The report is rendered to stdout BEFORE any error
     is raised so the operator sees the conflict list. ADR-10: a non-empty
-    ``skipped`` raises ``CliRebuildConflicts`` (exit 75) — NO auto-pick. A parse
+    ``skipped`` raises ``CliRebuildConflicts`` (exit 94) — NO auto-pick. A parse
     failure surfaces as ``FrontmatterInvalid`` (Cat A exit 90) — NO silent skip.
     """
     # Lazy import: frontmatter.rebuild transitively pulls ruamel (via

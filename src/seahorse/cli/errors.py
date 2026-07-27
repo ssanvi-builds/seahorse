@@ -122,7 +122,7 @@ class CliRebuildConflicts(CliError):
 
     The rebuild pre-pass detects conflicting facts (duplicate vigent ``fact_id``
     or duplicate ``ep_id``) and refuses to auto-pick a winner. Instead it reports
-    the conflict list (via ``info()["conflicts"]``) and fails loud at exit 75 so a
+    the conflict list (via ``info()["conflicts"]``) and fails loud at exit 94 so a
     human decides. No silent no-op, no silent drop (ADR-10).
 
     ``count`` is the number of skipped/conflicting facts; the structured payload
