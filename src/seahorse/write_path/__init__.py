@@ -19,6 +19,11 @@ from seahorse.write_path.decide import (
     PathDecision,
     decide_path,
 )
+from seahorse.write_path.extract import (
+    ExtractedCandidate,
+    SubjectDerivationError,
+    deterministic_extract,
+)
 from seahorse.write_path.stub import StubWritePath, _degrade_to_skip, run_skip_path
 
 
@@ -46,7 +51,10 @@ __all__ = [
     "PathDecision",
     "Path",
     "InvalidExtractionMode",
+    "ExtractedCandidate",
+    "SubjectDerivationError",
     "decide_path",
+    "deterministic_extract",
     "run_skip_path",
     "_degrade_to_skip",
 ]

@@ -26,7 +26,10 @@ from pathlib import Path
 
 # First ATX H1 heading: a line starting with a single '#' then content.
 # Non-greedy to the line end so trailing whitespace is trimmed by the capture.
-_H1_RE = re.compile(r"(?m)^#\s+(.+?)\s*$")
+# Use [ \t] (NOT \s) so the separator/trailing classes cannot consume a newline —
+# otherwise a bare '#' or '# ' line followed by prose matches the prose as the H1
+# content (Python \s includes '\n'), silently producing a wrong subject/fact_id.
+_H1_RE = re.compile(r"(?m)^#[ \t]+(.+?)[ \t]*$")
 
 
 def normalize_subject(raw: str) -> str:
