@@ -1,12 +1,12 @@
 """Tests for #5 ``StubWritePath`` — the MVP-0 write path (SO-5b).
 
-MVP-0 materializes the skip-path for real (it is not dead code — it is the
-production skip path). The ``llm`` path degrades to skip with
-``reason='llm_not_implemented_mvp0'`` (the LLM path is MVP-1). ``run_skip_path``
-constructs the effective provenance (``extraction_mode='skip'``,
-``model_used=None``, ``prompt_hash=None``) and delegates to ``engine.remember``
-— it does NOT replicate engine invariants (no gate, no deterministic_extract;
-those are MVP-1).
+MVP-0 materializes the skip-path for real (it is the production skip path).
+The ``llm`` path degrades to skip with ``reason='llm_not_implemented_mvp0'``
+(the LLM path is MVP-1). ``run_skip_path`` is first-class: it runs the engine
+``is_valid_skip_path`` gate, falls back to ``deterministic_extract`` when the
+gate rejects, and owns ``confidence`` (1.0 gate-valid, None fallback).
+Gate-branch coverage lives in ``test_skip.py``; this file pins the provenance
+shape and the degrade/ingest wiring.
 """
 
 from __future__ import annotations
@@ -39,6 +39,16 @@ class TestRunSkipPath:
         assert by["model_used"] is None
         assert by["prompt_hash"] is None
 
+    def test_effective_provenance_has_four_added_keys(self, engine) -> None:
+        # First-class #5: confidence joins the 3 MVP-0 keys (spec sec 11.5).
+        p = _payload({"source_type": "agent", "agent_id": "a1"})
+        run_skip_path(p, decide_path(p, "skip"), engine)
+        by = engine.last_call.by
+        assert by["extraction_mode"] == "skip"
+        assert by["model_used"] is None
+        assert by["prompt_hash"] is None
+        assert by["confidence"] == 1.0
+
     def test_preserves_caller_provenance(self, engine) -> None:
         p = _payload({"source_type": "agent", "agent_id": "a1", "session_id": "s1"})
         run_skip_path(p, decide_path(p, "skip"), engine)
@@ -65,12 +75,12 @@ class TestRunSkipPath:
         engine._result = result
         assert run_skip_path(p, decide_path(p, "skip"), engine) is result
 
-    def test_does_not_overwrite_caller_confidence(self, engine) -> None:
-        # run_skip_path only sets extraction_mode/model_used/prompt_hash; it does
-        # NOT touch confidence — the caller's value (if any) passes through.
+    def test_overwrites_caller_confidence_with_1_when_gate_valid(self, engine) -> None:
+        # First-class #5: #5 owns confidence (spec sec 11.5) and OVERWRITES the
+        # caller's value — 1.0 when the gate is valid (use-as-is), None on fallback.
         p = _payload({"source_type": "agent", "confidence": 0.42})
         run_skip_path(p, decide_path(p, "skip"), engine)
-        assert engine.last_call.by["confidence"] == 0.42
+        assert engine.last_call.by["confidence"] == 1.0
 
 
 class TestDegradeToSkip:
