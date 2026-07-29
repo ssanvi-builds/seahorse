@@ -31,14 +31,20 @@ from tests.cli.builders import RecordingFacade  # noqa: F401  (re-exported)
 
 
 def invoke(argv: list[str]) -> tuple[int, str, str]:
-    """Run ``main(argv)`` with captured streams; return ``(code, out, err)``."""
+    """Run ``main(argv)`` with captured streams; return ``(code, out, err)``.
+
+    ``stdin`` is swapped to an empty stream (immediate EOF) so a command that
+    reads stdin — notably ``seahorse mcp`` — ends the read loop instead of
+    blocking the test process forever. Only stdout/stderr are captured for
+    assertions; stdin is never asserted on through this harness.
+    """
     out, err = io.StringIO(), io.StringIO()
-    so, se = sys.stdout, sys.stderr
-    sys.stdout, sys.stderr = out, err
+    so, se, si = sys.stdout, sys.stderr, sys.stdin
+    sys.stdout, sys.stderr, sys.stdin = out, err, io.StringIO("")
     try:
         code = main(list(argv))
     finally:
-        sys.stdout, sys.stderr = so, se
+        sys.stdout, sys.stderr, sys.stdin = so, se, si
     return code, out.getvalue(), err.getvalue()
 
 

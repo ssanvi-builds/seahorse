@@ -341,6 +341,22 @@ def revalidate(
     run_expire_revalidate("revalidate")
 
 
+@app.command()
+def mcp(ctx: typer.Context) -> None:
+    """Run the stdio MCP server (io.seahorse.memory/v1) for this vault.
+
+    The agent surface: newline-delimited JSON-RPC 2.0 over stdin/stdout. Shares
+    the vault/db resolution + storage lifecycle of every other command (the
+    facade comes from ``ctx.obj.facade()`` and is closed by ``main()``'s
+    ``finally``). Writes JSON-RPC directly to ``sys.stdout`` regardless of
+    ``--quiet`` (the protocol owns stdout). Mirrors the ``seahorse-mcp`` console
+    script and ``python -m seahorse.mcp`` — same ``serve``, same profile.
+    """
+    from seahorse.mcp.profile import serve
+
+    serve(ctx.obj.facade(), stdin=sys.stdin, stdout=sys.stdout)
+
+
 # ---------------------------------------------------------------------------
 # Management commands.
 # ---------------------------------------------------------------------------

@@ -38,6 +38,7 @@ dependencies = [
 
 [project.scripts]
 seahorse = "seahorse.cli.app:main"
+seahorse-mcp = "seahorse.mcp.profile:main"
 
 [project.optional-dependencies]
 dev = [
