@@ -11,9 +11,11 @@ Ownership:
 - freshness_of          -> #2 pure derivation (contracts.engine); shared with #8
 - IndexRowData, PITKind  -> #8 / #10 (contracts.index)
 - FusedCandidate         -> #11, materialized by #8 (contracts.retrieval)
+- QueryEmbedder          -> #11, materialized by #7 (contracts.embeddings)
 - 9 repository Protocols -> #6 (contracts.persistence)
 """
 
+from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.contracts.engine import (
     AuditEvent,
     EpisodeRepository,
@@ -67,6 +69,7 @@ __all__ = [
     "NotFound",
     "PITKind",
     "ParsedNote",
+    "QueryEmbedder",
     "RebuildConflict",
     "RebuildReport",
     "ReindexJob",
