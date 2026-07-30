@@ -4,6 +4,12 @@ Asserts: every method raises ``NotImplementedError``; the stub satisfies its
 signed Protocol structurally; the ``inspect.signature`` of each stub method
 matches the contract's; and ``vec_episodes`` / ``episode_fts`` are NOT created
 by the MVP-0 migrations (only the lateral ``vec_episodes_meta`` is).
+
+C8.5: the ``mvp1_axis`` marker (SO-1 safeguard 2) keeps the whole file visible
+to the runner without gating the MVP-0 green suite — every test here flips en
+masse when #6 materializes the real sqlite-vec + FTS5 backends (the
+NotImplementedError raises become real behavior; the migration-not-create
+assertion flips when migration 010 lands the vec0 / FTS5 tables).
 """
 
 from __future__ import annotations
@@ -22,6 +28,8 @@ from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.vector_index import SqliteVectorIndexRepository
+
+pytestmark = pytest.mark.mvp1_axis
 
 
 @pytest.fixture()

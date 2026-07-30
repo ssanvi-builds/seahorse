@@ -13,6 +13,16 @@ is broken: importing the facade/MCP never touches ``vector_index`` /
 ``fts_index`` until someone actually accesses ``Storage.vector`` /
 ``Storage.fts``.
 
+C8.5 extends the same subprocess pattern to the CORE confinement invariants:
+importing ``seahorse.engine`` / ``seahorse.facade`` / ``seahorse.contracts``
+must NOT load the confined / out-of-layer deps — ``ruamel`` /
+``python-frontmatter`` (confined to ``seahorse/frontmatter/``), ``typer``
+(CLI-only), and ``numpy`` / ``sqlite_vec`` (MVP-1). Pydantic is a declared core
+dependency (the canonical ``Episode`` model) and is intentionally NOT in the
+forbidden set. These guards pin the layer boundaries so a future import that
+crosses them fails loud rather than silently coupling the core to a
+frontmatter/CLI/MVP-1 dep.
+
 These guards run in a fresh subprocess so the assertion sees a clean
 ``sys.modules`` (the test process itself has the persistence layer loaded by
 other tests). Mirrors the ruamel-confinement guard in
@@ -32,6 +42,11 @@ _LAZY_MODULES = (
     "seahorse.persistence.fts_index",
 )
 _HEAVY_DEPS = ("numpy", "sqlite_vec")
+
+# C8.5: deps confined to a specific layer that the CORE (engine/facade/
+# contracts) must never pull at import. ``frontmatter`` is the top-level
+# ``python-frontmatter`` package (distinct from ``seahorse.frontmatter``).
+_CORE_FORBIDDEN = ("ruamel", "frontmatter", "typer", "numpy", "sqlite_vec")
 
 
 def _run(script: str) -> subprocess.CompletedProcess[str]:
@@ -58,6 +73,16 @@ def _not_loaded_script(import_target: str, label: str) -> str:
         f"leaked_heavy = sorted(d for d in ('{heavy_repr}',) if d in sys.modules); "
         f"assert not leaked_lazy, f'{label} loaded lazy MVP-1 repos: {{leaked_lazy}}'; "
         f"assert not leaked_heavy, f'{label} loaded heavy deps: {{leaked_heavy}}'; "
+        "print('ok')"
+    )
+
+
+def _core_not_loaded_script(import_target: str, label: str) -> str:
+    forbidden_repr = "', '".join(_CORE_FORBIDDEN)
+    return (
+        f"import {import_target}, sys; "
+        f"leaked = sorted(d for d in ('{forbidden_repr}',) if d in sys.modules); "
+        f"assert not leaked, f'{label} loaded confined/out-of-layer deps: {{leaked}}'; "
         "print('ok')"
     )
 
@@ -99,3 +124,29 @@ def test_storage_vector_access_loads_mvp1_repo() -> None:
         "print('ok')"
     )
     _assert_ok(_run(script), "Storage.vector / .fts access")
+
+
+# ---------------------------------------------------------------------------
+# C8.5 — CORE layer-confinement guards (engine / facade / contracts).
+# ---------------------------------------------------------------------------
+
+
+def test_import_engine_does_not_load_confined_deps() -> None:
+    _assert_ok(
+        _run(_core_not_loaded_script("seahorse.engine", "engine import")),
+        "import seahorse.engine",
+    )
+
+
+def test_import_facade_does_not_load_confined_deps() -> None:
+    _assert_ok(
+        _run(_core_not_loaded_script("seahorse.facade", "facade import")),
+        "import seahorse.facade",
+    )
+
+
+def test_import_contracts_does_not_load_confined_deps() -> None:
+    _assert_ok(
+        _run(_core_not_loaded_script("seahorse.contracts", "contracts import")),
+        "import seahorse.contracts",
+    )

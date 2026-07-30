@@ -3,6 +3,10 @@
 Both primitives are MVP-mediano / MVP-1 and are refused at the facade border
 with ``E_NOT_IN_MVP_0_1`` BEFORE the engine is touched. This keeps the contract
 honest (ADR-10): no silent degradation, no half-implemented primitive.
+
+C8.5: the ``mvp1_axis`` marker (SO-1 safeguard 2) keeps these MVP-1 stubs
+visible to the runner without gating the MVP-0 green suite — they flip en masse
+when the expire/revalidate primitives materialize.
 """
 
 from __future__ import annotations
@@ -10,6 +14,8 @@ from __future__ import annotations
 import pytest
 
 from seahorse.facade.errors import E_NOT_IN_MVP_0_1, SeahorseError
+
+pytestmark = pytest.mark.mvp1_axis
 
 
 class TestExpireStub:

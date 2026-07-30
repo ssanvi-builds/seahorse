@@ -239,54 +239,44 @@ class TestCatADriftGuard:
     ``engine/errors.py`` but not to ``CAT_A`` would silently fall through
     ``translate`` to the generic -32603 fallback (losing the stable
     ``seahorse_code``). The guard fails loud until CAT_A is updated.
+
+    C8.5: the check is INTROSPECTIVE — it iterates ``vars(module)`` filtered to
+    ``E_*``-prefixed ``str`` constants, so a newly added code cannot slip past
+    the hand-enumerated list the old guard maintained (the previous guard was a
+    hand-typed set that had to be remembered on every code add). ``E_NOT_IN_MVP_0``
+    lives in ``engine.errors`` but is also raised by the facade composition-root
+    stub (``facade/stub_embedder.py``); the engine scan catches it, so the
+    cross-component code stays covered without a facade re-declaration.
     """
 
-    def test_cat_a_covers_all_facade_codes(self) -> None:
-        from seahorse.facade.errors import (
-            E_EMPTY_BODY,
-            E_EMPTY_QUERY,
-            E_INVALID_EXTRACTION_MODE,
-            E_INVALID_PIT_KIND,
-            E_MISSING_SOURCE_TYPE,
-            E_NOT_IN_MVP_0_1,
-            E_PIT_RECALL_MVP_0,
-            E_PIT_REQUIRES_T,
-        )
+    @staticmethod
+    def _codes(module: object) -> set[str]:
+        """All ``E_*``-prefixed ``str`` constants defined in ``module``.
 
-        facade_codes = {
-            E_EMPTY_BODY,
-            E_MISSING_SOURCE_TYPE,
-            E_INVALID_EXTRACTION_MODE,
-            E_EMPTY_QUERY,
-            E_INVALID_PIT_KIND,
-            E_PIT_REQUIRES_T,
-            E_NOT_IN_MVP_0_1,
-            E_PIT_RECALL_MVP_0,
+        ``vars()`` includes re-imported names too, but both error modules only
+        define their own codes (no cross-module ``E_*`` re-exports), so the
+        filter is exact per module.
+        """
+        return {
+            value
+            for name, value in vars(module).items()
+            if name.startswith("E_") and isinstance(value, str)
         }
-        assert set(CAT_A) >= facade_codes
+
+    def test_cat_a_covers_all_facade_codes(self) -> None:
+        import seahorse.facade.errors as facade_errors
+
+        facade_codes = self._codes(facade_errors)
+        assert facade_codes, "facade error module exposed no E_* codes"
+        assert set(CAT_A) >= facade_codes, (
+            f"facade codes missing from CAT_A: {facade_codes - set(CAT_A)}"
+        )
 
     def test_cat_a_covers_all_engine_codes(self) -> None:
-        from seahorse.engine.errors import (
-            E_COLLISION_EXISTS,
-            E_CREATED_AT_ENGINE_OWNED,
-            E_DANGLING_SUPERSEDES,
-            E_EXPIRED_AT_NON_NULL,
-            E_MONOTONICITY_VIOLATED,
-            E_NOT_IN_MVP_0,
-            E_PENDING_CANNOT_INVALIDATE,
-            E_SKIP_CONTRACT_VIOLATED,
-            E_VALID_AT_HUMAN_ONLY,
-        )
+        import seahorse.engine.errors as engine_errors
 
-        engine_codes = {
-            E_COLLISION_EXISTS,
-            E_PENDING_CANNOT_INVALIDATE,
-            E_DANGLING_SUPERSEDES,
-            E_VALID_AT_HUMAN_ONLY,
-            E_SKIP_CONTRACT_VIOLATED,
-            E_NOT_IN_MVP_0,
-            E_EXPIRED_AT_NON_NULL,
-            E_CREATED_AT_ENGINE_OWNED,
-            E_MONOTONICITY_VIOLATED,
-        }
-        assert set(CAT_A) >= engine_codes
+        engine_codes = self._codes(engine_errors)
+        assert engine_codes, "engine error module exposed no E_* codes"
+        assert set(CAT_A) >= engine_codes, (
+            f"engine codes missing from CAT_A: {engine_codes - set(CAT_A)}"
+        )
