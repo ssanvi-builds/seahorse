@@ -4,10 +4,33 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
+from seahorse.contracts.embeddings import QueryEmbedder
+from seahorse.engine.errors import E_NOT_IN_MVP_0
 from seahorse.facade import build_facade
+from seahorse.facade.errors import SeahorseError
 from seahorse.facade.facade import MemoryFacade
+from seahorse.facade.stub_embedder import StubQueryEmbedder
 from seahorse.facade.types import RememberPayload
 from seahorse.persistence.storage import Storage
+
+
+class _RecordingEmbedder:
+    """``QueryEmbedder`` double that records calls (C8.4 seam tests)."""
+
+    embedding_dim: int = 8
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def embed_query(self, query: str) -> list[float]:
+        self.calls.append(query)
+        return [0.0] * self.embedding_dim
+
+    def embed_queries(self, texts) -> list[list[float]]:  # type: ignore[no-untyped-def]
+        self.calls.extend(texts)
+        return [[0.0] * self.embedding_dim for _ in texts]
 
 
 def _advancing_clock(start: datetime, step: timedelta):
@@ -95,5 +118,56 @@ class TestBuildFacade:
         facade, storage = build_facade(tmp_path / "f.db", config=config)
         try:
             assert facade._config is config
+        finally:
+            storage.close()
+
+
+class TestEmbedderSlot:
+    """C8.4 — ``build_facade`` gains an ``embedder`` slot (composition-root seam).
+
+    MVP-0 recall is the vigente listing (``VigenteListingRetriever``) and never
+    embeds; the slot defaults to ``StubQueryEmbedder`` so the seam EXISTS at the
+    composition root (single-point swap when #7 lands), NOT so it runs. Invoking
+    the default stub raises ``E_NOT_IN_MVP_0`` (the skip-path guard). #7 is NOT
+    wired here — the slot is the point.
+    """
+
+    def test_default_wires_stub_embedder(self, tmp_path) -> None:
+        facade, storage = build_facade(tmp_path / "f.db")
+        try:
+            assert isinstance(facade._embedder, StubQueryEmbedder)
+            assert isinstance(facade._embedder, QueryEmbedder)
+        finally:
+            storage.close()
+
+    def test_accepts_custom_embedder(self, tmp_path) -> None:
+        embedder = _RecordingEmbedder()
+        facade, storage = build_facade(tmp_path / "f.db", embedder=embedder)
+        try:
+            assert facade._embedder is embedder
+            assert isinstance(facade._embedder, QueryEmbedder)
+        finally:
+            storage.close()
+
+    def test_default_stub_raises_not_in_mvp_0_if_invoked(self, tmp_path) -> None:
+        facade, storage = build_facade(tmp_path / "f.db")
+        try:
+            with pytest.raises(SeahorseError) as excinfo:
+                facade._embedder.embed_query("x")
+            assert excinfo.value.code == E_NOT_IN_MVP_0
+        finally:
+            storage.close()
+
+    def test_recall_does_not_invoke_embedder_in_mvp0(self, tmp_path) -> None:
+        # The MVP-0 vigente-listing recall ignores the query for ranking, so the
+        # embedder slot is NEVER consulted. This pins "no cablea #7": the seam is
+        # present but inert. MVP-1 swaps the retriever to the hybrid adapter that
+        # DOES call it (single-point change at this composition root).
+        embedder = _RecordingEmbedder()
+        facade, storage = build_facade(tmp_path / "f.db", embedder=embedder)
+        try:
+            facade.remember(RememberPayload(body="Sergio lives in Madrid", by=_agent_by()))
+            facade.recall("madrid")
+            assert embedder.calls == []
         finally:
             storage.close()

@@ -92,7 +92,14 @@ def _row(
 
 
 class FakeQueryEmbedder:
-    """``QueryEmbedder`` double. Records the query; returns a sentinel vector."""
+    """``QueryEmbedder`` double. Records the query; returns a sentinel vector.
+
+    C8.4 widened the Protocol (``embedding_dim`` + ``embed_queries``); the fake
+    carries both so it stays structurally conformant. #11's hot path only calls
+    ``embed_query``; ``embed_queries`` records for parity/forward-compat tests.
+    """
+
+    embedding_dim: int = 0  # sentinel — #11 never inspects the opaque vector
 
     def __init__(self, vec: Any = "VEC") -> None:
         self.calls: list[str] = []
@@ -101,6 +108,10 @@ class FakeQueryEmbedder:
     def embed_query(self, query: str) -> Any:
         self.calls.append(query)
         return self.vec
+
+    def embed_queries(self, texts: Sequence[str]) -> Any:
+        self.calls.extend(texts)
+        return [self.vec for _ in texts]
 
 
 class FakeVectorRepo:

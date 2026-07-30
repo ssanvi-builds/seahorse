@@ -21,6 +21,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.disclosure.shaper import DisclosureShaperImpl
 from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
@@ -40,6 +41,7 @@ def build_facade(
     clock: Callable[[], datetime] | None = None,
     config: FacadeConfig | None = None,
     storage: Storage | None = None,
+    embedder: QueryEmbedder | None = None,
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real MVP-0 ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
 
@@ -52,6 +54,11 @@ def build_facade(
     ``VigenteListingRetriever`` (vigente listing, no ranking/PIT). MVP-1 swaps in
     the hybrid adapter over ``seahorse.retrieval.recall`` here — a single-point
     change. The same ``clock`` drives the engine, retriever, and facade (ADR-10).
+
+    The ``embedder`` slot (C8.4 seam) defaults to ``StubQueryEmbedder``: the seam
+    EXISTS at the composition root (single-point swap when #7 lands), but MVP-0
+    recall never embeds, so the stub is inert. Invoking it raises
+    ``E_NOT_IN_MVP_0`` (fail-loud guard). MVP-1 passes the real #7 adapter here.
     """
     own_storage = storage if storage is not None else Storage(db_path)
     engine = BiTemporalEngine(repo=own_storage.episodes, audit=own_storage.audit)
@@ -69,6 +76,7 @@ def build_facade(
         retriever=retriever,
         clock=clk,
         config=cfg,
+        embedder=embedder,
     )
     return facade, own_storage
 

@@ -33,6 +33,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast, runtime_checkable
 
+from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.contracts.engine import (
     AuditEvent,
     Episode,
@@ -59,6 +60,7 @@ from seahorse.facade.errors import (
     PitRecallNotSupportedMVP0,
     SeahorseError,
 )
+from seahorse.facade.stub_embedder import StubQueryEmbedder
 from seahorse.facade.types import (
     ExtractionMode,
     FacadeConfig,
@@ -176,6 +178,7 @@ class MemoryFacade:
         clock: Callable[[], datetime] | None = None,
         config: FacadeConfig | None = None,
         primitive_log: Callable[[str, str], None] | None = None,
+        embedder: QueryEmbedder | None = None,
     ) -> None:
         self._engine = engine
         self._write_path = write_path
@@ -184,6 +187,11 @@ class MemoryFacade:
         self._clock = clock or _default_clock
         self._config = config or FacadeConfig()
         self._log = primitive_log or _default_primitive_log
+        # C8.4: composition-root ``embedder`` slot (MVP-1 #7 seam). MVP-0 recall
+        # is the vigente listing and never embeds, so the slot is inert; the
+        # default stub raises E_NOT_IN_MVP_0 if a non-skip path invokes it. MVP-1
+        # swaps in the real #7 adapter here — a single-point change.
+        self._embedder: QueryEmbedder = embedder if embedder is not None else StubQueryEmbedder()
 
     # ------------------------------------------------------------------ now
 
