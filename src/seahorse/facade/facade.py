@@ -134,6 +134,30 @@ class _EngineLike(Protocol):
     def follow_supersedes_chain(self, ep_id: str) -> list[Episode]: ...
 
 
+@runtime_checkable
+class _RetrieverLike(Protocol):
+    """Recall-policy seam (C8.1): produces ranked ``FusedCandidate`` for #8.
+
+    MVP-0 impl is ``VigenteListingRetriever`` (vigente listing, no ranking/PIT).
+    MVP-1 swaps in an adapter over ``seahorse.retrieval.recall`` (kNN+BM25+RRF)
+    at the composition root — a single-point change. The facade owns boundary
+    validation (empty query, PIT refusal) + the #8 shaper call; the retriever
+    owns listing/filter/truncate + ranking. ``pit`` is always ``None`` in MVP-0
+    (the facade refuses a caller pit before delegating); it is on the surface
+    for forward-compat with the MVP-1 adapter, which uses it.
+    """
+
+    def recall(
+        self,
+        query: str,
+        *,
+        pit: PITPoint | None,
+        k: int,
+        cognitive_type: str | None,
+        subject_filter: str | None,
+    ) -> Sequence[FusedCandidate]: ...
+
+
 class MemoryFacade:
     """The canonical Python API for the memory-native primitives (MVP-0).
 
@@ -148,6 +172,7 @@ class MemoryFacade:
         engine: _EngineLike,
         write_path: _WritePathLike,
         shaper: _ShaperLike,
+        retriever: _RetrieverLike,
         clock: Callable[[], datetime] | None = None,
         config: FacadeConfig | None = None,
         primitive_log: Callable[[str, str], None] | None = None,
@@ -155,6 +180,7 @@ class MemoryFacade:
         self._engine = engine
         self._write_path = write_path
         self._shaper = shaper
+        self._retriever = retriever
         self._clock = clock or _default_clock
         self._config = config or FacadeConfig()
         self._log = primitive_log or _default_primitive_log
@@ -237,35 +263,24 @@ class MemoryFacade:
     ) -> list[IndexRow]:
         """Recall the INDEX level (MVP-0 G2 vigente listing, no ranking, no PIT).
 
-        The ``query`` is validated non-empty but is NOT used for ranking in
-        MVP-0 — the canonical recall is the vigente listing ordered by
-        ``created_at`` desc (``ep_id`` asc tie-break, ADR-10 determinism). PIT
-        recall is the #11 path (MVP-1); it is refused before any read (ADR-03
-        axes never mixed). #12 NEVER constructs ``IndexRow`` — it builds
-        synthetic ``FusedCandidate`` (score=0.0) and delegates to #8.
+        Boundary validation only: ``query`` non-empty, PIT refused before any
+        read (PIT recall is the #11 MVP-1 path; ADR-03 axes never mixed). The
+        ranking/listing policy is delegated to the injected ``Retriever`` (C8.1
+        seam — MVP-0 ``VigenteListingRetriever``, MVP-1 hybrid adapter); the
+        retriever produces ``FusedCandidate`` and #12 forwards pit=None to #8
+        ``materialize_index``. #12 NEVER constructs ``IndexRow``.
         """
         if not query or not query.strip():
             raise EmptyQueryError()
         if pit is not None:
             # Fail loud before any read: PIT recall is MVP-1 (#11 path).
             raise PitRecallNotSupportedMVP0()
-        return self._recall_mvp0(k=k, cognitive_type=cognitive_type, subject_filter=subject_filter)
-
-    def _recall_mvp0(
-        self, *, k: int, cognitive_type: str | None, subject_filter: str | None
-    ) -> list[IndexRow]:
-        eps = self._engine.get_vigente(subject=subject_filter, now=self._clock())
-        if cognitive_type is not None:
-            eps = [e for e in eps if e.cognitive_type == cognitive_type]
-        # Deterministic order (ADR-10): created_at desc, ep_id asc tie-break.
-        # Two stable sorts: first ep_id asc, then created_at desc (stable keeps
-        # ep_id asc for ties).
-        eps = sorted(eps, key=lambda e: e.id)
-        eps = sorted(eps, key=lambda e: e.created_at, reverse=True)
-        k_eff = min(k, self._config.top_k)
-        truncated = eps[:k_eff]
-        candidates = tuple(
-            FusedCandidate(ep_id=e.id, score=0.0, sources=()) for e in truncated
+        candidates = self._retriever.recall(
+            query,
+            pit=None,
+            k=k,
+            cognitive_type=cognitive_type,
+            subject_filter=subject_filter,
         )
         # #12 forwards pit=None to #8 (MVP-0 recall has no PIT axis).
         return self._shaper.materialize_index(candidates, pit=None, now=self._clock())

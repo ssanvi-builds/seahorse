@@ -25,6 +25,7 @@ from seahorse.disclosure.shaper import DisclosureShaperImpl
 from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import FacadeConfig
+from seahorse.facade.vigente_retriever import VigenteListingRetriever
 from seahorse.persistence.storage import Storage
 from seahorse.write_path.stub import StubWritePath
 
@@ -46,6 +47,11 @@ def build_facade(
     done (the server keeps the storage open for the process lifetime; tests
     close it in a fixture teardown). Pass an existing ``storage`` to reuse a
     connection pool — otherwise one is created from ``db_path``.
+
+    The recall regime is wired at this composition root (C8.1 seam): MVP-0 uses
+    ``VigenteListingRetriever`` (vigente listing, no ranking/PIT). MVP-1 swaps in
+    the hybrid adapter over ``seahorse.retrieval.recall`` here — a single-point
+    change. The same ``clock`` drives the engine, retriever, and facade (ADR-10).
     """
     own_storage = storage if storage is not None else Storage(db_path)
     engine = BiTemporalEngine(repo=own_storage.episodes, audit=own_storage.audit)
@@ -53,12 +59,16 @@ def build_facade(
         index_repo=own_storage.episode_index, episode_repo=own_storage.episodes
     )
     write_path = StubWritePath(engine=engine)
+    clk = clock or _default_clock
+    cfg = config or FacadeConfig()
+    retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
     facade = MemoryFacade(
         engine=engine,
         write_path=write_path,
         shaper=shaper,
-        clock=clock or _default_clock,
-        config=config or FacadeConfig(),
+        retriever=retriever,
+        clock=clk,
+        config=cfg,
     )
     return facade, own_storage
 

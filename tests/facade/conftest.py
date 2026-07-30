@@ -242,18 +242,30 @@ def make_facade(
     engine: RecordingEngine | None = None,
     write_path: RecordingWritePath | None = None,
     shaper: RecordingShaper | None = None,
+    retriever: object | None = None,
     clock: Callable[[], datetime] | None = None,
 ):
     from seahorse.facade.facade import MemoryFacade
     from seahorse.facade.types import FacadeConfig
+    from seahorse.facade.vigente_retriever import VigenteListingRetriever
 
     log, log_fn = make_log()
+    eng = engine or RecordingEngine()
+    clk = clock or (lambda: datetime(2026, 7, 16, tzinfo=UTC))
+    config = FacadeConfig()
+    # C8.1: recall policy is delegated to an injected Retriever. When none is
+    # provided, the MVP-0 vigente-listing impl wraps the recording engine so the
+    # pre-C8.1 behavior (engine.get_vigente driven by recall) is preserved.
+    ret = retriever if retriever is not None else VigenteListingRetriever(
+        engine=eng, clock=clk, config=config
+    )
     facade = MemoryFacade(
-        engine=engine or RecordingEngine(),
+        engine=eng,
         write_path=write_path or RecordingWritePath(),
         shaper=shaper or RecordingShaper(),
-        clock=clock or (lambda: datetime(2026, 7, 16, tzinfo=UTC)),
-        config=FacadeConfig(),
+        retriever=ret,
+        clock=clk,
+        config=config,
         primitive_log=log_fn,
     )
     return facade, log

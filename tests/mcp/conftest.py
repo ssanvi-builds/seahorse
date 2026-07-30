@@ -31,6 +31,7 @@ from seahorse.disclosure.types import (
 from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import FacadeConfig
+from seahorse.facade.vigente_retriever import VigenteListingRetriever
 from seahorse.persistence.storage import Storage
 from seahorse.write_path.stub import StubWritePath
 
@@ -64,6 +65,7 @@ def real_facade(tmp_path):
         engine=engine,
         write_path=write_path,
         shaper=shaper,
+        retriever=VigenteListingRetriever(engine=engine, clock=clock, config=FacadeConfig()),
         clock=clock,
         config=FacadeConfig(),
     )
