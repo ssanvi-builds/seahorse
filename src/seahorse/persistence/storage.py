@@ -25,9 +25,9 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from seahorse.persistence.connection import ConnectionManager
-from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.sqlite_audit import SqliteAuditEventRepository
 from seahorse.persistence.sqlite_embeddings_cache import (
@@ -37,7 +37,20 @@ from seahorse.persistence.sqlite_episode_index import SqliteEpisodeIndexReposito
 from seahorse.persistence.sqlite_episode_repo import SqliteEpisodeRepository
 from seahorse.persistence.sqlite_reindex_jobs import SqliteReindexJobRepository
 from seahorse.persistence.sqlite_sidecar import SqliteSidecarIndexRepository
-from seahorse.persistence.vector_index import SqliteVectorIndexRepository
+
+if TYPE_CHECKING:
+    # C8.2: the two MVP-1 concrete repos (vector_index / fts_index) are imported
+    # lazily inside the ``vector`` / ``fts`` property accessors, NOT at module
+    # top. When #6 lands the real sqlite-vec + FTS5 impls, those modules will
+    # ``import sqlite_vec`` (and possibly ``numpy``) at module top; a top-level
+    # import here would cascade into every ``import seahorse.facade`` /
+    # ``import seahorse.mcp`` (factory -> storage) loading the heavy MVP-1 deps
+    # at import time. The type-only import keeps the return-type annotations
+    # precise for static analysis without executing the modules. The runtime
+    # import lives in the property accessors (lazy, on first ``.vector`` /
+    # ``.fts`` access — never in MVP-0 since the stubs are unused).
+    from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
+    from seahorse.persistence.vector_index import SqliteVectorIndexRepository
 
 
 class Storage:
@@ -53,15 +66,18 @@ class Storage:
             # the writer + reader pool do not leak (no caller reference exists).
             self._cm.close()
             raise
-        # build all repositories sharing the one connection manager.
+        # build the MVP-0 repositories sharing the one connection manager. The
+        # two MVP-1 repos (vector / fts) are constructed lazily on first property
+        # access (C8.2) so importing this module does not pull their (future,
+        # heavy) dependencies. They stay None until accessed.
         self._episodes = SqliteEpisodeRepository(self._cm)
         self._episode_index = SqliteEpisodeIndexRepository(self._cm)
         self._audit = SqliteAuditEventRepository(self._cm)
         self._sidecar = SqliteSidecarIndexRepository(self._cm)
         self._embeddings_cache = SqliteEmbeddingsCacheRepository(self._cm)
         self._reindex_jobs = SqliteReindexJobRepository(self._cm)
-        self._vector = SqliteVectorIndexRepository(self._cm)
-        self._fts = SqliteFullTextIndexRepository(self._cm)
+        self._vector: SqliteVectorIndexRepository | None = None
+        self._fts: SqliteFullTextIndexRepository | None = None
 
     # -- the single shared atomic (SO-7a.6) -------------------------------------
 
@@ -98,10 +114,23 @@ class Storage:
 
     @property
     def vector(self) -> SqliteVectorIndexRepository:
+        # C8.2: lazy import + construct. The MVP-1 concrete repo is pulled in
+        # only when a caller actually needs it; ``import seahorse.facade`` /
+        # ``import seahorse.mcp`` never reach here in MVP-0 (the stub is unused
+        # until #6 wires the real vector backend). Cached after first access.
+        if self._vector is None:
+            from seahorse.persistence.vector_index import SqliteVectorIndexRepository
+
+            self._vector = SqliteVectorIndexRepository(self._cm)
         return self._vector
 
     @property
     def fts(self) -> SqliteFullTextIndexRepository:
+        # C8.2: lazy import + construct (see ``vector``).
+        if self._fts is None:
+            from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
+
+            self._fts = SqliteFullTextIndexRepository(self._cm)
         return self._fts
 
     # -- lifecycle -------------------------------------------------------------

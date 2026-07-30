@@ -203,3 +203,38 @@ def test_close_is_idempotent_and_clears_pool(manager: ConnectionManager) -> None
     manager.close()
     # closing again must not raise (writer is None the second time).
     manager.close()
+
+
+# --- C8.2 extension-loading seam (MVP-1 forward-compat) ---------------------
+
+
+def test_extensions_param_defaults_empty(tmp_path) -> None:
+    # MVP-0 default: no extensions requested. The seam is opt-in via the
+    # `extensions` ctor arg so MVP-0 never depends on a vec0 / sqlite-vec binary.
+    mgr = ConnectionManager(tmp_path / "seahorse.db")
+    assert mgr._extensions == ()  # noqa: SLF001 — pin the default
+
+
+def test_extensions_param_accepted(tmp_path) -> None:
+    mgr = ConnectionManager(tmp_path / "seahorse.db", extensions=("vec0",))
+    assert mgr._extensions == ("vec0",)  # noqa: SLF001 — seam carries the name
+
+
+def test_open_without_extensions_never_calls_load_extension(tmp_path, monkeypatch) -> None:
+    # MVP-0 invariant: with extensions=() (the default), open() must NOT touch
+    # the extension-loading seam at all. Guards that MVP-0 never depends on the
+    # Python build having extension loading compiled in, and that the seam stays
+    # dormant until MVP-1 flips the flag. Spy on the instance method (sqlite3
+    # connection types are C-builtins and cannot be monkeypatched at the class
+    # level); a tripwire on `_load_extensions` pins the gate where it lives.
+    calls: list[tuple] = []
+
+    def _tripwire(*args, **kwargs) -> None:
+        calls.append(args)
+        raise AssertionError("_load_extensions must not be called with extensions=()")
+
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=2)
+    monkeypatch.setattr(mgr, "_load_extensions", _tripwire)
+    mgr.open()
+    mgr.close()
+    assert calls == []

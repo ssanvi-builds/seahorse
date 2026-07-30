@@ -30,7 +30,7 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -47,9 +47,25 @@ _PRAGMAS = (
 class ConnectionManager:
     """Owner of the SQLite file: one writer (reentrant RLock) + N read-only readers."""
 
-    def __init__(self, db_path: str | Path, pool_size: int = 4) -> None:
+    def __init__(
+        self,
+        db_path: str | Path,
+        pool_size: int = 4,
+        *,
+        extensions: Sequence[str] = (),
+    ) -> None:
         self._db_path = str(db_path)
         self._pool_size = pool_size
+        # C8.2: MVP-1 forward-compat seam. SQLite loadable extensions (e.g.
+        # ``vec0`` from sqlite-vec) are needed when the vector / FTS5-on-vec
+        # backends land in #6. MVP-0 ships zero runtime deps and the binary is
+        # absent, so the default is empty -> ``_load_extensions`` is never
+        # called and MVP-0 never depends on extension-loading being compiled
+        # into the sqlite3 module. MVP-1 passes ``extensions=("vec0",)`` at the
+        # composition root; ``open()`` then loads each named extension on the
+        # writer AND every reader (kNN runs on the WAL reader pool, so the
+        # extension must be present on each connection that touches vec0 tables).
+        self._extensions = tuple(extensions)
         self._lock = threading.RLock()
         self._depth = 0
         self._writer: sqlite3.Connection | None = None
@@ -65,7 +81,9 @@ class ConnectionManager:
         """Open the writer + the reader pool and apply PRAGMAs to each.
 
         Not idempotent: a second ``open()`` without an intervening ``close()``
-        raises rather than orphaning the first connection set.
+        raises rather than orphaning the first connection set. When
+        ``extensions`` is non-empty, each named extension is loaded on the writer
+        and every reader (C8.2 seam; default empty = no-op, MVP-0 safe).
         """
         with self._lock:
             if self._writer is not None or self._readers:
@@ -74,6 +92,8 @@ class ConnectionManager:
                 self._db_path, isolation_level=None, check_same_thread=False
             )
             self._apply_pragmas(self._writer)
+            if self._extensions:
+                self._load_extensions(self._writer)
             for _ in range(self._pool_size):
                 reader = sqlite3.connect(
                     f"file:{self._db_path}?mode=ro",
@@ -82,6 +102,8 @@ class ConnectionManager:
                     check_same_thread=False,
                 )
                 self._apply_pragmas(reader)
+                if self._extensions:
+                    self._load_extensions(reader)
                 self._readers.append(reader)
                 self._reader_locks.append(threading.Lock())
             self._closed = False
@@ -113,12 +135,32 @@ class ConnectionManager:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
-    # -- pragmas -------------------------------------------------------------
+    # -- pragmas + extensions -----------------------------------------------
 
     def _apply_pragmas(self, conn: sqlite3.Connection) -> None:
         for pragma in _PRAGMAS:
             conn.execute(pragma)
         conn.row_factory = sqlite3.Row
+
+    def _load_extensions(self, conn: sqlite3.Connection) -> None:
+        """Load each named SQLite extension on ``conn`` (C8.2 MVP-1 seam).
+
+        Only called from ``open()`` when ``self._extensions`` is non-empty, so
+        MVP-0 (default empty) never reaches this path. Enables extension
+        loading, loads each name, then re-disables loading so arbitrary SQL
+        cannot ``load_extension`` later. A missing binary or a Python build
+        without extension-loading support raises here — MVP-1 must surface
+        that (MVP-0 is unaffected because it never sets ``extensions``).
+        """
+        conn.enable_load_extension(True)
+        try:
+            for ext in self._extensions:
+                conn.load_extension(ext)
+        finally:
+            # Re-lock extension loading: only the composition root may load
+            # extensions, not arbitrary runtime SQL.
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.enable_load_extension(False)
 
     # -- writer / transaction -------------------------------------------------
 
