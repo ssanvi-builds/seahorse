@@ -9,21 +9,22 @@
 -- Idempotency: SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS and cannot be
 -- made conditional in raw SQL (executescript is non-procedural). The PRIMARY
 -- idempotency mechanism is the migration runner's schema_version row (each NNN
--- runs at most once per DB). The BEGIN/COMMIT wrapper below makes the two ALTERs
--- atomic WITH EACH OTHER: if either fails, neither commits, the runner never
--- inserts version=9, and re-running retries both. (001-008 use
--- CREATE TABLE/INDEX IF NOT EXISTS as defense-in-depth; ALTER cannot, so the
--- runner is the sole guard here — consistent with how 001-008 idempotency truly
--- works, since CREATE...IF NOT EXISTS alone does not insert the version row.)
--- Residual gap (documented, out of commit 4 scope): if both ALTERs commit but the
--- runner's subsequent INSERT INTO schema_version fails, re-running would raise
--- "duplicate column name: supersedes_reason". A full fix wraps the runner itself
--- in a single tx — deferred to a separate hygiene commit.
+-- runs at most once per DB). (001-008 use CREATE TABLE/INDEX IF NOT EXISTS as
+-- defense-in-depth; ALTER cannot, so the runner is the sole guard here —
+-- consistent with how 001-008 idempotency truly works, since CREATE...IF NOT
+-- EXISTS alone does not insert the version row.)
+--
+-- Atomicity (C8.3 #8): the runner wraps EACH migration (DDL + the schema_version
+-- INSERT) in a single BEGIN/COMMIT transaction. This file therefore no longer
+-- carries its own BEGIN/COMMIT (which would nest-fail inside the runner's
+-- transaction): the two ALTERs are atomic WITH EACH OTHER AND with the version
+-- row — if either ALTER or the INSERT fails, nothing commits and re-running
+-- retries the whole migration. This closes the residual gap this header used
+-- to document (DDL commits but the version INSERT fails -> re-run raises
+-- "duplicate column name").
 --
 -- No CHECK: the field is a free TEXT enum string
 -- (contradiction/correction/merge/revalidation/decay); enum enforcement is at
 -- the Pydantic model (SupersedesReason in frontmatter/schema.py), not storage.
-BEGIN;
 ALTER TABLE episodes ADD COLUMN supersedes_reason TEXT;
 ALTER TABLE episode_index ADD COLUMN supersedes_reason TEXT;
-COMMIT;

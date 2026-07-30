@@ -1,13 +1,14 @@
 """Idempotent SQL migration runner for the Seahorse SQLite schema.
 
 Migrations are plain ``.sql`` files in this package, named ``NNN_*.sql`` (zero-padded
-three-digit prefix). They are applied in lexical order. Each migration runs inside
-its own implicit transaction (``executescript`` issues a COMMIT first, then runs
-the script in autocommit); the ``schema_version`` row is inserted immediately after
-a successful run so a half-applied migration leaves no version row.
-
-The schema_version table itself is created here (not a numbered file) so it always
-exists before any migration is recorded.
+three-digit prefix). They are applied in lexical order. Each migration's DDL and
+its ``schema_version`` row commit as ONE transaction (C8.3 #8): the runner wraps
+the migration SQL in ``BEGIN; ... INSERT INTO schema_version ...; COMMIT;`` and
+runs it via a single ``executescript``. If any statement fails, the transaction
+rolls back — no half-applied migration (the gap 009's header documented: DDL that
+commits but a version INSERT that fails, leaving a re-run to raise "duplicate
+column"). The schema_version table itself is created here (not a numbered file)
+so it always exists before any migration is recorded.
 
 MVP-0 scope: only the relational tables + the three SO-7 lateral tables. The
 ``vec0`` virtual table and the FTS5 external-content table are NOT created here
@@ -16,6 +17,7 @@ MVP-0 scope: only the relational tables + the three SO-7 lateral tables. The
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from pathlib import Path
 
@@ -47,6 +49,15 @@ def apply_migrations(conn: sqlite3.Connection, *, up_to: int | None = None) -> i
     database at an older schema version (e.g. ``up_to=8``) and then apply the
     next migration in isolation — exercising the real legacy upgrade path that
     existing deployments hit, rather than only the fresh-DB path.
+
+    C8.3 #8: each migration runs as a single transaction (DDL + version row). The
+    migration SQL is wrapped in ``BEGIN; <sql>; INSERT INTO schema_version ...;
+    COMMIT;`` and executed via one ``executescript`` (which issues a COMMIT first
+    — a no-op with no pending tx — then runs the script). On any statement
+    failure the transaction is left open and is rolled back, so neither the DDL
+    nor the version row persists. ``version`` is a parsed int inlined into the
+    script (executescript takes no parameters); it is never user-supplied, so
+    there is no injection surface.
     """
     conn.executescript(_SCHEMA_VERSION_DDL)
     applied = 0
@@ -59,9 +70,21 @@ def apply_migrations(conn: sqlite3.Connection, *, up_to: int | None = None) -> i
         if already is not None:
             continue
         sql = path.read_text(encoding="utf-8")
-        conn.executescript(sql)
-        conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
-        conn.commit()
+        script = (
+            "BEGIN;\n"
+            f"{sql}\n"
+            f"INSERT INTO schema_version (version) VALUES ({version});\n"
+            "COMMIT;"
+        )
+        try:
+            conn.executescript(script)
+        except BaseException:
+            # The failed statement left the BEGIN transaction open; roll it back
+            # so the DDL does not persist without the version row. Suppress a
+            # "no transaction is active" error (e.g. if the BEGIN itself failed).
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute("ROLLBACK")
+            raise
         applied += 1
     return applied
 

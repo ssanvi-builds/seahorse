@@ -29,6 +29,10 @@ from datetime import datetime
 from seahorse.contracts.engine import InvalidationConflictError, NotFound
 from seahorse.contracts.episode import Episode
 from seahorse.persistence.connection import ConnectionManager
+from seahorse.persistence.episode_index_columns import (
+    EPISODE_INDEX_CORE_COLUMNS,
+    index_insert_sql,
+)
 
 
 def _fmt_dt(dt: datetime | None) -> str | None:
@@ -49,12 +53,11 @@ _EPISODES_INSERT = (
     "created_at, expired_at, supersedes, supersedes_reason, cognitive_type, "
     "source_type, schema_version, provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
-_INDEX_INSERT = (
-    "INSERT INTO episode_index (ep_id, subject, fact_id, valid_at, invalid_at, "
-    "created_at, expired_at, supersedes, supersedes_reason, cognitive_type, "
-    "source_type, schema_version, skip_extraction, title, summary) "
-    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-)
+# C8.3 [36]: the episode_index INSERT column list is derived from the single
+# source in ``episode_index_columns`` (the hot path writes the 15 core columns,
+# leaving file metadata NULL). The VALUES tuple below must stay in
+# EPISODE_INDEX_CORE_COLUMNS order.
+_INDEX_INSERT = index_insert_sql(EPISODE_INDEX_CORE_COLUMNS)
 _SELECT_WITH_INDEX = (
     "SELECT e.*, ix.title AS ix_title, ix.summary AS ix_summary "
     "FROM episodes e LEFT JOIN episode_index ix ON ix.ep_id = e.id"

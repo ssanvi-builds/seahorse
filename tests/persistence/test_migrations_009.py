@@ -8,9 +8,12 @@ column landing and the migration's idempotency model.
 Idempotency note: SQLite ``ALTER TABLE ADD COLUMN`` has no ``IF NOT EXISTS`` and
 cannot be made conditional in raw SQL (``executescript`` is non-procedural). The
 PRIMARY idempotency mechanism is the migration runner's ``schema_version`` row
-(each NNN runs at most once per DB). Migration 009 wraps both ALTERs in a single
-``BEGIN``/``COMMIT`` so the pair is atomic with itself: if either fails, neither
-commits, the runner never inserts ``version=9``, and re-running retries both.
+(each NNN runs at most once per DB). Since C8.3 #8 the runner wraps EACH
+migration (DDL + the ``schema_version`` INSERT) in a single ``BEGIN``/``COMMIT``
+transaction, so 009's two ALTERs are atomic WITH EACH OTHER AND with the version
+row: if either ALTER or the INSERT fails, nothing commits and re-running retries
+the whole migration (009 no longer carries its own ``BEGIN``/``COMMIT``, which
+would nest-fail inside the runner's transaction).
 """
 
 from __future__ import annotations

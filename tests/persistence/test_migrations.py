@@ -187,3 +187,30 @@ def test_fts5_table_not_created(conn: sqlite3.Connection) -> None:
     names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "episode_fts" not in names
     assert "episode_content" not in names
+
+
+# --- C8.3 #8: each migration is a single transaction (DDL + version row) -----
+
+
+def test_migration_ddl_and_version_row_are_atomic_on_failure(tmp_path, monkeypatch) -> None:
+    # #8: the migration DDL and the schema_version INSERT must commit together. If
+    # a migration fails mid-script, the whole migration rolls back — no version
+    # row, no partial DDL (closes the half-applied gap 009's header documented).
+    # Build a temp migrations dir with a marker migration that creates a table
+    # then fails; assert neither the table nor the version row persists.
+    import seahorse.persistence.migrations.migrator as migrator
+
+    monkeypatch.setattr(migrator, "_migrations_dir", lambda: tmp_path)
+    (tmp_path / "001_marker.sql").write_text(
+        "CREATE TABLE marker_tbl (x);\nINSERT INTO no_such_table VALUES (1);",
+        encoding="utf-8",
+    )
+    c = sqlite3.connect(":memory:")
+    with pytest.raises(sqlite3.OperationalError):
+        migrator.apply_migrations(c)
+    # rolled back: no version row recorded, marker table not created.
+    versions = [row[0] for row in c.execute("SELECT version FROM schema_version").fetchall()]
+    assert versions == []
+    tables = {row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "marker_tbl" not in tables
+    c.close()

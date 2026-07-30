@@ -27,23 +27,21 @@ from seahorse.contracts.persistence import (
     RebuildReport,
 )
 from seahorse.persistence.connection import ConnectionManager
+from seahorse.persistence.episode_index_columns import (
+    EPISODE_INDEX_REBUILD_COLUMNS,
+    index_insert_sql,
+)
 
 _PUT_PATH_SQL = (
     "INSERT INTO episode_paths (ep_id, file_path, mtime_ms, size) VALUES (?,?,?,?) "
     "ON CONFLICT(ep_id) DO UPDATE SET file_path=excluded.file_path, "
     "mtime_ms=excluded.mtime_ms, size=excluded.size"
 )
-# Full episode_index column set (003 + 009): includes the denormalized
-# file_path/mtime_ms/size + title/summary + skip_extraction + supersedes_reason.
-# The engine's _INDEX_INSERT leaves file_path/mtime_ms/size NULL (hot path);
-# rebuild owns them (.md is the source of truth).
-_REBUILD_INDEX_INSERT = (
-    "INSERT INTO episode_index ("
-    "ep_id, subject, fact_id, valid_at, invalid_at, created_at, expired_at, "
-    "supersedes, supersedes_reason, cognitive_type, source_type, schema_version, "
-    "skip_extraction, file_path, mtime_ms, size, title, summary"
-    ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-)
+# C8.3 [36]: the rebuild INSERT column list is derived from the single source in
+# ``episode_index_columns`` (all 18 columns — the rebuild owns the file metadata
+# the hot path leaves NULL). The VALUES tuple below must stay in
+# EPISODE_INDEX_REBUILD_COLUMNS order.
+_REBUILD_INDEX_INSERT = index_insert_sql(EPISODE_INDEX_REBUILD_COLUMNS)
 _DELETE_INDEX_SQL = "DELETE FROM episode_index"
 _DELETE_PATHS_SQL = "DELETE FROM episode_paths"
 _DUPLICATE_VIGENT_REASON = "duplicate-vigent-fact_id"
@@ -147,11 +145,11 @@ class SqliteSidecarIndexRepository:
                         ep.source_type,
                         ep.schema_version,
                         _skip_extraction(note),
+                        ep.title,
+                        ep.summary,
                         note.file_path,
                         note.mtime_ms,
                         note.size,
-                        ep.title,
-                        ep.summary,
                     ),
                 )
                 w.execute(_PUT_PATH_SQL, (ep.id, note.file_path, note.mtime_ms, note.size))

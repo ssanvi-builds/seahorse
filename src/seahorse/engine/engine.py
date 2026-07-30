@@ -110,13 +110,42 @@ class BiTemporalEngine:
                 # append cannot slip between them. The I11 partial unique
                 # index is the data-integrity backstop; IntegrityError is
                 # translated to the fail-loud COLLISION result.
+                # CC-1 (C8.3): the audit.append runs INSIDE the same atomic so
+                # the episode write and its AuditEvent commit together — a
+                # failure between them cannot leave a persisted episode with
+                # no audit row (torn audit trail). audit.append opens its own
+                # reentrant cm.atomic() which just bumps the depth counter and
+                # reuses this outer transaction.
                 try:
                     with self._repo.atomic():
                         collisions = self._collision.detect(ep, self._repo)
                         if not collisions:
                             self._repo.append(ep)
+                            self._audit.append(
+                                AuditEvent(
+                                    primitive="apply",
+                                    target_id=ep.id,
+                                    transaction_time=now,
+                                    result="added",
+                                    agent_id=_prov(candidate, "agent_id"),
+                                    session_id=_prov(candidate, "session_id"),
+                                    valid_time=ep.valid_at,
+                                    cognitive_type=ep.cognitive_type,
+                                )
+                            )
                 except sqlite3.IntegrityError:
+                    # I11 concurrent-slip backstop: the partial unique index
+                    # rejected the append. Re-detect to translate to a COLLISION
+                    # result. CC-1 note: the try now also wraps audit.append, so an
+                    # IntegrityError from the audit INSERT (not the I11 index)
+                    # would otherwise be masked as a collision — and the atomic
+                    # would have rolled the episode back, so re-detect finds no
+                    # vigent collision. Re-raise in that case so the real error
+                    # surfaces instead of a bogus ACTIVE result for a rolled-back
+                    # episode (never swallow an error as a collision it isn't).
                     collisions = self._collision.detect(ep, self._repo)
+                    if not collisions:
+                        raise
             if collisions:
                 return WriteResult(
                     ep_id=None,
@@ -124,18 +153,6 @@ class BiTemporalEngine:
                     status=_STATUS_COLLISION,
                     collisions_detected=collisions,
                 )
-            self._audit.append(
-                AuditEvent(
-                    primitive="apply",
-                    target_id=ep.id,
-                    transaction_time=now,
-                    result="added",
-                    agent_id=_prov(candidate, "agent_id"),
-                    session_id=_prov(candidate, "session_id"),
-                    valid_time=ep.valid_at,
-                    cognitive_type=ep.cognitive_type,
-                )
-            )
             status = (
                 _STATUS_PENDING
                 if ep.valid_at is not None and ep.valid_at > now
@@ -231,22 +248,29 @@ class BiTemporalEngine:
             if ep is None:
                 raise NotFound(ep_id)
             self._guards.validate(ep, repo=self._repo, op="forget", now=now)
+            # CC-1 (C8.3): the invalidation and its AuditEvent commit in ONE
+            # transaction. Before C8.3 forget had no atomic block at all — a
+            # crash between set_invalid_at and audit.append left an invalidated
+            # episode with no forget audit row. The reentrant cm.atomic() nests
+            # clean (set_invalid_at + audit.append each open their own, which
+            # just bump the depth counter and reuse this outer transaction).
             # Storage-level idempotency backstop: WHERE invalid_at IS NULL. 0 rows
             # (already invalidated between our get and the update) -> InvalidationConflictError.
-            self._repo.set_invalid_at(ep_id, now)
-            self._audit.append(
-                AuditEvent(
-                    primitive="forget",
-                    target_id=ep_id,
-                    transaction_time=now,
-                    result="invalidated",
-                    agent_id=_dict_str(by, "agent_id"),
-                    session_id=_dict_str(by, "session_id"),
-                    reason=reason,
-                    valid_time=ep.valid_at,
-                    cognitive_type=ep.cognitive_type,
+            with self._repo.atomic():
+                self._repo.set_invalid_at(ep_id, now)
+                self._audit.append(
+                    AuditEvent(
+                        primitive="forget",
+                        target_id=ep_id,
+                        transaction_time=now,
+                        result="invalidated",
+                        agent_id=_dict_str(by, "agent_id"),
+                        session_id=_dict_str(by, "session_id"),
+                        reason=reason,
+                        valid_time=ep.valid_at,
+                        cognitive_type=ep.cognitive_type,
+                    )
                 )
-            )
             return ep.model_copy(update={"invalid_at": now})
 
     def improve(
@@ -305,20 +329,24 @@ class BiTemporalEngine:
                     # vigente, new episode not appended. Caller (#12.improve) decides.
                     raise errors.EngineError(errors.E_COLLISION_EXISTS, collisions=collisions)
                 self._repo.append(new_ep)
-            self._audit.append(
-                AuditEvent(
-                    primitive="improve",
-                    target_id=ep_id,
-                    transaction_time=now,
-                    result="updated",
-                    agent_id=_dict_str(by, "agent_id"),
-                    session_id=_dict_str(by, "session_id"),
-                    successor_id=new_ep.id,
-                    reason=reason,
-                    valid_time=new_ep.valid_at,
-                    cognitive_type=new_ep.cognitive_type,
+                # CC-1 (C8.3): audit INSIDE the atomic — the invalidation, the new
+                # episode, and the improve AuditEvent commit together (or roll back
+                # together). A crash after append but before audit can no longer
+                # leave the successor persisted with no audit row.
+                self._audit.append(
+                    AuditEvent(
+                        primitive="improve",
+                        target_id=ep_id,
+                        transaction_time=now,
+                        result="updated",
+                        agent_id=_dict_str(by, "agent_id"),
+                        session_id=_dict_str(by, "session_id"),
+                        successor_id=new_ep.id,
+                        reason=reason,
+                        valid_time=new_ep.valid_at,
+                        cognitive_type=new_ep.cognitive_type,
+                    )
                 )
-            )
             return new_ep
 
     # ---------- readers (Phase 9) ------------------------------------------
