@@ -21,7 +21,7 @@ from seahorse.persistence.sqlite_episode_index import SqliteEpisodeIndexReposito
 
 @pytest.fixture()
 def index(tmp_path) -> SqliteEpisodeIndexRepository:
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     repo = SqliteEpisodeIndexRepository(mgr)

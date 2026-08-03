@@ -89,7 +89,7 @@ class BiTemporalInvariantMachine(RuleBasedStateMachine):
     def __init__(self) -> None:
         super().__init__()
         self._tmp = Path(tempfile.mkdtemp(prefix="seahorse-prop-"))
-        mgr = ConnectionManager(self._tmp / "seahorse.db", pool_size=2)
+        mgr = ConnectionManager(self._tmp / "seahorse.db", pool_size=2, extensions=("vec0",))
         mgr.open()
         apply_migrations(mgr.writer)
         self._mgr = mgr

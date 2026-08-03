@@ -16,7 +16,7 @@ from seahorse.persistence.sqlite_embeddings_cache import SqliteEmbeddingsCacheRe
 
 @pytest.fixture()
 def cache(tmp_path) -> SqliteEmbeddingsCacheRepository:
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     repo = SqliteEmbeddingsCacheRepository(mgr)

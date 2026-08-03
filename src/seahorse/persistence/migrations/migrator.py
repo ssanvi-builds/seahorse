@@ -10,9 +10,11 @@ commits but a version INSERT that fails, leaving a re-run to raise "duplicate
 column"). The schema_version table itself is created here (not a numbered file)
 so it always exists before any migration is recorded.
 
-MVP-0 scope: only the relational tables + the three SO-7 lateral tables. The
-``vec0`` virtual table and the FTS5 external-content table are NOT created here
-(they require ``sqlite-vec``/FTS5 and are deferred to MVP-1).
+MVP-0 scope: only the relational tables + the three SO-7 lateral tables. From
+M1-A.2 (migration 010) the runner also creates the ``vec0`` virtual table and
+the FTS5 external-content tables; those require ``sqlite-vec`` loaded on the
+connection before ``apply_migrations`` runs (the ConnectionManager opts in via
+``extensions=("vec0",)`` at the composition root).
 """
 
 from __future__ import annotations

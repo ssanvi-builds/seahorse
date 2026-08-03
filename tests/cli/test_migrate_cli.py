@@ -1,6 +1,6 @@
 """End-to-end ``seahorse migrate`` via the invoke harness (commit 5).
 
-``migrate`` is the SCHEMA migrations runner (DDL 001-009 on the sidecar SQLite
+``migrate`` is the SCHEMA migrations runner (DDL 001-010 on the sidecar SQLite
 DB), NOT the frontmatter vault migrator. It reuses the ``apply_migrations(up_to=)``
 seam added in commit 4. Exit codes: success 0; ``--up-to -1`` → Cat C usage 2;
 uninitialized vault → Cat C 82/83.
@@ -25,9 +25,9 @@ def test_migrate_json_payload(tmp_path, vault):
     assert code == 0, err
     obj = json.loads(out)
     assert obj["command"] == "migrate"
-    assert obj["applied"] == 9
-    assert obj["schema_version"] == 9
-    assert obj["latest_available"] == 9
+    assert obj["applied"] == 10
+    assert obj["schema_version"] == 10
+    assert obj["latest_available"] == 10
 
 
 def test_migrate_up_to_flag(tmp_path, vault):
@@ -71,4 +71,4 @@ def test_migrate_then_inspect_sees_schema_version(tmp_path, vault):
     invoke(["--vault", str(vault), "migrate"])
     code, out, err = invoke(["--vault", str(vault), "--json", "inspect"])
     assert code == 0, err
-    assert json.loads(out)["schema_version"] == 9
+    assert json.loads(out)["schema_version"] == 10

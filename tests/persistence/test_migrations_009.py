@@ -23,12 +23,24 @@ import sqlite3
 from seahorse.persistence.migrations.migrator import apply_migrations, current_version
 
 
+def _load_vec0(c: sqlite3.Connection) -> None:
+    """Load the sqlite-vec extension so migration 010 (``USING vec0``) runs in-memory."""
+    import sqlite_vec  # type: ignore[import-untyped]
+
+    c.enable_load_extension(True)
+    try:
+        sqlite_vec.load(c)
+    finally:
+        c.enable_load_extension(False)
+
+
 def _columns(conn: sqlite3.Connection, table: str) -> dict[str, str]:
     return {row[1]: row[2] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
 def test_migration_009_adds_supersedes_reason_columns() -> None:
     c = sqlite3.connect(":memory:")
+    _load_vec0(c)
     apply_migrations(c)
     episodes = _columns(c, "episodes")
     index = _columns(c, "episode_index")
@@ -42,11 +54,12 @@ def test_migration_009_adds_supersedes_reason_columns() -> None:
 def test_migration_009_idempotent_via_runner() -> None:
     # The runner's schema_version row guards re-runs (ALTER has no IF NOT EXISTS).
     c = sqlite3.connect(":memory:")
+    _load_vec0(c)
     first = apply_migrations(c)
     second = apply_migrations(c)
     assert first > 0
     assert second == 0  # re-running applies nothing — no 'duplicate column' error
-    assert current_version(c) == 9
+    assert current_version(c) == 10  # 009 + 010 (M1-A.2)
     c.close()
 
 
@@ -57,13 +70,14 @@ def test_migration_009_on_legacy_db_v8() -> None:
     # existing deployments hit when upgrading — NOT the fresh-DB path the test
     # above already covers. (apply_migrations(up_to=8) is the test seam.)
     c = sqlite3.connect(":memory:")
+    _load_vec0(c)
     pre = apply_migrations(c, up_to=8)
     assert pre > 0
     assert current_version(c) == 8
     assert "supersedes_reason" not in _columns(c, "episodes")
     assert "supersedes_reason" not in _columns(c, "episode_index")
-    # now apply 009 alone.
-    n = apply_migrations(c)  # applies only 009 (001-008 already recorded)
+    # now apply 009 alone (up_to=9 isolates it from 010).
+    n = apply_migrations(c, up_to=9)
     assert n == 1
     assert current_version(c) == 9
     assert _columns(c, "episodes")["supersedes_reason"] == "TEXT"

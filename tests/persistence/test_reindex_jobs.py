@@ -12,7 +12,7 @@ from seahorse.persistence.sqlite_reindex_jobs import SqliteReindexJobRepository
 
 @pytest.fixture()
 def jobs(tmp_path) -> SqliteReindexJobRepository:
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     repo = SqliteReindexJobRepository(mgr)

@@ -15,7 +15,7 @@ from seahorse.persistence.sqlite_audit import SqliteAuditEventRepository
 
 @pytest.fixture()
 def audit(tmp_path) -> SqliteAuditEventRepository:
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     repo = SqliteAuditEventRepository(mgr)

@@ -80,10 +80,10 @@ def test_migrate_fresh_db_applies_all_migrations(tmp_path):
     run_migrate(cfg, up_to=None, fmt="json", out=o)
     obj = json.loads(o.getvalue())
     assert obj["command"] == "migrate"
-    assert obj["applied"] == 9  # fresh DB -> all 9 migrations
-    assert obj["schema_version"] == 9
+    assert obj["applied"] == 10  # fresh DB -> all 10 migrations
+    assert obj["schema_version"] == 10
     assert obj["up_to"] is None
-    assert obj["latest_available"] == 9
+    assert obj["latest_available"] == 10
     assert cfg.db_path.exists()
 
 
@@ -94,7 +94,7 @@ def test_migrate_is_idempotent_second_run_applies_zero(tmp_path):
     run_migrate(cfg, up_to=None, fmt="json", out=o)
     obj = json.loads(o.getvalue())
     assert obj["applied"] == 0
-    assert obj["schema_version"] == 9
+    assert obj["schema_version"] == 10
 
 
 def test_migrate_up_to_caps_applied_migrations(tmp_path):
@@ -105,7 +105,7 @@ def test_migrate_up_to_caps_applied_migrations(tmp_path):
     assert obj["applied"] == 5
     assert obj["schema_version"] == 5
     assert obj["up_to"] == 5
-    assert obj["latest_available"] == 9
+    assert obj["latest_available"] == 10
 
 
 def test_migrate_up_to_zero_applies_nothing(tmp_path):
@@ -118,15 +118,15 @@ def test_migrate_up_to_zero_applies_nothing(tmp_path):
 
 
 def test_migrate_up_to_beyond_latest_applies_all_available(tmp_path):
-    # up_to is a CAP, not a requirement: 15 > 9 applies all 9 (no error, honest
+    # up_to is a CAP, not a requirement: 15 > 10 applies all 10 (no error, honest
     # reporting via latest_available so the operator sees the ceiling).
     _v, cfg = _config(tmp_path)
     o = _out()
     run_migrate(cfg, up_to=15, fmt="json", out=o)
     obj = json.loads(o.getvalue())
-    assert obj["applied"] == 9
-    assert obj["schema_version"] == 9
-    assert obj["latest_available"] == 9
+    assert obj["applied"] == 10
+    assert obj["schema_version"] == 10
+    assert obj["latest_available"] == 10
 
 
 def test_migrate_negative_up_to_raises_usage(tmp_path):
@@ -173,7 +173,7 @@ def test_inspect_after_migrate_reports_schema_version_no_rows(tmp_path):
     run_inspect(cfg, now=datetime(2026, 7, 1, tzinfo=UTC), fmt="json", out=o)
     obj = json.loads(o.getvalue())
     assert obj["db_exists"] is True
-    assert obj["schema_version"] == 9
+    assert obj["schema_version"] == 10
     assert obj["episodes"] == 0
     assert obj["episode_index"] == 0
 

@@ -25,7 +25,7 @@ from seahorse.persistence.sqlite_sidecar import SqliteSidecarIndexRepository
 
 @pytest.fixture()
 def sidecar(tmp_path: Path):
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     repo = SqliteSidecarIndexRepository(mgr)

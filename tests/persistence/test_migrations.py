@@ -15,9 +15,21 @@ import pytest
 from seahorse.persistence.migrations.migrator import apply_migrations, current_version
 
 
+def _load_vec0(c: sqlite3.Connection) -> None:
+    """Load the sqlite-vec extension so migration 010 (``USING vec0``) runs in-memory."""
+    import sqlite_vec  # type: ignore[import-untyped]
+
+    c.enable_load_extension(True)
+    try:
+        sqlite_vec.load(c)
+    finally:
+        c.enable_load_extension(False)
+
+
 @pytest.fixture()
 def conn() -> sqlite3.Connection:
     c = sqlite3.connect(":memory:")
+    _load_vec0(c)
     apply_migrations(c)
     yield c
     c.close()
@@ -150,6 +162,7 @@ def test_episode_paths_accepts_md_path(conn: sqlite3.Connection) -> None:
 
 def test_apply_migrations_is_idempotent() -> None:
     c = sqlite3.connect(":memory:")
+    _load_vec0(c)
     first = apply_migrations(c)
     second = apply_migrations(c)
     assert first > 0
@@ -160,9 +173,10 @@ def test_apply_migrations_is_idempotent() -> None:
 def test_current_version_tracks_migrations() -> None:
     c = sqlite3.connect(":memory:")
     assert current_version(c) == 0  # before schema_version table exists
+    _load_vec0(c)
     apply_migrations(c)
-    # 009_supersedes_reason.sql is the highest-numbered migration in MVP-0.
-    assert current_version(c) == 9
+    # 010_vec_fts.sql is the highest-numbered migration after MVP-1 materialization.
+    assert current_version(c) == 10
     c.close()
 
 
@@ -170,23 +184,43 @@ def test_all_migrations_recorded(conn: sqlite3.Connection) -> None:
     versions = [
         row[0] for row in conn.execute("SELECT version FROM schema_version ORDER BY version")
     ]
-    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
-# --- MVP-0 boundary: vec0 / FTS5 NOT created ---------------------------------
+# --- M1-A.2 boundary: vec0 / FTS5 CREATED by migration 010 -------------------
 
 
-def test_vec0_virtual_table_not_created(conn: sqlite3.Connection) -> None:
-    # MVP-0: only vec_episodes_meta exists; the vec0 virtual table is deferred to MVP-1.
+def test_010_creates_vec0_virtual_table(conn: sqlite3.Connection) -> None:
+    # M1-A.2: migration 010 creates the vec0 virtual table alongside the lateral
+    # vec_episodes_meta (SO-7) that MVP-0 already shipped.
     names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "vec_episodes" not in names
+    assert "vec_episodes" in names
     assert "vec_episodes_meta" in names
 
 
-def test_fts5_table_not_created(conn: sqlite3.Connection) -> None:
+def test_010_creates_fts5_tables(conn: sqlite3.Connection) -> None:
     names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "episode_fts" not in names
-    assert "episode_content" not in names
+    assert "episode_fts" in names
+    assert "episode_content" in names
+
+
+def test_010_vec0_schema(conn: sqlite3.Connection) -> None:
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_episodes'"
+    ).fetchone()[0]
+    assert "USING vec0" in sql
+    assert "float[384]" in sql
+    for col in ("fact_id", "invalid_at", "cognitive_type", "created_at"):
+        assert f"+{col}" in sql
+
+
+def test_010_fts5_external_content(conn: sqlite3.Connection) -> None:
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='episode_fts'"
+    ).fetchone()[0]
+    assert "content='episode_content'" in sql
+    assert "content_rowid='rowid'" in sql
+    assert "unicode61" in sql
 
 
 # --- C8.3 #8: each migration is a single transaction (DDL + version row) -----

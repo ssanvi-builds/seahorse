@@ -1,15 +1,13 @@
 """Vector/FTS MVP-1 stub tests (Phase 7).
 
-Asserts: every method raises ``NotImplementedError``; the stub satisfies its
-signed Protocol structurally; the ``inspect.signature`` of each stub method
-matches the contract's; and ``vec_episodes`` / ``episode_fts`` are NOT created
-by the MVP-0 migrations (only the lateral ``vec_episodes_meta`` is).
+M1-A.2: migration 010 now creates the ``vec_episodes`` vec0 virtual table and the
+FTS5 ``episode_fts`` / ``episode_content`` tables, so the schema-side assertions
+here verify their presence. The repository impls are still stubs that raise
+``NotImplementedError`` (they flip to real behavior in M1-A.3 / M1-A.4).
 
 C8.5: the ``mvp1_axis`` marker (SO-1 safeguard 2) keeps the whole file visible
-to the runner without gating the MVP-0 green suite — every test here flips en
-masse when #6 materializes the real sqlite-vec + FTS5 backends (the
-NotImplementedError raises become real behavior; the migration-not-create
-assertion flips when migration 010 lands the vec0 / FTS5 tables).
+to the runner without gating the MVP-0 green suite — the NotImplementedError
+raises flip en masse when #6 materializes the real sqlite-vec + FTS5 backends.
 """
 
 from __future__ import annotations
@@ -34,7 +32,9 @@ pytestmark = pytest.mark.mvp1_axis
 
 @pytest.fixture()
 def mgr(tmp_path) -> ConnectionManager:
-    m = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    # M1-A.2: the vec0 extension is required once migration 010 creates the
+    # virtual table (``USING vec0``); mirrors the composition root (Storage).
+    m = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     m.open()
     apply_migrations(m.writer)
     yield m
@@ -195,13 +195,11 @@ def test_fts_method_signatures_match_contract() -> None:
 # --- MVP-0 migrations do NOT create the vec0 / FTS5 tables -------------------
 
 
-def test_migrations_create_vec_episodes_meta_but_not_vec_episodes(
-    mgr: ConnectionManager,
-) -> None:
+def test_010_creates_vec_episodes_and_fts_tables(mgr: ConnectionManager) -> None:
     names = {
         r[0]
         for r in mgr.writer.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
-    assert "vec_episodes_meta" in names  # SO-7a lateral (MVP-0)
-    assert "vec_episodes" not in names  # vec0 virtual table is MVP-1
-    assert "episode_fts" not in names  # FTS5 table is MVP-1
+    assert "vec_episodes_meta" in names  # SO-7a lateral
+    assert "vec_episodes" in names  # vec0 virtual table (migration 010)
+    assert "episode_fts" in names  # FTS5 table (migration 010)

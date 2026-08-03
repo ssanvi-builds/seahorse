@@ -23,7 +23,7 @@ _UNSET = object()
 
 @pytest.fixture()
 def repo(tmp_path) -> SqliteEpisodeRepository:
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     r = SqliteEpisodeRepository(mgr)
@@ -33,7 +33,7 @@ def repo(tmp_path) -> SqliteEpisodeRepository:
 
 @pytest.fixture()
 def audit(tmp_path) -> SqliteAuditEventRepository:
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     a = SqliteAuditEventRepository(mgr)
@@ -44,7 +44,7 @@ def audit(tmp_path) -> SqliteAuditEventRepository:
 @pytest.fixture()
 def storage(tmp_path):
     """Shared ConnectionManager so repo + audit live on the same DB."""
-    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4)
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     r = SqliteEpisodeRepository(mgr)

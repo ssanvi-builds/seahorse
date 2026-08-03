@@ -29,6 +29,17 @@ from seahorse.persistence.episode_index_columns import (
 from seahorse.persistence.migrations.migrator import apply_migrations
 
 
+def _load_vec0(c: sqlite3.Connection) -> None:
+    """Load sqlite-vec so migration 010 (``USING vec0``) runs in-memory (M1-A.2)."""
+    import sqlite_vec  # type: ignore[import-untyped]
+
+    c.enable_load_extension(True)
+    try:
+        sqlite_vec.load(c)
+    finally:
+        c.enable_load_extension(False)
+
+
 def _episode_index_ddl_columns(conn: sqlite3.Connection) -> set[str]:
     return {row[1] for row in conn.execute("PRAGMA table_info(episode_index)")}
 
@@ -38,6 +49,7 @@ def test_rebuild_columns_match_ddl() -> None:
     # is not added to the constant fails here — forcing the single source to
     # update (and both derived INSERTs follow automatically).
     c = sqlite3.connect(":memory:")
+    _load_vec0(c)
     apply_migrations(c)
     assert set(EPISODE_INDEX_REBUILD_COLUMNS) == _episode_index_ddl_columns(c)
     c.close()

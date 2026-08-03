@@ -20,7 +20,8 @@ from seahorse.persistence.migrations.migrator import apply_migrations
 @pytest.fixture()
 def manager(tmp_path) -> ConnectionManager:
     db = tmp_path / "seahorse.db"
-    mgr = ConnectionManager(db, pool_size=4)
+    # M1-A.2: migration 010 (USING vec0) requires the extension on the connection.
+    mgr = ConnectionManager(db, pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
     yield mgr
