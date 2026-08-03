@@ -100,8 +100,8 @@ def build_fastembed_embedder(
     prefix-drift self-test as a WARNING — never fail-loud (the G2 fallback
     covers a broken embedder).
     """
-    from fastembed import (
-        TextEmbedding,  # type: ignore[import-not-found]  # lazy: extra 'embeddings'
+    from fastembed import (  # type: ignore[import-not-found]  # lazy: extra 'embeddings'
+        TextEmbedding,
     )
 
     TextEmbedding.add_custom_model(

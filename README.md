@@ -4,11 +4,12 @@ Open standard for persistent, self-evolving LLM agent memory. Monetized open-cor
 an Apache-2.0 reference standard plus a proprietary SaaS and an enterprise self-host
 BSL track. The acquisition-by-a-lab path is explicitly **not** a goal (ADR-011).
 
-> Status: **MVP-0 (v0.1.0) — runnable**. The memory engine works end-to-end from a
-> clean install: write episodes, recall them, improve and forget them, and serve an
-> agent over stdio MCP. Retrieval in v0.1.0 is an honest vigente listing (no
-> embeddings/vector/FTS, no ranking) — see [What works in v0.1.0](#what-works-in-v010)
-> and [Reserved for MVP-1](#reserved-for-mvp-1).
+> Status: **MVP-1 (v0.2.0) — semantic retrieval materialized**. The memory engine
+> works end-to-end from a clean install: write episodes, recall them with hybrid
+> semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by RRF), improve and forget
+> them, and serve an agent over stdio MCP. Recall ranks by relevance when vectors
+> are populated and the embedder is wired, and honestly degrades to a vigente
+> listing otherwise — see [What works](#what-works) and [Reserved](#reserved).
 
 ## What it is
 
@@ -31,6 +32,8 @@ without destroying history.
 uv tool install .
 # …or, in a checkout:
 uv sync --extra dev
+# For hybrid semantic retrieval (FastEmbed ONNX, downloads mE5-small on first
+# embed): uv sync --extra dev --extra embeddings
 
 # Create a vault and write your first episode:
 seahorse init myvault
@@ -71,22 +74,27 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 (INDEX), the chain on demand (TIMELINE), and the full record only when needed
 (FULL). This keeps the common path cheap.
 
-## What works in v0.1.0
+## What works
 
-- Bi-temporal, append-only episode store on stdlib `sqlite3` (single-file, zero
-  infra). Auto-migrating schema (currently at `schema_version = 9`).
+- Bi-temporal, append-only episode store on stdlib `sqlite3` + sqlite-vec (FTS5
+  + vec0). Auto-migrating schema (currently at `schema_version = 10`).
 - The 7 memory-native primitives, on both the CLI and stdio MCP.
 - Progressive disclosure (INDEX / TIMELINE / FULL) and point-in-time projection.
+- **Hybrid semantic retrieval (MVP-1)**: `recall` ranks by relevance — sqlite-vec
+  kNN + FTS5 BM25 fused with Reciprocal Rank Fusion (`RRF_K=60`), with PIT
+  routing (`state_at` / `known_at`) when a real embedder is wired. The write path
+  and `seahorse index rebuild` populate vec0/FTS (best-effort — an embedder
+  failure never fails the episode write, ADR-10).
+- **Honest G2 degrade**: without the `embeddings` extra (or with no vectors
+  populated), `recall` falls back to the vigente listing (score 0.0, no ranking)
+  and PIT recall is refused — the motor keeps working without ranking.
 - Supersession (`improve`) and soft-delete (`forget`) with full history preserved.
 - Frontmatter import/export for the Obsidian vault layer (markdown as the
   human-readable, portable on-disk contract — ADR-02).
 - Honest exit codes and a structured `{"error": {...}}` envelope on stderr, so
   agents and scripts can branch on `seahorse_code` / `cli_code` deterministically.
-- `recall` is the **vigente listing** clamped to `top_k`: the query is validated
-  non-empty but does **not** filter or rank in v0.1.0. This is deliberate and
-  documented, not a gap.
 
-## Reserved for MVP-1
+## Reserved
 
 The following CLI commands are wired but intentionally return exit `75`
 (`CLI_NOT_IN_MVP_0`) with a reason, so the surface is honest about what is not
@@ -94,10 +102,9 @@ implemented yet rather than silently no-op'ing:
 
 - `expire`, `revalidate`, `vigentes`, `activos-ahora`, `index verify`.
 
-MVP-1 will add materialization-based retrieval — sqlite-vec vectors, FTS5 full-text,
-the Embedder (`#7`), and wiring `recall` to the hybrid retrieval engine (kNN + BM25 +
-chain/BFS fused by Reciprocal Rank Fusion). LLM extraction stays deferred in v0.1.0;
-the skip-path is first-class so an agent can record at near-zero cost today.
+LLM extraction (`#4`) stays deferred; the skip-path is first-class so an agent
+can record at near-zero cost. The BFS-as-INDEX axis of retrieval (graph expansion
+into the fusion) is mediano — `recall` fuses vector + BM25 + supersedes chain today.
 
 ## Architecture (three memory layers)
 
@@ -107,19 +114,25 @@ the skip-path is first-class so an agent can record at near-zero cost today.
 | 2. Obsidian vault | Project knowledge, decisions, preferences | human-readable markdown |
 | 3. Native pointer | Pointer only, never duplicated knowledge | per-session |
 
-## Stack (v0.1.0)
+## Stack (v0.2.0)
 
-- Python ≥ 3.11. stdlib `sqlite3` for storage (zero-infra single file).
+- Python ≥ 3.11. stdlib `sqlite3` + sqlite-vec for storage (zero-infra single
+  file; the `vec0` virtual table + FTS5 in migration 010).
+- numpy for the embedding blob shape.
 - Pydantic v2 for the canonical `Episode` contract (core type system).
 - Typer for the CLI surface (humans and scripts). Confined to `seahorse.cli`.
 - stdio JSON-RPC 2.0 for the MCP agent surface (hand-rolled framing, stdlib-only
   `seahorse.mcp` package — `import seahorse.mcp` does not load Typer).
 - `ruamel.yaml` + `python-frontmatter`, confined to the frontmatter adapter.
+- **FastEmbed ONNX + onnxruntime** (`embeddings` extra, NOT in the default
+  install): the mE5-small bundle defaults to `model_O4.onnx` (fp32, ~235MB) —
+  OQ-7-12 verified that no int8/fp16 artifact is portable to Apple Silicon, and
+  an open standard must run on Windows/Linux/macOS. A portable int8 bundle is a
+  measured follow-up.
 
-> The FastAPI / SQLAlchemy / LiteLLM / multilingual-e5 / ONNX stack from the
-> long-term design is **not** in v0.1.0. Those land in MVP-1 (retrieval
-> materialization, LLM extraction) and the multi-agent rung (Postgres + pgvector).
-> The README states what ships now, not the target architecture.
+> The FastAPI / SQLAlchemy / LiteLLM stack and LLM extraction stay in the
+> multi-agent rung (Postgres + pgvector). The README states what ships now, not
+> the target architecture.
 
 ## Design & decisions
 
