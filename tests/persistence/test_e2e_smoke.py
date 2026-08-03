@@ -218,11 +218,9 @@ def test_e2e_smoke_full_flow(storage: Storage) -> None:
     storage.reindex_jobs.finish(job_id)
     assert storage.reindex_jobs.list(status="done")[0].job_id == job_id
 
-    # 11. M1-A.3: vector is a real vec0 repo (empty -> count 0); fts is still
-    # a stub until M1-A.4 (raises NotImplementedError).
+    # 11. M1-A.3/M1-A.4: vector + fts are real backends (empty -> count 0).
     assert storage.vector.count() == 0
-    with pytest.raises(NotImplementedError):
-        storage.fts.count()
+    assert storage.fts.count() == 0
 
 
 # --- idempotent open() -------------------------------------------------------

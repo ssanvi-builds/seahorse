@@ -1,13 +1,12 @@
-"""Vector/FTS MVP-1 stub tests (Phase 7).
+"""Vector/FTS backend tests (M1-A.3 / M1-A.4).
 
-M1-A.2: migration 010 now creates the ``vec_episodes`` vec0 virtual table and the
-FTS5 ``episode_fts`` / ``episode_content`` tables, so the schema-side assertions
-here verify their presence. The repository impls are still stubs that raise
-``NotImplementedError`` (they flip to real behavior in M1-A.3 / M1-A.4).
-
-C8.5: the ``mvp1_axis`` marker (SO-1 safeguard 2) keeps the whole file visible
-to the runner without gating the MVP-0 green suite — the NotImplementedError
-raises flip en masse when #6 materializes the real sqlite-vec + FTS5 backends.
+Migration 010 creates the ``vec_episodes`` vec0 virtual table and the FTS5
+``episode_fts`` / ``episode_content`` tables; ``SqliteVectorIndexRepository``
+and ``SqliteFullTextIndexRepository`` materialize the signed Protocols over
+them. These tests pin real behavior: upsert/count, kNN ordering + score
+(1/(1+distance)), vigent/fact_id/cognitive pushdown, CC-2 state_at / known_at
+via the shared ``_pit_predicate``, BM25 ``exp(-bm25)`` scoring, subject filter,
+remove_for_rebuild / rebuild, and signature conformance with the contract.
 """
 
 from __future__ import annotations
@@ -15,6 +14,7 @@ from __future__ import annotations
 import inspect
 import struct
 from datetime import UTC, datetime
+from math import exp
 
 import pytest
 
@@ -27,8 +27,6 @@ from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.vector_index import SqliteVectorIndexRepository
-
-pytestmark = pytest.mark.mvp1_axis
 
 
 @pytest.fixture()
@@ -91,6 +89,7 @@ def _insert_index_row(
     created_at: str = "2026-01-01T00:00:00+00:00",
     fact_id: str | None = None,
     cognitive_type: str = "fact",
+    subject: str = "S",
 ) -> None:
     if fact_id is None:
         fact_id = f"fact-{ep_id}"  # keep distinct vigent fact_ids (I11 mirror)
@@ -98,8 +97,17 @@ def _insert_index_row(
         "INSERT INTO episode_index (ep_id, subject, fact_id, valid_at, invalid_at, "
         "created_at, expired_at, supersedes, cognitive_type, source_type, schema_version, "
         "skip_extraction, title, summary, supersedes_reason) "
-        "VALUES (?, 'S', ?, ?, ?, ?, ?, NULL, ?, 'agent', '3.1', 0, '', '', NULL)",
-        (ep_id, fact_id, valid_at, invalid_at, created_at, expired_at, cognitive_type),
+        "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 'agent', '3.1', 0, '', '', NULL)",
+        (
+            ep_id,
+            subject,
+            fact_id,
+            valid_at,
+            invalid_at,
+            created_at,
+            expired_at,
+            cognitive_type,
+        ),
     )
     mgr.writer.commit()
 
@@ -232,42 +240,110 @@ def test_vector_rebuild_is_honest_noop(
     assert vector.count() == 1
 
 
-# --- every fts method raises NotImplementedError -----------------------------
+# --- fts behavior (M1-A.4) ----------------------------------------------------
 
 
-def test_fts_upsert_raises(fts: SqliteFullTextIndexRepository) -> None:
-    with pytest.raises(NotImplementedError):
-        fts.upsert(FtsDoc(ep_id="e1", body_md="body"))
+def _upsert_fts(
+    fts: SqliteFullTextIndexRepository,
+    ep_id: str,
+    body_md: str,
+    *,
+    title: str | None = None,
+    subject: str | None = None,
+) -> None:
+    fts.upsert(FtsDoc(ep_id=ep_id, body_md=body_md, title=title, subject=subject))
 
 
-def test_fts_search_raises(fts: SqliteFullTextIndexRepository) -> None:
-    with pytest.raises(NotImplementedError):
-        fts.search("query", 5)
+def test_fts_upsert_count(fts: SqliteFullTextIndexRepository, mgr: ConnectionManager) -> None:
+    _insert_index_row(mgr, "e1")
+    _insert_index_row(mgr, "e2")
+    _upsert_fts(fts, "e1", "madrid spain", title="home")
+    _upsert_fts(fts, "e2", "paris france", title="paris")
+    assert fts.count() == 2
 
 
-def test_fts_search_state_at_raises(fts: SqliteFullTextIndexRepository) -> None:
-    with pytest.raises(NotImplementedError):
-        fts.search_state_at("query", 5, datetime(2026, 1, 1, tzinfo=UTC))
+def test_fts_search_returns_matching_hits_with_exp_bm25(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    _insert_index_row(mgr, "e1")
+    _insert_index_row(mgr, "e2")
+    _upsert_fts(fts, "e1", "madrid spain", title="home")
+    _upsert_fts(fts, "e2", "paris france", title="paris")
+    hits = fts.search("madrid", 5)
+    assert [h.ep_id for h in hits] == ["e1"]
+    assert hits[0].score == pytest.approx(exp(-hits[0].bm25_score))  # score = exp(-bm25)
 
 
-def test_fts_search_known_at_raises(fts: SqliteFullTextIndexRepository) -> None:
-    with pytest.raises(NotImplementedError):
-        fts.search_known_at("query", 5, datetime(2026, 1, 1, tzinfo=UTC))
+def test_fts_search_vigent_only_excludes_invalidated(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    _insert_index_row(mgr, "e1")
+    _insert_index_row(mgr, "e2", invalid_at="2026-02-01T00:00:00+00:00")
+    _upsert_fts(fts, "e1", "madrid spain")
+    _upsert_fts(fts, "e2", "madrid paris")
+    hits = fts.search("madrid", 5)
+    assert [h.ep_id for h in hits] == ["e1"]
 
 
-def test_fts_remove_for_rebuild_raises(fts: SqliteFullTextIndexRepository) -> None:
-    with pytest.raises(NotImplementedError):
-        fts.remove_for_rebuild("e1")
+def test_fts_search_subject_filter(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    _insert_index_row(mgr, "e1", subject="home")
+    _insert_index_row(mgr, "e2", subject="work")
+    _upsert_fts(fts, "e1", "madrid spain", subject="home")
+    _upsert_fts(fts, "e2", "madrid spain", subject="work")
+    hits = fts.search("madrid", 5, subject_filter="work")
+    assert [h.ep_id for h in hits] == ["e2"]
 
 
-def test_fts_rebuild_raises(fts: SqliteFullTextIndexRepository) -> None:
-    with pytest.raises(NotImplementedError):
-        fts.rebuild([FtsDoc(ep_id="e1", body_md="body")])
+def test_fts_search_state_at_includes_from_forever(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    # CC-2: valid_at IS NULL is valid at any t; PENDING (future valid_at) excluded.
+    _insert_index_row(mgr, "e1", valid_at=None)
+    _insert_index_row(mgr, "e2", valid_at="2026-03-01T00:00:00+00:00")
+    _upsert_fts(fts, "e1", "madrid spain")
+    _upsert_fts(fts, "e2", "madrid paris")
+    hits = fts.search_state_at("madrid", 5, datetime(2026, 1, 1, tzinfo=UTC))
+    assert [h.ep_id for h in hits] == ["e1"]
 
 
-def test_fts_count_raises(fts: SqliteFullTextIndexRepository) -> None:
-    with pytest.raises(NotImplementedError):
-        fts.count()
+def test_fts_search_known_at_respects_transaction_time(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    _insert_index_row(mgr, "e1", created_at="2026-01-01T00:00:00+00:00")
+    _insert_index_row(mgr, "e2", created_at="2026-05-01T00:00:00+00:00")
+    _upsert_fts(fts, "e1", "madrid spain")
+    _upsert_fts(fts, "e2", "madrid paris")
+    hits = fts.search_known_at("madrid", 5, datetime(2026, 3, 1, tzinfo=UTC))
+    assert [h.ep_id for h in hits] == ["e1"]
+
+
+def test_fts_remove_for_rebuild_clears_one(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    _insert_index_row(mgr, "e1")
+    _insert_index_row(mgr, "e2")
+    _upsert_fts(fts, "e1", "madrid spain")
+    _upsert_fts(fts, "e2", "paris france")
+    fts.remove_for_rebuild("e1")
+    assert fts.count() == 1
+
+
+def test_fts_rebuild_replaces_all_docs(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    _insert_index_row(mgr, "e1")
+    _insert_index_row(mgr, "e2")
+    _upsert_fts(fts, "e1", "madrid spain")
+    _upsert_fts(fts, "e2", "paris france")
+    # the rebuilt doc must exist in episode_index too — search JOINs it (the
+    # indexer always mirrors both surfaces in the real flow).
+    _insert_index_row(mgr, "e3")
+    fts.rebuild([FtsDoc(ep_id="e3", body_md="berlin germany")])
+    assert fts.count() == 1
+    hits = fts.search("berlin", 5)
+    assert [h.ep_id for h in hits] == ["e3"]
 
 
 # --- signatures match the signed contract ------------------------------------
