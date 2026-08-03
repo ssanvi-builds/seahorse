@@ -17,7 +17,8 @@ contract (ruamel-free), so the sidecar may import it freely.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+import sqlite3
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -46,6 +47,16 @@ _DELETE_INDEX_SQL = "DELETE FROM episode_index"
 _DELETE_PATHS_SQL = "DELETE FROM episode_paths"
 _DUPLICATE_VIGENT_REASON = "duplicate-vigent-fact_id"
 _DUPLICATE_EP_ID_REASON = "duplicate-ep_id"
+
+# C8.8 (#9 forward-compat): a secondary-index wipe hook. ``rebuild_all`` runs
+# these inside its atomic (clear phase, after the episode_index/episode_paths
+# DELETEs, before repopulate) so the FTS5/vec0 tables are cleared in the SAME
+# transaction as the episode cache — no half-wiped ghost state where the
+# secondary indexes still point at ep_ids deleted from episode_index. MVP-0
+# passes none (the FTS5/vec0 tables do not exist yet — no ghost hits); the seam
+# is in place for MVP-1 to plug bulk-wipe callables (``DELETE FROM episode_fts``
+# / the vec0 wipe) without reopening ``rebuild_all``.
+SecondaryIndexWipe = Callable[[sqlite3.Connection], None]
 
 
 def _fmt_dt(dt: datetime | None) -> str | None:
@@ -87,7 +98,12 @@ class SqliteSidecarIndexRepository:
             self._cm.writer.execute(_PUT_PATH_SQL, (ep_id, file_path, mtime_ms, size))
             yield
 
-    def rebuild_all(self, notes: Iterable[ParsedNote]) -> RebuildReport:
+    def rebuild_all(
+        self,
+        notes: Iterable[ParsedNote],
+        *,
+        secondary_index_wipes: Sequence[SecondaryIndexWipe] = (),
+    ) -> RebuildReport:
         """Clear ``episode_index`` + ``episode_paths`` and repopulate from ``notes``.
 
         Clear-then-rebuild (not upsert): ``.md`` is the source of truth, the SQLite
@@ -106,6 +122,17 @@ class SqliteSidecarIndexRepository:
         so a mid-stream DB error (e.g. a CHECK violation the pre-pass does not
         screen) rolls back the DELETE too — the prior index is preserved, not
         half-wiped.
+
+        Secondary-index wipe seam (C8.8 / #9 forward-compat): ``secondary_index_wipes``
+        are caller-supplied hooks run inside the SAME atomic, in the clear phase
+        (after the ``episode_index``/``episode_paths`` DELETEs, before the
+        repopulate loop), each given the writer connection. They exist so MVP-1
+        can clear the FTS5/vec0 tables in the same transaction as the episode cache
+        — without this, a vault rebuild leaves the secondary indexes pointing at
+        deleted ep_ids (ghost hits). MVP-0 passes none: the FTS5/vec0 tables do
+        not exist yet, there is nothing to wipe, and the default is a pure no-op.
+        A wipe that raises rolls back the whole clear (the prior index is
+        preserved, not half-wiped) — the coordinated wipe is atomic.
         """
         materialized = list(notes)
         conflict_ep_ids, ep_id_reason = self._conflict_group_ids(materialized)
@@ -114,6 +141,8 @@ class SqliteSidecarIndexRepository:
         with self._cm.atomic() as w:
             w.execute(_DELETE_INDEX_SQL)
             w.execute(_DELETE_PATHS_SQL)
+            for wipe in secondary_index_wipes:
+                wipe(w)
             for note in materialized:
                 ep = note.episode
                 reason = ep_id_reason.get(ep.id)

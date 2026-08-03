@@ -327,3 +327,102 @@ def test_rebuild_all_atomic_rollback_on_failure(
     with pytest.raises(sqlite3.IntegrityError):  # CHECK constraint (valid_at <= invalid_at)
         sidecar.rebuild_all([bad, _note("e3", fact_id="f3")])
     assert _index_rows(sidecar) == pre  # prior state preserved (DELETE rolled back)
+
+
+# --- rebuild_all secondary-index wipe seam (C8.8 / #9 forward-compat) --------
+#
+# rebuild_all clears episode_index + episode_paths but NOT the FTS5/vec0 tables.
+# Once #6 materializes them (MVP-1), a vault rebuild would leave the FTS/vec
+# indexes pointing at ep_ids deleted from episode_index = ghost hits. The seam:
+# rebuild_all runs caller-supplied secondary-index wipe hooks inside the SAME
+# atomic (clear phase, after the two DELETEs, before repopulate), so the
+# secondary indexes are cleared in the same transaction — no half-wiped ghost
+# state. MVP-0 passes no hooks (the FTS5/vec0 tables do not exist yet, so there
+# is nothing to wipe and no ghost hits); the seam is in place for MVP-1 to plug.
+
+
+def test_rebuild_all_runs_secondary_wipes_inside_atomic(
+    sidecar: SqliteSidecarIndexRepository,
+) -> None:
+    # the wipe hook receives the writer connection and observes episode_index
+    # ALREADY cleared (the clear phase runs the wipe after the two DELETEs, so
+    # the secondary index wipe sees the same empty episode_index the repopulate
+    # is about to refill). Pins the seam: the hook is called once, with a
+    # connection, inside the atomic, in the clear phase.
+    sidecar.rebuild_all([_note("e1", fact_id="f1")])  # seed a prior row
+    seen: dict[str, object] = {}
+
+    def wipe(conn: sqlite3.Connection) -> None:
+        seen["called"] = True
+        # episode_index is empty here (DELETE ran before the wipe, repopulate after)
+        seen["index_count_at_wipe"] = conn.execute(
+            "SELECT COUNT(*) FROM episode_index"
+        ).fetchone()[0]
+
+    sidecar.rebuild_all([_note("e2", fact_id="f2")], secondary_index_wipes=[wipe])
+    assert seen["called"] is True
+    assert seen["index_count_at_wipe"] == 0  # wipe runs in the clear phase
+
+
+def test_rebuild_all_secondary_wipe_failure_rolls_back_clear(
+    sidecar: SqliteSidecarIndexRepository,
+) -> None:
+    # C8.8 correctness core: the secondary-index wipe shares the rebuild atomic.
+    # If a wipe raises, the episode_index/episode_paths DELETE rolls back too —
+    # the prior index is preserved (not half-wiped with FTS/vec stale). This is
+    # the property that makes the coordinated wipe safe: a failed secondary
+    # wipe cannot leave episode_index empty while the secondary index still
+    # holds stale rows (the whole clear rolls back together).
+    sidecar.rebuild_all([_note("e1", fact_id="f1")])  # prior state
+    pre = _index_rows(sidecar)
+    assert pre  # sanity: there is a prior row to preserve
+
+    def boom(_conn: sqlite3.Connection) -> None:
+        raise RuntimeError("secondary index wipe failed")
+
+    with pytest.raises(RuntimeError, match="secondary index wipe failed"):
+        sidecar.rebuild_all([_note("e2", fact_id="f2")], secondary_index_wipes=[boom])
+    assert _index_rows(sidecar) == pre  # prior state preserved (DELETE rolled back)
+
+
+def test_rebuild_all_multiple_secondary_wipes_run_in_order_before_repopulate(
+    sidecar: SqliteSidecarIndexRepository,
+) -> None:
+    # multiple wipe hooks (FTS + vec in MVP-1) run in sequence, all in the clear
+    # phase (before the repopulate loop). The second wipe still sees episode_index
+    # empty, proving both wipes ran before any repopulate INSERT.
+    order: list[str] = []
+
+    def wipe_a(conn: sqlite3.Connection) -> None:
+        order.append("a")
+        order.append(f"a_count={conn.execute('SELECT COUNT(*) FROM episode_index').fetchone()[0]}")
+
+    def wipe_b(conn: sqlite3.Connection) -> None:
+        order.append("b")
+        order.append(f"b_count={conn.execute('SELECT COUNT(*) FROM episode_index').fetchone()[0]}")
+
+    sidecar.rebuild_all(
+        [_note("e1", fact_id="f1"), _note("e2", fact_id="f2")],
+        secondary_index_wipes=[wipe_a, wipe_b],
+    )
+    assert order == ["a", "a_count=0", "b", "b_count=0"]  # both ran, clear phase, in order
+
+
+def test_rebuild_all_default_no_secondary_wipes_is_noop(
+    sidecar: SqliteSidecarIndexRepository,
+) -> None:
+    # MVP-0 contract: the default (no wipes) is a pure no-op — rebuild_all behaves
+    # exactly as before. A sentinel wipe that would raise if called proves the
+    # default path never invokes it (the FTS5/vec0 tables do not exist yet, so
+    # there is genuinely nothing to wipe in MVP-0).
+    def must_not_be_called(_conn: sqlite3.Connection) -> None:
+        raise AssertionError("secondary wipe must not run when none are passed")
+
+    report = sidecar.rebuild_all(
+        [_note("e1", fact_id="f1")], secondary_index_wipes=[]
+    )
+    assert report.indexed == 1
+    assert report.skipped == []
+    # explicit default (no kwarg) also works — pins the backward-compatible sig.
+    report2 = sidecar.rebuild_all([_note("e2", fact_id="f2")])
+    assert report2.indexed == 1
