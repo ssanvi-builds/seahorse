@@ -50,6 +50,14 @@ dev = [
     "mypy>=1.10",
     "hypothesis>=6.100",
 ]
+# M1-B.2: the heavy inference stack for #7 (FastEmbed ONNX, mE5-small fp32-O4
+# bundle — OQ-7-12). NOT in the default `uv sync --extra dev`: without this
+# extra, build_facade falls back to the honest G2 recall regime and no model
+# download happens. Install with `uv sync --extra dev --extra embeddings`.
+embeddings = [
+    "fastembed>=0.6.0",
+    "onnxruntime>=1.20",
+]
 
 [build-system]
 requires = ["hatchling"]
