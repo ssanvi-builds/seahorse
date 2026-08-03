@@ -17,9 +17,11 @@ behalf. Tests use ``tmp_path`` and a context-manager pattern.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.disclosure.shaper import DisclosureShaperImpl
@@ -42,33 +44,69 @@ def build_facade(
     config: FacadeConfig | None = None,
     storage: Storage | None = None,
     embedder: QueryEmbedder | None = None,
+    retrieval_available: bool | None = None,
 ) -> tuple[MemoryFacade, Storage]:
-    """Build a real MVP-0 ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
+    """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
 
     Returns ``(facade, storage)`` so the caller can ``storage.close()`` when
     done (the server keeps the storage open for the process lifetime; tests
     close it in a fixture teardown). Pass an existing ``storage`` to reuse a
     connection pool — otherwise one is created from ``db_path``.
 
-    The recall regime is wired at this composition root (C8.1 seam): MVP-0 uses
-    ``VigenteListingRetriever`` (vigente listing, no ranking/PIT). MVP-1 swaps in
-    the hybrid adapter over ``seahorse.retrieval.recall`` here — a single-point
-    change. The same ``clock`` drives the engine, retriever, and facade (ADR-10).
+    The recall regime is wired at this composition root (C8.1 seam). The MVP-1
+    hybrid regime (``HybridRetriever`` over ``seahorse.retrieval.recall`` +
+    the write-path indexer) is wired when ``retrieval_available`` resolves True:
+    an injected ``embedder``, or the ``embeddings`` extra importable. Otherwise
+    the honest G2 regime (``VigenteListingRetriever``, no ranking/PIT, and the
+    vector/FTS repos are NEVER touched) is the default — ``uv sync --extra dev``
+    stays G2/offline. ``retrieval_available`` overrides the auto-resolution
+    (False forces G2; True forces the hybrid wiring, used by tests). The same
+    ``clock`` drives the engine, retriever, and facade (ADR-10).
 
-    The ``embedder`` slot (C8.4 seam) defaults to ``StubQueryEmbedder``: the seam
-    EXISTS at the composition root (single-point swap when #7 lands), but MVP-0
-    recall never embeds, so the stub is inert. Invoking it raises
-    ``E_NOT_IN_MVP_0`` (fail-loud guard). MVP-1 passes the real #7 adapter here.
+    The ``embedder`` slot (C8.4 seam) defaults to ``StubQueryEmbedder`` in the
+    G2 regime (inert, ``E_NOT_IN_MVP_0`` on invocation); in the hybrid regime it
+    is the sync query adapter the retriever calls.
     """
     own_storage = storage if storage is not None else Storage(db_path)
     engine = BiTemporalEngine(repo=own_storage.episodes, audit=own_storage.audit)
     shaper = DisclosureShaperImpl(
         index_repo=own_storage.episode_index, episode_repo=own_storage.episodes
     )
-    write_path = StubWritePath(engine=engine)
     clk = clock or _default_clock
     cfg = config or FacadeConfig()
-    retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
+    retriever: Any  # HybridRetriever (retrieval) or VigenteListingRetriever (G2)
+    retrieval = _resolve_retrieval(embedder, retrieval_available)
+    if retrieval is not None:
+        query_embedder, passage_embedder = retrieval
+        from seahorse.embeddings.indexer import RetrievalIndexer  # lazy: numpy
+        from seahorse.facade.hybrid_retriever import HybridRetriever
+
+        vector = own_storage.vector  # lazy import: vec0 repo (sqlite-vec)
+        fts = own_storage.fts  # lazy import: FTS repo
+        fallback = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
+        retriever = HybridRetriever(
+            embedder=query_embedder,
+            vector_repo=vector,
+            fts_repo=fts,
+            episode_repo=own_storage.episodes,
+            graph_repo=own_storage.episode_index,
+            clock=clk,
+            config=cfg,
+            fallback=fallback,
+        )
+        indexer = RetrievalIndexer(
+            passage_embedder,
+            vector,
+            fts,
+            own_storage.episodes,
+            own_storage._cm,  # noqa: SLF001 — composition root owns Storage
+        )
+        write_path = StubWritePath(engine=engine, indexer=indexer)
+        facade_embedder: QueryEmbedder | None = query_embedder
+    else:
+        retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
+        write_path = StubWritePath(engine=engine)
+        facade_embedder = embedder
     facade = MemoryFacade(
         engine=engine,
         write_path=write_path,
@@ -76,9 +114,41 @@ def build_facade(
         retriever=retriever,
         clock=clk,
         config=cfg,
-        embedder=embedder,
+        embedder=facade_embedder,
     )
     return facade, own_storage
+
+
+def _resolve_retrieval(
+    embedder: QueryEmbedder | None, retrieval_available: bool | None
+) -> tuple[Any, Any] | None:
+    """Resolve the hybrid regime wiring, or None (honest G2).
+
+    Returns ``(query_embedder, passage_embedder)``: the sync query seam the
+    retriever calls (the injected one, or an adapter over the async #7
+    embedder) plus the async passage embedder for the write-path indexer.
+    """
+    if retrieval_available is False:
+        return None
+    if os.environ.get("SEAHORSE_EMBEDDING_BACKEND") == "stub":
+        return None
+    passage = _build_passage_embedder()
+    if passage is None:
+        return None  # the 'embeddings' extra is not installed -> G2
+    from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder  # lazy
+
+    query = embedder if embedder is not None else AsyncToSyncQueryEmbedder(passage)
+    return query, passage
+
+
+def _build_passage_embedder() -> Any | None:
+    """Build the async #7 embedder if the ``embeddings`` extra is present."""
+    try:
+        from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
+
+        return build_fastembed_embedder()
+    except Exception:  # noqa: BLE001 — embedder absence is an honest G2
+        return None
 
 
 __all__ = ["build_facade"]

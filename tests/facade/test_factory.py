@@ -171,3 +171,58 @@ class TestEmbedderSlot:
             assert embedder.calls == []
         finally:
             storage.close()
+
+
+class _FakeAsyncEmbedder:
+    """Async #7 Embedder double for the retrieval-regime wiring tests."""
+
+    dim = 384
+
+    async def embed(self, texts, role):
+        import numpy as np
+
+        return np.ones((len(texts), 384), dtype=np.float32)
+
+    def model_identity(self):
+        from seahorse.embeddings.types import ModelIdentity
+
+        return ModelIdentity(
+            backend="test", model_name="m", revision="r",
+            dim=384, quantization="fp32", normalized=True,
+        )
+
+
+class TestRetrievalRegime:
+    """M1-C.3 — build_facade swaps the hybrid retriever + indexer when retrieval
+    is available, and stays G2 (VigenteListingRetriever, no vector access)
+    otherwise."""
+
+    def test_default_g2_when_passage_embedder_unavailable(self, monkeypatch, tmp_path) -> None:
+        import seahorse.facade.factory as factory
+        from seahorse.facade.vigente_retriever import VigenteListingRetriever
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: None)
+        facade, storage = build_facade(tmp_path / "f.db")
+        try:
+            assert isinstance(facade._retriever, VigenteListingRetriever)
+            assert isinstance(facade._embedder, StubQueryEmbedder)
+        finally:
+            storage.close()
+
+    def test_retrieval_mode_wires_hybrid_and_indexer(self, monkeypatch, tmp_path) -> None:
+        import seahorse.facade.factory as factory
+        from seahorse.facade.hybrid_retriever import HybridRetriever
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
+        embedder = _RecordingEmbedder()
+        facade, storage = build_facade(
+            tmp_path / "f.db", embedder=embedder, retrieval_available=True
+        )
+        try:
+            assert isinstance(facade._retriever, HybridRetriever)
+            # the query seam receives the injected embedder...
+            assert facade._retriever._embedder is embedder  # noqa: SLF001
+            # ...and the write path carries the indexer.
+            assert facade._write_path._indexer is not None  # noqa: SLF001
+        finally:
+            storage.close()

@@ -41,12 +41,15 @@ _LAZY_MODULES = (
     "seahorse.persistence.vector_index",
     "seahorse.persistence.fts_index",
 )
-_HEAVY_DEPS = ("numpy", "sqlite_vec")
+# M1-C.3: fastembed + onnxruntime (the 'embeddings' extra) join the heavy set —
+# importing seahorse.facade must never pull them (build_fastembed_embedder is
+# lazy inside the retrieval regime).
+_HEAVY_DEPS = ("numpy", "sqlite_vec", "fastembed", "onnxruntime")
 
 # C8.5: deps confined to a specific layer that the CORE (engine/facade/
 # contracts) must never pull at import. ``frontmatter`` is the top-level
 # ``python-frontmatter`` package (distinct from ``seahorse.frontmatter``).
-_CORE_FORBIDDEN = ("ruamel", "frontmatter", "typer", "numpy", "sqlite_vec")
+_CORE_FORBIDDEN = ("ruamel", "frontmatter", "typer", "numpy", "sqlite_vec", "fastembed", "onnxruntime")
 
 
 def _run(script: str) -> subprocess.CompletedProcess[str]:
