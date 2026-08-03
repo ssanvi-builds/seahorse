@@ -130,7 +130,10 @@ class SqliteEpisodeRepository:
 
         Raises ``NotFound`` if ``ep_id`` never existed; ``InvalidationConflictError``
         if it is already invalidated (the ``WHERE invalid_at IS NULL`` guard matched
-        0 rows). Propagates to ``episode_index``.
+        0 rows). Propagates to ``episode_index`` and, since M1-A.5, to the vec0
+        auxiliary column ``vec_episodes.invalid_at`` (spec §4.4 load-bearing) so
+        the vigent-only kNN pushdown excludes invalidated episodes. The FTS5
+        index needs no UPDATE (search filters via the ``episode_index`` JOIN).
         """
         with self._cm.atomic() as w:
             exists = w.execute("SELECT 1 FROM episodes WHERE id = ?", (ep_id,)).fetchone()
@@ -144,6 +147,10 @@ class SqliteEpisodeRepository:
                 raise InvalidationConflictError(ep_id)
             w.execute(
                 "UPDATE episode_index SET invalid_at = ? WHERE ep_id = ? AND invalid_at IS NULL",
+                (_fmt_dt(now), ep_id),
+            )
+            w.execute(
+                "UPDATE vec_episodes SET invalid_at = ? WHERE ep_id = ? AND invalid_at IS NULL",
                 (_fmt_dt(now), ep_id),
             )
 

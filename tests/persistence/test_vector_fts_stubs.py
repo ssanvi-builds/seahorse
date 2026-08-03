@@ -240,6 +240,39 @@ def test_vector_rebuild_is_honest_noop(
     assert vector.count() == 1
 
 
+def test_set_invalid_at_syncs_vec_episodes_invalid_at(
+    vector: SqliteVectorIndexRepository, mgr: ConnectionManager
+) -> None:
+    # M1-A.5 (spec §4.4 load-bearing): invalidation via the episode repo must
+    # propagate to vec_episodes.invalid_at in the same transaction — otherwise
+    # the vigent-only pushdown returns invalidated episodes as vigent.
+    from seahorse.contracts.episode import Episode
+    from seahorse.persistence.sqlite_episode_repo import SqliteEpisodeRepository
+
+    episodes = SqliteEpisodeRepository(mgr)
+    episodes.append(
+        Episode(
+            id="e1",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            schema_version="3.1",
+            provenance={},
+            body="body",
+            fact_id="fact-e1",
+            cognitive_type="fact",
+            source_type="agent",
+        )
+    )
+    _upsert_vector(vector, "e1", 1.0, 0.0, 0.0, 0.0)
+    episodes.set_invalid_at("e1", datetime(2026, 2, 1, tzinfo=UTC))
+    # vigent-only knn no longer returns the invalidated episode...
+    assert vector.knn(_v(1.0, 0.0, 0.0, 0.0), 5) == []
+    # ...but state_at before the invalidation still includes it (CC-2).
+    hits = vector.knn_state_at(
+        _v(1.0, 0.0, 0.0, 0.0), 5, datetime(2026, 1, 15, tzinfo=UTC)
+    )
+    assert [h.ep_id for h in hits] == ["e1"]
+
+
 # --- fts behavior (M1-A.4) ----------------------------------------------------
 
 
