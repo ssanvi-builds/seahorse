@@ -133,3 +133,57 @@ def test_index_verify_still_reserved_exit_75(tmp_path, vault):
     assert code == CLI_NOT_IN_MVP_0, err
     assert "CLI_NOT_IN_MVP_0" in err
     assert "reserved in MVP-0" in err
+
+
+# --- M1-B.5: vector/FTS backfill over the rebuilt index ----------------------
+
+
+def test_index_rebuild_backfill_skipped_without_embedder(tmp_path, vault):
+    # The default `uv sync --extra dev` has no fastembed -> honest skip (G2).
+    _write_note(vault, "madrid", ep_id=_uuid7("01"))
+    code, out, err = invoke(["--vault", str(vault), "--json", "index", "rebuild"])
+    assert code == 0, err
+    obj = json.loads(out)
+    assert obj["backfill"] == "skipped (embedder unavailable)"
+
+
+def test_index_rebuild_backfill_embeds_with_embedder(monkeypatch, tmp_path, vault):
+    # With an embedder available, the rebuild backfills vec0 + FTS from the .md
+    # bodies (ADR-10: best-effort, the episode_index rebuild is the primary op).
+    import numpy as np
+
+    from seahorse.embeddings.types import ModelIdentity
+
+    class _FakeEmbedder:
+        dim = 384
+
+        async def embed(self, texts, role):
+            return np.ones((len(texts), 384), dtype=np.float32)
+
+        def model_identity(self) -> ModelIdentity:
+            return ModelIdentity(
+                backend="test", model_name="m", revision="r",
+                dim=384, quantization="fp32", normalized=True,
+            )
+
+    import seahorse.cli.vault_ops as vo
+
+    monkeypatch.setattr(vo, "_try_build_passage_embedder", lambda: _FakeEmbedder())
+    _write_note(vault, "madrid", ep_id=_uuid7("01"))
+    _write_note(vault, "paris", ep_id=_uuid7("02"))
+    code, out, err = invoke(["--vault", str(vault), "--json", "index", "rebuild"])
+    assert code == 0, err
+    obj = json.loads(out)
+    assert obj["backfill"] == "2 episodes embedded"
+
+    # verify the index actually populated (reopen the storage).
+    from seahorse.cli.config import load_config
+    from seahorse.persistence.storage import Storage
+
+    cfg = load_config(vault)
+    s = Storage(cfg.db_path)
+    try:
+        assert s.vector.count() == 2
+        assert s.fts.count() == 2
+    finally:
+        s.close()

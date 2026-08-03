@@ -33,7 +33,11 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import TextIO
+from pathlib import Path
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from seahorse.embeddings.types import Embedder
 
 from seahorse.cli.config import SeahorseConfig
 from seahorse.cli.errors import CliRebuildConflicts, CliUsageError
@@ -141,6 +145,46 @@ def run_inspect(
     render_message(payload, fmt=fmt, out=out, human_text=human)
 
 
+def _try_build_passage_embedder() -> Embedder | None:
+    """Build the FastEmbed passage embedder if the ``embeddings`` extra is present.
+
+    Returns ``None`` (honest G2) when fastembed is unavailable or construction
+    fails — the backfill is skipped, not failed. Lazy import keeps the CLI
+    command free of the heavy stack unless it can actually serve.
+    """
+    try:
+        from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
+
+        return build_fastembed_embedder()
+    except Exception:  # noqa: BLE001 — embedder absence is an honest skip
+        return None
+
+
+def _run_backfill(vault: Path, storage: Storage) -> str:
+    """M1-B.5: best-effort vec0/FTS backfill over the rebuilt index.
+
+    Returns an honest report line; never raises (the episode_index rebuild is
+    the primary op — the index backfill is derived/best-effort, ADR-10).
+    """
+    from seahorse.embeddings.indexer import RetrievalIndexer
+    from seahorse.frontmatter.adapter import parse_file
+    from seahorse.frontmatter.discovery import discover_notes
+
+    embedder = _try_build_passage_embedder()
+    if embedder is None:
+        return "skipped (embedder unavailable)"
+    indexer = RetrievalIndexer(
+        embedder, storage.vector, storage.fts, storage.episodes, storage._cm  # noqa: SLF001
+    )
+    count = 0
+    for path in discover_notes(vault):
+        _cm, body, ep = parse_file(path)
+        if body and body.strip():
+            indexer.index_episode_from_note(ep, body)
+            count += 1
+    return f"{count} episodes embedded"
+
+
 def run_index_rebuild(
     config: SeahorseConfig,
     *,
@@ -168,12 +212,15 @@ def run_index_rebuild(
     from seahorse.persistence.vector_index import vec_wipe
 
     storage = Storage(config.db_path)
+    backfill: str | None = None
     try:
         report = rebuild_from_vault(
             config.vault,
             storage.sidecar,
             secondary_index_wipes=(vec_wipe, fts_wipe),
         )
+        # M1-B.5: best-effort vec0/FTS backfill over the rebuilt index.
+        backfill = _run_backfill(config.vault, storage)
     finally:
         storage.close()
     conflicts = [asdict(c) for c in report.skipped]
@@ -183,11 +230,13 @@ def run_index_rebuild(
         "indexed": report.indexed,
         "skipped": len(conflicts),
         "conflicts": conflicts,
+        "backfill": backfill,
     }
     human_lines = [
         f"Index rebuild: {config.db_path}",
         f"  indexed:   {report.indexed}",
         f"  skipped:   {len(conflicts)}",
+        f"  backfill:  {backfill}",
     ]
     if conflicts:
         human_lines.append("  conflicts (ADR-10: no auto-pick, human resolution required):")

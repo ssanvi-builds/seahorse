@@ -38,6 +38,15 @@ def _get_loop() -> asyncio.AbstractEventLoop:
         return _LOOP
 
 
+def run_coroutine(coro: Any) -> Any:
+    """Run an async coroutine to completion from sync code (shared bridge loop).
+
+    Used by the RetrievalIndexer (M1-B.5) to embed passages with the async
+    ``Embedder`` Protocol from the sync write path.
+    """
+    return asyncio.run_coroutine_threadsafe(coro, _get_loop()).result()
+
+
 class AsyncToSyncQueryEmbedder:
     """Sync ``QueryEmbedder`` over an async #7 ``Embedder`` (M1-B.3)."""
 

@@ -77,6 +77,13 @@ class _EngineLike(Protocol):
     def is_valid_skip_path(self, ep: Episode) -> bool: ...
 
 
+@runtime_checkable
+class _IndexerLike(Protocol):
+    """M1-B.5: best-effort retrieval indexer hook (RetrievalIndexer)."""
+
+    def index_episode(self, ep_id: str) -> None: ...
+
+
 def _resolve_now(now: datetime | None) -> datetime:
     """Aware UTC ``now`` for the transient gate candidate (never naive)."""
     return now if now is not None else datetime.now(UTC)
@@ -286,11 +293,19 @@ class StubWritePath:
     is the real production skip route (gate + fallback + confidence).
     """
 
-    def __init__(self, engine: _EngineLike, repo: object | None = None) -> None:
+    def __init__(
+        self,
+        engine: _EngineLike,
+        repo: object | None = None,
+        indexer: _IndexerLike | None = None,
+    ) -> None:
         # ``repo`` is accepted for forward-compat (MVP-1 deterministic_extract
         # may use #3 derive_subject with a path). Unused in MVP-0 skip-path-only.
+        # ``indexer`` (M1-B.5): when wired, an ACTIVE write triggers the
+        # best-effort retrieval index (vec0 + FTS) — never fails the write.
         self._engine = engine
         self._repo = repo
+        self._indexer = indexer
 
     def ingest(
         self,
@@ -301,8 +316,16 @@ class StubWritePath:
     ) -> WriteResult:
         decision = decide_path(payload, extraction_mode)
         if decision.path == "llm":
-            return _degrade_to_skip(payload, decision, self._engine, now=now)
-        return run_skip_path(payload, decision, self._engine, now=now)
+            result = _degrade_to_skip(payload, decision, self._engine, now=now)
+        else:
+            result = run_skip_path(payload, decision, self._engine, now=now)
+        if (
+            self._indexer is not None
+            and result.ep_id is not None
+            and result.status == "ACTIVE"
+        ):
+            self._indexer.index_episode(result.ep_id)
+        return result
 
 
 __all__ = ["StubWritePath", "run_skip_path", "_degrade_to_skip"]
