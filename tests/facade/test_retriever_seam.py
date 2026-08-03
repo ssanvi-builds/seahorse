@@ -51,6 +51,12 @@ class RecordingRetriever:
         return self._candidates
 
 
+class PitCapableRetriever(RecordingRetriever):
+    """Retriever that declares PIT capability (M1-C.2)."""
+
+    supports_pit = True
+
+
 @pytest.fixture()
 def fake_retriever() -> RecordingRetriever:
     return RecordingRetriever(
@@ -137,6 +143,39 @@ class TestRetrieverDelegation:
         f, retriever = seam_facade
         with pytest.raises(EmptyQueryError):
             f.recall("")
+        assert retriever.calls == []
+
+
+class TestPitForwardWhenCapable:
+    """M1-C.2: a retriever that declares ``supports_pit`` receives the pit."""
+
+    def test_pit_forwarded_to_retriever_and_shaper(self, shaper, clock) -> None:
+        retriever = PitCapableRetriever(
+            candidates=(
+                FusedCandidate(ep_id="e1", score=1.0, sources=("vector",)),
+            )
+        )
+        f, _log = make_facade(
+            engine=None,
+            write_path=None,
+            shaper=shaper,
+            retriever=retriever,
+            clock=clock,
+        )
+        pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
+        f.recall("sergio", pit=pit)
+        # the retriever received the pit verbatim...
+        assert retriever.calls[0]["pit"] == pit
+        # ...and #8 materialize_index received the SAME pit (not None).
+        assert shaper.index_calls[0]["pit"] == pit
+
+    def test_retriever_without_capability_still_refuses_pit(self, seam_facade) -> None:
+        # The default RecordingRetriever has no supports_pit -> the facade still
+        # refuses before delegating (the existing pin, kept green).
+        f, retriever = seam_facade
+        pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
+        with pytest.raises(PitRecallNotSupportedMVP0):
+            f.recall("sergio", pit=pit)
         assert retriever.calls == []
 
 

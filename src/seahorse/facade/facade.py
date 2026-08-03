@@ -144,9 +144,14 @@ class _RetrieverLike(Protocol):
     MVP-1 swaps in an adapter over ``seahorse.retrieval.recall`` (kNN+BM25+RRF)
     at the composition root — a single-point change. The facade owns boundary
     validation (empty query, PIT refusal) + the #8 shaper call; the retriever
-    owns listing/filter/truncate + ranking. ``pit`` is always ``None`` in MVP-0
-    (the facade refuses a caller pit before delegating); it is on the surface
-    for forward-compat with the MVP-1 adapter, which uses it.
+    owns listing/filter/truncate + ranking.
+
+    M1-C.2: PIT capability is a DATA attribute (not a method) — the facade reads
+    ``getattr(retriever, "supports_pit", False)`` before delegating. A retriever
+    that does not declare it (e.g. G2) causes the facade to refuse a caller pit
+    before any read (ADR-03); the MVP-1 ``HybridRetriever`` declares it True and
+    receives the pit verbatim. ``@runtime_checkable`` does NOT check data
+    attributes, which is why the facade uses ``getattr`` with a False default.
     """
 
     def recall(
@@ -269,29 +274,32 @@ class MemoryFacade:
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
     ) -> list[IndexRow]:
-        """Recall the INDEX level (MVP-0 G2 vigente listing, no ranking, no PIT).
+        """Recall the INDEX level (MVP-0 G2 vigente listing / MVP-1 hybrid).
 
-        Boundary validation only: ``query`` non-empty, PIT refused before any
-        read (PIT recall is the #11 MVP-1 path; ADR-03 axes never mixed). The
-        ranking/listing policy is delegated to the injected ``Retriever`` (C8.1
-        seam — MVP-0 ``VigenteListingRetriever``, MVP-1 hybrid adapter); the
-        retriever produces ``FusedCandidate`` and #12 forwards pit=None to #8
-        ``materialize_index``. #12 NEVER constructs ``IndexRow``.
+        Boundary validation only: ``query`` non-empty; PIT is refused before
+        any read UNLESS the injected retriever declares ``supports_pit`` (the
+        MVP-1 ``HybridRetriever`` — PIT routing is #11's job; ADR-03 axes never
+        mixed). The ranking/listing policy is delegated to the injected
+        ``Retriever`` (C8.1 seam); the retriever produces ``FusedCandidate`` and
+        #12 forwards the (possibly PIT) candidates to #8 ``materialize_index``.
+        #12 NEVER constructs ``IndexRow``.
         """
         if not query or not query.strip():
             raise EmptyQueryError()
-        if pit is not None:
-            # Fail loud before any read: PIT recall is MVP-1 (#11 path).
+        if pit is not None and not getattr(self._retriever, "supports_pit", False):
+            # Fail loud before any read: the current regime has no PIT axis
+            # (MVP-0 G2; ADR-03). The hybrid MVP-1 retriever declares
+            # ``supports_pit`` and receives the pit verbatim.
             raise PitRecallNotSupportedMVP0()
         candidates = self._retriever.recall(
             query,
-            pit=None,
+            pit=pit,
             k=k,
             cognitive_type=cognitive_type,
             subject_filter=subject_filter,
         )
-        # #12 forwards pit=None to #8 (MVP-0 recall has no PIT axis).
-        return self._shaper.materialize_index(candidates, pit=None, now=self._clock())
+        # #12 forwards the (possibly PIT) candidates to #8 materialize_index.
+        return self._shaper.materialize_index(candidates, pit=pit, now=self._clock())
 
     def recall_timeline(
         self,

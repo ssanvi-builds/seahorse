@@ -49,7 +49,12 @@ class VigenteListingRetriever:
     ranking (MVP-0 canonical recall is the full vigente listing) and ignores
     ``pit`` (the facade refuses PIT before delegating; forwarded for
     forward-compat with the MVP-1 adapter, which DOES use it).
+
+    M1-C.2: ``supports_pit = False`` declares the G2 regime explicitly — the
+    facade refuses a caller pit before consulting this retriever (ADR-03).
     """
+
+    supports_pit = False
 
     def __init__(
         self,
