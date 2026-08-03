@@ -35,6 +35,7 @@ dependencies = [
     "ruamel.yaml>=0.18",
     "python-frontmatter>=1",
     "sqlite-vec==0.1.9",
+    "numpy>=2.0",
 ]
 
 [project.scripts]
