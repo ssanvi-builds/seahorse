@@ -173,4 +173,16 @@ def _row_to_hit(row: sqlite3.Row) -> FullTextHit:
     )
 
 
-__all__ = ["SqliteFullTextIndexRepository", "FTS_OVERFETCH_FACTOR"]
+def fts_wipe(conn: sqlite3.Connection) -> None:
+    """Secondary-index wipe for the sidecar rebuild (M1-A.6, C8.8 seam).
+
+    Clears the FTS5 external-content tables and resyncs the index (``'rebuild'``
+    command) so a vault rebuild leaves no ghost BM25 hits pointing at ep_ids
+    deleted from ``episode_index``. Runs inside the rebuild ``atomic()`` (clear
+    phase).
+    """
+    conn.execute("DELETE FROM episode_content")
+    conn.execute("INSERT INTO episode_fts(episode_fts) VALUES('rebuild')")
+
+
+__all__ = ["SqliteFullTextIndexRepository", "FTS_OVERFETCH_FACTOR", "fts_wipe"]

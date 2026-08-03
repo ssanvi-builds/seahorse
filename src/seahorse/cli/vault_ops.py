@@ -150,21 +150,30 @@ def run_index_rebuild(
     """``seahorse index rebuild`` — regenerate the sidecar from the vault.
 
     Delegates to ``frontmatter.rebuild.rebuild_from_vault`` (commit 4) over the
-    real ``Storage`` sidecar. The report is rendered to stdout BEFORE any error
-    is raised so the operator sees the conflict list. ADR-10: a non-empty
-    ``skipped`` raises ``CliRebuildConflicts`` (exit 94) — NO auto-pick. A parse
-    failure surfaces as ``FrontmatterInvalid`` (Cat A exit 90) — NO silent skip.
+    real ``Storage`` sidecar, with the vec0/FTS secondary-index wipes (M1-A.6)
+    so a rebuild leaves no ghost vector/BM25 hits. The report is rendered to
+    stdout BEFORE any error is raised so the operator sees the conflict list.
+    ADR-10: a non-empty ``skipped`` raises ``CliRebuildConflicts`` (exit 94) —
+    NO auto-pick. A parse failure surfaces as ``FrontmatterInvalid`` (Cat A exit
+    90) — NO silent skip.
     """
     # Lazy import: frontmatter.rebuild transitively pulls ruamel (via
     # frontmatter.adapter). Importing it at module top would leak ruamel into
     # every CLI command (app.py imports vault_ops eagerly). Keeping it lazy
     # confines ruamel to the rebuild entry point ONLY — run_migrate / run_inspect
-    # stay stdlib + #6 (ruamel-confinement invariant, vault_ops docstring).
+    # stay stdlib + #6 (ruamel-confinement invariant, vault_ops docstring). The
+    # wipe hooks live in the lazy vector/fts modules (M1-A.6) — same pattern.
     from seahorse.frontmatter.rebuild import rebuild_from_vault
+    from seahorse.persistence.fts_index import fts_wipe
+    from seahorse.persistence.vector_index import vec_wipe
 
     storage = Storage(config.db_path)
     try:
-        report = rebuild_from_vault(config.vault, storage.sidecar)
+        report = rebuild_from_vault(
+            config.vault,
+            storage.sidecar,
+            secondary_index_wipes=(vec_wipe, fts_wipe),
+        )
     finally:
         storage.close()
     conflicts = [asdict(c) for c in report.skipped]

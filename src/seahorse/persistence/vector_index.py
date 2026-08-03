@@ -25,6 +25,7 @@ Notes:
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 from typing import Any
 
@@ -182,4 +183,16 @@ def _row_to_hit(row: Any) -> VectorHit:
     )
 
 
-__all__ = ["SqliteVectorIndexRepository", "KNN_OVERFETCH_FACTOR"]
+def vec_wipe(conn: sqlite3.Connection) -> None:
+    """Secondary-index wipe for the sidecar rebuild (M1-A.6, C8.8 seam).
+
+    Clears vec0 + the lateral model stamp so a vault rebuild leaves no ghost
+    vectors pointing at ep_ids deleted from ``episode_index``. Runs inside the
+    rebuild ``atomic()`` (clear phase), so a wipe failure rolls back the whole
+    episode_index clear too.
+    """
+    conn.execute("DELETE FROM vec_episodes")
+    conn.execute("DELETE FROM vec_episodes_meta")
+
+
+__all__ = ["SqliteVectorIndexRepository", "KNN_OVERFETCH_FACTOR", "vec_wipe"]

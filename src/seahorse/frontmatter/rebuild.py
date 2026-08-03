@@ -22,7 +22,8 @@ failure so the operator fixes the vault rather than shipping a partial index.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import sqlite3
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from seahorse.contracts.persistence import ParsedNote, RebuildReport, SidecarIndexRepository
@@ -77,15 +78,26 @@ def iter_parsed_notes(vault_root: Path) -> Iterable[ParsedNote]:
         yield _parsed_note(vault_root, path)
 
 
-def rebuild_from_vault(vault_root: Path, sidecar: SidecarIndexRepository) -> RebuildReport:
+def rebuild_from_vault(
+    vault_root: Path,
+    sidecar: SidecarIndexRepository,
+    *,
+    secondary_index_wipes: Sequence[Callable[[sqlite3.Connection], None]] = (),
+) -> RebuildReport:
     """Rebuild the sidecar index from the vault's ``.md`` files.
 
     Parses each discovered note and delegates the clear-then-rebuild to
     ``sidecar.rebuild_all``. Returns the ``RebuildReport`` (indexed count +
     skipped conflicts). Raises ``FrontmatterInvalid`` on the first unparseable
     note — the vault must be migrated to F3.1 before rebuild.
+
+    M1-A.6: ``secondary_index_wipes`` (C8.8 seam) is forwarded verbatim so the
+    CLI can clear vec0/FTS in the same atomic as the episode_index clear — the
+    orchestrator stays a thin passthrough.
     """
-    return sidecar.rebuild_all(iter_parsed_notes(vault_root))
+    return sidecar.rebuild_all(
+        iter_parsed_notes(vault_root), secondary_index_wipes=secondary_index_wipes
+    )
 
 
 __all__ = ["iter_parsed_notes", "rebuild_from_vault"]

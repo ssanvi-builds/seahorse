@@ -273,6 +273,30 @@ def test_set_invalid_at_syncs_vec_episodes_invalid_at(
     assert [h.ep_id for h in hits] == ["e1"]
 
 
+def test_vec_and_fts_wipes_clear_indexes(
+    vector: SqliteVectorIndexRepository,
+    fts: SqliteFullTextIndexRepository,
+    mgr: ConnectionManager,
+) -> None:
+    # M1-A.6: the secondary-index wipe hooks that rebuild_all runs (C8.8 seam)
+    # must actually clear vec0 + FTS so a vault rebuild leaves no ghost hits.
+    from seahorse.persistence.fts_index import fts_wipe
+    from seahorse.persistence.vector_index import vec_wipe
+
+    _insert_index_row(mgr, "e1")
+    _upsert_vector(vector, "e1", 1.0, 0.0, 0.0, 0.0)
+    _upsert_fts(fts, "e1", "madrid spain")
+    assert vector.count() == 1
+    assert fts.count() == 1
+    with mgr.atomic() as w:
+        vec_wipe(w)
+        fts_wipe(w)
+    assert vector.count() == 0
+    assert fts.count() == 0
+    # no ghost hits: searching an old term after the wipe returns nothing.
+    assert fts.search("madrid", 5) == []
+
+
 # --- fts behavior (M1-A.4) ----------------------------------------------------
 
 

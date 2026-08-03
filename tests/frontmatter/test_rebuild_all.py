@@ -110,6 +110,22 @@ def test_rebuild_from_vault_populates_sidecar(tmp_path: Path, sidecar) -> None:
     assert sidecar.get_path(_uuid7("02"))[0] == "sub/paris.md"
 
 
+def test_rebuild_from_vault_forwards_secondary_index_wipes(tmp_path: Path, sidecar) -> None:
+    # M1-A.6: the orchestrator forwards secondary_index_wipes to rebuild_all so
+    # the CLI can clear vec0/FTS in the same atomic as the episode_index clear.
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    seen: list[str] = []
+
+    def wipe(conn) -> None:
+        seen.append("ran")
+
+    report = rebuild_from_vault(vault, sidecar, secondary_index_wipes=[wipe])
+    assert report.indexed == 1
+    assert seen == ["ran"]
+
+
 def test_rebuild_from_vault_clear_then_rebuild(tmp_path: Path, sidecar) -> None:
     # a second rebuild reflects vault edits/deletions (clear-then-rebuild).
     vault = tmp_path / "vault"

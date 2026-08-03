@@ -14,7 +14,8 @@ References:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+import sqlite3
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -250,10 +251,17 @@ class SidecarIndexRepository(Protocol):
     @contextmanager
     def reindex(self, ep_id: str, file_path: str, mtime_ms: int, size: int) -> Iterator[None]: ...
 
-    def rebuild_all(self, notes: Iterable[ParsedNote]) -> RebuildReport: ...
+    def rebuild_all(
+        self,
+        notes: Iterable[ParsedNote],
+        *,
+        secondary_index_wipes: Sequence[Callable[[sqlite3.Connection], None]] = (),
+    ) -> RebuildReport: ...
         # Clear episode_index + episode_paths and repopulate from notes (ruamel-free;
         # the caller #3 builds ParsedNote from parsed .md files). See RebuildReport
         # + RebuildConflict for the honesty contract (ADR-10: never silent).
+        # M1-A.6: secondary_index_wipes (C8.8 seam) runs caller-supplied wipe hooks
+        # in the clear phase so vec0/FTS do not leave ghost hits on a vault rebuild.
 
 
 # ---------------------------------------------------------------------------
