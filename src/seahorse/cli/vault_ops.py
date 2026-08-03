@@ -64,7 +64,9 @@ def run_migrate(
     if up_to is not None and up_to < 0:
         raise CliUsageError(f"--up-to must be a non-negative integer, got {up_to}")
     config.db_path.parent.mkdir(parents=True, exist_ok=True)
-    mgr = ConnectionManager(config.db_path, pool_size=0)
+    # M1-A.1: run_migrate opts into vec0 so migration 010 (``USING vec0``) can be
+    # applied on a legacy DB without going through Storage. sqlite-vec is core.
+    mgr = ConnectionManager(config.db_path, pool_size=0, extensions=("vec0",))
     mgr.open()
     try:
         applied = apply_migrations(mgr.writer, up_to=up_to)

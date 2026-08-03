@@ -57,7 +57,12 @@ class Storage:
     """Composition root: one ``ConnectionManager`` + all repositories + one ``atomic()``."""
 
     def __init__(self, db_path: Path | str, *, pool_size: int = 4) -> None:
-        self._cm = ConnectionManager(db_path, pool_size=pool_size)
+        # M1-A.1: Storage opts into the vec0 extension (sqlite-vec is a core dep)
+        # so migration 010 (``CREATE VIRTUAL TABLE ... USING vec0``) runs on
+        # ``open()``. The CM default stays ``()`` — only the composition root
+        # enables the extension. ``sqlite_vec`` is loaded lazily inside
+        # ``ConnectionManager._load_extensions``, never at import time.
+        self._cm = ConnectionManager(db_path, pool_size=pool_size, extensions=("vec0",))
         self._cm.open()
         try:
             apply_migrations(self._cm.writer)  # clonar-y-ejecutar: schema ready on construct

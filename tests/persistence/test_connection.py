@@ -238,3 +238,34 @@ def test_open_without_extensions_never_calls_load_extension(tmp_path, monkeypatc
     mgr.open()
     mgr.close()
     assert calls == []
+
+
+def test_extensions_vec0_loads_sqlite_vec_and_creates_virtual_table(tmp_path) -> None:
+    # M1-A.1: with extensions=("vec0",), open() must load sqlite-vec so a vec0
+    # virtual table can be created (the migration 010 path). Requires the
+    # sqlite-vec package (core dep landing in M1-A.1) — RED until the dep + the
+    # "vec0" special-case in _load_extensions are in.
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=2, extensions=("vec0",))
+    mgr.open()
+    try:
+        mgr.writer.execute("CREATE VIRTUAL TABLE probe USING vec0(x float[4])")
+        row = mgr.writer.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='probe'"
+        ).fetchone()
+        assert row is not None
+    finally:
+        mgr.close()
+
+
+def test_storage_passes_vec0_to_connection_manager(tmp_path) -> None:
+    # M1-A.1: the composition root (Storage) must propagate the vec0 extension to
+    # the ConnectionManager so migration 010 (USING vec0) runs on open(). Storage
+    # always requests vec0 (sqlite-vec is a core dep from M1-A.1); the CM default
+    # stays () — only Storage opts in.
+    from seahorse.persistence.storage import Storage
+
+    storage = Storage(tmp_path / "seahorse.db")
+    try:
+        assert storage._cm._extensions == ("vec0",)  # noqa: SLF001 — seam pin
+    finally:
+        storage.close()

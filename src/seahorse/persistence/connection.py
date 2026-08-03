@@ -151,11 +151,23 @@ class ConnectionManager:
         cannot ``load_extension`` later. A missing binary or a Python build
         without extension-loading support raises here — MVP-1 must surface
         that (MVP-0 is unaffected because it never sets ``extensions``).
+
+        M1-A.1: the ``vec0`` name resolves to the ``sqlite-vec`` PyPI package
+        (``import sqlite_vec; sqlite_vec.load(conn)``) rather than a raw
+        ``load_extension`` — the package does not publish a ``vec0.dylib``-named
+        binary, and ``sqlite_vec.load`` locates the bundled shared library.
+        ``sqlite_vec`` is imported lazily here (never at module top) so the core
+        import path stays free of heavy deps (C8.2 import-laziness guard).
         """
         conn.enable_load_extension(True)
         try:
             for ext in self._extensions:
-                conn.load_extension(ext)
+                if ext == "vec0":
+                    import sqlite_vec  # type: ignore[import-untyped]  # lazy: only when vec0 is requested
+
+                    sqlite_vec.load(conn)
+                else:
+                    conn.load_extension(ext)
         finally:
             # Re-lock extension loading: only the composition root may load
             # extensions, not arbitrary runtime SQL.
