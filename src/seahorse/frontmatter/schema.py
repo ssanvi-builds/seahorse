@@ -85,7 +85,10 @@ class Provenance(BaseModel):
     #6 uses freeform dicts, not a sub-model). This helper gives the migrator a
     typed shape to build with; it is dumped to a plain dict before constructing
     the ``Episode``. ``extra="allow"`` lets the migrator carry importer-specific
-    fields (``importer_vendor``/``importer_loss``/custom ``x-*``) through.
+    fields (``importer_vendor``/``importer_loss``/custom ``x-*``) through, and
+    lets the write-path degrade marker (``degraded_from`` / ``degrade_reason``,
+    C8.7 / ADR-10 — present only on an llm→skip degrade) round-trip without a
+    schema migration.
     """
 
     model_config = ConfigDict(extra="allow", frozen=True)

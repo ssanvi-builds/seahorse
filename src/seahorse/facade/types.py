@@ -51,6 +51,13 @@ class Provenance(TypedDict, total=False):
     the deterministic skip-path. The write-path overwrites ``extraction_mode``/
     ``model_used``/``prompt_hash``/``confidence``; the rest is stored verbatim
     by the engine as ``Episode.provenance``.
+
+    ``degraded_from`` / ``degrade_reason`` are the durable degrade marker
+    (C8.7, ADR-10): present ONLY on an llm→skip degrade, never on a genuine
+    skip. They distinguish a degraded episode from a real skip in stored
+    provenance (no "permanent lie"). Per f5-05 sec 5 line 111 the caller's
+    CLAIMED ``model_used``/``prompt_hash`` (the LLM intent that was degraded)
+    are LOGUED by #5, NOT stored in core — core stays ``None`` on degrade.
     """
 
     source_type: str
@@ -62,6 +69,8 @@ class Provenance(TypedDict, total=False):
     confidence: float
     importer_vendor: str  # importer path (deterministic UUIDv5, SO-4b)
     source_record_id: str  # importer path
+    degraded_from: str  # llm→skip degrade marker (C8.7, ADR-10) — degrade-only
+    degrade_reason: str  # llm→skip degrade marker (C8.7, ADR-10) — degrade-only
 
 
 # Informative vocabularies (NOT enforced by #12 in MVP-0; engine/#1 authority).

@@ -16,9 +16,25 @@ signed and stable.
 accumulator that advances across retries (``spent_usd`` / ``tokens_spent`` via
 ``record_actual_cost``). It is execution state, not domain data.
 
+Sync/async seam (C8.7 [54]-decision): this contract is deliberately SYNC
+(``complete`` / ``extract`` return results, not coroutines). The real #4 adapter
+will almost certainly be async under the hood (HTTP LLM clients are async-first),
+so #4 owns the async→sync bridge — it runs its event loop internally and returns
+a plain ``CompletionResult`` / ``ExtractResult``. Keeping the SEAM sync means #5
+(``StubWritePath`` / the future real write-path) calls ``extract`` synchronously
+with no ``await`` ripple: the facade (#12), MCP (#13) and CLI (#14) stay sync and
+do not need to become async just because the LLM client is. The cost of the bridge
+(a thread or a ``loop.run_until_complete``) is encapsulated in #4 and is invisible
+to every caller above. This is the single-point swap the C8.7 seam hardening
+preserves: when #4 ships, only #4 changes; #5 and everything above it are untouched.
+MVP-0 never reaches this seam — ``StubWritePath`` degrades ``llm``→``skip`` before
+``StubLLMClient`` is ever called — but the contract is frozen now so the swap is a
+single component's work, not a cross-cutting async refactor.
+
 References:
 - f6-signoffs.md SO-5a (signed contract — LLMClient, ExtractResult, BudgetContext, StubLLMClient)
 - f5-04-multi-llm.md (Multi-LLM extraction design)
+- f5-05-skip-extraction.md sec 5 line 111 (llm→skip degrade: core None, intent logged)
 - seahorse/write_path/ (#5 — the consumer; StubWritePath degrades llm→skip)
 """
 

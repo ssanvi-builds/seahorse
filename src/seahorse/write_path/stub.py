@@ -9,11 +9,23 @@ owns ``confidence`` in the effective provenance (``1.0`` gate-valid,
 MVP-1 (``StubLLMClient`` raises ``NotImplementedError``); the seam is stable
 for ``#4`` to plug a real LLM path later.
 
+The llm→skip degrade is HONEST (f5-05 sec 5 line 111, ADR-10): provenance core
+carries the corrected effective mode (``extraction_mode='skip'``,
+``model_used=None``, ``prompt_hash=None`` — no model ran on the episode); the
+caller's CLAIMED ``model_used`` / ``prompt_hash`` (the LLM intent that was
+degraded) are LOGUED for traceability, NOT stored in core; and the degrade is
+marked EXPLICITLY in core (``degraded_from`` + ``degrade_reason``) so a degraded
+episode is distinguishable from a genuine skip (no "permanent lie" faking
+skip-from-the-start). Genuine skip carries no degrade marker.
+
 What #5 owns:
 - The **effective provenance** for the skip path: it sets ``extraction_mode='skip'``,
   ``model_used=None``, ``prompt_hash=None``, and ``confidence`` (1.0 / None) so the
   stored ``Episode.provenance`` never lies about the effective mode (ADR-09/ADR-10).
   ``confidence`` is #5-owned (f5-05 sec 11.5): #5 OVERWRITES the caller's value.
+  On an llm→skip degrade it ALSO stamps the durable degrade marker
+  (``degraded_from`` / ``degrade_reason``); the caller's claimed LLM intent is
+  logged, not stored (f5-05 sec 5 line 111).
 - The **gate + fallback**: a transient candidate ``Episode`` is built with
   ``created_at=now`` injected ONLY for gate validation (I1 preserved —
   ``engine.remember``/``apply_fact`` re-fix ``created_at`` on the real write).
@@ -102,20 +114,59 @@ def _build_candidate(payload: RememberPayload, now: datetime) -> Episode:
     )
 
 
-def _effective_by(payload: RememberPayload, confidence: float | None) -> dict:
+def _effective_by(
+    payload: RememberPayload,
+    confidence: float | None,
+    *,
+    degrade: tuple[str, str] | None = None,
+) -> dict:
     """Effective provenance for the skip path (f5-05 sec 11.5).
 
     Four keys added over the caller's ``by``: ``extraction_mode='skip'``,
     ``model_used=None``, ``prompt_hash=None``, ``confidence`` (1.0 gate-valid,
     None fallback). ``confidence`` OVERWRITES any caller value (#5-owned).
+
+    ``degrade`` (set ONLY on an llm→skip degrade) adds the durable degrade
+    marker — ``degraded_from`` (the requested mode that was degraded) and
+    ``degrade_reason`` (why) — so a degraded episode is distinguishable from a
+    genuine skip in stored provenance (ADR-10: no silent degradation, no
+    "permanent lie" that fakes skip-from-the-start). Genuine skip passes
+    ``degrade=None`` and carries no marker. Per f5-05 sec 5 line 111 the
+    caller's CLAIMED ``model_used``/``prompt_hash`` never reach core (overwritten
+    to ``None`` here); they are logged by ``_log_llm_intent`` instead.
     """
-    return {
+    by = {
         **payload.by,
         "extraction_mode": "skip",
         "model_used": None,
         "prompt_hash": None,
         "confidence": confidence,
     }
+    if degrade is not None:
+        degraded_from, degrade_reason = degrade
+        by["degraded_from"] = degraded_from
+        by["degrade_reason"] = degrade_reason
+    return by
+
+
+def _log_llm_intent(payload: RememberPayload, reason: str) -> None:
+    """Log the caller's CLAIMED LLM intent for traceability (f5-05 sec 5 line 111).
+
+    On an llm→skip degrade the EFFECTIVE mode is skip and provenance core carries
+    ``model_used=None`` / ``prompt_hash=None`` (no model ran on this episode —
+    ``_effective_by`` overwrites them). The caller's claimed ``model_used`` /
+    ``prompt_hash`` — the LLM intent that was degraded — are traced here at INFO,
+    NOT stored in provenance core. Logs are the traceability channel for the
+    failed intent; the durable degrade marker (``degraded_from`` /
+    ``degrade_reason``) is what lives in core.
+    """
+    _logger.info(
+        "write_path.llm_degraded_to_skip reason=%s intent_model_used=%s "
+        "intent_prompt_hash=%s",
+        reason,
+        payload.by.get("model_used"),
+        payload.by.get("prompt_hash"),
+    )
 
 
 def _fallback_remember(
@@ -123,18 +174,21 @@ def _fallback_remember(
     engine: _EngineLike,
     *,
     now: datetime | None,
+    degrade: tuple[str, str] | None = None,
 ) -> WriteResult:
     """Gate rejected -> zero-LLM editorial fallback (f5-05 sec 3.2).
 
     ``deterministic_extract`` raises ``SubjectDerivationError`` loud when no
     subject is derivable (ADR-10); otherwise the candidate is sound and we
-    delegate to ``engine.remember`` with ``confidence=None``.
+    delegate to ``engine.remember`` with ``confidence=None``. ``degrade`` threads
+    the durable degrade marker through so a degraded llm→skip that falls back to
+    ``deterministic_extract`` still carries the marker (not faked as skip).
     """
     # Loud subject check — raises SubjectDerivationError if no title/H1.
     deterministic_extract(payload)
     return engine.remember(
         body=payload.body,
-        by=_effective_by(payload, confidence=None),
+        by=_effective_by(payload, confidence=None, degrade=degrade),
         valid_at=payload.valid_at,
         cognitive_type=payload.cognitive_type,
         schema_version=payload.schema_version,
@@ -149,6 +203,7 @@ def run_skip_path(
     engine: _EngineLike,
     *,
     now: datetime | None = None,
+    degrade: tuple[str, str] | None = None,
 ) -> WriteResult:
     """Execute the first-class deterministic skip path: gate, fallback, delegate.
 
@@ -164,7 +219,10 @@ def run_skip_path(
     3. Delegate to ``engine.remember`` and return its ``WriteResult`` verbatim.
 
     ``decision`` is accepted for signature stability (the path is already chosen);
-    it is not re-derived here.
+    it is not re-derived here. ``degrade`` (set only by ``_degrade_to_skip``)
+    threads the durable degrade marker into the effective provenance on BOTH the
+    gate-valid and fallback branches, so a degraded llm→skip is never faked as a
+    genuine skip (ADR-10). Genuine-skip callers leave ``degrade=None``.
     """
     candidate = _build_candidate(payload, _resolve_now(now))
     try:
@@ -177,12 +235,12 @@ def run_skip_path(
             "(field=%s); falling back to deterministic_extract",
             exc.context.get("field"),
         )
-        return _fallback_remember(payload, engine, now=now)
+        return _fallback_remember(payload, engine, now=now, degrade=degrade)
     if not valid:
-        return _fallback_remember(payload, engine, now=now)
+        return _fallback_remember(payload, engine, now=now, degrade=degrade)
     return engine.remember(
         body=payload.body,
-        by=_effective_by(payload, confidence=1.0),
+        by=_effective_by(payload, confidence=1.0, degrade=degrade),
         valid_at=payload.valid_at,
         cognitive_type=payload.cognitive_type,
         schema_version=payload.schema_version,
@@ -199,17 +257,25 @@ def _degrade_to_skip(
     now: datetime | None = None,
     reason: str = "llm_not_implemented_mvp0",
 ) -> WriteResult:
-    """Degrade an ``llm`` decision to the skip path (MVP-0 honesty).
+    """Degrade an ``llm`` decision to the skip path (MVP-0 honesty, ADR-10).
 
     MVP-0 has no LLM client, so the ``llm`` path degrades directly to skip
     (it never reaches ``StubLLMClient``). The effective mode is corrected to
-    ``skip`` — #5 does not lie about the effective mode. The ``reason`` records
-    why the degradation happened (observability).
+    ``skip`` — #5 does not lie about the effective mode (f5-05 sec 5 line 111):
+    provenance core carries ``model_used=None`` / ``prompt_hash=None``. The
+    caller's CLAIMED ``model_used`` / ``prompt_hash`` (the LLM intent that was
+    degraded) are LOGUED for traceability via ``_log_llm_intent`` — they do NOT
+    go to provenance core. The degrade is marked EXPLICITLY in core
+    (``degraded_from`` = the requested mode, ``degrade_reason`` = ``reason``) so
+    the stored episode is distinguishable from a genuine skip (ADR-10: no silent
+    degradation, no "permanent lie" faking skip-from-the-start).
     """
+    _log_llm_intent(payload, reason)
     skip_decision = PathDecision(
         path="skip", requested_mode=decision.requested_mode, reason=reason
     )
-    return run_skip_path(payload, skip_decision, engine, now=now)
+    degraded_from = decision.requested_mode or "llm"
+    return run_skip_path(payload, skip_decision, engine, now=now, degrade=(degraded_from, reason))
 
 
 class StubWritePath:
