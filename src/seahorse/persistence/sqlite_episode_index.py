@@ -61,11 +61,17 @@ def _row_to_index(row: sqlite3.Row) -> IndexRowData:
 
 
 def _pit_predicate(pit_kind: PITKind, pit: datetime) -> tuple[str, tuple[str, str]]:
-    """Return (SQL fragment, params) for the bi-temporal PIT filter (axes never mixed)."""
+    """Return (SQL fragment, params) for the bi-temporal PIT filter (axes never mixed).
+
+    CC-2 (C8.6): the ``state_at`` branch includes ``valid_at IS NULL`` ("from
+    forever", f5-02 §2 line 85 — valid at any ``t``), mirroring the canonical
+    engine predicates ``get_vigente`` / ``is_valid_at``. Real PENDING is
+    ``valid_at`` in the FUTURE, excluded by ``valid_at <= ?``.
+    """
     iso = pit.isoformat()
     if pit_kind == "state_at":
         return (
-            "valid_at IS NOT NULL AND valid_at <= ? AND (invalid_at IS NULL OR invalid_at > ?)",
+            "(valid_at IS NULL OR valid_at <= ?) AND (invalid_at IS NULL OR invalid_at > ?)",
             (iso, iso),
         )
     if pit_kind == "known_at":

@@ -85,7 +85,7 @@ from seahorse.contracts.persistence import (
 )
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
-from seahorse.retrieval.errors import BfsKnownAtUnsupported, InvalidPITKind
+from seahorse.retrieval.errors import BfsKnownAtUnsupported, RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
 
 # A hit from either source axis. ``_filter_hits_by_cognitive_type`` is generic so
@@ -197,7 +197,7 @@ def _row_ep_id(row: IndexRowData) -> str:
 def _validate_pit(pit: PITPoint | None) -> None:
     """Validate ``pit.kind`` ONCE, before fan-out (ADR-03: axes never mix)."""
     if pit is not None and pit.kind not in PIT_KIND_VALUES:
-        raise InvalidPITKind(pit.kind)
+        raise RetrievalInvalidPITKind(pit.kind)
 
 
 def _knn(
@@ -219,8 +219,10 @@ def _knn(
         )
     if pit.kind == "state_at":
         hits = vector_repo.knn_state_at(query_vec, k, pit.t)
-    else:  # known_at
+    elif pit.kind == "known_at":
         hits = vector_repo.knn_known_at(query_vec, k, pit.t)
+    else:  # _validate_pit already rejected unknown kinds (ADR-03); defensive
+        raise RetrievalInvalidPITKind(pit.kind)
     if cognitive_type:  # G1: client-side (PIT knn has no cognitive_types)
         hits = _filter_hits_by_cognitive_type(hits, cognitive_type, episode_repo)
     return hits
@@ -242,8 +244,10 @@ def _bm25(
         hits = fts_repo.search(query, k, vigent_only=True, subject_filter=subject_filter)
     elif pit.kind == "state_at":
         hits = fts_repo.search_state_at(query, k, pit.t)
-    else:  # known_at
+    elif pit.kind == "known_at":
         hits = fts_repo.search_known_at(query, k, pit.t)
+    else:  # _validate_pit already rejected unknown kinds (ADR-03); defensive
+        raise RetrievalInvalidPITKind(pit.kind)
     if cognitive_type:  # G1: client-side for ALL BM25
         hits = _filter_hits_by_cognitive_type(hits, cognitive_type, episode_repo)
     return hits
@@ -289,8 +293,10 @@ def _project_chain(
     elif pit.kind == "state_at":
         projected = _chain_vigent_at(chain, pit.t)
         eps = [projected] if projected is not None else []
-    else:  # known_at
+    elif pit.kind == "known_at":
         eps = _chain_known_at(chain, pit.t)
+    else:  # _validate_pit already rejected unknown kinds (ADR-03); defensive
+        raise RetrievalInvalidPITKind(pit.kind)
     if cognitive_type:  # G1: client-side filter over Episode.cognitive_type
         eps = [e for e in eps if e.cognitive_type == cognitive_type]
     return eps
@@ -315,12 +321,13 @@ def _chain_vigent_at(chain: Sequence[Episode], t: datetime) -> Episode | None:
     """``state_at`` projection. ADR-03: valid_time axis ONLY (``valid_at``/
     ``invalid_at``); ``expired_at`` (transaction_time) is NOT considered. The
     LAST vigent-at-``t`` is the active version at ``t`` (chain is
-    ``created_at``-ascending). Predicate (disclosure conftest ``_pit_ok``):
-    ``valid_at is not None and valid_at <= t and (invalid_at is None or invalid_at > t)``."""
+    ``created_at``-ascending). CC-2 (C8.6): predicate (disclosure conftest
+    ``_pit_ok``): ``valid_at is None or valid_at <= t`` ("from forever" is valid
+    at any ``t``, f5-02 §2 line 85) ``and (invalid_at is None or invalid_at > t)``."""
     candidates = [
         e
         for e in chain
-        if e.valid_at is not None and e.valid_at <= t and (e.invalid_at is None or e.invalid_at > t)
+        if (e.valid_at is None or e.valid_at <= t) and (e.invalid_at is None or e.invalid_at > t)
     ]
     return candidates[-1] if candidates else None
 

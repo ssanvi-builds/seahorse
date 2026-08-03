@@ -122,6 +122,9 @@ _ORIGIN_BY_CLASS = {
     "InvalidPITKind": "#12",
     "PitRecallNotSupportedMVP0": "#12",
     "EmptyQueryError": "#12",
+    # #11 retrieval — plain Exception (no .code), raised at the recall entrypoint
+    # on an unknown pit.kind. Distinct __name__ from #12's InvalidPITKind (C8.6).
+    "RetrievalInvalidPITKind": "#11",
     # EngineError → #2
     "EngineError": "#2",
     # disclosure exceptions → #8
@@ -202,12 +205,16 @@ def translate(exc: BaseException, request_id: Any) -> dict[str, Any]:
             },
         )
 
-    # Generic fallback — fail-loud, no swallow, no synthetic code.
+    # Generic fallback — fail-loud, no swallow, no synthetic code. The component
+    # is resolved via ``_origin_of`` (C8.6 [24]): a plain-Exception class that IS
+    # in ``_ORIGIN_BY_CLASS`` — e.g. #11's ``RetrievalInvalidPITKind`` (no ``.code``,
+    # not in CAT_B) — now attributes to its real owner instead of being masked as
+    # ``#13``. Unknown classes still fall back to ``#13``.
     return _rpc_error(
         request_id,
         -32603,
         "Internal error",
-        {"exception_class": cls, "detail": str(exc), "component": "#13"},
+        {"exception_class": cls, "detail": str(exc), "component": _origin_of(exc)},
     )
 
 

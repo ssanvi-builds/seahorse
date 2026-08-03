@@ -171,7 +171,13 @@ class DisclosureShaperImpl:
             return self._index.get_rows(ep_ids)
         if pit.kind == "state_at":
             return self._index.get_rows_state_at(ep_ids, pit.t)
-        return self._index.get_rows_known_at(ep_ids, pit.t)
+        if pit.kind == "known_at":
+            return self._index.get_rows_known_at(ep_ids, pit.t)
+        # ADR-03 fixes exactly two PIT kinds; the facade validates pit.kind BEFORE
+        # the shaper runs, so reaching here is an invariant violation — fail loud
+        # rather than silently misroute an unknown kind to known_at (mirror of
+        # sqlite_episode_index._pit_predicate, which raises on the same guard).
+        raise ValueError(f"pit.kind must be 'state_at' | 'known_at'; got {pit.kind!r}")
 
     # ---------- TIMELINE (2nd call, anchor-based, no body) -------------------
 
@@ -215,8 +221,16 @@ class DisclosureShaperImpl:
         ep_ids = [r.ep_id for r in rows]
         if pit.kind == "state_at":
             surviving = self._index.get_rows_state_at(ep_ids, pit.t)
-        else:
+        elif pit.kind == "known_at":
             surviving = self._index.get_rows_known_at(ep_ids, pit.t)
+        else:
+            # ADR-03 fixes exactly two PIT kinds; the facade validates pit.kind
+            # BEFORE the shaper runs, so reaching here is an invariant violation
+            # — fail loud rather than silently misroute (mirror of
+            # sqlite_episode_index._pit_predicate).
+            raise ValueError(
+                f"pit.kind must be 'state_at' | 'known_at'; got {pit.kind!r}"
+            )
         keep = {r.ep_id for r in surviving}
         # Preserve the original order (e.g. chain sorted by created_at).
         return [r for r in rows if r.ep_id in keep]

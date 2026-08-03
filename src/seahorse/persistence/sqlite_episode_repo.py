@@ -231,10 +231,14 @@ class SqliteEpisodeRepository:
         return self._fetch_many(where, ())
 
     def query_state_at(self, t: datetime, subject: str | None = None) -> list[Episode]:
-        # state_at axis: valid_at <= t AND (invalid_at IS NULL OR invalid_at > t).
-        # NULL-safe: valid_at IS NULL (PENDING_INGEST) is excluded — not valid at any time.
+        # state_at axis: (valid_at IS NULL OR valid_at <= t) AND (invalid_at IS NULL
+        # OR invalid_at > t). CC-2 (C8.6): valid_at IS NULL = "from forever"
+        # (f5-02 §2 line 85) — valid at ANY t, so it is INCLUDED (mirrors the
+        # canonical engine predicates get_vigente / is_valid_at, which already
+        # include NULL). Real PENDING is valid_at in the FUTURE, excluded by
+        # ``valid_at <= t``.
         where = (
-            "e.valid_at IS NOT NULL AND e.valid_at <= ? "
+            "(e.valid_at IS NULL OR e.valid_at <= ?) "
             "AND (e.invalid_at IS NULL OR e.invalid_at > ?)"
         )
         params: list[object] = [_fmt_dt(t), _fmt_dt(t)]

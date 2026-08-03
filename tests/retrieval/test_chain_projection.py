@@ -10,8 +10,9 @@ violation). These tests lock the corrected behavior.
 Signals:
 - ``_chain_active_now``: last episode that is not invalidated, not expired, and
   valid (``valid_at is None or valid_at <= now``).
-- ``_chain_vigent_at``: state_at — ``expired_at`` (transaction_time) does NOT
-  affect the result; ``invalid_at`` (valid_time) does.
+- ``_chain_vigent_at``: state_at — ``valid_at IS NULL`` ("from forever") is valid
+  at any ``t`` (CC-2); ``expired_at`` (transaction_time) does NOT affect the
+  result; ``invalid_at`` (valid_time) does.
 - ``_chain_known_at``: known_at — ``invalid_at`` (valid_time) does NOT affect the
   result; ``expired_at`` (transaction_time) does.
 - ``cognitive_type`` filters the projected chain client-side.
@@ -76,10 +77,14 @@ class TestChainVigentAtStateAxisOnly:
         v = _ep("v", created_at=T0, valid_at=T2)
         assert _chain_vigent_at(_chain(v), T1) is None  # valid_at > t1
 
-    def test_valid_at_none_excludes(self):
-        # Predicate requires valid_at is not None (conftest).
+    def test_valid_at_none_is_vigent_anytime(self):
+        # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid
+        # at ANY t. The state_at predicate is ``valid_at IS NULL OR valid_at <= t``,
+        # mirroring ``is_valid_at`` / ``get_vigente`` (the canonical engine
+        # predicates already include NULL). The previous drift excluded NULL,
+        # mis-treating "from forever" as PENDING.
         v = _ep("v", created_at=T0)  # valid_at None
-        assert _chain_vigent_at(_chain(v), T1) is None
+        assert _chain_vigent_at(_chain(v), T1) is v
 
     def test_last_vigent_wins(self):
         v1 = _ep("v1", created_at=T0, valid_at=T0, invalid_at=T2)

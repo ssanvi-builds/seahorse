@@ -13,12 +13,14 @@ drift — these are bi-temporal fundamentals, not policy):
   — mirrors ``SqliteEpisodeIndexRepository.find_vigent_row_by_fact_id``
   (sqlite_episode_index.py): a row whose valid-time AND transaction-time axes
   are both open (neither invalidated nor decayed).
-- **activo-ahora** = ``valid_at IS NOT NULL AND valid_at <= now
+- **activo-ahora** = ``(valid_at IS NULL OR valid_at <= now)
   AND (invalid_at IS NULL OR invalid_at > now)``
   — mirrors ``_pit_predicate("state_at", now)`` (sqlite_episode_index.py): a
   row effective in the valid-time axis NOW. This is the ``state_at`` PIT
   predicate, which ignores the ``expired_at`` (transaction-time decay) axis —
-  a decayed-but-valid row is still ``activo-ahora``.
+  a decayed-but-valid row is still ``activo-ahora``. CC-2 (C8.6): ``valid_at IS
+  NULL`` ("from forever", f5-02 §2 line 85) is valid at any ``t`` and is
+  INCLUDED, mirroring the canonical ``get_vigente`` / ``is_valid_at``.
 
 The two measure DIFFERENT axes, so a row can be ``activo-ahora`` but NOT
 ``vigente`` (a future-scheduled invalidation, or a decayed-but-valid row).
@@ -42,8 +44,9 @@ from seahorse.persistence.migrations.migrator import current_version
 _VIGENTE_WHERE = "invalid_at IS NULL AND expired_at IS NULL"
 # activo-ahora: state_at(now) — valid-time active now (mirrors _pit_predicate
 # state_at). NB: ignores expired_at (transaction-time decay is a separate axis).
+# CC-2 (C8.6): valid_at IS NULL ("from forever") is valid at any t → INCLUDED.
 _ACTIVOS_AHORA_WHERE = (
-    "valid_at IS NOT NULL AND valid_at <= ? AND (invalid_at IS NULL OR invalid_at > ?)"
+    "(valid_at IS NULL OR valid_at <= ?) AND (invalid_at IS NULL OR invalid_at > ?)"
 )
 
 

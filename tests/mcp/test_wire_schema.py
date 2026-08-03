@@ -23,7 +23,7 @@ from seahorse.constants import (
     SUBJECT_FILTER_MAX_CHARS,
     TAG_MAX_CHARS,
 )
-from seahorse.contracts.index import PITKind
+from seahorse.contracts.index import PIT_KIND_VALUES, PITKind
 from seahorse.disclosure.types import MAX_FULL_BATCH
 from seahorse.mcp.wire_schema import (
     BUILD_PIT_SCHEMA,
@@ -126,7 +126,14 @@ class TestPITPointDef:
         assert set(DEFS["PITPoint"]["required"]) == {"kind", "t"}
 
     def test_kind_enum_only_two_axes(self) -> None:
-        assert DEFS["PITPoint"]["properties"]["kind"]["enum"] == ["state_at", "known_at"]
+        # C8.6 [23]: the ``PITPoint.kind`` enum is single-sourced from
+        # ``PIT_KIND_VALUES`` (the ADR-03 PITKind Literal), NOT hardcoded — a
+        # future ADR-03 axis change lives in one place. ``kind`` is required, so
+        # the enum carries no ``None`` (unlike the nullable loose ``pit_kind``
+        # input field).
+        assert DEFS["PITPoint"]["properties"]["kind"]["enum"] == sorted(PIT_KIND_VALUES)
+        assert set(DEFS["PITPoint"]["properties"]["kind"]["enum"]) == set(PIT_KIND_VALUES)
+        assert None not in DEFS["PITPoint"]["properties"]["kind"]["enum"]
 
     def test_t_is_date_time(self) -> None:
         assert DEFS["PITPoint"]["properties"]["t"]["format"] == "date-time"

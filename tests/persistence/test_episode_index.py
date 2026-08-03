@@ -125,14 +125,30 @@ def test_pit_axes_never_mixed_on_discrepant_row(
     assert index.get_rows_known_at(["e1"], at) == []
 
 
-def test_state_at_excludes_pending_ingest(index: SqliteEpisodeIndexRepository) -> None:
+def test_state_at_excludes_real_pending_and_includes_from_forever(
+    index: SqliteEpisodeIndexRepository,
+) -> None:
+    # CC-2 (C8.6): ``valid_at IS NULL`` means "from forever" (f5-02 §2 line 85) —
+    # valid at ANY ``t``, so a ``state_at(t)`` PIT query MUST include it. The
+    # previous predicate (``valid_at IS NOT NULL AND valid_at <= ?``) excluded
+    # NULL, mis-treating "from forever" as PENDING. Real PENDING is
+    # ``valid_at`` in the FUTURE (not yet valid at ``t``), which IS excluded.
     mgr = index._cm  # noqa: SLF001
     with mgr.atomic():
-        _row(mgr, "e1", valid_at=None)  # PENDING_INGEST
+        _row(mgr, "e_forever", fact_id="ff", valid_at=None)  # "from forever"
+        # future valid_at = real PENDING (not yet valid at Jan 3)
+        _row(mgr, "e_pending", fact_id="fp", valid_at=datetime(2026, 1, 10, tzinfo=UTC))
     at = datetime(2026, 1, 3, tzinfo=UTC)
-    assert index.get_rows_state_at(["e1"], at) == []
-    # but known_at includes it by creation time
-    assert {r.ep_id for r in index.get_rows_known_at(["e1"], at)} == {"e1"}
+    # state_at at Jan 3: e_forever survives (valid_at NULL = valid anytime);
+    # e_pending is excluded (valid_at Jan 10 > Jan 3, not yet valid).
+    assert {r.ep_id for r in index.get_rows_state_at(["e_forever", "e_pending"], at)} == {
+        "e_forever"
+    }
+    # known_at includes both by creation time (axes are independent — ADR-03).
+    assert {r.ep_id for r in index.get_rows_known_at(["e_forever", "e_pending"], at)} == {
+        "e_forever",
+        "e_pending",
+    }
 
 
 def test_state_at_respects_invalidation_window(

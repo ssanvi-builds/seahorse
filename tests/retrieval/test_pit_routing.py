@@ -9,7 +9,7 @@ Signals (f5-11 §7, §16):
 - ``pit=None`` → vigent knn + vigent search (no ``_state_at``/``_known_at`` call).
 - ``pit=state_at`` → ``knn_state_at`` + ``search_state_at`` ONLY.
 - ``pit=known_at`` → ``knn_known_at`` + ``search_known_at`` ONLY.
-- Invalid ``pit.kind`` raises ``InvalidPITKind`` BEFORE the embedder runs.
+- Invalid ``pit.kind`` raises ``RetrievalInvalidPITKind`` BEFORE the embedder runs.
 - ``subject_filter`` reaches ONLY the vigent BM25 search (PIT variants don't
   accept it — mediano, f5-06 §7a.3).
 - ``pit=None`` BFS (when enabled) gets ``pit_kind="state_at"`` + ``t=clock_now``.
@@ -23,7 +23,7 @@ import pytest
 
 from seahorse.contracts.persistence import FullTextHit, VectorHit
 from seahorse.disclosure.types import PITPoint
-from seahorse.retrieval import InvalidPITKind, recall
+from seahorse.retrieval import RetrievalInvalidPITKind, recall
 
 from .conftest import _row
 
@@ -110,7 +110,7 @@ class TestValidateOnce:
     def test_invalid_pit_kind_raises_before_embedder(
         self, embedder, vector_repo, fts_repo, episode_repo
     ):
-        with pytest.raises(InvalidPITKind):
+        with pytest.raises(RetrievalInvalidPITKind):
             recall(
                 "q",
                 pit=_pit("future_at", datetime(2024, 1, 1, tzinfo=UTC)),
@@ -226,3 +226,50 @@ class TestKnownAtBfsDropped:
             bfs_known_at_supported=True,
         )
         assert bfs_repo.calls[0]["pit_kind"] == "known_at"
+
+
+class TestRetrievalInvalidPITKindAttribution:
+    """C8.6 [24] — the retrieval entrypoint error attributes to #11, not #12.
+
+    Before C8.6, ``retrieval.errors.InvalidPITKind`` (a plain ``Exception`` raised
+    by #11's recall) shared its ``__name__`` with ``facade.errors.InvalidPITKind``
+    (a ``SeahorseError`` carrying ``.code = E_INVALID_PIT_KIND``, owned by #12).
+    Both ``mcp.errors._ORIGIN_BY_CLASS`` and ``cli.exit_codes._ORIGIN_BY_CLASS``
+    match on ``type(exc).__name__``, so both mapped to ``#12`` — mis-attributing
+    #11's error to the facade. The rename to ``RetrievalInvalidPITKind`` gives the
+    two classes distinct ``__name__`` so each table attributes to its real owner.
+    These tests pin the #11 attribution through BOTH projections (MCP + CLI).
+    """
+
+    def test_mcp_translate_attributes_to_component_11(self) -> None:
+        from seahorse.mcp.errors import translate
+
+        exc = RetrievalInvalidPITKind("bogus")
+        resp = translate(exc, request_id=1)
+        # Plain Exception (no .code) → generic -32603, exception_class set, #11.
+        assert resp["error"]["code"] == -32603
+        assert resp["error"]["data"]["exception_class"] == "RetrievalInvalidPITKind"
+        assert resp["error"]["data"]["component"] == "#11"
+
+    def test_cli_translate_attributes_to_component_11(self) -> None:
+        from seahorse.cli.exit_codes import translate
+
+        exc = RetrievalInvalidPITKind("bogus")
+        exit_code, info = translate(exc)
+        # Plain Exception (no .code, not in CAT_B) → generic fallback, #11.
+        from seahorse.cli.exit_codes import EXIT_GENERAL
+
+        assert exit_code == EXIT_GENERAL
+        assert info["exception_class"] == "RetrievalInvalidPITKind"
+        assert info["component"] == "#11"
+
+    def test_facade_invalid_pit_kind_still_attributes_to_12(self) -> None:
+        # Regression guard: the facade's InvalidPITKind (SeahorseError, .code) MUST
+        # keep attributing to #12 — the rename must not bleed into the facade path.
+        from seahorse.facade.errors import E_INVALID_PIT_KIND, InvalidPITKind
+        from seahorse.mcp.errors import CAT_A, translate
+
+        resp = translate(InvalidPITKind("bogus"), request_id=1)
+        assert resp["error"]["code"] == CAT_A[E_INVALID_PIT_KIND]
+        assert resp["error"]["data"]["seahorse_code"] == E_INVALID_PIT_KIND
+        assert resp["error"]["data"]["component"] == "#12"

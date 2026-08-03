@@ -7,7 +7,8 @@ disclosure tests fast and focused on shaper behavior: score passthrough, PIT
 composition, deterministic truncation, caps, and fail-loud guards.
 
 PIT predicates mirror #6's ``_pit_predicate`` exactly (ADR-03, never mix axes):
-- state_at(t): valid_at IS NOT NULL AND valid_at <= t AND (invalid_at IS NULL OR invalid_at > t)
+- state_at(t): (valid_at IS NULL OR valid_at <= t) AND (invalid_at IS NULL OR invalid_at > t)
+  — CC-2 (C8.6): valid_at IS NULL ("from forever") is valid at any t → INCLUDED.
 - known_at(t): created_at <= t AND (expired_at IS NULL OR expired_at > t)
 """
 
@@ -39,9 +40,12 @@ class FakeIndexRepo:
     @staticmethod
     def _pit_ok(row: IndexRowData, pit_kind: PITKind, t: datetime) -> bool:
         if pit_kind == "state_at":
+            # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) —
+            # valid at ANY t. The predicate is ``valid_at IS NULL OR valid_at <= t``
+            # (mirrors the canonical engine predicates get_vigente / is_valid_at,
+            # which already include NULL). Real PENDING is valid_at in the FUTURE.
             return (
-                row.valid_at is not None
-                and row.valid_at <= t
+                (row.valid_at is None or row.valid_at <= t)
                 and (row.invalid_at is None or row.invalid_at > t)
             )
         # known_at

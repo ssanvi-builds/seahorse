@@ -29,14 +29,14 @@ from __future__ import annotations
 
 from seahorse.retrieval.constants import INDEX_P95_MS, RRF_K
 from seahorse.retrieval.engine import recall
-from seahorse.retrieval.errors import BfsKnownAtUnsupported, InvalidPITKind
+from seahorse.retrieval.errors import BfsKnownAtUnsupported, RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
 
 __all__ = [
     "BfsKnownAtUnsupported",
     "INDEX_P95_MS",
-    "InvalidPITKind",
     "RRF_K",
+    "RetrievalInvalidPITKind",
     "SourceList",
     "recall",
     "rrf_fuse",

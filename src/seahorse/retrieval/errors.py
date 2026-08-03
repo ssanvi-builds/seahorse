@@ -1,9 +1,18 @@
 """#11 Hybrid Retrieval — typed errors (f5-11 §7.6/§7.7).
 
-- ``InvalidPITKind``: raised ONCE at the recall entrypoint when ``pit.kind`` is
-  not a signed PIT axis (``"state_at"``/``"known_at"``). Enforces ADR-03 (the two
-  bi-temporal axes never mix within a single recall) at the single validation
-  point — the same ``kind`` then fans out to ALL sources.
+- ``RetrievalInvalidPITKind``: raised ONCE at the recall entrypoint when
+  ``pit.kind`` is not a signed PIT axis (``"state_at"``/``"known_at"``). Enforces
+  ADR-03 (the two bi-temporal axes never mix within a single recall) at the
+  single validation point — the same ``kind`` then fans out to ALL sources.
+
+  Named ``RetrievalInvalidPITKind`` (not ``InvalidPITKind``) to avoid a
+  ``__name__`` collision with ``seahorse.facade.errors.InvalidPITKind`` — both
+  were plain ``InvalidPITKind`` and the ``mcp``/``cli`` origin-by-class tables
+  (which match on ``type(exc).__name__``) attributed BOTH to ``#12``. The
+  facade class is a ``SeahorseError`` carrying ``.code = E_INVALID_PIT_KIND``
+  (owned by #12); this one is a plain ``Exception`` raised by #11's recall
+  entrypoint. The distinct ``__name__`` lets the tables attribute each to its
+  real owner (#11 here, #12 for the facade's).
 - ``BfsKnownAtUnsupported``: raised by ``_bfs`` when ``pit=known_at`` is requested
   for the BFS axis but #10 has not signed off the ``pit_kind`` refinement
   (f5-10 TD-2). A declared limitation, NOT a silent fallback to ``state_at`` (a
@@ -17,7 +26,7 @@ References:
 from __future__ import annotations
 
 
-class InvalidPITKind(Exception):
+class RetrievalInvalidPITKind(Exception):
     """Raised when ``pit.kind`` is not a signed PIT axis.
 
     ADR-03: a recall carries ONE ``pit.kind`` that fans to ALL sources. An
@@ -46,4 +55,4 @@ class BfsKnownAtUnsupported(Exception):
         )
 
 
-__all__ = ["BfsKnownAtUnsupported", "InvalidPITKind"]
+__all__ = ["BfsKnownAtUnsupported", "RetrievalInvalidPITKind"]

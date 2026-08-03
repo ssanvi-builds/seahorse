@@ -167,31 +167,59 @@ def _seed_timeline(repo: SqliteEpisodeRepository) -> None:
     )
 
 
-def test_state_at_excludes_pending_ingest(repo: SqliteEpisodeRepository) -> None:
-    _seed_timeline(repo)
-    at = datetime(2026, 1, 5, tzinfo=UTC)
-    ids = {e.id for e in repo.query_state_at(at)}
-    assert ids == {"e1"}  # e2 (valid_at NULL) excluded from state_at
-
-
-def test_known_at_includes_pending_ingest_that_state_at_excludes(
+def test_state_at_includes_from_forever_excludes_real_pending(
     repo: SqliteEpisodeRepository,
 ) -> None:
-    # e2 has valid_at NULL (PENDING_INGEST): excluded from state_at but included in
-    # known_at by creation time. e1 is included in both axes for the window below.
-    _seed_timeline(repo)
+    # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid at
+    # ANY t, so state_at INCLUDES it (mirrors get_vigente / is_valid_at, which
+    # already include NULL). Real PENDING is valid_at in the FUTURE (not yet valid
+    # at t), which state_at EXCLUDES. The previous predicate excluded NULL,
+    # mis-treating "from forever" as PENDING.
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    repo.append(_episode("e_active", fact_id="fa", valid_at=t0))
+    repo.append(_episode("e_forever", fact_id="ff", valid_at=None))
+    repo.append(_episode("e_pending", fact_id="fp", valid_at=datetime(2026, 1, 20, tzinfo=UTC)))
+    at = datetime(2026, 1, 5, tzinfo=UTC)
+    ids = {e.id for e in repo.query_state_at(at)}
+    assert ids == {"e_active", "e_forever"}  # e_pending (future valid_at) excluded
+
+
+def test_known_at_includes_by_creation_regardless_of_valid_at(
+    repo: SqliteEpisodeRepository,
+) -> None:
+    # CC-2 (C8.6): known_at is the transaction_time axis (created_at/expired_at) —
+    # valid_at is irrelevant (ADR-03 axes are independent). Both "from forever"
+    # (valid_at NULL) and real PENDING (valid_at future) are known_at-included by
+    # creation time. Distinct fact_ids so all three can be vigente simultaneously.
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    repo.append(_episode("e_active", fact_id="fa", valid_at=t0, created_at=t0))
+    repo.append(_episode("e_forever", fact_id="ff", valid_at=None, created_at=t0))
+    repo.append(
+        _episode(
+            "e_pending",
+            fact_id="fp",
+            valid_at=datetime(2026, 1, 20, tzinfo=UTC),
+            created_at=t0,
+        )
+    )
     at = datetime(2026, 1, 3, tzinfo=UTC)
     state_ids = {e.id for e in repo.query_state_at(at)}
     known_ids = {e.id for e in repo.query_known_at(at)}
-    assert "e2" not in state_ids  # state_at excludes PENDING_INGEST
-    assert "e2" in known_ids  # known_at includes it by creation
-    assert known_ids == {"e1", "e2"}  # both created <= Jan 3, neither expired
+    assert state_ids == {"e_active", "e_forever"}  # e_pending excluded from state_at
+    assert known_ids == {"e_active", "e_forever", "e_pending"}  # all created <= Jan 3
 
 
 def test_state_at_respects_invalidation_window(repo: SqliteEpisodeRepository) -> None:
-    _seed_timeline(repo)
+    # CC-2 (C8.6): use a concrete valid_at window — valid_at=None is "from forever"
+    # (valid at ANY t) and would not demonstrate the window edges.
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    repo.append(
+        _episode("e1", fact_id="f1", valid_at=t0, invalid_at=datetime(2026, 1, 10, tzinfo=UTC))
+    )
     # before valid_at -> not in state_at
     assert {e.id for e in repo.query_state_at(datetime(2025, 12, 31, tzinfo=UTC))} == set()
+    # within [valid_at, invalid_at) -> in state_at
+    assert {e.id for e in repo.query_state_at(datetime(2026, 1, 5, tzinfo=UTC))} == {"e1"}
     # after invalid_at -> not in state_at
     assert {e.id for e in repo.query_state_at(datetime(2026, 1, 11, tzinfo=UTC))} == set()
 

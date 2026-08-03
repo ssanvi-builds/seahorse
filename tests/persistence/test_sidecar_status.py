@@ -7,9 +7,10 @@ bi-temporal predicates (vigente vs activo-ahora) + the last known file mtime.
 The predicates mirror the engine's bi-temporal definitions verbatim:
 - vigente      = ``invalid_at IS NULL AND expired_at IS NULL``
   (``SqliteEpisodeIndexRepository.find_vigent_row_by_fact_id``)
-- activo-ahora = ``valid_at IS NOT NULL AND valid_at <= now
+- activo-ahora = ``(valid_at IS NULL OR valid_at <= now)
                   AND (invalid_at IS NULL OR invalid_at > now)``
-  (``_pit_predicate("state_at", now)``)
+  (``_pit_predicate("state_at", now)``); CC-2 (C8.6): ``valid_at IS NULL``
+  ("from forever") is valid at any ``t`` and is INCLUDED.
 
 The two measure DIFFERENT axes (vigente = both axes open; activo-ahora =
 valid-time active now, ignoring decay), so a row can be activo-ahora but NOT
@@ -181,6 +182,31 @@ def test_vigente_and_activos_ahora_distinguish_the_two_axes(conn):
     assert snap.episode_index == 5
     assert snap.vigentes == 2  # ep1, ep2
     assert snap.activos_ahora == 3  # ep1, ep4, ep5
+
+
+def test_activos_ahora_includes_valid_at_none_from_forever(conn):
+    # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid at
+    # ANY t, so it is activo-ahora (and vigente). The previous predicate excluded
+    # NULL, mis-treating "from forever" as PENDING. Pins the sidecar SQL mirrors
+    # _pit_predicate("state_at") verbatim after the CC-2 alignment.
+    _insert_index(
+        conn,
+        "ep_forever",
+        valid_at=None,  # "from forever"
+        invalid_at=None,
+        expired_at=None,
+    )
+    _insert_index(
+        conn,
+        "ep_pending",
+        valid_at=datetime(2026, 8, 1, tzinfo=UTC),  # future = real PENDING
+        invalid_at=None,
+        expired_at=None,
+    )
+    conn.commit()
+    snap = read_sidecar_status(conn, now=_NOW)
+    assert snap.activos_ahora == 1  # ep_forever only; ep_pending (future) excluded
+    assert snap.vigentes == 2  # both vigente (invalid_at NULL, expired_at NULL)
 
 
 # ---------------------------------------------------------------------------

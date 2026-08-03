@@ -220,6 +220,25 @@ def test_index_pit_state_at_filters_out_not_yet_valid(index, repo):
     assert [r.ep_id for r in rows] == ["old"]
 
 
+def test_index_pit_state_at_includes_valid_at_none_from_forever(index, repo):
+    # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid at
+    # ANY t, so a state_at PIT query MUST keep it. The disclosure FakeIndex._pit_ok
+    # mirrors the production predicate (valid_at IS NULL OR valid_at <= t); this
+    # pins the disclosure layer against the previous NULL-excluding drift.
+    index.add(_idx_row("forever", valid_at=None))  # "from forever"
+    index.add(_idx_row("future", valid_at=NOW + timedelta(days=10)))  # real PENDING
+    pit = PITPoint(kind="state_at", t=NOW)
+    rows = _shaper(index, repo).materialize_index(
+        [
+            FusedCandidate(ep_id="forever", score=0.1, sources=("vector",)),
+            FusedCandidate(ep_id="future", score=0.9, sources=("vector",)),
+        ],
+        pit=pit,
+        now=NOW,
+    )
+    assert [r.ep_id for r in rows] == ["forever"]
+
+
 def test_index_pit_known_at_filters_out_created_after_t(index, repo):
     index.add(_idx_row("known", created_at=NOW - timedelta(days=10)))
     index.add(_idx_row("after", created_at=NOW + timedelta(days=10)))
@@ -249,6 +268,29 @@ def test_index_pit_state_at_drops_invalidated_before_t(index, repo):
         [FusedCandidate(ep_id="gone", score=0.1, sources=("vector",))], pit=pit, now=NOW
     )
     assert rows == []
+
+
+def test_index_pit_unknown_kind_raises_loud(index, repo):
+    # C8.6 [22]: PIT dispatch is EXPLICIT — an unknown pit.kind raises ValueError
+    # instead of silently falling through to known_at (the bare-else drift). The
+    # facade validates pit.kind BEFORE the shaper runs, so reaching here is an
+    # invariant violation; fail loud (mirror of sqlite_episode_index._pit_predicate).
+    index.add(_idx_row("a"))
+    pit = PITPoint(kind="bogus", t=NOW)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        _shaper(index, repo).materialize_index(
+            [FusedCandidate(ep_id="a", score=0.1, sources=("vector",))], pit=pit, now=NOW
+        )
+
+
+def test_timeline_pit_unknown_kind_raises_loud(index, repo):
+    # C8.6 [22]: same explicit-dispatch guard on the TIMELINE PIT path
+    # (_pit_filter). An unknown kind raises ValueError, not a silent known_at
+    # fall-through.
+    index.add(_idx_row("e1", fact_id="f1", created_at=NOW - timedelta(days=1), supersedes=None))
+    pit = PITPoint(kind="bogus", t=NOW)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        _shaper(index, repo).materialize_timeline("e1", axis="supersedes_chain", pit=pit)
 
 
 # ---------------------------------------------------------------------------

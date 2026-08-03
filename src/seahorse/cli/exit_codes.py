@@ -152,6 +152,10 @@ _ORIGIN_BY_CLASS = {
     "InvalidPITKind": "#12",
     "PitRecallNotSupportedMVP0": "#12",
     "EmptyQueryError": "#12",
+    # #11 retrieval — plain Exception (no .code), raised at the recall
+    # entrypoint on an unknown pit.kind. Distinct __name__ from #12's
+    # InvalidPITKind (C8.6) so the table attributes each to its real owner.
+    "RetrievalInvalidPITKind": "#11",
     "EngineError": "#2",
     "FullBatchTooLarge": "#8",
     "PitFullNotSupported": "#8",
@@ -254,11 +258,15 @@ def translate(exc: BaseException) -> tuple[int, dict[str, Any]]:
             "exit_code": CAT_B[cls],
         }
 
-    # Generic fallback — fail-loud, no swallow, no synthetic code.
+    # Generic fallback — fail-loud, no swallow, no synthetic code. The component
+    # is resolved via ``_origin_of`` (C8.6 [24]): a plain-Exception class that IS
+    # in ``_ORIGIN_BY_CLASS`` — e.g. #11's ``RetrievalInvalidPITKind`` (no ``.code``,
+    # not in CAT_B) — now attributes to its real owner instead of being masked as
+    # ``#14``. Unknown classes still fall back to ``#14``.
     return EXIT_GENERAL, {
         "exception_class": cls,
         "detail": str(exc),
-        "component": "#14",
+        "component": _origin_of(exc),
         "exit_code": EXIT_GENERAL,
     }
 

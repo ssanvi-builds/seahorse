@@ -49,7 +49,11 @@ _SOURCE_ENUM: list[Any] = sorted(SOURCE_TYPES)
 
 # PIT kinds (ADR-03: the two axes are never mixed). Single source: the PITKind
 # Literal via PIT_KIND_VALUES — a future ADR-03 change lives in one place.
+# ``_PIT_KIND_ENUM`` carries ``None`` for the nullable loose input fields
+# (``pit_kind``); ``_PIT_KIND_REQUIRED_ENUM`` is the non-nullable ``PITPoint.kind``
+# enum (``kind`` is required in the $def, so ``None`` is not a valid value).
 _PIT_KIND_ENUM: list[Any] = sorted(PIT_KIND_VALUES) + [None]
+_PIT_KIND_REQUIRED_ENUM: list[Any] = sorted(PIT_KIND_VALUES)
 _EXTRACTION_MODE_ENUM: list[Any] = ["skip", "llm", None]
 _REASON_ENUM: list[Any] = ["contradiction", "correction", "merge", "revalidation"]
 _AXIS_ENUM: list[Any] = ["supersedes_chain", "fact_id_scope"]
@@ -64,7 +68,7 @@ DEFS: dict[str, dict[str, Any]] = {
         "additionalProperties": False,
         "required": ["kind", "t"],
         "properties": {
-            "kind": {"type": "string", "enum": ["state_at", "known_at"]},
+            "kind": {"type": "string", "enum": _PIT_KIND_REQUIRED_ENUM},
             "t": {"type": "string", "format": "date-time"},
         },
     },
