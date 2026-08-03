@@ -218,9 +218,9 @@ def test_e2e_smoke_full_flow(storage: Storage) -> None:
     storage.reindex_jobs.finish(job_id)
     assert storage.reindex_jobs.list(status="done")[0].job_id == job_id
 
-    # 11. vector / fts stubs raise NotImplementedError (MVP-1).
-    with pytest.raises(NotImplementedError):
-        storage.vector.count()
+    # 11. M1-A.3: vector is a real vec0 repo (empty -> count 0); fts is still
+    # a stub until M1-A.4 (raises NotImplementedError).
+    assert storage.vector.count() == 0
     with pytest.raises(NotImplementedError):
         storage.fts.count()
 
