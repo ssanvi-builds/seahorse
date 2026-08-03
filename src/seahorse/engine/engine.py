@@ -37,6 +37,7 @@ from seahorse.engine.canonical import canonical_body_hash
 from seahorse.engine.collision import CollisionDetector, derive_subject, fact_id_for
 from seahorse.engine.guards import WriteGuards
 from seahorse.engine.ids import deterministic_id, new_uuid7
+from seahorse.frontmatter.schema import SupersedesReason
 
 _STATUS_ACTIVE = "ACTIVE"
 _STATUS_PENDING = "PENDING_INGEST"
@@ -291,6 +292,12 @@ class BiTemporalEngine:
         invalidated), raises ``E_COLLISION_EXISTS`` and the whole transaction
         rolls back — the target is NOT invalidated, the new episode is NOT
         appended. Preserves the signed ``-> Episode`` return type.
+
+        CC-3 (spec §2.8): the successor carries ``supersedes_reason=
+        SupersedesReason.CORRECTION`` — the portable enum that survives
+        export/import. The free-text ``reason`` (observability) goes ONLY to the
+        improve ``AuditEvent``; it is NOT copied into ``supersedes_reason`` (that
+        would be type-confusion: free text -> enum).
         """
         now = self._now(now)
         with self._lock:
@@ -308,6 +315,12 @@ class BiTemporalEngine:
                 invalid_at=None,
                 expired_at=None,
                 supersedes=ep_id,
+                # CC-3 (C8.9 / spec §2.8): the successor of an improve is a
+                # CORRECTION — it carries the portable ``SupersedesReason`` enum so
+                # it survives export/import. The free-text ``reason`` (observability)
+                # goes ONLY to the AuditEvent below; copying it here would be
+                # type-confusion (free text -> enum).
+                supersedes_reason=SupersedesReason.CORRECTION,
                 cognitive_type=old.cognitive_type,
                 source_type=by.get("source_type"),
             )

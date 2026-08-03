@@ -18,9 +18,12 @@ timestamps (``valid_at`` / ``invalid_at`` / ``expired_at``) and the index hints
 (``subject`` / ``fact_id`` / ``title`` / ``summary`` / ``cognitive_type`` /
 ``source_type`` / ``supersedes`` / ``supersedes_reason``) default to ``None``.
 ``supersedes_reason`` is the portable frontmatter key (f5-03 §12.3): it lives on
-the model and travels the wire from commit 1, but its SQLite column lands in
-commit 4 (migration 009) — until then it is model+wire only, not yet persisted by
-``SqliteEpisodeRepository``.
+the model, travels the wire, and is persisted by the SQLite column added in
+migration 009 (``SqliteEpisodeRepository`` round-trips it). Per spec §2.8 / CC-3
+(C8.9), the successor of an ``improve`` carries the ``SupersedesReason.CORRECTION``
+enum (set by ``BiTemporalEngine.improve``), so the replacement taxonomy survives
+export/import; the free-text ``reason`` stays observability-only in the
+``AuditEvent``.
 
 Permissive storage model: the model enforces types + ``frozen`` +
 ``extra="allow"`` + the ISO-8601 UTC ``Z`` serializers + two read-path

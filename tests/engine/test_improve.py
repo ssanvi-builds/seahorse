@@ -17,6 +17,7 @@ import pytest
 from seahorse.contracts.engine import InvalidationConflictError, NotFound
 from seahorse.engine import errors
 from seahorse.engine.engine import BiTemporalEngine
+from seahorse.frontmatter.schema import SupersedesReason
 from tests.engine.conftest import _episode
 
 NOW = datetime(2026, 7, 15, 12, 0, 0, tzinfo=UTC)
@@ -72,6 +73,50 @@ def test_improve_audit_has_successor_id(engine):
     assert ev.result == "updated"
     assert ev.reason == "correction"
     assert ev.transaction_time == LATER
+
+
+# --- CC-3 (C8.9): improve successor carries the portable correction enum -------
+#
+# Spec memory_architecture §2.8: the successor of an improve carries
+# ``supersedes_reason: "correction"`` (the portable enum, surviving export/import),
+# NOT the free-text ``reason`` (which is observability-only and lives in the
+# AuditEvent). Mixing the two would be type-confusion (free text -> enum). This
+# pins both: the enum lands on the successor and round-trips through storage;
+# the free-text reason stays in the audit and never leaks into supersedes_reason.
+
+
+def test_improve_successor_carries_correction_supersedes_reason(engine):
+    # CC-3: the successor of an improve is a CORRECTION — it carries the portable
+    # ``SupersedesReason.CORRECTION`` enum, which round-trips through storage
+    # (migration 009) so it survives export/import. The default-``reason`` path
+    # (no explicit reason) still stamps the enum.
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\n")
+    new_ep = eng.improve("e1", "# Madrid\nv2\n", by={"source_type": "human"}, now=LATER)
+    assert new_ep.supersedes_reason == SupersedesReason.CORRECTION
+    # round-trips through storage (not just the in-memory return value)
+    assert repo.get(new_ep.id).supersedes_reason == SupersedesReason.CORRECTION
+
+
+def test_improve_free_text_reason_does_not_leak_into_supersedes_reason(engine):
+    # CC-3 type-confusion guard: the free-text ``reason`` (observability) must NOT
+    # be copied into ``supersedes_reason`` (the portable enum). Even with a custom
+    # human reason, the successor carries the enum "correction", not the free text.
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\n")
+    new_ep = eng.improve(
+        "e1",
+        "# Madrid\nv2\n",
+        by={"source_type": "human"},
+        reason="fixed a typo in the second paragraph",
+        now=LATER,
+    )
+    assert new_ep.supersedes_reason == SupersedesReason.CORRECTION  # enum, not free text
+    assert repo.get(new_ep.id).supersedes_reason == SupersedesReason.CORRECTION
+    # the free-text reason is traced in the AuditEvent (observability channel), not
+    # in the episode's portable supersedes_reason.
+    ev = next(e for e in audit.query(target_id="e1") if e.primitive == "improve")
+    assert ev.reason == "fixed a typo in the second paragraph"
 
 
 # --- not found / state guards on the target --------------------------------
