@@ -4,6 +4,28 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The LLM extraction path (#5 vía #4) lands over the C8.7 seam, with provider
+onboarding in the CLI.
+
+### Added
+
+- `seahorse/llm/`: errors taxonomy (retry/content/permanent), providers registry
+  (ollama/gemini/groq/openrouter/openai/anthropic/deepseek/vllm — local-first +
+  the free-tier palanca), extraction role routing, operative cost cap (local and
+  free-tier models price at $0; paid rows verified), plain-prompt parser + Pydantic
+  validator (`extra="forbid"` → repair loop, `<content>` injection delimiters),
+  retry/fallback chain (backoff + jitter), and the `LiteLLMBackend` (optional `llm`
+  extra, sync C8.7).
+- `run_llm_path` (write path) with a strict `EpisodeFrontmatter` (subject
+  REQUIRED); `engine.remember` gains an additive `subject` override (M4-C.3);
+  `build_facade` gains the `llm_client` slot.
+- CLI onboarding: `seahorse init --llm` no-TUI provider wizard (detects Ollama /
+  free-tier keys; factory default local-first `ollama/qwen3:1.7b`, 0.6b low-end);
+  `[llm]` block in `seahorse.toml`; `status` reports the LLM regime; `seahorse
+  doctor` (config + key NAMES + live provider probe).
+
 ## [0.2.0] - 2026-08-03
 
 MVP-1 materialization: hybrid semantic retrieval lands (sqlite-vec kNN + FTS5
