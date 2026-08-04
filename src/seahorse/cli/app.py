@@ -57,6 +57,7 @@ from seahorse.contracts.index import PIT_KIND_VALUES
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.factory import build_facade
 from seahorse.facade.types import FacadeConfig
+from seahorse.llm import LLMClient, RoleRoute
 from seahorse.persistence.storage import Storage
 
 # ---------------------------------------------------------------------------
@@ -96,10 +97,34 @@ class CliContext:
             facade, storage = build_facade(
                 cfg.db_path,
                 config=FacadeConfig(default_extraction_mode=mode, top_k=cfg.top_k),
+                llm_client=self._build_llm_client(cfg),
             )
             self._facade = facade
             self._storage = storage
         return self._facade
+
+    @staticmethod
+    def _build_llm_client(cfg: SeahorseConfig) -> LLMClient | None:
+        """Build the write-path LLM client from the ``[llm]`` config.
+
+        ``None`` (no ``[llm]`` section) keeps the MVP-0 honest llm→skip
+        degrade. A configured section builds the ``LiteLLMBackend`` over the
+        extraction route; a missing ``llm`` extra surfaces later as a setup
+        hint (the backend degrades with "install seahorse[llm]"), never a
+        crash.
+        """
+        if cfg.llm is None:
+            return None
+        from seahorse.llm.lite_llm_backend import LiteLLMBackend
+
+        return LiteLLMBackend(
+            route=RoleRoute(
+                primary=cfg.llm.primary,
+                secondary=cfg.llm.secondary,
+                tertiary=cfg.llm.tertiary,
+            ),
+            timeout_s=cfg.llm.timeout_s,
+        )
 
     def close(self) -> None:
         if self._storage is not None:
@@ -426,9 +451,20 @@ def mcp(ctx: typer.Context) -> None:
 def init(
     ctx: typer.Context,
     vault: Path = typer.Argument(..., help="Vault root dir to bootstrap."),
+    llm: bool = typer.Option(
+        False, "--llm", help="Interactive LLM provider setup (wizard)."
+    ),
 ) -> None:
-    """Bootstrap a Seahorse vault (.seahorse/seahorse.toml)."""
+    """Bootstrap a Seahorse vault (.seahorse/seahorse.toml).
+
+    ``--llm`` additionally opens the interactive provider wizard (detects
+    Ollama / free-tier keys, picks the extraction route, optional self-test).
+    """
     run_init(vault, fmt=ctx.obj.fmt, out=_out(ctx))
+    if llm:
+        from seahorse.cli.wizard import run_llm_wizard
+
+        run_llm_wizard(vault)
 
 
 @app.command()

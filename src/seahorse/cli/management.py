@@ -69,6 +69,19 @@ def run_init(
     )
 
 
+def _llm_regime(config: SeahorseConfig) -> str:
+    """Human-readable LLM regime from the ``[llm]`` config (M4-C.3).
+
+    ``skip (no [llm] config; run `seahorse init --llm`)`` when no provider is
+    configured; otherwise ``llm:<provider>:<model>`` from the effective primary
+    (the extraction route's first backend).
+    """
+    if config.llm is None:
+        return "skip (no [llm] config; run `seahorse init --llm`)"
+    provider = config.llm.primary.split("/", 1)[0]
+    return f"llm:{provider}:{config.llm.primary}"
+
+
 def run_status(
     config: SeahorseConfig, *, fmt: OutputFormat = "human", out: TextIO
 ) -> None:
@@ -76,6 +89,7 @@ def run_status(
     from seahorse.embeddings.fastembed_backend import retrieval_status
 
     retrieval = retrieval_status()
+    llm_regime = _llm_regime(config)
     payload = {
         "vault": str(config.vault),
         "seahorse_dir": str(config.seahorse_dir),
@@ -85,6 +99,7 @@ def run_status(
         "default_extraction_mode": config.default_extraction_mode,
         "top_k": config.top_k,
         "retrieval": retrieval,
+        "llm": llm_regime,
     }
     human = (
         f"Seahorse vault: {config.vault}\n"
@@ -93,6 +108,7 @@ def run_status(
         f"  mode:    {config.default_extraction_mode}\n"
         f"  top_k:   {config.top_k}\n"
         f"  retrieval: {retrieval}\n"
+        f"  llm:     {llm_regime}\n"
     )
     render_message(payload, fmt=fmt, out=out, human_text=human)
 
