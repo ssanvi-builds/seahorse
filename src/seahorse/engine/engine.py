@@ -34,7 +34,12 @@ from seahorse.contracts.episode import Episode
 from seahorse.contracts.persistence import AuditEventRepository
 from seahorse.engine import errors
 from seahorse.engine.canonical import canonical_body_hash
-from seahorse.engine.collision import CollisionDetector, derive_subject, fact_id_for
+from seahorse.engine.collision import (
+    CollisionDetector,
+    derive_subject,
+    fact_id_for,
+    fact_id_of,
+)
 from seahorse.engine.guards import WriteGuards
 from seahorse.engine.ids import deterministic_id, new_uuid7
 from seahorse.frontmatter.schema import SupersedesReason
@@ -78,7 +83,13 @@ class BiTemporalEngine:
     def _now(now: datetime | None) -> datetime:
         return now if now is not None else datetime.now(UTC)
 
-    def apply_fact(self, candidate: Episode, *, now: datetime | None = None) -> WriteResult:
+    def apply_fact(
+        self,
+        candidate: Episode,
+        *,
+        now: datetime | None = None,
+        subject_override: str | None = None,
+    ) -> WriteResult:
         """Append a candidate episode, fail-loud on I11 collision (SO-3b/SO-8c).
 
         Derives ``subject``/``fact_id``, force-sets ``created_at=now``,
@@ -92,8 +103,18 @@ class BiTemporalEngine:
         caught and translated to the same COLLISION result (SO-3b never raises).
         """
         now = self._now(now)
-        subject = _derive_subject(candidate)
-        fact_id = fact_id_for(candidate.body or "", title=candidate.title)
+        # LLM-path override (M4-C.3): ``subject_override`` (passed only by
+        # ``remember`` when the extractor produced a subject) wins over the
+        # SO-2 derivation. It is a SEPARATE argument, NOT ``candidate.subject``
+        # — candidates may carry a cosmetic ``subject`` (the apply_fact tests'
+        # fixture does) that must keep being re-derived, so reading it would
+        # silently change existing callers. ``fact_id_of(subject)`` equals the
+        # old ``fact_id_for(body, title)`` when subject derives the same way
+        # (regression pinned by the engine tests).
+        subject = (
+            subject_override if subject_override is not None else _derive_subject(candidate)
+        )
+        fact_id = fact_id_of(subject) if subject else None
         ep = candidate.model_copy(
             update={
                 "created_at": now,
@@ -175,6 +196,7 @@ class BiTemporalEngine:
         cognitive_type: str | None = None,
         schema_version: str = "1.1",
         title: str | None = None,
+        subject: str | None = None,
         now: datetime | None = None,
     ) -> WriteResult:
         """Single write entry point (ADR-09). Picks the id by source (SO-4b).
@@ -185,6 +207,13 @@ class BiTemporalEngine:
         derived id already exists with the same canonical body hash, the call is
         a NOOP (no append, no audit). Otherwise an ``Episode`` is built and
         delegated to ``apply_fact``.
+
+        ``subject`` is the LLM-path override (M4-C.3): when the extractor
+        produced a subject, it wins over the SO-2 derivation in ``apply_fact``.
+        The skip path never passes it, so its behaviour is byte-identical
+        (regression pinned). LLM-extracted ``tags`` are intentionally NOT passed
+        here: the MVP-1 SQLite episode store does not persist ``tags`` (the repo
+        reads them back as ``[]``), so injecting them would be a silent lie.
         """
         now = self._now(now)
         source_type = by.get("source_type")
@@ -218,6 +247,7 @@ class BiTemporalEngine:
                 schema_version=schema_version,
                 provenance=by,
                 body=body,
+                subject=subject,
                 valid_at=valid_at,
                 invalid_at=None,
                 expired_at=None,
@@ -226,7 +256,7 @@ class BiTemporalEngine:
                 source_type=source_type,
                 title=title,
             )
-            return self.apply_fact(ep, now=now)
+            return self.apply_fact(ep, now=now, subject_override=subject)
 
     def forget(
         self,
