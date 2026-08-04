@@ -53,6 +53,7 @@ from seahorse.contracts.engine import WriteResult
 from seahorse.contracts.episode import Episode
 from seahorse.engine.errors import E_SKIP_CONTRACT_VIOLATED, EngineError
 from seahorse.facade.types import ExtractionMode, RememberPayload
+from seahorse.llm import LLMClient
 from seahorse.write_path.decide import PathDecision, decide_path
 from seahorse.write_path.extract import deterministic_extract
 
@@ -71,6 +72,7 @@ class _EngineLike(Protocol):
         cognitive_type: str | None = ...,
         schema_version: str = ...,
         title: str | None = ...,
+        subject: str | None = ...,
         now: datetime | None = ...,
     ) -> WriteResult: ...
 
@@ -298,14 +300,19 @@ class StubWritePath:
         engine: _EngineLike,
         repo: object | None = None,
         indexer: _IndexerLike | None = None,
+        llm_client: LLMClient | None = None,
     ) -> None:
         # ``repo`` is accepted for forward-compat (MVP-1 deterministic_extract
         # may use #3 derive_subject with a path). Unused in MVP-0 skip-path-only.
         # ``indexer`` (M1-B.5): when wired, an ACTIVE write triggers the
         # best-effort retrieval index (vec0 + FTS) — never fails the write.
+        # ``llm_client`` (M4-C.3): when wired, ``ingest`` routes the ``llm``
+        # decision to ``run_llm_path`` instead of degrading. ``None`` keeps the
+        # MVP-0 behaviour (degrade with ``llm_not_implemented_mvp0``).
         self._engine = engine
         self._repo = repo
         self._indexer = indexer
+        self._llm_client = llm_client
 
     def ingest(
         self,
@@ -316,7 +323,16 @@ class StubWritePath:
     ) -> WriteResult:
         decision = decide_path(payload, extraction_mode)
         if decision.path == "llm":
-            result = _degrade_to_skip(payload, decision, self._engine, now=now)
+            if self._llm_client is not None:
+                # Lazy import avoids the stub↔llm cycle (llm.py imports
+                # _degrade_to_skip from here).
+                from seahorse.write_path.llm import run_llm_path
+
+                result = run_llm_path(
+                    payload, decision, self._engine, self._llm_client, now=now
+                )
+            else:
+                result = _degrade_to_skip(payload, decision, self._engine, now=now)
         else:
             result = run_skip_path(payload, decision, self._engine, now=now)
         if (

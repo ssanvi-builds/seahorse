@@ -31,6 +31,7 @@ class RememberCall:
     schema_version: str
     title: str | None
     now: datetime | None
+    subject: str | None = None  # M4-C.3 LLM-path override (None on skip path)
 
 
 @dataclass
@@ -78,6 +79,7 @@ class RecordingEngine:
         cognitive_type: str | None = None,
         schema_version: str = "1.1",
         title: str | None = None,
+        subject: str | None = None,
         now: datetime | None = None,
     ) -> WriteResult:
         self.calls.append(
@@ -89,6 +91,7 @@ class RecordingEngine:
                 schema_version=schema_version,
                 title=title,
                 now=now,
+                subject=subject,
             )
         )
         return self._result
