@@ -1,0 +1,124 @@
+"""#4 providers registry (f5-04 §2.4) — the multi-provider seam.
+
+``resolve_provider(model_id)`` maps a LiteLLM-style ``provider/model`` id to a
+``ProviderConfig`` describing how to reach that provider (API base, env var that
+holds the key, native structured-output support, context window). The config
+records the NAME of the env var that holds a key — never the value (secrets
+never live in source). The local-first stance (f5-04 §1.1) makes Ollama, vLLM
+and llama.cpp first-class backends, not add-ons; the onboarding wizard's free
+tier palanca (Gemini/Groq/OpenRouter, decided 2026-08-04) are registered here
+too so a key in the environment is enough to raise extraction quality.
+
+``supports_json_schema`` / ``supports_tool_use`` only gate an OPTIONAL
+optimization (``_kwargs_for`` in the backend): ADR-05 forbids depending on
+native structured outputs — the plain-prompt + Pydantic validator path is the
+always-available default (f5-04 §6.1). The CI gate (future, Ollama qwen3:0.6b)
+has neither, which forces the base path to work.
+
+References:
+- f5-04-multi-llm.md §2.4 (ProviderConfig, PROVIDERS, resolve_provider)
+- f5-04-multi-llm.md §6.1 (why NOT hard native structured outputs, ADR-05)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from seahorse.llm.errors import LLMError
+
+# Default provider timeouts (f5-04 §4.4: extraction 20s, consolidation 120s).
+# The base 30s covers the extraction role with headroom for slow local CPU.
+_DEFAULT_TIMEOUT_S = 30.0
+
+
+@dataclass(frozen=True)
+class ProviderConfig:
+    """Static facts about one provider family (f5-04 §2.4).
+
+    ``api_key_env`` is the NAME of the environment variable holding the key —
+    the value is read at call time, never stored here. ``api_base`` is only set
+    for providers with a non-default endpoint (local Ollama/vLLM, DeepSeek);
+    ``None`` lets LiteLLM resolve the endpoint from the provider prefix.
+    """
+
+    name: str
+    api_base: str | None = None
+    api_key_env: str | None = None
+    timeout_s: float = _DEFAULT_TIMEOUT_S
+    supports_json_schema: bool = False
+    supports_tool_use: bool = False
+    max_context_tokens: int = 32_768
+
+
+PROVIDERS: dict[str, ProviderConfig] = {
+    # Local-first (f5-04 §1.1): no key, no data leaves the machine. The
+    # factory default for a user who has nothing (decided 2026-08-04).
+    "ollama": ProviderConfig(
+        name="ollama",
+        api_base="http://localhost:11434",
+        max_context_tokens=32_768,
+    ),
+    # Free-tier palanca (2026-08-04 decision): a key in the environment is
+    # enough to raise extraction quality. Gemini is the CLI-user's current
+    # default (they use it with claude-mem); Groq/OpenRouter are open-weight.
+    "gemini": ProviderConfig(
+        name="gemini",
+        api_key_env="GEMINI_API_KEY",
+        supports_json_schema=True,
+        max_context_tokens=1_048_576,
+    ),
+    "groq": ProviderConfig(
+        name="groq",
+        api_key_env="GROQ_API_KEY",
+        supports_json_schema=True,
+        max_context_tokens=131_072,
+    ),
+    "openrouter": ProviderConfig(
+        name="openrouter",
+        api_key_env="OPENROUTER_API_KEY",
+        supports_json_schema=True,
+        max_context_tokens=131_072,
+    ),
+    # Paid cloud (f5-04 §2.4 + §3.3 verified Jul 2026).
+    "openai": ProviderConfig(
+        name="openai",
+        api_key_env="OPENAI_API_KEY",
+        supports_json_schema=True,
+        supports_tool_use=True,
+        max_context_tokens=128_000,
+    ),
+    "anthropic": ProviderConfig(
+        name="anthropic",
+        api_key_env="ANTHROPIC_API_KEY",
+        supports_tool_use=True,
+        max_context_tokens=200_000,
+    ),
+    "deepseek": ProviderConfig(
+        name="deepseek",
+        api_base="https://api.deepseek.com",
+        api_key_env="DEEPSEEK_API_KEY",
+        max_context_tokens=1_000_000,
+    ),
+    "vllm": ProviderConfig(
+        name="vllm",
+        api_base="http://localhost:8000",
+        supports_json_schema=True,
+        max_context_tokens=32_768,
+    ),
+}
+
+
+def resolve_provider(model_id: str) -> ProviderConfig:
+    """Map a ``provider/model`` id to its ``ProviderConfig`` (f5-04 §2.4).
+
+    ``ollama/qwen3:1.7b`` → ``PROVIDERS['ollama']``. Raises ``LLMError`` for an
+    unknown provider prefix — a config typo fails loud at construction, not
+    silently at call time.
+    """
+    prefix = model_id.split("/", 1)[0]
+    if prefix not in PROVIDERS:
+        raise LLMError(f"Unknown provider prefix: {prefix}")
+    return PROVIDERS[prefix]
+
+
+__all__ = ["ProviderConfig", "PROVIDERS", "resolve_provider"]
