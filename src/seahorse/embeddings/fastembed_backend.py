@@ -182,7 +182,9 @@ def model_cached() -> bool:
     download" notice never blocks anything.
     """
     try:
-        from huggingface_hub import try_to_load_from_cache
+        from huggingface_hub import (  # type: ignore[import-not-found]  # lazy: extra 'embeddings'
+            try_to_load_from_cache,
+        )
     except ImportError:
         return True
     cache_dir = os.environ.get("FASTEMBED_CACHE_PATH") or str(
@@ -199,7 +201,7 @@ def retrieval_status() -> str:
     hybrid vs G2; the cache decides whether the first embed will download.
     """
     try:
-        import fastembed  # noqa: F401  # the 'embeddings' extra
+        import fastembed  # noqa: F401  # type: ignore[import-not-found]  # the 'embeddings' extra
     except ImportError:
         return "G2 listing (install seahorse[embeddings] for semantic recall)"
     if model_cached():
