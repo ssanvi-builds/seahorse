@@ -36,14 +36,25 @@ _QUANTIZATION = "fp32"
 
 _SELF_TEST_TEXT = "prueba de consistencia del embedder al startup"
 
+# e5 role prefixes (paper: arXiv:2212.03533). fastembed's CustomTextEmbedding
+# does NOT add these — the consumer must. Missing them collapses query/passage
+# into the same vector (cosine 1.0), which the startup self-test detects.
+_QUERY_PREFIX = "query: "
+_PASSAGE_PREFIX = "passage: "
+
 
 @runtime_checkable
 class _FastEmbedModelLike(Protocol):
-    """Duck-typed fastembed ``TextEmbedding`` surface (keeps tests model-free)."""
+    """Duck-typed fastembed ``TextEmbedding`` surface (keeps tests model-free).
 
-    def query_embed(self, texts: Sequence[str]) -> Iterable[Sequence[float]]: ...
+    The return covers both the test fakes (``Sequence[float]`` rows) and the
+    real ONNX model (``np.ndarray`` rows, via fastembed's ``NumpyArray``);
+    ``**kwargs`` mirrors fastembed's ``query_embed``/``passage_embed`` surface.
+    """
 
-    def passage_embed(self, texts: Sequence[str]) -> Iterable[Sequence[float]]: ...
+    def query_embed(self, query, **kwargs) -> Iterable[Sequence[float] | np.ndarray]: ...
+
+    def passage_embed(self, texts, **kwargs) -> Iterable[Sequence[float] | np.ndarray]: ...
 
 
 class FastEmbedEmbedder:
@@ -58,10 +69,14 @@ class FastEmbedEmbedder:
         return _l2_normalize(vecs)
 
     def _embed_sync(self, texts: Sequence[str], role: Role) -> np.ndarray:
+        # e5 role prefix (query/passage) is the consumer's job — fastembed's
+        # CustomTextEmbedding embeds raw text. Without it query == passage.
+        prefix = _PASSAGE_PREFIX if role == "passage" else _QUERY_PREFIX
+        prefixed = [f"{prefix}{text}" for text in texts]
         gen = (
-            self._model.passage_embed(texts)
+            self._model.passage_embed(prefixed)
             if role == "passage"
-            else self._model.query_embed(texts)
+            else self._model.query_embed(prefixed)
         )
         return np.asarray(list(gen), dtype=np.float32)
 
@@ -73,15 +88,16 @@ class FastEmbedEmbedder:
         return self._identity.dim
 
 
-def _prefix_drift_cosine(model: _FastEmbedModelLike) -> float:
-    """Raw-text cosine(query, passage) — the startup prefix-drift signal.
+def _prefix_drift_cosine(embedder: FastEmbedEmbedder) -> float:
+    """Cosine(query, passage) over the FULL path — the startup drift signal.
 
-    If the e5 ``query: `` / ``passage: `` prefix wiring is missing, query ==
-    passage and the cosine is ~1.0 (the drift). Separated roles land strictly
-    inside (0.5, 0.999).
+    Measured through ``_embed_sync`` (role prefixes applied): if the e5
+    ``query: `` / ``passage: `` wiring is missing, query == passage and the
+    cosine is ~1.0 (the drift). Separated roles land strictly inside
+    (0.5, 0.999). Duck-typed for tests via the embedder's sync seam.
     """
-    q = np.asarray(list(model.query_embed([_SELF_TEST_TEXT])), dtype=np.float32)[0]
-    p = np.asarray(list(model.passage_embed([_SELF_TEST_TEXT])), dtype=np.float32)[0]
+    q = embedder._embed_sync([_SELF_TEST_TEXT], "query")[0]
+    p = embedder._embed_sync([_SELF_TEST_TEXT], "passage")[0]
     denom = float(np.linalg.norm(q) * np.linalg.norm(p))
     if denom == 0.0:
         return 1.0
@@ -103,12 +119,19 @@ def build_fastembed_embedder(
     from fastembed import (  # type: ignore[import-not-found]  # lazy: extra 'embeddings'
         TextEmbedding,
     )
+    from fastembed.common.model_description import (  # type: ignore[import-not-found]
+        ModelSource,
+        PoolingType,
+    )
 
+    # fastembed >=0.8 requires a ModelSource dataclass (dict shorthand broke in
+    # 0.8.0: model_management reads model.sources.hf). ModelSource exists with
+    # the same shape across the declared >=0.6.0 range.
     TextEmbedding.add_custom_model(
         model=MODEL_NAME,
-        pooling="mean",
+        pooling=PoolingType.MEAN,
         normalization=True,
-        sources={"hf": MODEL_NAME},
+        sources=ModelSource(hf=MODEL_NAME),
         dim=DIM,
         model_file=MODEL_FILE,
     )
@@ -134,7 +157,7 @@ def _self_test(embedder: FastEmbedEmbedder) -> None:
     unavailable.
     """
     try:
-        cos = _prefix_drift_cosine(embedder._model)
+        cos = _prefix_drift_cosine(embedder)
     except Exception:  # noqa: BLE001 — a self-test failure is not a boot failure
         _logger.warning("embedder self-test failed; using the model as-is", exc_info=True)
         return

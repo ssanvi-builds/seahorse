@@ -88,13 +88,15 @@ def test_prefix_drift_cosine_detects_wiring_missing() -> None:
             for _ in texts:
                 yield [1.0, 0.0, 0.0]
 
-    assert _prefix_drift_cosine(_NoPrefixModel()) == pytest.approx(1.0)
+    embedder = FastEmbedEmbedder(_NoPrefixModel(), _identity())
+    assert _prefix_drift_cosine(embedder) == pytest.approx(1.0)
 
 
 def test_prefix_drift_cosine_distinguishes_query_and_passage() -> None:
     # Real e5 wiring separates the roles (query: "query: ", passage: "passage: "),
-    # so the cosine of the raw-text self-test lands strictly inside (0.5, 0.999).
-    cos = _prefix_drift_cosine(_FakeFastEmbedModel())
+    # so the cosine of the full-path self-test lands strictly inside (0.5, 0.999).
+    embedder = FastEmbedEmbedder(_FakeFastEmbedModel(), _identity())
+    cos = _prefix_drift_cosine(embedder)
     assert 0.0 <= cos < 0.5  # [1,0,0] vs [0,0,1] are orthogonal (not ~1.0)
 
 
