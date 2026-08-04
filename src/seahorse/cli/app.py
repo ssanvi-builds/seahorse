@@ -23,6 +23,7 @@ from __future__ import annotations
 # required pattern for Typer command signatures, so silence it file-wide.
 # ruff: noqa: B008
 import io
+import logging
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -352,6 +353,10 @@ def mcp(ctx: typer.Context) -> None:
     ``--quiet`` (the protocol owns stdout). Mirrors the ``seahorse-mcp`` console
     script and ``python -m seahorse.mcp`` — same ``serve``, same profile.
     """
+    # Long-lived server process: restore WARNING so the embedder self-test /
+    # hybrid-degrade diagnostics reach the operator (main() suppresses them for
+    # the one-shot CLI; stderr is not a protocol channel here).
+    logging.getLogger("seahorse").setLevel(logging.WARNING)
     from seahorse.mcp.profile import serve
 
     serve(ctx.obj.facade(), stdin=sys.stdin, stdout=sys.stdout)
@@ -465,6 +470,13 @@ def main(argv: list[str] | None = None) -> int:
     not call ``sys.exit`` itself — the ``console_scripts`` wrapper does, and
     tests want the int).
     """
+    # The CLI's stderr is a structured error channel (human/JSON payloads via
+    # exit_codes); library diagnostics must not leak into it. The embedder
+    # startup self-test warns on every facade build — in a one-shot CLI that
+    # pollutes stderr and breaks the JSON contract. Suppress seahorse logs here;
+    # the long-lived MCP command re-enables WARNING so a server operator still
+    # sees the prefix-drift signal at boot.
+    logging.getLogger("seahorse").setLevel(logging.ERROR)
     args = sys.argv[1:] if argv is None else argv
     fmt: OutputFormat = "human"
     try:
