@@ -83,6 +83,17 @@ class TestExtractValid:
         assert len(res.prompt_hash) == 64
         assert res.confidence is None  # extractor does not emit confidence
 
+    def test_model_used_avoids_double_prefix_when_litellm_prefixed(self, monkeypatch) -> None:
+        # litellm may already return "ollama/qwen3:..." (with prefix); the
+        # normalizer must not prepend a second "ollama/" (smoke-tested 2026-08-04).
+        _install_litellm(
+            monkeypatch,
+            lambda **kw: _FakeResp('{"subject": "x", "tags": []}', model="ollama/qwen3:14b-q4_K_M"),
+        )
+        backend = LiteLLMBackend(route=_route("ollama/qwen3:1.7b"))
+        res = backend.extract("body", _Frontmatter)
+        assert res.model_used == "ollama/qwen3:14b-q4_K_M"
+
     def test_usage_records_into_budget_context(self, monkeypatch) -> None:
         _install_litellm(
             monkeypatch,

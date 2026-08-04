@@ -82,3 +82,18 @@ class TestDoctor:
         api = next(c for c in payload["checks"] if c["check"] == "api_keys")
         assert api["status"] == "WARN"
         assert "nosuch/model-x" in api["detail"]
+
+
+class TestProviderSelfTest:
+    def test_llm_error_reported_as_fail_not_crash(self, monkeypatch) -> None:
+        from seahorse.cli.config import LlmConfig
+        from seahorse.cli.doctor import _provider_self_test
+        from seahorse.llm import LiteLLMBackend, LLMError
+
+        def fake_extract(self, content, schema_hint, **kw):
+            raise LLMError("boom")
+
+        monkeypatch.setattr(LiteLLMBackend, "extract", fake_extract)
+        ok, detail = _provider_self_test(LlmConfig(primary="ollama/qwen3:1.7b"))
+        assert ok is False
+        assert "boom" in detail

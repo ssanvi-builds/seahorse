@@ -164,29 +164,29 @@ class LiteLLMBackend:
         """
         ctx = budget or BudgetContext()
         timeout = timeout_s or self._timeout_s
-        # Pre-flight cost gate (f5-04 §4.1, ADR-09): degrade when the primary's
-        # worst-case estimate exceeds the remaining episode cap.
-        if self._route is not None:
-            try:
-                cost.check_budget(
-                    self._route.primary,
-                    _count_tokens(content),
-                    max_tokens or self._max_tokens,
-                    ctx,
-                )
-            except BudgetExceeded:
-                ctx.last_degradation_reason = "budget_pre_flight_exceeded"
-                _logger.warning(
-                    "llm.extract.preflight_skip cap_usd=%s", ctx.cap_usd
-                )
-                return ExtractResult(
-                    data={}, prompt_hash="", degraded_to_skip=True
-                )
         try:
+            # Pre-flight cost gate (f5-04 §4.1, ADR-09): degrade when the
+            # primary's worst-case estimate exceeds the remaining episode cap.
+            if self._route is not None:
+                try:
+                    cost.check_budget(
+                        self._route.primary,
+                        _count_tokens(content),
+                        max_tokens or self._max_tokens,
+                        ctx,
+                    )
+                except BudgetExceeded:
+                    ctx.last_degradation_reason = "budget_pre_flight_exceeded"
+                    _logger.warning(
+                        "llm.extract.preflight_skip cap_usd=%s", ctx.cap_usd
+                    )
+                    return ExtractResult(
+                        data={}, prompt_hash="", degraded_to_skip=True
+                    )
             return self._extract_with_repair(
                 content, schema_hint, ctx, max_tokens, timeout
             )
-        except LLMError as exc:  # chain exhausted / setup missing
+        except LLMError as exc:  # chain exhausted / pricing unknown / setup
             ctx.last_degradation_reason = f"llm_exception: {exc}"
             _logger.error("llm.extract.failed: %s", exc)
             return ExtractResult(
@@ -306,7 +306,12 @@ class LiteLLMBackend:
         actual_cost = cost.record_actual_cost(ctx, model_id, tokens_in, tokens_out)
         provider = model_id.split("/", 1)[0]
         raw_model = getattr(resp, "model", None)
-        model_used = f"{provider}/{raw_model}" if raw_model else model_id
+        if raw_model and raw_model.startswith(f"{provider}/"):
+            model_used = raw_model  # litellm already prefixed it
+        elif raw_model:
+            model_used = f"{provider}/{raw_model}"  # bare id → normalize (Lens C)
+        else:
+            model_used = model_id
         return CompletionResult(
             text=text,
             prompt_hash=hash_prompt(messages),

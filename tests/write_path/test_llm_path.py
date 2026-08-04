@@ -116,11 +116,15 @@ class TestRunLlmPathSuccess:
         assert isinstance(call["budget"], BudgetContext)
         assert call["budget"].cap_usd == 0.002  # ADR-09 per-episode cap
 
-    def test_subject_none_lets_engine_derive(self, engine) -> None:
+    def test_missing_subject_degrades_final_validation(self, engine) -> None:
+        # subject is REQUIRED (smoke 2026-08-04): a model that omits it fails
+        # the final validation → honest degrade to skip (the skip path derives
+        # from title/H1 instead).
         client = _RecordingLLMClient(result=_ok_result(subject=None))
         p = _payload()
         run_llm_path(p, _llm_decision(p), engine, client)
-        assert engine.last_call.subject is None  # apply_fact derives (SO-2)
+        assert engine.last_call.by["extraction_mode"] == "skip"
+        assert engine.last_call.by["degrade_reason"] == "final_validation_failed"
 
     def test_payload_values_fall_back_when_model_omits(self, engine) -> None:
         client = _RecordingLLMClient(

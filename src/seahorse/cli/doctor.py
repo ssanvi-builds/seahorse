@@ -62,17 +62,24 @@ def _missing_keys(llm: LlmConfig) -> list[str]:
 
 
 def _provider_self_test(llm: LlmConfig) -> tuple[bool, str]:
-    """Run a real extraction against the configured route (live probe)."""
-    from seahorse.llm import BudgetContext, LiteLLMBackend, RoleRoute
+    """Run a real extraction against the configured route (live probe).
+
+    A raised ``LLMError`` (unreachable backend, unknown pricing, missing extra)
+    is a FAIL report, never a crash — the doctor diagnoses.
+    """
+    from seahorse.llm import BudgetContext, LiteLLMBackend, LLMError, RoleRoute
 
     route = RoleRoute(
         primary=llm.primary, secondary=llm.secondary, tertiary=llm.tertiary
     )
-    res = LiteLLMBackend(route=route, timeout_s=llm.timeout_s).extract(
-        "Doctor probe: Seahorse is a persistent memory engine for LLM agents.",
-        _SelfTestSchema,
-        budget=BudgetContext(),
-    )
+    try:
+        res = LiteLLMBackend(route=route, timeout_s=llm.timeout_s).extract(
+            "Doctor probe: Seahorse is a persistent memory engine for LLM agents.",
+            _SelfTestSchema,
+            budget=BudgetContext(),
+        )
+    except LLMError as exc:
+        return False, f"error: {exc}"
     if res.degraded_to_skip:
         return False, "provider unreachable or misconfigured"
     return True, f"ok ({res.model_used})"

@@ -52,6 +52,12 @@ class TestEstimateCost:
         with pytest.raises(LLMError, match="No pricing for nosuch/x"):
             estimate_cost("nosuch/x", 100, 100)
 
+    def test_unlisted_local_model_prices_zero(self) -> None:
+        # ANY ollama/vllm model is $0 by convention (a user-pulled qwen3:14b
+        # must not crash the cost cap — smoke-tested 2026-08-04).
+        assert estimate_cost("ollama/qwen3:14b-q4_K_M", 3000, 1000) == 0.0
+        assert estimate_cost("vllm/whatever-model", 1000, 500) == 0.0
+
 
 class TestRecordActualCost:
     def test_accumulates_into_budget_context(self) -> None:
@@ -70,6 +76,12 @@ class TestRecordActualCost:
     def test_unknown_model_raises_loud(self) -> None:
         with pytest.raises(LLMError):
             record_actual_cost(BudgetContext(), "nosuch/x", 100, 100)
+
+    def test_unlisted_local_model_records_zero(self) -> None:
+        ctx = BudgetContext()
+        assert record_actual_cost(ctx, "ollama/qwen3:14b-q4_K_M", 3000, 500) == 0.0
+        assert ctx.spent_usd == 0.0
+        assert ctx.tokens_spent == 3500  # tokens still count
 
 
 class TestCheckBudget:

@@ -55,18 +55,17 @@ class EpisodeFrontmatter(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    subject: str | None = None
+    subject: str  # REQUIRED — the point of the extraction (smoke 2026-08-04)
     valid_at: datetime | None = None
     cognitive_type: str | None = None
     tags: list[str] = []
 
     @field_validator("subject")
     @classmethod
-    def _subject_nonempty(cls, v: str | None) -> str | None:
-        if v is not None:
-            v = v.strip()
-            if not v:
-                return None  # a blank subject is "no subject" → engine derives
+    def _subject_required(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("subject is required — derive a short topic phrase")
         return v
 
     @field_validator("valid_at")
