@@ -40,6 +40,7 @@ from seahorse.cli.config import (
     load_config,
     resolve_vault,
 )
+from seahorse.cli.doctor import run_doctor
 from seahorse.cli.exit_codes import EXIT_SUCCESS, translate
 from seahorse.cli.management import run_init, run_reserved, run_status, run_uuid7
 from seahorse.cli.output import OutputFormat
@@ -471,6 +472,12 @@ def init(
 def status(ctx: typer.Context) -> None:
     """Show the resolved vault / db / config snapshot."""
     run_status(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+
+
+@app.command()
+def doctor(ctx: typer.Context) -> None:
+    """Diagnose the vault: LLM provider, keys, self-test, extraction mode."""
+    run_doctor(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command()
