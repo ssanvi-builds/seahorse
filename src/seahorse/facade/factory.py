@@ -29,6 +29,7 @@ from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import FacadeConfig
 from seahorse.facade.vigente_retriever import VigenteListingRetriever
+from seahorse.llm import LLMClient
 from seahorse.persistence.storage import Storage
 from seahorse.write_path.stub import StubWritePath
 
@@ -45,6 +46,7 @@ def build_facade(
     storage: Storage | None = None,
     embedder: QueryEmbedder | None = None,
     retrieval_available: bool | None = None,
+    llm_client: LLMClient | None = None,
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
 
@@ -66,6 +68,12 @@ def build_facade(
     The ``embedder`` slot (C8.4 seam) defaults to ``StubQueryEmbedder`` in the
     G2 regime (inert, ``E_NOT_IN_MVP_0`` on invocation); in the hybrid regime it
     is the sync query adapter the retriever calls.
+
+    The ``llm_client`` slot (M4-C.3 seam) is the write-path LLM extractor. When
+    None (the default) the write path keeps its MVP-0 honest llm→skip degrade;
+    the CLI builds a real ``LiteLLMBackend`` from the ``[llm]`` config
+    (``seahorse init --llm``) and passes it here. ``MemoryFacade`` does not
+    change — the client is a write-path concern.
     """
     own_storage = storage if storage is not None else Storage(db_path)
     engine = BiTemporalEngine(repo=own_storage.episodes, audit=own_storage.audit)
@@ -101,11 +109,11 @@ def build_facade(
             own_storage.episodes,
             own_storage._cm,  # noqa: SLF001 — composition root owns Storage
         )
-        write_path = StubWritePath(engine=engine, indexer=indexer)
+        write_path = StubWritePath(engine=engine, indexer=indexer, llm_client=llm_client)
         facade_embedder: QueryEmbedder | None = query_embedder
     else:
         retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
-        write_path = StubWritePath(engine=engine)
+        write_path = StubWritePath(engine=engine, llm_client=llm_client)
         facade_embedder = embedder
     facade = MemoryFacade(
         engine=engine,

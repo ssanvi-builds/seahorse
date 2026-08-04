@@ -13,6 +13,7 @@ from seahorse.facade.errors import SeahorseError
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.stub_embedder import StubQueryEmbedder
 from seahorse.facade.types import RememberPayload
+from seahorse.llm import ExtractResult
 from seahorse.persistence.storage import Storage
 
 
@@ -46,6 +47,102 @@ def _advancing_clock(start: datetime, step: timedelta):
 
 def _agent_by() -> dict:
     return {"source_type": "agent", "agent_id": "a1", "session_id": "s1"}
+
+
+class _RecordingLLMClient:
+    """``LLMClient`` double that records extract calls (M4-C.3 seam tests)."""
+
+    def __init__(self, result: ExtractResult | None = None, error: Exception | None = None) -> None:
+        self.calls: list[str] = []
+        self._result = result
+        self._error = error
+
+    def extract(
+        self,
+        content: str,
+        schema_hint: type,
+        *,
+        role: str = "extraction",
+        budget=None,
+        max_tokens: int | None = None,
+        timeout_s: float | None = None,
+    ) -> ExtractResult:
+        self.calls.append(content)
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+    def complete(
+        self,
+        messages,
+        *,
+        role: str = "extraction",
+        budget=None,
+        max_tokens=None,
+        timeout_s=None,
+    ):
+        raise NotImplementedError
+
+
+class TestLlmClientSlot:
+    """M4-C.3 — ``build_facade`` gains an ``llm_client`` slot (write-path seam).
+
+    The default (None) preserves the MVP-0 honest llm→skip degrade. When a
+    real client is wired, ``remember(extraction_mode='llm')`` routes through it
+    and stores the effective LLM provenance. Skip mode never touches it.
+    """
+
+    def test_default_no_client_degrades_llm_to_skip(self, tmp_path) -> None:
+        facade, storage = build_facade(tmp_path / "f.db")
+        try:
+            res = facade.remember(
+                RememberPayload(body="Sergio lives in Madrid", by=_agent_by()),
+                extraction_mode="llm",
+            )
+            ep = storage.episodes.get(res.ep_id)
+            assert ep.provenance["extraction_mode"] == "skip"
+            assert ep.provenance["degraded_from"] == "llm"
+            assert ep.provenance["degrade_reason"] == "llm_not_implemented_mvp0"
+        finally:
+            storage.close()
+
+    def test_wired_client_used_for_llm(self, tmp_path) -> None:
+        client = _RecordingLLMClient(
+            result=ExtractResult(
+                data={"subject": "llm subject"},
+                prompt_hash="h" * 64,
+                model_used="ollama/qwen3:1.7b",
+                confidence=0.9,
+            )
+        )
+        facade, storage = build_facade(tmp_path / "f.db", llm_client=client)
+        try:
+            res = facade.remember(
+                RememberPayload(body="Sergio lives in Madrid", by=_agent_by()),
+                extraction_mode="llm",
+            )
+            assert client.calls == ["Sergio lives in Madrid"]
+            ep = storage.episodes.get(res.ep_id)
+            assert ep.provenance["extraction_mode"] == "llm"
+            assert ep.provenance["model_used"] == "ollama/qwen3:1.7b"
+            assert ep.provenance["prompt_hash"] == "h" * 64
+            assert ep.subject == "llm subject"
+        finally:
+            storage.close()
+
+    def test_skip_mode_does_not_touch_client(self, tmp_path) -> None:
+        client = _RecordingLLMClient(
+            result=ExtractResult(data={"subject": "s"}, prompt_hash="h" * 64)
+        )
+        facade, storage = build_facade(tmp_path / "f.db", llm_client=client)
+        try:
+            facade.remember(
+                RememberPayload(body="Sergio lives in Madrid", by=_agent_by()),
+                extraction_mode="skip",
+            )
+            assert client.calls == []
+        finally:
+            storage.close()
 
 
 class TestBuildFacade:
