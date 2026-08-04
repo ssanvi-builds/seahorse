@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import tempfile
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import numpy as np  # core dep since M1-B.1
@@ -169,9 +172,46 @@ def _self_test(embedder: FastEmbedEmbedder) -> None:
         )
 
 
+def model_cached() -> bool:
+    """True if the mE5-small fp32-O4 bundle is already on local disk.
+
+    Mirrors fastembed 0.8's cache resolution (``FASTEMBED_CACHE_PATH`` or
+    ``<tmp>/fastembed_cache``) without importing fastembed internals. Used by
+    the CLI to announce the one-time ~235MB download on first embed. Returns
+    True when the check can't run (no huggingface_hub) so a spurious "will
+    download" notice never blocks anything.
+    """
+    try:
+        from huggingface_hub import try_to_load_from_cache
+    except ImportError:
+        return True
+    cache_dir = os.environ.get("FASTEMBED_CACHE_PATH") or str(
+        Path(tempfile.gettempdir()) / "fastembed_cache"
+    )
+    path = try_to_load_from_cache(MODEL_NAME, MODEL_FILE, cache_dir=cache_dir)
+    return path is not None
+
+
+def retrieval_status() -> str:
+    """Human-readable retrieval regime, without building the embedder.
+
+    Lightweight probe for ``seahorse status``: the ``embeddings`` extra decides
+    hybrid vs G2; the cache decides whether the first embed will download.
+    """
+    try:
+        import fastembed  # noqa: F401  # the 'embeddings' extra
+    except ImportError:
+        return "G2 listing (install seahorse[embeddings] for semantic recall)"
+    if model_cached():
+        return "hybrid RRF (model cached)"
+    return "hybrid RRF (model downloads on first embed)"
+
+
 __all__ = [
     "FastEmbedEmbedder",
     "build_fastembed_embedder",
+    "model_cached",
+    "retrieval_status",
     "_prefix_drift_cosine",
     "MODEL_NAME",
     "MODEL_FILE",

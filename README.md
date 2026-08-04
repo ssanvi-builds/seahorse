@@ -54,6 +54,12 @@ The `seahorse` console script is for humans and shell scripts; `seahorse-mcp` is
 for agents. The `seahorse mcp` subcommand invokes the same stdio server as
 `seahorse-mcp`, so both agent entry points are equivalent.
 
+> **First run**: the semantic-embedding model (mE5-small, ~235MB) downloads
+> lazily on the first `remember`/`recall` — the CLI announces it so the first
+> call doesn't look hung. `seahorse status` shows the active retrieval regime
+> (`hybrid RRF (model cached)` vs `G2 listing — install seahorse[embeddings]
+> for semantic recall`).
+
 ## The agent surface — 7 memory-native primitives
 
 Exposed over stdio MCP (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`) and

@@ -73,6 +73,9 @@ def run_status(
     config: SeahorseConfig, *, fmt: OutputFormat = "human", out: TextIO
 ) -> None:
     """``seahorse status`` — render the resolved vault / db / config snapshot."""
+    from seahorse.embeddings.fastembed_backend import retrieval_status
+
+    retrieval = retrieval_status()
     payload = {
         "vault": str(config.vault),
         "seahorse_dir": str(config.seahorse_dir),
@@ -81,6 +84,7 @@ def run_status(
         "initialized": is_initialized(config.vault),
         "default_extraction_mode": config.default_extraction_mode,
         "top_k": config.top_k,
+        "retrieval": retrieval,
     }
     human = (
         f"Seahorse vault: {config.vault}\n"
@@ -88,6 +92,7 @@ def run_status(
         f"  db:      {config.db_path} ({'present' if payload['db_exists'] else 'absent'})\n"
         f"  mode:    {config.default_extraction_mode}\n"
         f"  top_k:   {config.top_k}\n"
+        f"  retrieval: {retrieval}\n"
     )
     render_message(payload, fmt=fmt, out=out, human_text=human)
 

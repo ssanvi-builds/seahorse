@@ -48,6 +48,18 @@ Protocols to land with #6: `EpisodeIndexRepository` (SO-1), `VectorIndexReposito
 - `drain()` contract for #7 (OQ-16-12, synchronous embeddings barrier for #16).
 - OQ-16-2 (`temperature` / `seed` in `complete()`); #16 starts with LiteLLM direct meanwhile.
 
+## Onboarding backlog (post-MVP-1, not signed)
+
+- **`seahorse doctor`** — one-shot setup/diagnostics assistant for a first-time
+  installer: checks the `embeddings` extra is present, the mE5-small model is
+  cached (or triggers the download), the vault is migrated, and prints the exact
+  install step for anything missing. Goal: "install and it just works", no doc
+  archaeology. Recorded 2026-08-04 after the MVP-1 real-embedder smoke (the
+  first-run download and the opaque retrieval regime were the two frictions that
+  this backlog entry + the CLI download-notice / status-retrieval work address).
+- Optional: first-run interactive guide (`seahorse init` hints at the
+  `[embeddings]` extra; download progress on the one-time model pull).
+
 ## Promotion tasks (execute component-by-component at F6 start)
 
 Editorial corrections to source docs + mark resolved OQ/Sign-offs:

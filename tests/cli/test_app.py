@@ -130,6 +130,8 @@ def test_status_command(vault):
     assert code == 0, err
     assert "Seahorse vault" in out
     assert "skip" in out
+    # Onboarding: the retrieval regime is surfaced (hybrid or G2).
+    assert "retrieval:" in out
 
 
 def test_uuid7_command():
@@ -359,3 +361,62 @@ def test_error_payload_is_json_when_json_flag(vault):
     assert payload["seahorse_code"] == "E_EMPTY_BODY"
     assert payload["exit_code"] == 64
     assert payload["component"] == "#12"
+
+
+# ---------------------------------------------------------------------------
+# Onboarding: model-download notice + retrieval regime in status.
+# ---------------------------------------------------------------------------
+
+
+def test_first_command_skips_global_value_flags():
+    from seahorse.cli.app import _first_command
+
+    assert _first_command(["--vault", "/tmp/x", "remember", "hi"]) == "remember"
+    assert _first_command(["--json", "recall", "q"]) == "recall"
+    assert _first_command(["--format", "json", "status"]) == "status"
+    assert _first_command(["-q", "init", "/tmp/x"]) == "init"
+    assert _first_command(["--json"]) is None
+
+
+def test_announce_model_download_when_not_cached(monkeypatch, capsys):
+    from seahorse.cli.app import CliContext, _announce_model_download
+
+    monkeypatch.setattr("seahorse.cli.app._CURRENT_ARGV", ["remember", "hi"])
+    monkeypatch.setattr(
+        "seahorse.embeddings.fastembed_backend.model_cached", lambda: False
+    )
+    _announce_model_download(CliContext(fmt="human", quiet=False))
+    assert "First run" in capsys.readouterr().out
+
+
+def test_announce_model_download_silent_when_cached(monkeypatch, capsys):
+    from seahorse.cli.app import CliContext, _announce_model_download
+
+    monkeypatch.setattr("seahorse.cli.app._CURRENT_ARGV", ["remember", "hi"])
+    monkeypatch.setattr(
+        "seahorse.embeddings.fastembed_backend.model_cached", lambda: True
+    )
+    _announce_model_download(CliContext(fmt="human", quiet=False))
+    assert capsys.readouterr().out == ""
+
+
+def test_announce_model_download_silent_for_non_embed_command(monkeypatch, capsys):
+    from seahorse.cli.app import CliContext, _announce_model_download
+
+    monkeypatch.setattr("seahorse.cli.app._CURRENT_ARGV", ["status"])
+    monkeypatch.setattr(
+        "seahorse.embeddings.fastembed_backend.model_cached", lambda: False
+    )
+    _announce_model_download(CliContext(fmt="human", quiet=False))
+    assert capsys.readouterr().out == ""
+
+
+def test_announce_model_download_silent_in_json_mode(monkeypatch, capsys):
+    from seahorse.cli.app import CliContext, _announce_model_download
+
+    monkeypatch.setattr("seahorse.cli.app._CURRENT_ARGV", ["remember", "hi"])
+    monkeypatch.setattr(
+        "seahorse.embeddings.fastembed_backend.model_cached", lambda: False
+    )
+    _announce_model_download(CliContext(fmt="json", quiet=False))
+    assert capsys.readouterr().out == ""

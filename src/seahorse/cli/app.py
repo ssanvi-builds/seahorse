@@ -111,6 +111,11 @@ class CliContext:
 # Stack so nested ``main()`` invocations (tests) do not clobber each other.
 _STATE_STACK: list[CliContext] = []
 
+# The argv of the current ``main()`` invocation (set before ``app()`` runs) so
+# the global callback can locate the subcommand without reading ``sys.argv``
+# (which ``main(argv)`` may not match in tests / embedded callers).
+_CURRENT_ARGV: list[str] = []
+
 
 # ---------------------------------------------------------------------------
 # Typer app + global callback.
@@ -147,6 +152,55 @@ def _out(ctx: typer.Context) -> TextIO:
     return io.StringIO() if ctx.obj.quiet else sys.stdout
 
 
+# Commands whose first embed triggers the one-time model download.
+_EMBED_COMMANDS = {"remember", "improve", "recall"}
+# Global flags that consume a value (skip their argument when locating the
+# subcommand in ``sys.argv``).
+_GLOBAL_VALUE_FLAGS = {"--vault", "--config", "--format", "-f"}
+
+
+def _first_command(argv: list[str]) -> str | None:
+    """First non-flag token in ``argv``, skipping global value flags."""
+    skip_next = False
+    for arg in argv:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in _GLOBAL_VALUE_FLAGS:
+            skip_next = True
+            continue
+        if arg.startswith("-"):
+            continue
+        return arg
+    return None
+
+
+def _announce_model_download(ctx: CliContext) -> None:
+    """Announce the one-time mE5-small download (human mode, embed commands).
+
+    The embedder pulls ~235MB lazily on the first embed; without a heads-up the
+    first ``remember``/``recall`` looks hung. Announce only in human output, only
+    for commands that embed, and only when the model isn't cached yet. Library
+    code stays silent (the JSON contract owns stderr; this is stdout, human).
+    """
+    if ctx.quiet or ctx.fmt != "human":
+        return
+    if _first_command(_CURRENT_ARGV) not in _EMBED_COMMANDS:
+        return
+    try:
+        from seahorse.embeddings.fastembed_backend import model_cached
+
+        if model_cached():
+            return
+    except Exception:  # noqa: BLE001 — a notice must never block the command
+        return
+    sys.stdout.write(
+        "First run: downloading mE5-small embedding model (~235MB) from "
+        "HuggingFace — one-time, then cached.\n"
+    )
+    sys.stdout.flush()
+
+
 @app.callback()
 def _callback(
     ctx: typer.Context,
@@ -169,6 +223,7 @@ def _callback(
         quiet=quiet,
     )
     _STATE_STACK.append(ctx.obj)
+    _announce_model_download(ctx.obj)
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     # sees the prefix-drift signal at boot.
     logging.getLogger("seahorse").setLevel(logging.ERROR)
     args = sys.argv[1:] if argv is None else argv
+    _CURRENT_ARGV[:] = list(args)
     fmt: OutputFormat = "human"
     try:
         app(args, standalone_mode=False, prog_name="seahorse")
