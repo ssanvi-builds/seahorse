@@ -58,6 +58,13 @@ embeddings = [
     "fastembed>=0.6.0",
     "onnxruntime>=1.20",
 ]
+# M4-C.2: the #4 Multi-LLM backend (ADR-05 — LiteLLM unifies the 100+ provider
+# surface). Also optional: without this extra, `seahorse.llm` still imports
+# (the contract + StubLLMClient are stdlib-light) but the real path degrades
+# llm→skip with a setup hint. Install with `uv sync --extra dev --extra llm`.
+llm = [
+    "litellm>=1.0",
+]
 
 [build-system]
 requires = ["hatchling"]

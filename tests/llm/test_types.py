@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError, is_dataclass
 
 import pytest
+from pydantic import BaseModel
 
 from seahorse.llm.types import (
     BudgetContext,
@@ -25,6 +26,12 @@ from seahorse.llm.types import (
     LLMClient,
     StubLLMClient,
 )
+
+
+class _FakeSchema(BaseModel):
+    """A Pydantic ``schema_hint`` for the extract signature (reconciled to
+    ``type[BaseModel]`` — f5-04 §2.3)."""
+    subject: str
 
 
 class TestExtractResult:
@@ -111,7 +118,7 @@ class TestStubLLMClient:
     def test_extract_raises_not_implemented_with_skip_hint(self) -> None:
         client = StubLLMClient()
         with pytest.raises(NotImplementedError, match="skip"):
-            client.extract("content", "schema_hint", role="extraction", budget=BudgetContext())
+            client.extract("content", _FakeSchema, role="extraction", budget=BudgetContext())
 
     def test_complete_raises_not_implemented(self) -> None:
         client = StubLLMClient()
@@ -121,7 +128,7 @@ class TestStubLLMClient:
     def test_mentions_mvp0_in_message(self) -> None:
         client = StubLLMClient()
         with pytest.raises(NotImplementedError, match="MVP-0"):
-            client.extract("c", "s")
+            client.extract("c", _FakeSchema)
 
 
 class TestLLMClientProtocol:

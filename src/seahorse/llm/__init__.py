@@ -26,6 +26,7 @@ from seahorse.llm.errors import (
     RateLimitError,
     TransientHTTPError,
 )
+from seahorse.llm.lite_llm_backend import LiteLLMBackend
 from seahorse.llm.providers import PROVIDERS, ProviderConfig, resolve_provider
 from seahorse.llm.routing import RoleRoute, RoutingConfig, route_for
 from seahorse.llm.types import (
@@ -43,6 +44,7 @@ __all__ = [
     "ExtractResult",
     "BudgetContext",
     "StubLLMClient",
+    "LiteLLMBackend",
     # Errors.
     "LLMError",
     "ProviderError",

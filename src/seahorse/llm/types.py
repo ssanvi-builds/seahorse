@@ -5,12 +5,13 @@ and is testable without a real LLM. MVP-0 never calls it: ``StubWritePath``
 degrades ``llm``→``skip`` and ``StubLLMClient`` raises ``NotImplementedError``.
 
 Materialization note: the signed contract (f6-signoffs SO-5a) uses Pydantic
-``BaseModel``. This MVP-0 materialization uses stdlib ``@dataclass`` to keep
-the project runtime-dep-free (``dependencies = []``). The field sets are
-identical to the signed contract; this mirrors ``contracts/episode.py``, where
-#1 signs a Pydantic model and #6 materializes it as a dataclass. When #4 ships
-the real client it may adopt Pydantic; the frontier shape (fields) is what is
-signed and stable.
+``BaseModel``. The result/budget types are materialized as stdlib ``@dataclass``
+(the field sets are identical to the signed contract; this mirrors
+``contracts/episode.py``, where #1 signs a Pydantic model and #6 materializes it
+as a dataclass). ``LLMClient.extract`` reconciles ``schema_hint`` to
+``type[BaseModel]`` (f5-04 §2.3) — the MVP-0 materialization typed it ``str``,
+a drift corrected when the real client landed; Pydantic is a core dependency
+since #3, so this does not relax the dependency posture.
 
 ``BudgetContext`` is the documented immutability exception: a mutable execution
 accumulator that advances across retries (``spent_usd`` / ``tokens_spent`` via
@@ -43,6 +44,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
+
+from pydantic import BaseModel
 
 
 @dataclass(frozen=True)
@@ -130,7 +133,7 @@ class LLMClient(Protocol):
     def extract(
         self,
         content: str,
-        schema_hint: str,
+        schema_hint: type[BaseModel],
         *,
         role: str = "extraction",
         budget: BudgetContext | None = None,
@@ -166,7 +169,7 @@ class StubLLMClient:
     def extract(
         self,
         content: str,
-        schema_hint: str,
+        schema_hint: type[BaseModel],
         *,
         role: str = "extraction",
         budget: BudgetContext | None = None,
