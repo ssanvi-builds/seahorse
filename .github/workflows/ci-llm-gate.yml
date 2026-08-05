@@ -1,0 +1,126 @@
+# CI LLM Gate (f5-04 §2.2, stack-f4 §1.7) — real extraction path vs the WEAKEST
+# model of the qwen3 family (qwen3:0.6b) on a pinned Ollama service container.
+#
+# Adversarial local-first guarantee: if the extraction path works on the
+# smallest model (validator + retry + repair have to carry the load), it works
+# on all of them. The gate is RED if extraction only works with native
+# structured outputs (ADR-05 forbids the hard dependence) or only on strong
+# models (f5-04 §6.1/§7.2).
+#
+# This workflow is SEPARATE from ci.yml on purpose: the main CI never installs
+# the optional ``llm`` extra (litellm). Only the gate does
+# (``uv sync --extra dev --extra llm``), and only it hits a live Ollama.
+#
+# Version pins (stack-f4 §1.7 lesson — nomic-embed-text lowercasea inputs since
+# v0.30.0, so version drift breaks reproducibility):
+# - Ollama image: 0.32.5 @ sha256:98c19ce... (amd64, resolved 2026-08-05 from
+#   Docker Hub; the spec's 0.23.4 was stale).
+# - Model: qwen3:0.6b with the explicit tag (never a bare ``qwen3``).
+# - Cache key: ollama-qwen3-0.6b-v1 (model-version pin).
+#
+# Note on ``ollama pull``: the runner does NOT install the ollama CLI (the
+# release tarball is ~1.4GB). The service container's server performs the pull
+# via its REST API (POST /api/pull) — functionally identical to ``ollama pull``
+# — writing the model into the bind-mounted ~/.ollama, which actions/cache
+# persists across runs. The pull is conditional (checks /api/tags first) so a
+# cache hit is a no-op.
+
+name: CI LLM Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-llm-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  llm-gate:
+    name: LLM gate (Ollama qwen3:0.6b)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Un-gates tests/llm/test_gate_ollama.py; without it the 4 gate tests
+      # would SKIP silently and the gate would pass without ever running.
+      SEAHORSE_RUN_LLM_TESTS: "1"
+      # litellm reads OLLAMA_API_BASE for the ollama/ provider (verified in
+      # litellm/llms/ollama/common_utils.py). The f5-04 spec's OLLAMA_BASE_URL
+      # was a typo — litellm ignores it. Explicit here for clarity.
+      OLLAMA_API_BASE: "http://localhost:11434"
+      LLM_GATE_MODEL: "ollama/qwen3:0.6b"
+
+    services:
+      ollama:
+        image: ollama/ollama:0.32.5@sha256:98c19ced6600f2924e80b92d701cd867d8f7ef0c4dde516c619484e31e47f103
+        ports:
+          - 11434:11434
+        volumes:
+          # Live bind-mount: a model pulled into the container lands in the
+          # runner's ~/.ollama, so actions/cache can persist it across runs.
+          - /home/runner/.ollama:/root/.ollama
+        options: >-
+          --health-cmd="ollama list || exit 1"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      # Best-effort: the gate must NEVER depend on cache mechanics. If the
+      # bind-mount source is not writable by the runner on a cache hit, the
+      # restore fails gracefully here and the pull step re-downloads (~0.6GB).
+      - name: Cache Ollama models (restore — best effort)
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ollama
+          key: ollama-qwen3-0.6b-v1
+        continue-on-error: true
+
+      - name: Wait for Ollama server
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:11434/api/version >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://localhost:11434/api/version
+
+      - name: Pull gate model qwen3:0.6b (via the service server API)
+        run: |
+          if curl -fsS http://localhost:11434/api/tags | grep -q '"qwen3:0.6b"'; then
+            echo "gate model present (cache hit) — pull skipped"
+          else
+            curl -fsSL -X POST http://localhost:11434/api/pull \
+              -H 'Content-Type: application/json' \
+              -d '{"name":"qwen3:0.6b","stream":false}'
+          fi
+
+      # The llm extra (litellm) is installed ONLY here, not in the main ci.yml.
+      - name: Sync dependencies (dev + llm extra)
+        run: uv sync --extra dev --extra llm --python 3.12
+
+      - name: Run LLM gate tests
+        run: |
+          set -o pipefail
+          uv run pytest -m llm_gate --no-cov --tb=short -q | tee "$RUNNER_TEMP/llm-gate.log"
+          # Guard: a gate that runs zero tests (e.g. all silently skipped after
+          # an env-var change) is worse than a failing one — fail loudly.
+          grep -qE '[0-9]+ passed' "$RUNNER_TEMP/llm-gate.log"
+
+      - name: Cache Ollama models (save — best effort)
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ollama
+          key: ollama-qwen3-0.6b-v1
+        continue-on-error: true
