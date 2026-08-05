@@ -25,6 +25,13 @@ onboarding in the CLI.
   free-tier keys; factory default local-first `ollama/qwen3:1.7b`, 0.6b low-end);
   `[llm]` block in `seahorse.toml`; `status` reports the LLM regime; `seahorse
   doctor` (config + key NAMES + live provider probe).
+- CI gate `ci-llm-gate.yml` (f5-04 §2.2): the real extraction path is run against
+  the WEAKEST model of the family (`ollama/qwen3:0.6b`, pinned Ollama image + tag,
+  CPU) so the Pydantic validator + retry + repair must carry the load — proves the
+  path does not silently depend on native structured outputs (ADR-05) or on a
+  strong model. Gated tests in `tests/llm/test_gate_ollama.py`
+  (`SEAHORSE_RUN_LLM_TESTS=1`, `pytest -m llm_gate`); the main `ci.yml` is
+  untouched (still no litellm).
 
 ## [0.2.0] - 2026-08-03
 
