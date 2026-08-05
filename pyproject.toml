@@ -86,4 +86,5 @@ addopts = "-ra --strict-markers --cov=seahorse --cov-fail-under=80 --cov-report=
 markers = [
     "mvp1_axis: TIMELINE MVP-1 accessors signed now but revisable until MVP-1 (SO-1 safeguard 2)",
     "property: hypothesis property-based / stateful invariant tests (bi-temporal safety net)",
+    "llm_gate: CI gate integration tests against a real Ollama (weakest model qwen3:0.6b); gated by SEAHORSE_RUN_LLM_TESTS=1, run via `pytest -m llm_gate` in ci-llm-gate.yml (f5-04 §2.2)",
 ]
