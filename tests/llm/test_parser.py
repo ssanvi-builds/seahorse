@@ -110,3 +110,13 @@ class TestBuildExtractPrompt:
     def test_schema_serialized_into_user_message(self) -> None:
         msgs = build_extract_prompt("body", _Frontmatter)
         assert '"subject"' in msgs[1]["content"]
+
+    def test_prompt_rules_out_naive_dates_and_date_subjects(self) -> None:
+        # Gate finding 2 (2026-08-05): the weak model eagerly uses a bare date
+        # as the subject and/or emits a naive ``valid_at`` that the I2 validator
+        # rejects. The prompt must carry the rules EXPLICITLY — the weak model
+        # does not infer them from the schema format alone.
+        system = build_extract_prompt("body", _Frontmatter)[0]["content"]
+        assert "never a bare date" in system  # subject is a topic phrase, not a date
+        assert "timezone-aware ISO-8601" in system  # valid_at must be aware (I2)
+        assert "omit valid_at" in system  # a bare date has no timezone → omit it
