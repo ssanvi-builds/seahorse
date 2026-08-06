@@ -112,13 +112,19 @@ class TestDecidePathSourceTypeGuard:
 
 class TestDecidePathValidation:
     def test_llm_partial_rejected(self) -> None:
-        # Reserved modes (MVP-1) are refused loud, not silently dropped to skip.
+        # ``llm_partial`` is fully reserved (not schema-valid): refused loud,
+        # not silently dropped to skip (ADR-10).
         with pytest.raises(InvalidExtractionMode):
             decide_path(_payload(), "llm_partial")  # type: ignore[arg-type]
 
     def test_consolidated_rejected(self) -> None:
+        # ``consolidated`` IS schema-valid and round-trippable (batch-distillation
+        # marker, obsiforge §5.2), but NOT routable by the single-episode write
+        # path — the batch distillation writes via ``engine.remember`` directly,
+        # bypassing ``decide_path`` (obsiforge §5.4). Refusing loud keeps the
+        # write path honest: a single-episode ingest can never honor it.
         with pytest.raises(InvalidExtractionMode):
-            decide_path(_payload(), "consolidated")  # type: ignore[arg-type]
+            decide_path(_payload(), "consolidated")
 
     def test_invalid_mode_is_value_error(self) -> None:
         assert issubclass(InvalidExtractionMode, ValueError)

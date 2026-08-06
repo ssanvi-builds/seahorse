@@ -40,7 +40,20 @@ from typing import Literal, TypedDict
 from seahorse.constants import COGNITIVE_TYPES, SOURCE_TYPES
 from seahorse.disclosure.types import TOP_K, PITPoint
 
-ExtractionMode = Literal["skip", "llm"]
+# F3.1 ``extraction_mode`` schema value set (#12-owned, single source for #13).
+# - ``skip`` / ``llm`` — single-episode ingestion modes, routable by #5
+#   ``decide_path``.
+# - ``consolidated`` — schema-valid, round-trippable batch-distillation marker
+#   (obsiforge §5.2: a stable knowledge note). NOT routable by single-episode
+#   ingestion: #5 ``decide_path`` refuses it, because the batch distillation
+#   writes via ``engine.remember`` directly, bypassing ``decide_path``
+#   (obsiforge §5.4). The engine does not produce it yet (ADR-10: schema-valid,
+#   not built).
+# - ``llm_partial`` — fully reserved (not in the schema value set).
+#
+# #13's wire enum derives from this Literal (``wire_schema._EXTRACTION_MODE_ENUM``),
+# so the two sister projections share one definition of the value set.
+ExtractionMode = Literal["skip", "llm", "consolidated"]
 
 
 class Provenance(TypedDict, total=False):

@@ -101,6 +101,17 @@ class TestRememberResolveMode:
         assert exc.value.code == E_INVALID_EXTRACTION_MODE
         assert write_path.ingest_calls == []
 
+    def test_consolidated_schema_valid_but_not_routable(self, facade, write_path) -> None:
+        # ``consolidated`` is schema-valid (wire round-trips it) but NOT routable
+        # by single-episode ``remember`` — the batch distillation writes via
+        # ``engine.remember`` directly, bypassing ``decide_path`` (obsiforge
+        # §5.4). The facade refuses loud (ADR-10) BEFORE touching #5, so the
+        # write path never receives a mode it cannot honor.
+        with pytest.raises(SeahorseError) as exc:
+            facade.remember(_payload(), extraction_mode="consolidated")
+        assert exc.value.code == E_INVALID_EXTRACTION_MODE
+        assert write_path.ingest_calls == []
+
 
 class TestRememberBoundaryValidation:
     def test_empty_body_rejected(self, facade) -> None:

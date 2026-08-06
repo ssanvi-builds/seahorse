@@ -36,7 +36,13 @@ from seahorse.facade.types import ExtractionMode, RememberPayload
 Path = Literal["skip", "llm"]
 
 _VALID_MODES: frozenset[str] = frozenset({"skip", "llm"})
-# Reserved modes refused in MVP-0/MVP-1 (over-reach vs ADR-09; f5-05 section 4.2).
+# Reserved for the single-episode write path (over-reach vs ADR-09; f5-05
+# section 4.2). ``llm_partial`` is fully reserved (not schema-valid).
+# ``consolidated`` IS schema-valid and round-trippable (batch-distillation
+# marker, obsiforge §5.2) but NOT routable here: the batch distillation
+# (``distill_episodes``, Sprint B) writes via ``engine.remember`` directly,
+# bypassing ``decide_path`` (obsiforge §5.4). Refusing both loud is ADR-10
+# honesty — a single-episode ingest can never honor them.
 _RESERVED_MODES: frozenset[str] = frozenset({"llm_partial", "consolidated"})
 
 # Non-agent source_types force skip (f5-05 sec 2.2 rule 1). Only ``agent`` may
@@ -59,8 +65,11 @@ _logger = logging.getLogger("seahorse.write_path.decide")
 class InvalidExtractionMode(ValueError):
     """Raised by ``decide_path`` for an unsupported ``extraction_mode`` value.
 
-    ``llm_partial`` / ``consolidated`` are reserved (MVP-1+) and refused loud
-    rather than silently dropped to skip (ADR-10 honesty).
+    ``llm_partial`` is fully reserved; ``consolidated`` is schema-valid
+    (round-trippable) but NOT routable by the single-episode write path — the
+    batch distillation writes via ``engine.remember`` directly, bypassing
+    ``decide_path`` (obsiforge §5.4). Both are refused loud rather than
+    silently dropped to skip (ADR-10 honesty).
     """
 
     def __init__(self, mode: str) -> None:

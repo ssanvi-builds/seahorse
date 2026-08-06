@@ -3,8 +3,9 @@
 Locks the reconciled drift:
 - ``cognitive_type`` enum = the 6 F3.1 values + null (NOT f5-13's divergent
   ``["semantic","episodic","procedural",null]``; NOT f5-05's ``preference``).
-- ``source_type`` enum = 4 values. ``extraction_mode`` = skip|llm|null (rejects
-  reserved ``llm_partial``/``consolidated``). ``reason`` has no ``decay``.
+- ``source_type`` enum = 4 values. ``extraction_mode`` = skip|llm|consolidated|
+  null (``consolidated`` schema-valid, single-sourced from the facade Literal;
+  rejects reserved ``llm_partial``). ``reason`` has no ``decay``.
 - ``recall`` has no ``anchor_ep_id``/``hops`` (MVP-0). ``forget`` has no ``now``
   (OQ #13 DECIDIDA — not exposed to MCP agents).
 - ``recall_full.ep_ids`` ``maxItems == MAX_FULL_BATCH`` (wire-level REJECT).
@@ -114,11 +115,21 @@ class TestProvenanceDef:
     def test_additional_properties_false(self) -> None:
         assert DEFS["Provenance"]["additionalProperties"] is False
 
-    def test_extraction_mode_enum_rejects_reserved(self) -> None:
+    def test_extraction_mode_enum_includes_consolidated(self) -> None:
         enum = DEFS["Provenance"]["properties"]["extraction_mode"]["enum"]
-        assert set(enum) == {"skip", "llm", None}
+        assert set(enum) == {"skip", "llm", "consolidated", None}
         assert "llm_partial" not in enum
-        assert "consolidated" not in enum
+
+    def test_extraction_mode_enum_single_sourced_from_facade_literal(self) -> None:
+        # Parity #13/#14: the wire enum is single-sourced from the facade
+        # ``ExtractionMode`` Literal (+ None for nullability), so a schema-value
+        # change lives in one place — the two sister projections cannot drift.
+        from typing import get_args
+
+        from seahorse.facade.types import ExtractionMode
+
+        enum = DEFS["Provenance"]["properties"]["extraction_mode"]["enum"]
+        assert set(enum) - {None} == set(get_args(ExtractionMode))
 
 
 class TestPITPointDef:

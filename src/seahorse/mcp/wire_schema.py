@@ -12,8 +12,11 @@ Drift reconciled vs f5-13 (which had a stale wire enum):
   divergent ``["semantic","episodic","procedural",null]`` in f5-13 l.292-294
   (SO-14-03 alignment).
 - ``source_type`` enum = the 4 values from ``SOURCE_TYPES``.
-- ``extraction_mode`` enum = ``["skip","llm",null]`` — ``llm_partial``/
-  ``consolidated`` are RESERVED and rejected at wire-shape.
+- ``extraction_mode`` enum = ``["skip","llm","consolidated",null]`` —
+  ``consolidated`` is schema-valid (round-trippable batch-distillation marker,
+  obsiforge §5.2) but NOT routable by single-episode ingestion (the facade
+  refuses it with ``E_INVALID_EXTRACTION_MODE``); ``llm_partial`` stays
+  RESERVED and rejected at wire-shape.
 - ``reason`` enum has NO ``decay`` (mediated via the omitted ``expire``, mediano).
 - ``recall`` has NO ``anchor_ep_id``/``hops`` (MVP-0; rejected by
   ``additionalProperties: false``).
@@ -25,7 +28,7 @@ Drift reconciled vs f5-13 (which had a stale wire enum):
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
 
 from seahorse.constants import (
     BODY_MAX_CHARS,
@@ -42,6 +45,7 @@ from seahorse.constants import (
 )
 from seahorse.contracts.index import PIT_KIND_VALUES
 from seahorse.disclosure.types import MAX_FULL_BATCH
+from seahorse.facade.types import ExtractionMode
 
 # F3.1-aligned cognitive_type enum (6 values + null). Single source: constants.
 _COGNITIVE_ENUM: list[Any] = sorted(COGNITIVE_TYPES) + [None]
@@ -54,7 +58,11 @@ _SOURCE_ENUM: list[Any] = sorted(SOURCE_TYPES)
 # enum (``kind`` is required in the $def, so ``None`` is not a valid value).
 _PIT_KIND_ENUM: list[Any] = sorted(PIT_KIND_VALUES) + [None]
 _PIT_KIND_REQUIRED_ENUM: list[Any] = sorted(PIT_KIND_VALUES)
-_EXTRACTION_MODE_ENUM: list[Any] = ["skip", "llm", None]
+# F3.1-aligned extraction_mode enum (skip/llm/consolidated + null). Single
+# source: the facade ``ExtractionMode`` Literal (#12-owned) — parity #13/#14, a
+# schema-value change lives in one place. ``consolidated`` is schema-valid but
+# NOT routable by single-episode ingestion; ``llm_partial`` stays reserved.
+_EXTRACTION_MODE_ENUM: list[Any] = sorted(get_args(ExtractionMode)) + [None]
 _REASON_ENUM: list[Any] = ["contradiction", "correction", "merge", "revalidation"]
 _AXIS_ENUM: list[Any] = ["supersedes_chain", "fact_id_scope"]
 

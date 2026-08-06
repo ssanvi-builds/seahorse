@@ -190,6 +190,35 @@ class TestMigrateNoteCaseC:
         assert entry.migrated_at is None
         assert note.read_text(encoding="utf-8") == before  # untouched
 
+    def test_consolidated_episode_is_case_c_idempotent(
+        self, migrator: VaultMigrator, tmp_path: Path
+    ) -> None:
+        # A batch-distilled note (``extraction_mode=consolidated``, obsiforge
+        # §5.2) is already valid F3.1 -> case C, untouched on re-run. The schema
+        # is freeform, so des-reserving consolidated must not disturb the
+        # migrator (it round-trips without a migration).
+        from seahorse.frontmatter.adapter import serialize
+        from tests.frontmatter.conftest import CREATED, make_episode
+
+        note = tmp_path / "consolidated.md"
+        ep = make_episode(
+            valid_at=CREATED,
+            cognitive_type="semantic",
+            provenance={
+                "agent_id": "seahorse/distill",
+                "session_id": "consolidator-1",
+                "source_type": "system",
+                "extraction_mode": "consolidated",
+            },
+        )
+        serialize(ep, note, exclude_none=True, mvp="0")
+        before = note.read_text(encoding="utf-8")
+        entry = migrator.migrate_note(note)
+        assert entry.case == CASE_C
+        assert entry.post_hash == entry.pre_hash
+        assert entry.mtime_post == -1
+        assert note.read_text(encoding="utf-8") == before  # untouched
+
 
 class TestMigrateNoteCaseD:
     def test_does_not_overwrite_and_logs_error(

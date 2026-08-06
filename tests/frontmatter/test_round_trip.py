@@ -208,6 +208,47 @@ class TestParseRejection:
             parse_file(p, mvp="0")
 
 
+class TestConsolidatedExtractionModeRoundTrip:
+    def test_consolidated_round_trips_in_provenance(self, vault: Path) -> None:
+        # obsiforge §5.2: a batch-distilled "stable knowledge note" carries
+        # ``extraction_mode=consolidated``. The schema is freeform, so this value
+        # must round-trip idempotently — it is portable even though the engine
+        # does not produce it yet (ADR-10 honesty: schema-valid, not built).
+        ep = make_episode(
+            cognitive_type="semantic",
+            provenance={
+                "agent_id": "seahorse/distill",
+                "session_id": "consolidator-1",
+                "source_type": "system",
+                "extraction_mode": "consolidated",
+                "model_used": None,
+            },
+        )
+        text = _write_round_trip(vault, ep, exclude_none=False)
+        assert "extraction_mode: consolidated" in text
+        _cm, _body, ep2 = parse_file(vault / "note.md")
+        assert ep2.provenance["extraction_mode"] == "consolidated"
+        assert ep2.provenance["agent_id"] == "seahorse/distill"
+
+    def test_consolidated_write_parse_write_is_byte_identical(self, vault: Path) -> None:
+        ep = make_episode(
+            cognitive_type="semantic",
+            provenance={
+                "agent_id": "seahorse/distill",
+                "session_id": "consolidator-1",
+                "source_type": "system",
+                "extraction_mode": "consolidated",
+                "model_used": None,
+            },
+        )
+        p = vault / "note.md"
+        serialize(ep, p, exclude_none=True)
+        first = p.read_text()
+        ep2 = hydrate(p)
+        serialize(ep2, p, exclude_none=True)
+        assert p.read_text() == first
+
+
 class TestSupersedesReasonRoundTrip:
     def test_supersedes_reason_serializes_and_parses(self, vault: Path) -> None:
         ep = make_episode(

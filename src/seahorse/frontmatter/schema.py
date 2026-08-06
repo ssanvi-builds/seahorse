@@ -96,7 +96,8 @@ class Provenance(BaseModel):
     agent_id: str
     session_id: str
     source_type: str = "agent"
-    extraction_mode: str  # skip | llm
+    extraction_mode: str  # skip | llm | consolidated (consolidated: schema-valid
+    # batch-distillation marker, obsiforge §5.2; llm_partial stays reserved)
     model_used: str | None = None
     tool: str | None = None
     prompt_hash: str | None = None

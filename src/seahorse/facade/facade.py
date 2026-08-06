@@ -71,6 +71,10 @@ from seahorse.facade.types import (
 _logger = logging.getLogger("seahorse.facade")
 
 _VALID_PIT_KINDS: frozenset[str] = PIT_KIND_VALUES  # single-source from PITKind Literal
+# Modes routable by the single-episode ``remember`` primitive. ``consolidated``
+# is schema-valid (the wire round-trips it) but NOT routed here — the batch
+# distillation writes via ``engine.remember`` directly, bypassing #5
+# ``decide_path`` (obsiforge §5.4); ``llm_partial`` stays fully reserved.
 _VALID_MODES: frozenset[str] = frozenset({"skip", "llm"})
 
 
@@ -254,7 +258,13 @@ class MemoryFacade:
             if extraction_mode not in _VALID_MODES:
                 raise SeahorseError(
                     code=E_INVALID_EXTRACTION_MODE,
-                    detail=f"extraction_mode={extraction_mode!r}; expected 'skip' or 'llm'",
+                    detail=(
+                        f"extraction_mode={extraction_mode!r} is not routable by "
+                        "single-episode remember (valid: skip|llm; 'consolidated' "
+                        "is schema-valid for batch distillation, which writes via "
+                        "engine.remember directly — obsiforge §5.4; 'llm_partial' "
+                        "is reserved)"
+                    ),
                 )
             return extraction_mode
         if skip_extraction is True:

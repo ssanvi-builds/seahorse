@@ -281,6 +281,7 @@ class TestRealSchemas:
             )
 
     def test_remember_rejects_reserved_extraction_mode(self) -> None:
+        # ``llm_partial`` stays fully reserved: rejected at wire-shape.
         with pytest.raises(WireShapeError):
             validate(
                 {
@@ -291,6 +292,21 @@ class TestRealSchemas:
                 REMEMBER_SCHEMA,
                 defs=DEFS,
             )
+
+    def test_remember_accepts_consolidated_extraction_mode(self) -> None:
+        # ``consolidated`` is now schema-valid at wire-shape (round-trippable
+        # batch-distillation marker, obsiforge §5.2). The single-episode route
+        # still refuses it later, at the facade (E_INVALID_EXTRACTION_MODE) —
+        # but the wire must not reject a value the schema round-trips.
+        validate(
+            {
+                "body": "hello",
+                "by": {"agent_id": "a", "session_id": "s", "source_type": "agent"},
+                "extraction_mode": "consolidated",
+            },
+            REMEMBER_SCHEMA,
+            defs=DEFS,
+        )
 
     def test_recall_rejects_anchor_ep_id(self) -> None:
         with pytest.raises(WireShapeError):
