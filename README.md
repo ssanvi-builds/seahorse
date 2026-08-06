@@ -4,9 +4,10 @@ Open standard for persistent, self-evolving LLM agent memory. Monetized open-cor
 an Apache-2.0 reference standard plus a proprietary SaaS and an enterprise self-host
 BSL track. The acquisition-by-a-lab path is explicitly **not** a goal (ADR-011).
 
-> Status: **MVP-1 (v0.2.0) — semantic retrieval materialized**. The memory engine
-> works end-to-end from a clean install: write episodes, recall them with hybrid
-> semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by RRF), improve and forget
+> Status: **MVP-1 (v0.2.0) — semantic retrieval + LLM extraction materialized**.
+> The memory engine works end-to-end from a clean install: write episodes, recall
+> them with hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by RRF),
+> extract with a real multi-LLM path (local-first, CI-gated), improve and forget
 > them, and serve an agent over stdio MCP. Recall ranks by relevance when vectors
 > are populated and the embedder is wired, and honestly degrades to a vigente
 > listing otherwise — see [What works](#what-works) and [Reserved](#reserved).
@@ -34,6 +35,7 @@ uv tool install .
 uv sync --extra dev
 # For hybrid semantic retrieval (FastEmbed ONNX, downloads mE5-small on first
 # embed): uv sync --extra dev --extra embeddings
+# For the multi-LLM extraction path (LiteLLM): uv sync --extra dev --extra llm
 
 # Create a vault and write your first episode:
 seahorse init myvault
@@ -94,9 +96,21 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 - **Honest G2 degrade**: without the `embeddings` extra (or with no vectors
   populated), `recall` falls back to the vigente listing (score 0.0, no ranking)
   and PIT recall is refused — the motor keeps working without ranking.
+- **LLM extraction (`#4`/`#5`)**: a real multi-LLM path (ollama / gemini / groq /
+  openrouter / openai / anthropic / deepseek / vllm, local-first) with a strict
+  schema validator + repair loop, retry/fallback chain, and an operative cost cap
+  (local and free-tier models price at $0). `seahorse init --llm` bootstraps it;
+  the skip-path stays the near-zero-cost default for the bulk of writes.
+- **Local-first CI gate**: the real extraction path runs in CI against the
+  weakest model of the family (`ollama/qwen3:0.6b`) so the validator + repair
+  must carry the load — the path does not silently depend on native structured
+  outputs (ADR-05) or a strong model.
 - Supersession (`improve`) and soft-delete (`forget`) with full history preserved.
 - Frontmatter import/export for the Obsidian vault layer (markdown as the
-  human-readable, portable on-disk contract — ADR-02).
+  human-readable, portable on-disk contract — ADR-02). `extraction_mode=
+  consolidated` is a schema-valid, round-trippable batch-distillation marker
+  (the value parses and round-trips today; the distillation engine is not built
+  yet — see [Reserved](#reserved)).
 - Honest exit codes and a structured `{"error": {...}}` envelope on stderr, so
   agents and scripts can branch on `seahorse_code` / `cli_code` deterministically.
 
@@ -108,9 +122,14 @@ implemented yet rather than silently no-op'ing:
 
 - `expire`, `revalidate`, `vigentes`, `activos-ahora`, `index verify`.
 
-LLM extraction (`#4`) stays deferred; the skip-path is first-class so an agent
-can record at near-zero cost. The BFS-as-INDEX axis of retrieval (graph expansion
-into the fusion) is mediano — `recall` fuses vector + BM25 + supersedes chain today.
+Batch distillation (`consolidated`) is **schema-valid but not built**: the wire
+and frontmatter round-trip the value, but the single-episode write path refuses
+it loud and the `distill_episodes` primitive lands in Sprint B (post-F7) — it
+writes via `engine.remember` directly, not through `remember`. `llm_partial`
+stays fully reserved.
+
+The BFS-as-INDEX axis of retrieval (graph expansion into the fusion) is mediano —
+`recall` fuses vector + BM25 + supersedes chain today.
 
 ## Architecture (three memory layers)
 
@@ -135,10 +154,14 @@ into the fusion) is mediano — `recall` fuses vector + BM25 + supersedes chain 
   OQ-7-12 verified that no int8/fp16 artifact is portable to Apple Silicon, and
   an open standard must run on Windows/Linux/macOS. A portable int8 bundle is a
   measured follow-up.
+- **LiteLLM** (`llm` extra, NOT in the default install): unifies the 100+
+  provider surface for the LLM extraction path. Without the extra, `seahorse.llm`
+  still imports (contract + `StubLLMClient`) and the real path degrades llm→skip
+  with a setup hint.
 
-> The FastAPI / SQLAlchemy / LiteLLM stack and LLM extraction stay in the
-> multi-agent rung (Postgres + pgvector). The README states what ships now, not
-> the target architecture.
+> The FastAPI / SQLAlchemy / Postgres stack stays in the multi-agent rung
+> (Postgres + pgvector). The README states what ships now, not the target
+> architecture.
 
 ## Design & decisions
 

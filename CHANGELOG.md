@@ -4,50 +4,12 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-06
 
-The LLM extraction path (#5 vía #4) lands over the C8.7 seam, with provider
-onboarding in the CLI.
-
-### Added
-
-- `seahorse/llm/`: errors taxonomy (retry/content/permanent), providers registry
-  (ollama/gemini/groq/openrouter/openai/anthropic/deepseek/vllm — local-first +
-  the free-tier palanca), extraction role routing, operative cost cap (local and
-  free-tier models price at $0; paid rows verified), plain-prompt parser + Pydantic
-  validator (`extra="forbid"` → repair loop, `<content>` injection delimiters),
-  retry/fallback chain (backoff + jitter), and the `LiteLLMBackend` (optional `llm`
-  extra, sync C8.7).
-- `run_llm_path` (write path) with a strict `EpisodeFrontmatter` (subject
-  REQUIRED); `engine.remember` gains an additive `subject` override (M4-C.3);
-  `build_facade` gains the `llm_client` slot.
-- CLI onboarding: `seahorse init --llm` no-TUI provider wizard (detects Ollama /
-  free-tier keys; factory default local-first `ollama/qwen3:1.7b`, 0.6b low-end);
-  `[llm]` block in `seahorse.toml`; `status` reports the LLM regime; `seahorse
-  doctor` (config + key NAMES + live provider probe).
-- CI gate `ci-llm-gate.yml` (f5-04 §2.2): the real extraction path is run against
-  the WEAKEST model of the family (`ollama/qwen3:0.6b`, pinned Ollama image + tag,
-  CPU) so the Pydantic validator + retry + repair must carry the load — proves the
-  path does not silently depend on native structured outputs (ADR-05) or on a
-  strong model. Gated tests in `tests/llm/test_gate_ollama.py`
-  (`SEAHORSE_RUN_LLM_TESTS=1`, `pytest -m llm_gate`); the main `ci.yml` is
-  untouched (still no litellm).
-
-### Fixed
-
-- The extraction prompt (`build_extract_prompt`) now states two rules verbatim
-  for weak models (gate finding 2, 2026-08-05): `subject` is a short topic
-  phrase — never a bare date; `valid_at` must be a timezone-aware ISO-8601
-  datetime, so a bare date is omitted rather than emitted (I2 rejects naive
-  datetimes). A weak model (`qwen3:0.6b`) previously used a bare date as both
-  `valid_at` and `subject`, wasting repair calls; first-call validity on
-  date-bearing content went 0/3 → 3/6 in the smoke.
-
-## [0.2.0] - 2026-08-03
-
-MVP-1 materialization: hybrid semantic retrieval lands (sqlite-vec kNN + FTS5
-BM25 fused by Reciprocal Rank Fusion), the Embedder `#7` (FastEmbed ONNX,
-mE5-small) is wired, and `recall` ranks by relevance with an honest G2 degrade.
+MVP-1 sealed. Hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by
+Reciprocal Rank Fusion) with PIT routing, the Embedder `#7` (FastEmbed ONNX,
+mE5-small) wired, a real multi-LLM extraction path (`#4`/`#5`) with a local-first
+CI gate, and an honest G2 degrade when vectors/embedder are unavailable.
 
 ### Added
 
@@ -70,6 +32,44 @@ mE5-small) is wired, and `recall` ranks by relevance with an honest G2 degrade.
   the retriever's `supports_pit` capability).
 - New optional `embeddings` extra (`fastembed`, `onnxruntime`) — `uv sync
   --extra dev` stays G2/offline (no model download).
+- `seahorse/llm/`: errors taxonomy (retry/content/permanent), providers registry
+  (ollama/gemini/groq/openrouter/openai/anthropic/deepseek/vllm — local-first +
+  the free-tier palanca), extraction role routing, operative cost cap (local and
+  free-tier models price at $0; paid rows verified), plain-prompt parser + Pydantic
+  validator (`extra="forbid"` → repair loop, `<content>` injection delimiters),
+  retry/fallback chain (backoff + jitter), and the `LiteLLMBackend` (optional `llm`
+  extra, sync C8.7).
+- `run_llm_path` (write path) with a strict `EpisodeFrontmatter` (subject
+  REQUIRED); `engine.remember` gains an additive `subject` override (M4-C.3);
+  `build_facade` gains the `llm_client` slot.
+- CLI onboarding: `seahorse init --llm` no-TUI provider wizard (detects Ollama /
+  free-tier keys; factory default local-first `ollama/qwen3:1.7b`, 0.6b low-end);
+  `[llm]` block in `seahorse.toml`; `status` reports the LLM regime; `seahorse
+  doctor` (config + key NAMES + live provider probe).
+- CI gate `ci-llm-gate.yml` (f5-04 §2.2): the real extraction path is run against
+  the WEAKEST model of the family (`ollama/qwen3:0.6b`, pinned Ollama image + tag,
+  CPU) so the Pydantic validator + retry + repair must carry the load — proves the
+  path does not silently depend on native structured outputs (ADR-05) or on a
+  strong model. Gated tests in `tests/llm/test_gate_ollama.py`
+  (`SEAHORSE_RUN_LLM_TESTS=1`, `pytest -m llm_gate`); the main `ci.yml` is
+  untouched (still no litellm).
+- **Frontmatter round-trip: `extraction_mode=consolidated` un-reserved**
+  (obsiforge §5.4 — MINOR bump). The value is now schema-valid and
+  round-trippable (wire + facade Literal + frontmatter, case-C idempotent): a
+  batch-distilled note with `extraction_mode=consolidated` parses, round-trips
+  byte-identically, and classifies as case C (untouched on re-run). The wire
+  enum is single-sourced from the facade `ExtractionMode` Literal (parity
+  #13/#14). `llm_partial` stays fully reserved.
+
+### Fixed
+
+- The extraction prompt (`build_extract_prompt`) now states two rules verbatim
+  for weak models (gate finding 2, 2026-08-05): `subject` is a short topic
+  phrase — never a bare date; `valid_at` must be a timezone-aware ISO-8601
+  datetime, so a bare date is omitted rather than emitted (I2 rejects naive
+  datetimes). A weak model (`qwen3:0.6b`) previously used a bare date as both
+  `valid_at` and `subject`, wasting repair calls; first-call validity on
+  date-bearing content went 0/3 → 3/6 in the smoke.
 
 ### Known Limitations
 
@@ -80,7 +80,11 @@ mE5-small) is wired, and `recall` ranks by relevance with an honest G2 degrade.
   honest G2 vigente listing (no ranking) and PIT recall is refused.
 - The BFS-as-INDEX retrieval axis (graph expansion into the fusion) is mediano;
   the supersedes chain is already fused.
-- No LLM extraction yet — the skip-path is first-class (ADR-09).
+- **Batch distillation is NOT built yet** (ADR-10): `consolidated` is a valid,
+  round-trippable schema value, but the engine does not produce it — the
+  `distill_episodes` primitive is Sprint B (post-F7) and writes via
+  `engine.remember` directly, bypassing the single-episode write path (which
+  refuses `consolidated` loud).
 - Reserved CLI commands (`expire`, `revalidate`, `vigentes`, `activos-ahora`,
   `index verify`) still exit `75`.
 
