@@ -33,6 +33,16 @@ onboarding in the CLI.
   (`SEAHORSE_RUN_LLM_TESTS=1`, `pytest -m llm_gate`); the main `ci.yml` is
   untouched (still no litellm).
 
+### Fixed
+
+- The extraction prompt (`build_extract_prompt`) now states two rules verbatim
+  for weak models (gate finding 2, 2026-08-05): `subject` is a short topic
+  phrase — never a bare date; `valid_at` must be a timezone-aware ISO-8601
+  datetime, so a bare date is omitted rather than emitted (I2 rejects naive
+  datetimes). A weak model (`qwen3:0.6b`) previously used a bare date as both
+  `valid_at` and `subject`, wasting repair calls; first-call validity on
+  date-bearing content went 0/3 → 3/6 in the smoke.
+
 ## [0.2.0] - 2026-08-03
 
 MVP-1 materialization: hybrid semantic retrieval lands (sqlite-vec kNN + FTS5
