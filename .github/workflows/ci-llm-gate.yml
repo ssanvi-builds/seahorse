@@ -113,7 +113,12 @@ jobs:
       - name: Run LLM gate tests
         run: |
           set -o pipefail
-          uv run pytest -m llm_gate --no-cov --tb=short -q | tee "$RUNNER_TEMP/llm-gate.log"
+          # --reruns 2 (spec f5-04 §2.2): the gate runs the WEAKEST model, which
+          # is stochastic — a single bad streak (invalid JSON 3x in a row) would
+          # turn a path-correct run red on model variance. Reruns absorb that;
+          # a DETERMINISTIC regression (e.g. response_format dependence) still
+          # fails all reruns, so the gate stays a real signal.
+          uv run pytest -m llm_gate --no-cov --tb=short -q --reruns 2 | tee "$RUNNER_TEMP/llm-gate.log"
           # Guard: a gate that runs zero tests (e.g. all silently skipped after
           # an env-var change) is worse than a failing one — fail loudly.
           grep -qE '[0-9]+ passed' "$RUNNER_TEMP/llm-gate.log"

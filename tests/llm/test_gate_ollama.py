@@ -12,8 +12,11 @@ quality of a strong model (ADR-05, f5-04 §6.1). A dev who opts into
 These tests are GATED off by default (they hit a live Ollama on ``:11434``):
 set ``SEAHORSE_RUN_LLM_TESTS=1`` to run, e.g.
 ``SEAHORSE_RUN_LLM_TESTS=1 uv run pytest tests/llm/test_gate_ollama.py --no-cov``.
-The ``ci-llm-gate.yml`` workflow runs them with ``pytest -m llm_gate`` against
-a pinned Ollama service container + ``qwen3:0.6b`` (CPU, GitHub Actions).
+The ``ci-llm-gate.yml`` workflow runs them with ``pytest -m llm_gate --reruns 2``
+against a pinned Ollama service container + ``qwen3:0.6b`` (CPU, GitHub Actions).
+The reruns absorb the weak model's stochastic variance (a single bad streak must
+not turn a path-correct run red); a deterministic regression still fails every
+rerun (f5-04 §2.2).
 
 The main ``ci.yml`` never installs the ``llm`` extra, so a top-level litellm
 import is forbidden here — the tests drive the real ``LiteLLMBackend`` public
