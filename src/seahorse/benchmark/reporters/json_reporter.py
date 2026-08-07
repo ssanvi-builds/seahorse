@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
@@ -24,8 +25,8 @@ class JsonReporter:
     def render(
         self,
         dataset: BenchmarkDataset,
-        responses: list[SUTResponse],
-        metric_results: list[MetricResult],
+        responses: Sequence[SUTResponse],
+        metric_results: Sequence[MetricResult],
         manifest: RunManifest,
         config: BenchmarkConfig,
     ) -> str:

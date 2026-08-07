@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from seahorse.benchmark.config import BenchmarkConfig
@@ -22,8 +23,8 @@ class MarkdownReporter:
     def render(
         self,
         dataset: BenchmarkDataset,
-        responses: list[SUTResponse],
-        metric_results: list[MetricResult],
+        responses: Sequence[SUTResponse],
+        metric_results: Sequence[MetricResult],
         manifest: RunManifest,
         config: BenchmarkConfig,
     ) -> str:
