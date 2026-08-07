@@ -38,6 +38,7 @@ from seahorse.contracts.engine import WriteResult
 from seahorse.facade.types import RememberPayload
 from seahorse.llm import BudgetContext, LLMClient
 from seahorse.write_path.decide import PathDecision
+from seahorse.write_path.extract import derive_summary
 from seahorse.write_path.stub import _degrade_to_skip, _EngineLike
 
 _logger = logging.getLogger("seahorse.write_path.llm")
@@ -168,6 +169,7 @@ def run_llm_path(
         ),
         schema_version=payload.schema_version,
         title=payload.title,
+        summary=payload.summary or derive_summary(payload.body),  # OQ3 enabler
         subject=validated.subject,  # M4-C.3: None → engine derives (SO-2)
         now=now,
     )

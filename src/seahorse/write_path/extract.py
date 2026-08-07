@@ -39,6 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from seahorse.disclosure.types import SUMMARY_MAX_CHARS
 from seahorse.facade.types import RememberPayload
 from seahorse.frontmatter.subject import normalize_subject, raw_subject
 
@@ -78,6 +79,52 @@ class ExtractedCandidate:
     tags: tuple[str, ...] = ()
 
 
+def derive_summary(body: str, *, max_chars: int = SUMMARY_MAX_CHARS) -> str | None:
+    """Deterministic summary fallback (OQ3, f5-09 §6.2): first sentence of the
+    body, skipping the H1, truncated to ``max_chars``.
+
+    Zero-LLM (ADR-10): covers 100% of episodes including the skip path. The H1
+    is skipped (obsiforge §15.2 redesign 4) so a tagged subject
+    (``[session_tag:prompt_number]``) never contaminates the summary. Returns
+    ``None`` when the body has no content after the H1 (honest — no invented
+    summary).
+    """
+    content = _strip_h1(body)
+    if not content:
+        return None
+    sentence = _first_sentence(content)
+    if not sentence:
+        return None
+    return sentence[:max_chars]
+
+
+def _strip_h1(body: str) -> str:
+    """Drop a leading H1 line (and surrounding blank lines) from the body.
+
+    The H1 is the subject (``title > H1 > None``, SO-2); the summary must be
+    the first sentence of the CONTENT, not the tagged subject line.
+    """
+    lines = body.splitlines()
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and lines[i].lstrip().startswith("# "):
+        i += 1
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    return "\n".join(lines[i:]).strip()
+
+
+def _first_sentence(text: str) -> str:
+    """First sentence of ``text``: up to the first ``.``/``!``/``?`` followed by
+    whitespace or end-of-text. Falls back to the whole text when no boundary is
+    found (a single-sentence body)."""
+    for i, ch in enumerate(text):
+        if ch in ".!?" and (i + 1 >= len(text) or text[i + 1].isspace()):
+            return text[: i + 1].strip()
+    return text.strip()
+
+
 def deterministic_extract(payload: RememberPayload) -> ExtractedCandidate:
     """Pure, zero-LLM editorial fallback of the skip path (f5-05 sec 3.2).
 
@@ -100,4 +147,9 @@ def deterministic_extract(payload: RememberPayload) -> ExtractedCandidate:
     )
 
 
-__all__ = ["ExtractedCandidate", "SubjectDerivationError", "deterministic_extract"]
+__all__ = [
+    "ExtractedCandidate",
+    "SubjectDerivationError",
+    "derive_summary",
+    "deterministic_extract",
+]

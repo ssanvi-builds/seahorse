@@ -93,8 +93,10 @@ def build_remember_payload(args: dict[str, Any]) -> RememberPayload:
     """Build a frozen ``RememberPayload`` from ``remember`` tool arguments.
 
     ``title`` is NOT accepted on the wire (the engine derives it from the body's
-    H1). ``schema_version`` is pinned to ``"1.1"`` (F3.1). ``tags`` is forwarded
-    as a tuple; the facade rejects a non-empty ``tags`` with ``E_NOT_IN_MVP_0_1``
+    H1). ``summary`` is an additive editorial field (OQ3 enabler): when absent,
+    the write path derives a deterministic fallback (first sentence of the body).
+    ``schema_version`` is pinned to ``"1.1"`` (F3.1). ``tags`` is forwarded as a
+    tuple; the facade rejects a non-empty ``tags`` with ``E_NOT_IN_MVP_0_1``
     (MVP-0 honesty) — #13 does not pre-reject, it delegates.
     """
     valid_at_raw = args.get("valid_at")
@@ -103,6 +105,7 @@ def build_remember_payload(args: dict[str, Any]) -> RememberPayload:
         by=build_provenance(args["by"]),
         valid_at=parse_dt(valid_at_raw) if isinstance(valid_at_raw, str) else None,
         cognitive_type=args.get("cognitive_type"),
+        summary=args.get("summary"),
         tags=tuple(args.get("tags") or ()),
         schema_version="1.1",
     )

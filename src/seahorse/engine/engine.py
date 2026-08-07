@@ -196,6 +196,7 @@ class BiTemporalEngine:
         cognitive_type: str | None = None,
         schema_version: str = "1.1",
         title: str | None = None,
+        summary: str | None = None,
         subject: str | None = None,
         now: datetime | None = None,
     ) -> WriteResult:
@@ -211,9 +212,13 @@ class BiTemporalEngine:
         ``subject`` is the LLM-path override (M4-C.3): when the extractor
         produced a subject, it wins over the SO-2 derivation in ``apply_fact``.
         The skip path never passes it, so its behaviour is byte-identical
-        (regression pinned). LLM-extracted ``tags`` are intentionally NOT passed
-        here: the MVP-1 SQLite episode store does not persist ``tags`` (the repo
-        reads them back as ``[]``), so injecting them would be a silent lie.
+        (regression pinned). ``summary`` is the editorial summary (OQ3 enabler):
+        the write path passes the caller's value or a deterministic fallback
+        (first sentence of the body, ``SUMMARY_MAX_CHARS=200``); the engine
+        persists it verbatim. LLM-extracted ``tags`` are intentionally NOT
+        passed here: the MVP-1 SQLite episode store does not persist ``tags``
+        (the repo reads them back as ``[]``), so injecting them would be a
+        silent lie.
         """
         now = self._now(now)
         source_type = by.get("source_type")
@@ -255,6 +260,7 @@ class BiTemporalEngine:
                 cognitive_type=cognitive_type,
                 source_type=source_type,
                 title=title,
+                summary=summary,
             )
             return self.apply_fact(ep, now=now, subject_override=subject)
 

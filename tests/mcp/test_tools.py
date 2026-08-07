@@ -71,6 +71,30 @@ class TestRememberHandler:
         dispatch("remember", {"body": "hi", "by": _by(), "tags": ["a", "b"]}, facade, 1)
         assert facade.remember_calls[0]["payload"].tags == ("a", "b")
 
+    def test_summary_forwarded(self) -> None:
+        # OQ3 enabler: the wire accepts summary as an additive editorial field.
+        facade = RecordingFacade()
+        dispatch("remember", {"body": "hi", "by": _by(), "summary": "A summary"}, facade, 1)
+        assert facade.remember_calls[0]["payload"].summary == "A summary"
+
+    def test_summary_absent_is_none(self) -> None:
+        facade = RecordingFacade()
+        dispatch("remember", {"body": "hi", "by": _by()}, facade, 1)
+        assert facade.remember_calls[0]["payload"].summary is None
+
+    def test_summary_too_long_rejected_at_wire(self) -> None:
+        from seahorse.disclosure.types import SUMMARY_MAX_CHARS
+
+        facade = RecordingFacade()
+        resp = dispatch(
+            "remember",
+            {"body": "hi", "by": _by(), "summary": "y" * (SUMMARY_MAX_CHARS + 1)},
+            facade,
+            1,
+        )
+        assert resp["error"]["code"] == -32602
+        assert len(facade.remember_calls) == 0
+
     def test_wire_shape_error_fires_before_facade(self) -> None:
         # body too long → validate raises → facade.remember NEVER called.
         facade = RecordingFacade()

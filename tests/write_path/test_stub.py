@@ -24,7 +24,8 @@ def _payload(by: dict | None = None, **kw) -> RememberPayload:
     base = {"source_type": "agent"}
     if by:
         base.update(by)
-    return RememberPayload(body="hello world", by=base, **kw)
+    body = kw.pop("body", "hello world")
+    return RememberPayload(body=body, by=base, **kw)
 
 
 class TestRunSkipPath:
@@ -93,6 +94,47 @@ class TestRunSkipPath:
         by = engine.last_call.by
         assert "degraded_from" not in by
         assert "degrade_reason" not in by
+
+
+class TestSummaryEnabler:
+    """OQ3 enabler (f5-09 §6.2): the write path always supplies a summary to
+    ``engine.remember`` — the caller's value or a deterministic zero-LLM
+    fallback (first sentence of the body, skipping the H1). Covers 100% of
+    episodes including the skip path."""
+
+    def test_skip_path_derives_fallback_summary(self, engine) -> None:
+        p = _payload(body="# Title\n\nFirst sentence of content. Second.")
+        run_skip_path(p, decide_path(p, "skip"), engine)
+        assert engine.last_call.summary == "First sentence of content."
+
+    def test_skip_path_forwards_caller_summary(self, engine) -> None:
+        p = _payload(body="# Title\n\nContent.", summary="Caller summary")
+        run_skip_path(p, decide_path(p, "skip"), engine)
+        assert engine.last_call.summary == "Caller summary"
+
+    def test_fallback_skips_h1(self, engine) -> None:
+        # The H1 is the subject; the summary must never be the tagged subject
+        # line (obsiforge §15.2 redesign 4).
+        p = _payload(body="# [session_tag:prompt_number]\n\nReal content here.")
+        run_skip_path(p, decide_path(p, "skip"), engine)
+        assert engine.last_call.summary == "Real content here."
+
+    def test_fallback_branch_derives_summary(self, engine) -> None:
+        # Gate-invalid -> deterministic_extract fallback still supplies a summary.
+        p = _payload(body="# Title\n\nFallback content sentence.")
+        run_skip_path(p, decide_path(p, "skip"), engine, now=datetime(2026, 1, 1, tzinfo=UTC))
+        assert engine.last_call.summary == "Fallback content sentence."
+
+    def test_degrade_to_skip_derives_summary(self, engine) -> None:
+        p = _payload(body="# Title\n\nDegraded content sentence.")
+        _degrade_to_skip(p, decide_path(p, "llm"), engine)
+        assert engine.last_call.summary == "Degraded content sentence."
+
+    def test_ingest_skip_derives_summary(self, engine) -> None:
+        wp = StubWritePath(engine=engine)
+        p = _payload(body="# Title\n\nIngest content sentence.")
+        wp.ingest(p, "skip")
+        assert engine.last_call.summary == "Ingest content sentence."
 
 
 class TestDegradeToSkip:

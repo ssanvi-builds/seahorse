@@ -31,6 +31,7 @@ class RememberCall:
     schema_version: str
     title: str | None
     now: datetime | None
+    summary: str | None = None  # OQ3 enabler (caller value or deterministic fallback)
     subject: str | None = None  # M4-C.3 LLM-path override (None on skip path)
 
 
@@ -79,6 +80,7 @@ class RecordingEngine:
         cognitive_type: str | None = None,
         schema_version: str = "1.1",
         title: str | None = None,
+        summary: str | None = None,
         subject: str | None = None,
         now: datetime | None = None,
     ) -> WriteResult:
@@ -91,6 +93,7 @@ class RecordingEngine:
                 schema_version=schema_version,
                 title=title,
                 now=now,
+                summary=summary,
                 subject=subject,
             )
         )

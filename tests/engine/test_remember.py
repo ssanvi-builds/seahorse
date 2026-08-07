@@ -126,6 +126,29 @@ def test_remember_pending_when_valid_at_future(engine):
     assert wr.status == "PENDING_INGEST"
 
 
+def test_remember_persists_summary(engine):
+    # OQ3 enabler: engine.remember persists the editorial summary verbatim.
+    eng, repo, _audit = engine
+    result = eng.remember(
+        body="# Title\n\nContent.",
+        by={"source_type": "agent"},
+        summary="A caller summary",
+    )
+    ep = repo.get(result.ep_id)
+    assert ep.summary == "A caller summary"
+
+
+def test_remember_summary_none_persists_none(engine):
+    eng, repo, _audit = engine
+    result = eng.remember(
+        body="# Title\n\nContent.",
+        by={"source_type": "agent"},
+        summary=None,
+    )
+    ep = repo.get(result.ep_id)
+    assert ep.summary is None
+
+
 def test_remember_agent_custom_valid_at_rejected_by_guard(engine):
     from seahorse.engine import errors
 

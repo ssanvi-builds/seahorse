@@ -271,6 +271,9 @@ def remember(
     ),
     cognitive_type: str | None = typer.Option(None, "--cognitive-type"),
     title: str | None = typer.Option(None, "--title"),
+    summary: str | None = typer.Option(
+        None, "--summary", help="Editorial summary (default: first sentence of body)."
+    ),
     skip_extraction: bool | None = typer.Option(None, "--skip-extraction/--extract"),
     extraction_mode: str | None = typer.Option(None, "--extraction-mode", help="skip | llm."),
 ) -> None:
@@ -284,6 +287,7 @@ def remember(
         valid_at=valid_at,
         cognitive_type=cognitive_type,
         title=title,
+        summary=summary,
         skip_extraction=skip_extraction,
         extraction_mode=extraction_mode,
         fmt=ctx.obj.fmt,

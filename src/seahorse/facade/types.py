@@ -96,9 +96,13 @@ class RememberPayload:
     """Payload for the ``remember`` primitive (delegated to #5 ``ingest``).
 
     ``title`` forwards to ``engine.remember`` (subject derivation: title > H1 >
-    None). ``tags`` is a forward-compat field: MVP-0 has no tags write-path, so
-    #12 rejects a non-empty ``tags`` at the border (``E_NOT_IN_MVP_0_1``) rather
-    than silently dropping it (ADR-10 honesty).
+    None). ``summary`` is an additive editorial field (OQ3 enabler, f5-09 §6.2):
+    when ``None``, the write path derives a deterministic fallback (first
+    sentence of the body, truncated to ``SUMMARY_MAX_CHARS=200``) — zero-LLM,
+    covers 100% of episodes including the skip path. ``tags`` is a
+    forward-compat field: MVP-0 has no tags write-path, so #12 rejects a
+    non-empty ``tags`` at the border (``E_NOT_IN_MVP_0_1``) rather than silently
+    dropping it (ADR-10 honesty).
     """
 
     body: str
@@ -106,6 +110,7 @@ class RememberPayload:
     valid_at: datetime | None = None
     cognitive_type: str | None = None
     title: str | None = None
+    summary: str | None = None
     tags: tuple[str, ...] = ()
     schema_version: str = "1.1"
 

@@ -17,10 +17,12 @@ from datetime import UTC, datetime
 
 import pytest
 
+from seahorse.disclosure.types import SUMMARY_MAX_CHARS
 from seahorse.facade.types import RememberPayload
 from seahorse.write_path.extract import (
     ExtractedCandidate,
     SubjectDerivationError,
+    derive_summary,
     deterministic_extract,
 )
 
@@ -147,6 +149,48 @@ class TestPassthroughFields:
     def test_schema_version_passthrough(self) -> None:
         c = deterministic_extract(_payload(title="t", schema_version="1.2"))
         assert c.schema_version == "1.2"
+
+
+class TestDeriveSummary:
+    """OQ3 enabler (f5-09 §6.2): deterministic zero-LLM summary fallback."""
+
+    def test_first_sentence_of_body(self) -> None:
+        assert derive_summary("This is the first sentence. And the second.") == (
+            "This is the first sentence."
+        )
+
+    def test_skips_h1(self) -> None:
+        # The H1 is the subject (SO-2); the summary is the first sentence of the
+        # CONTENT, never the tagged subject line (obsiforge §15.2 redesign 4).
+        body = "# [session_tag:prompt_number]\n\nThis is the real content. More."
+        assert derive_summary(body) == "This is the real content."
+
+    def test_skips_leading_blank_lines(self) -> None:
+        body = "\n\n# Title\n\nContent sentence. More."
+        assert derive_summary(body) == "Content sentence."
+
+    def test_truncates_to_summary_max_chars(self) -> None:
+        long = "x" * (SUMMARY_MAX_CHARS + 50) + ". tail"
+        out = derive_summary(long)
+        assert out is not None
+        assert len(out) == SUMMARY_MAX_CHARS
+
+    def test_single_sentence_no_boundary_returns_whole(self) -> None:
+        assert derive_summary("no punctuation here") == "no punctuation here"
+
+    def test_empty_body_returns_none(self) -> None:
+        assert derive_summary("") is None
+
+    def test_h1_only_returns_none(self) -> None:
+        assert derive_summary("# Title") is None
+
+    def test_deterministic(self) -> None:
+        body = "# T\n\nFirst sentence. Second."
+        assert derive_summary(body) == derive_summary(body)
+
+    def test_custom_max_chars(self) -> None:
+        out = derive_summary("A very long first sentence that should be cut.", max_chars=10)
+        assert out == "A very lon"
 
     def test_tags_passthrough(self) -> None:
         c = deterministic_extract(_payload(title="t", tags=("a", "b")))

@@ -69,6 +69,23 @@ def test_remember_valid_at_parsed_to_datetime(recording: RecordingFacade):
     assert payload.valid_at == datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
 
 
+def test_remember_summary_forwarded(recording: RecordingFacade):
+    # OQ3 enabler: the CLI accepts --summary as an additive editorial field.
+    run_remember(recording, body="x", summary="A summary", fmt="human", out=_out())
+    assert recording.remember_calls[0]["payload"].summary == "A summary"
+
+
+def test_remember_summary_cap_fires(recording: RecordingFacade):
+    from seahorse.disclosure.types import SUMMARY_MAX_CHARS
+
+    with pytest.raises(CliUsageError, match="summary"):
+        run_remember(
+            recording, body="x", summary="y" * (SUMMARY_MAX_CHARS + 1),
+            fmt="human", out=_out(),
+        )
+    assert recording.remember_calls == []
+
+
 def test_remember_body_cap_fires_before_facade(recording: RecordingFacade):
     """CLI cap guard fires BEFORE any facade call (call count stays 0)."""
     with pytest.raises(CliUsageError, match="body"):

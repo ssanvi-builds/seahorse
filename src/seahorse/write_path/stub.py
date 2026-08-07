@@ -55,7 +55,7 @@ from seahorse.engine.errors import E_SKIP_CONTRACT_VIOLATED, EngineError
 from seahorse.facade.types import ExtractionMode, RememberPayload
 from seahorse.llm import LLMClient
 from seahorse.write_path.decide import PathDecision, decide_path
-from seahorse.write_path.extract import deterministic_extract
+from seahorse.write_path.extract import derive_summary, deterministic_extract
 
 _logger = logging.getLogger("seahorse.write_path.stub")
 
@@ -72,6 +72,7 @@ class _EngineLike(Protocol):
         cognitive_type: str | None = ...,
         schema_version: str = ...,
         title: str | None = ...,
+        summary: str | None = ...,
         subject: str | None = ...,
         now: datetime | None = ...,
     ) -> WriteResult: ...
@@ -89,6 +90,16 @@ class _IndexerLike(Protocol):
 def _resolve_now(now: datetime | None) -> datetime:
     """Aware UTC ``now`` for the transient gate candidate (never naive)."""
     return now if now is not None else datetime.now(UTC)
+
+
+def _effective_summary(payload: RememberPayload) -> str | None:
+    """OQ3 enabler (f5-09 §6.2): the caller's ``summary`` or a deterministic
+    zero-LLM fallback (first sentence of the body, ``SUMMARY_MAX_CHARS=200``).
+
+    Covers 100% of episodes including the skip path — the write path always
+    supplies a summary to ``engine.remember``, so the INDEX row never degrades
+    to an empty snippet (ADR-10: deterministic, no LLM)."""
+    return payload.summary or derive_summary(payload.body)
 
 
 def _build_candidate(payload: RememberPayload, now: datetime) -> Episode:
@@ -202,6 +213,7 @@ def _fallback_remember(
         cognitive_type=payload.cognitive_type,
         schema_version=payload.schema_version,
         title=payload.title,
+        summary=_effective_summary(payload),
         now=now,
     )
 
@@ -254,6 +266,7 @@ def run_skip_path(
         cognitive_type=payload.cognitive_type,
         schema_version=payload.schema_version,
         title=payload.title,
+        summary=_effective_summary(payload),
         now=now,
     )
 

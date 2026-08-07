@@ -44,7 +44,7 @@ from seahorse.constants import (
     TAGS_MAX_ITEMS,
 )
 from seahorse.contracts.index import PIT_KIND_VALUES
-from seahorse.disclosure.types import MAX_FULL_BATCH
+from seahorse.disclosure.types import MAX_FULL_BATCH, SUMMARY_MAX_CHARS
 from seahorse.facade.types import ExtractionMode
 
 # F3.1-aligned cognitive_type enum (6 values + null). Single source: constants.
@@ -133,6 +133,7 @@ REMEMBER_SCHEMA: dict[str, Any] = {
         "by": {"$ref": "#/$defs/Provenance"},
         "valid_at": {"type": ["string", "null"], "format": "date-time"},
         "cognitive_type": {"type": ["string", "null"], "enum": _COGNITIVE_ENUM},
+        "summary": {"type": ["string", "null"], "maxLength": SUMMARY_MAX_CHARS},
         "tags": {
             "type": "array",
             "items": {"type": "string", "maxLength": TAG_MAX_CHARS},

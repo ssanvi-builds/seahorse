@@ -47,6 +47,7 @@ from seahorse.constants import (
     SOURCE_TYPES,
     SUBJECT_FILTER_MAX_CHARS,
 )
+from seahorse.disclosure.types import SUMMARY_MAX_CHARS
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import Provenance, RememberPayload
 
@@ -121,6 +122,7 @@ def run_remember(
     valid_at: str | None = None,
     cognitive_type: str | None = None,
     title: str | None = None,
+    summary: str | None = None,
     skip_extraction: bool | None = None,
     extraction_mode: str | None = None,
     fmt: OutputFormat = "human",
@@ -131,7 +133,9 @@ def run_remember(
     ``extraction_mode`` validation is intentionally DEFERRED to the facade — it
     owns ``E_INVALID_EXTRACTION_MODE`` (66). #14 does not replicate mode
     validation (delegation purity, f5-14 §3.3); a typo like ``llm_partial``
-    surfaces as Cat A exit 66, not a CLI usage error.
+    surfaces as Cat A exit 66, not a CLI usage error. ``summary`` is an additive
+    editorial field (OQ3 enabler): when omitted, the write path derives a
+    deterministic fallback (first sentence of the body).
     """
     _require_le(body, limit=BODY_MAX_CHARS, field="body")
     _validate_cognitive_type(cognitive_type)
@@ -139,6 +143,8 @@ def run_remember(
     va = _parse_dt(valid_at, field="valid-at") if valid_at is not None else None
     if title is not None:
         _require_le(title, limit=SUBJECT_FILTER_MAX_CHARS, field="title")
+    if summary is not None:
+        _require_le(summary, limit=SUMMARY_MAX_CHARS, field="summary")
 
     payload = RememberPayload(
         body=body,
@@ -146,6 +152,7 @@ def run_remember(
         valid_at=va,
         cognitive_type=cognitive_type,
         title=title,
+        summary=summary,
     )
     result = facade.remember(
         payload,
