@@ -4,13 +4,16 @@ Open standard for persistent, self-evolving LLM agent memory. Monetized open-cor
 an Apache-2.0 reference standard plus a proprietary SaaS and an enterprise self-host
 BSL track. The acquisition-by-a-lab path is explicitly **not** a goal (ADR-011).
 
-> Status: **MVP-1 (v0.2.0) — semantic retrieval + LLM extraction materialized**.
+> Status: **v0.3.0 — Sprint A (F1 recency + OQ3 summary + claude-mem importer)**.
 > The memory engine works end-to-end from a clean install: write episodes, recall
 > them with hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by RRF),
 > extract with a real multi-LLM path (local-first, CI-gated), improve and forget
 > them, and serve an agent over stdio MCP. Recall ranks by relevance when vectors
 > are populated and the embedder is wired, and honestly degrades to a vigente
-> listing otherwise — see [What works](#what-works) and [Reserved](#reserved).
+> listing otherwise. `remember` accepts an optional `--summary` (deterministic
+> fallback when omitted); `seahorse import` migrates claude-mem observations to
+> F3.1 episodes; and a recency ranking signal is available as a default-OFF seam.
+> See [What works](#what-works) and [Reserved](#reserved).
 
 ## What it is
 
