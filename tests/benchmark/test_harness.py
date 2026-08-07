@@ -19,6 +19,22 @@ def test_reader_llm_system_prompt_loaded():
     assert "context" in client._system_prompt  # the git-tracked prompt file
 
 
+def test_reader_llm_generate(monkeypatch):
+    client = ReaderLLMClient("ollama/qwen3:1.7b")
+
+    class _Msg:
+        content = "Paris"
+
+    class _Choice:
+        message = _Msg()
+
+    class _Resp:
+        choices = [_Choice()]
+
+    monkeypatch.setattr("litellm.completion", lambda **kw: _Resp())
+    assert client.generate("Q?", "context") == "Paris"
+
+
 def test_tokenizer_heuristic_fallback():
     """The deterministic chars/4 heuristic is used when tiktoken is absent."""
     tok = Tokenizer()

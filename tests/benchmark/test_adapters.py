@@ -9,6 +9,7 @@ import pytest
 from seahorse.benchmark.adapters.base import parse_date
 from seahorse.benchmark.adapters.longmemeval import LMEBLoader
 from seahorse.benchmark.adapters.registry import AdapterRegistry
+from seahorse.benchmark.config import BenchmarkConfig
 
 
 def test_registry_register_get_list():
@@ -112,3 +113,15 @@ def test_lmeb_loader_is_dataset_loader_protocol():
     assert hasattr(LMEBLoader, "load")
     assert hasattr(LMEBLoader, "name")
     assert hasattr(LMEBLoader, "available_configs")
+
+
+def test_lmeb_load_raises_without_datasets(monkeypatch):
+    """Without the 'benchmark' extra, load() raises a clear RuntimeError."""
+    import importlib
+
+    def fake_import(name):
+        raise ImportError("no datasets")
+
+    monkeypatch.setattr(importlib, "import_module", fake_import)
+    with pytest.raises(RuntimeError, match="install seahorse\\[benchmark\\]"):
+        LMEBLoader.load(BenchmarkConfig())
