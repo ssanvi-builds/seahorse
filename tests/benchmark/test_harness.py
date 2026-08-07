@@ -2,8 +2,25 @@
 
 from __future__ import annotations
 
-from seahorse.benchmark.harness.reader_llm import ReaderLLMClient
+from seahorse.benchmark.harness.reader_llm import ReaderLLMClient, StubReaderLLM
 from seahorse.benchmark.harness.tokenizer import Tokenizer
+
+
+def test_stub_reader_is_deterministic_no_litellm():
+    """The retrieval-only reader never imports litellm (works without the llm
+    extra) and is deterministic — the experiment decision metrics (recall@10 /
+    ndcg@10) never consume the reader's answer (f5-16 §4.4 honest floor)."""
+    reader = StubReaderLLM()
+    assert reader.generate("Q?", "context") == ""
+    assert reader.generate("Q2?", "ctx", question_date=None) == ""
+    assert "litellm" not in StubReaderLLM.__module__
+
+
+def test_stub_reader_identity():
+    reader = StubReaderLLM()
+    ident = reader.identity()
+    assert ident["model"] == "stub-retrieval-only"
+    assert ident["temperature"] == 0.0
 
 
 def test_reader_llm_identity():

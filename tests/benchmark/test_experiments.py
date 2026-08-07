@@ -265,6 +265,45 @@ class TestRunExperimentSynthetic:
         assert r1.decision == r2.decision
 
 
+def test_warm_db_matches_fresh_db(tmp_path):
+    """Warm-DB (shared ingest across variants) must produce IDENTICAL retrieval
+    metrics to fresh-DB runs — the recency boost reads created_at/now, both
+    deterministic and identical across the shared template (f7 §5a)."""
+    warm = run_experiment(
+        experiment="recency", corpus="synthetic",
+        output_dir=str(tmp_path / "warm"), **_fake_kwargs(), warm_db=True,
+    )
+    fresh = run_experiment(
+        experiment="recency", corpus="synthetic",
+        output_dir=str(tmp_path / "fresh"), **_fake_kwargs(), warm_db=False,
+    )
+    assert len(warm.results) == len(fresh.results) == 10
+    for wr, fr in zip(warm.results, fresh.results, strict=True):
+        assert wr.variant.name == fr.variant.name
+        assert wr.metric("recall@10").global_value == fr.metric("recall@10").global_value
+        assert wr.metric("ndcg@10").global_value == fr.metric("ndcg@10").global_value
+        assert wr.metric("recall@10").by_slice == fr.metric("recall@10").by_slice
+        assert wr.detected_score_source == fr.detected_score_source
+    assert warm.decision == fresh.decision
+
+
+def test_warm_db_embed_reuses_body_template(tmp_path):
+    """The embed experiment's body variant reuses the body template; only
+    body+summary needs its own ingest (f7 §5c — different embedding text)."""
+    cache: dict = {}
+    report = run_experiment(
+        experiment="embed", corpus="synthetic",
+        output_dir=str(tmp_path), **_fake_kwargs(), template_cache=cache,
+    )
+    assert len(report.results) == 2
+    # Both variants ran in the hybrid regime with the shared template.
+    assert all(r.detected_score_source == "mvp1_rrf" for r in report.results)
+    # The cache holds exactly two templates: body (shared) + body+summary.
+    assert len(cache) == 2
+    assert any(k[1] == "body" for k in cache)
+    assert any(k[1] == "body+summary" for k in cache)
+
+
 def test_experiments_and_corpora_constants():
     assert set(EXPERIMENTS) == {"recency", "embed"}
     assert set(CORPORA) == {"synthetic", "lmeb-s"}

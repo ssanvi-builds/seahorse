@@ -59,4 +59,31 @@ class ReaderLLMClient:
         }
 
 
-__all__ = ["ReaderLLMClient"]
+class StubReaderLLM:
+    """Retrieval-only reader double — deterministic, no litellm import.
+
+    The F1/F3 experiment DECISION metrics (recall@10, ndcg@10, knowledge-update
+    accuracy, token/latency) never consume the reader's ``answer`` (f5-16 §4.4
+    honest floor — retrieval is LLM-free). A retrieval-only pass therefore
+    produces the SAME decision numbers as a full QA run, without the hours of
+    Ollama calls or the ``llm`` extra (f7 §5 cost note). The returned empty
+    answer is never scored; ``answer``, ``reader_latency_ms`` and
+    ``total_query_latency_ms`` differ from a real run and must not be compared.
+    """
+
+    def __init__(self, temperature: float = 0.0) -> None:
+        self._temperature = temperature
+
+    def generate(self, question: str, context: str, question_date=None) -> str:
+        return ""
+
+    def identity(self) -> dict:
+        return {
+            "model": "stub-retrieval-only",
+            "temperature": self._temperature,
+            "seed": None,
+            "max_tokens": 0,
+        }
+
+
+__all__ = ["ReaderLLMClient", "StubReaderLLM"]

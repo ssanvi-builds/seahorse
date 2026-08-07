@@ -29,6 +29,19 @@ def test_advancing_clock_is_deterministic_and_ordered():
     assert clock2() == t2
 
 
+def test_advancing_clock_position_reports_current_time():
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    clock = AdvancingClock(base, delta_seconds=3600.0)
+    assert clock.position() == base
+    clock()
+    clock()
+    assert clock.position() == base + timedelta(hours=2)
+    # A fresh clock seeded at the position reproduces the same next value —
+    # the warm-DB variant clock (f7 §5a: recency boost reads now vs created_at).
+    clock2 = AdvancingClock(clock.position(), delta_seconds=3600.0)
+    assert clock2() == base + timedelta(hours=2)
+
+
 def test_earliest_session_date(synthetic_dataset):
     base = earliest_session_date(synthetic_dataset)
     assert base == datetime(2026, 1, 1, tzinfo=UTC)

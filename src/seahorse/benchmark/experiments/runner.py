@@ -22,15 +22,21 @@ that spread (f5-16 §3.5). Deterministic and temporally ordered.
 from __future__ import annotations
 
 import copy
+import shutil
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
 from seahorse.benchmark.config import BenchmarkConfig
 from seahorse.benchmark.contracts import BenchmarkDataset, DatasetLoader
-from seahorse.benchmark.corpus_builder import AdvancingClock, earliest_session_date
+from seahorse.benchmark.corpus_builder import (
+    AdvancingClock,
+    CorpusBuilder,
+    earliest_session_date,
+)
 from seahorse.benchmark.experiments.decide import (
     ExperimentResult,
     decide_embed,
@@ -45,6 +51,7 @@ from seahorse.benchmark.experiments.variants import (
 )
 from seahorse.benchmark.harness.reader_llm import ReaderLLMClient
 from seahorse.benchmark.harness.tokenizer import Tokenizer
+from seahorse.benchmark.knowledge_update_simulator import KnowledgeUpdateSimulator
 from seahorse.benchmark.metrics.efficiency import LatencyP95Metric, TokenEfficiencyMetric
 from seahorse.benchmark.metrics.memory import (
     FAMAGapMetric,
@@ -73,6 +80,25 @@ class ExperimentReport:
     temporal_mode: bool
     results: tuple[ExperimentResult, ...]
     decision: dict
+
+
+@dataclass(frozen=True)
+class CorpusTemplate:
+    """A corpus ingested ONCE, shared across variants that embed the same text.
+
+    Warm-DB (f7 §5a): the recency variants (and the embed ``body`` variant)
+    embed IDENTICAL passage text — the recency boost is a query-time post-RRF
+    step reading ``created_at``/``now``, so one ingest serves all of them. Each
+    variant copies the template DB (fast) and re-attaches the bridge
+    (``skip_ingest``). ``clock_base`` is the post-ingest clock position: variant
+    clocks seed from it so the recency boost reads the same ``now`` vs
+    ``created_at`` spread as a fresh-DB run (bit-identical metrics).
+    """
+
+    db_path: Path
+    bridge: dict
+    clock_base: datetime
+    clock_delta: float
 
 
 def make_metric_registry(tokenizer: Tokenizer) -> MetricRegistry:
@@ -145,6 +171,74 @@ def _facade_factory(
     return _build
 
 
+def _template_variant(embed_mode: str) -> ExperimentVariant:
+    """The baseline variant the corpus template is ingested with (no recency)."""
+    return ExperimentVariant(
+        name="template",
+        score_source="mvp1_rrf",
+        embed_mode=embed_mode,
+        description="warm-DB corpus template (shared ingest)",
+    )
+
+
+def _build_template(
+    *,
+    base_config: BenchmarkConfig,
+    dataset: BenchmarkDataset,
+    corpus: str,
+    reader: Any,
+    tokenizer: Tokenizer,
+    embed_mode: str,
+    temporal: bool,
+) -> CorpusTemplate:
+    """Ingest the corpus ONCE into a template DB + capture the bridge (f7 §5a).
+
+    The expensive step is the embedding; variants that embed the same text share
+    this template. The template DB is copied per variant (fast filesystem copy)
+    and the bridge is re-attached to each variant SUT (``skip_ingest``). The
+    ``new_ep_ids_after_improve`` metadata is set on the shared dataset instances
+    so the deep-copied variant datasets carry it into the metrics.
+    """
+    template_dir = Path(tempfile.mkdtemp(prefix="seahorse-template-"))
+    clock = AdvancingClock(
+        base=earliest_session_date(dataset), delta_seconds=_CLOCK_DELTA_DAYS
+    )
+    build = _facade_factory(corpus, clock, _template_variant(embed_mode))
+    facade, storage = build(template_dir / "bench.db")
+    sut = SeahorseSUT(
+        facade,
+        lambda: facade,
+        reader_llm=reader,
+        tokenizer=tokenizer,
+        fact_id_to_session={},
+        temporal_mode=temporal,
+        top_k=base_config.top_k,
+        score_source="mvp1_rrf",
+        recency_config=None,
+        embed_mode=embed_mode,
+    )
+    CorpusBuilder(sut).ingest(dataset)
+    kus = KnowledgeUpdateSimulator(sut)
+    updates = kus.derive_updates(dataset)
+    new_ep_ids = kus.apply(sut, updates)
+    for inst_id, ep_ids in new_ep_ids.items():
+        inst = next(i for i in dataset.instances if i.instance_id == inst_id)
+        inst.metadata["new_ep_ids_after_improve"] = ep_ids
+    bridge = {
+        "ep_id_to_session": dict(sut._ep_id_to_session),
+        "fact_id_to_session": dict(sut.fact_id_to_session),
+        "fact_key_to_ep_id": dict(sut.fact_key_to_ep_id),
+    }
+    clock_base = clock.position()
+    storage.close()
+    return CorpusTemplate(
+        db_path=template_dir / "bench.db",
+        bridge=bridge,
+        clock_base=clock_base,
+        clock_delta=_CLOCK_DELTA_DAYS,
+    )
+
+
 def render_experiment_report(report: ExperimentReport) -> str:
     """Human-readable sweep table + decision block (for the CLI)."""
     lines = [
@@ -186,11 +280,22 @@ def run_experiment(
     top_k: int = 10,
     temporal: bool = True,
     reader_llm=None,
+    warm_db: bool = True,
+    template_cache: dict | None = None,
 ) -> ExperimentReport:
     """Run an F7 experiment and return the report with the decision verdict.
 
     ``reader_llm`` defaults to a real ``ReaderLLMClient`` (LMEB runs); the
     synthetic/CI verification injects a deterministic double.
+
+    Warm-DB (f7 §5a): variants that embed the same text share ONE corpus ingest
+    (the recency sweep is 10 variants over identical embeddings — a fresh-DB
+    run would re-embed ~49M tokens per variant). ``warm_db=True`` (default)
+    builds a shared ``CorpusTemplate`` per ``(corpus, embed_mode, temporal,
+    dataset_hash)``; ``template_cache`` reuses an external cache across
+    ``run_experiment`` calls (the embed experiment's ``body`` variant reuses
+    the recency experiment's body template). ``warm_db=False`` runs each
+    variant on a fresh DB (the pre-warm-DB behavior, used to verify equivalence).
     """
     if experiment not in EXPERIMENTS:
         raise ValueError(f"unknown experiment: {experiment!r} (expected {EXPERIMENTS!r})")
@@ -212,6 +317,7 @@ def run_experiment(
     reader = reader_llm or ReaderLLMClient(reader_model)
     registry = make_metric_registry(tokenizer)
     variants = variants_for(experiment)
+    cache = template_cache if template_cache is not None else ({} if warm_db else None)
 
     results: list[ExperimentResult] = []
     with tempfile.TemporaryDirectory(prefix="seahorse-exp-") as tmp:
@@ -227,6 +333,7 @@ def run_experiment(
                     reader=reader,
                     tokenizer=tokenizer,
                     registry=registry,
+                    template_cache=cache,
                 )
             )
 
@@ -255,16 +362,52 @@ def _run_variant(
     reader: Any,
     tokenizer: Tokenizer,
     registry: MetricRegistry,
+    template_cache: dict | None = None,
 ) -> ExperimentResult:
-    """Run one variant through the ``EvaluationRunner`` and collect the metrics."""
+    """Run one variant through the ``EvaluationRunner`` and collect the metrics.
+
+    Warm-DB (f7 §5a): when ``template_cache`` is provided, variants that embed
+    the same text share one ingested corpus — the template DB is copied into the
+    variant's dir (fast) and the SUT re-attaches the template bridge, so the
+    runner skips re-ingestion (``skip_ingest=True``). The variant clock seeds
+    from the template's post-ingest position so the recency boost reads the same
+    ``now`` vs ``created_at`` spread as a fresh-DB run.
+    """
     from dataclasses import replace
 
     variant_config = replace(base_config, **variant.as_config_kwargs())
     variant_config.validate()
+
+    template = None
+    if template_cache is not None:
+        key = (
+            corpus,
+            variant.embed_mode,
+            variant_config.temporal_mode,
+            dataset.split_hash,
+        )
+        template = template_cache.get(key)
+        if template is None:
+            template = _build_template(
+                base_config=base_config,
+                dataset=dataset,
+                corpus=corpus,
+                reader=reader,
+                tokenizer=tokenizer,
+                embed_mode=variant.embed_mode,
+                temporal=variant_config.temporal_mode,
+            )
+            template_cache[key] = template
+
     clock = AdvancingClock(base=earliest_session_date(dataset), delta_seconds=_CLOCK_DELTA_DAYS)
+    if template is not None:
+        clock = AdvancingClock(base=template.clock_base, delta_seconds=template.clock_delta)
     build = _facade_factory(corpus, clock, variant)
     db_dir = tmp / variant.name
     db_dir.mkdir(parents=True, exist_ok=True)
+    if template is not None:
+        shutil.copy2(template.db_path, db_dir / "bench.db")
+        shutil.copy2(template.db_path, db_dir / "bench2.db")
     out_dir = output_dir / variant.name
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -282,12 +425,20 @@ def _run_variant(
             lambda: _facade("bench2.db"),
             reader_llm=reader,
             tokenizer=tokenizer,
-            fact_id_to_session={},
+            fact_id_to_session=(
+                dict(template.bridge["fact_id_to_session"]) if template else {}
+            ),
             temporal_mode=variant_config.temporal_mode,
             top_k=variant_config.top_k,
             score_source=variant_config.score_source,
             recency_config=variant_config.recency_config,
             embed_mode=variant_config.embed_mode,
+            ep_id_to_session=(
+                dict(template.bridge["ep_id_to_session"]) if template else None
+            ),
+            fact_key_to_ep_id=(
+                dict(template.bridge["fact_key_to_ep_id"]) if template else None
+            ),
         )
         sut_holder["sut"] = sut
         return sut
@@ -305,7 +456,7 @@ def _run_variant(
         tokenizer=tokenizer,
     )
     try:
-        manifest = runner.run()
+        manifest = runner.run(skip_ingest=template is not None)
     finally:
         for storage in storages:
             storage.close()
@@ -327,8 +478,10 @@ def _run_variant(
 
 __all__ = [
     "ExperimentReport",
+    "CorpusTemplate",
     "run_experiment",
     "render_experiment_report",
     "make_metric_registry",
+    "_build_template",
     "_run_variant",
 ]

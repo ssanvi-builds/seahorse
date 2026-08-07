@@ -42,6 +42,37 @@ def _make_claude_mem_db(tmp_path) -> str:
     return str(db)
 
 
+def test_benchmark_experiment_retrieval_only_wires_stub(monkeypatch):
+    """``--retrieval-only`` passes the deterministic StubReaderLLM (no Ollama)
+    to the experiment runner — the F1/F3 decision metrics are retrieval-only."""
+    captured: dict = {}
+
+    class _FakeReport:
+        experiment = "recency"
+        corpus = "synthetic"
+        temporal_mode = True
+        results = ()
+        decision = {"decision": "keep_off", "flip": False, "reason": "test"}
+
+    def _fake_run_experiment(**kwargs):
+        captured["reader_llm"] = kwargs.get("reader_llm")
+        return _FakeReport()
+
+    monkeypatch.setattr(
+        "seahorse.benchmark.experiments.runner.run_experiment", _fake_run_experiment
+    )
+    monkeypatch.setattr(
+        "seahorse.benchmark.experiments.runner.render_experiment_report", lambda r: "ok"
+    )
+    code, out, err = invoke(
+        ["benchmark", "experiment", "recency", "--retrieval-only", "--corpus", "synthetic"]
+    )
+    assert code == 0, err
+    from seahorse.benchmark.harness.reader_llm import StubReaderLLM
+
+    assert isinstance(captured["reader_llm"], StubReaderLLM)
+
+
 def test_import_dry_run(vault, tmp_path):
     db = _make_claude_mem_db(tmp_path)
     code, out, err = invoke(

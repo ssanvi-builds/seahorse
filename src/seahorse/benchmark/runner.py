@@ -102,19 +102,23 @@ class EvaluationRunner:
         self._reporters = reporters
         self._tokenizer = tokenizer
 
-    def run(self) -> RunManifest:
+    def run(self, *, skip_ingest: bool = False) -> RunManifest:
         self._config.validate()
         dataset = self._loader.load(self._config)
         sut = self._sut_factory()
 
         # Ingest the corpus (skip-mode, deterministic) + knowledge updates.
-        CorpusBuilder(sut).ingest(dataset)
-        kus = KnowledgeUpdateSimulator(sut)
-        updates = kus.derive_updates(dataset)
-        new_ep_ids = kus.apply(sut, updates)
-        for inst_id, ep_ids in new_ep_ids.items():
-            inst = next(i for i in dataset.instances if i.instance_id == inst_id)
-            inst.metadata["new_ep_ids_after_improve"] = ep_ids
+        # ``skip_ingest`` (f7 §5a warm-DB): the SUT already carries the corpus
+        # bridge and the dataset instances already hold ``new_ep_ids_after_improve``
+        # (set by the shared template) — the query/metrics phase runs directly.
+        if not skip_ingest:
+            CorpusBuilder(sut).ingest(dataset)
+            kus = KnowledgeUpdateSimulator(sut)
+            updates = kus.derive_updates(dataset)
+            new_ep_ids = kus.apply(sut, updates)
+            for inst_id, ep_ids in new_ep_ids.items():
+                inst = next(i for i in dataset.instances if i.instance_id == inst_id)
+                inst.metadata["new_ep_ids_after_improve"] = ep_ids
 
         # Isolated level probes (p95 TIMELINE/FULL without the reader LLM).
         probe = LevelProbeRunner(sut, sample_size=self._config.sample_size)

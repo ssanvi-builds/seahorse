@@ -50,6 +50,8 @@ class SeahorseSUT:
         recency_config: dict | None = None,
         rerank_enabled: bool = False,
         embed_mode: str = "body",
+        ep_id_to_session: dict[str, str] | None = None,
+        fact_key_to_ep_id: dict[str, str] | None = None,
     ) -> None:
         self._facade = facade
         self._facade_factory = facade_factory
@@ -65,10 +67,12 @@ class SeahorseSUT:
         self._embed_mode = embed_mode
         # Retrieval bridge (f5-16 §3.7): fact_id→session (spec contract) +
         # ep_id→session (accurate, covers improve-created versions) +
-        # fact_key→ep_id (for the KnowledgeUpdateSimulator).
+        # fact_key→ep_id (for the KnowledgeUpdateSimulator). The warm-DB path
+        # (f7 §5a) pre-populates the bridge from a shared corpus template so a
+        # variant SUT over a copied DB skips re-ingestion.
         self.fact_id_to_session = fact_id_to_session
-        self._ep_id_to_session: dict[str, str] = {}
-        self.fact_key_to_ep_id: dict[str, str] = {}
+        self._ep_id_to_session: dict[str, str] = dict(ep_id_to_session or {})
+        self.fact_key_to_ep_id: dict[str, str] = dict(fact_key_to_ep_id or {})
         self._detected_score_source: str | None = None
 
     # ------------------------------------------------------------------ ingest

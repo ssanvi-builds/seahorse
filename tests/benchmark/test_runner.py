@@ -132,6 +132,58 @@ def test_level_probe_runner_measures_p95(tmp_path, synthetic_dataset):
     storage.close()
 
 
+def test_run_skip_ingest_uses_prepopulated_bridge(tmp_path, synthetic_dataset):
+    """Warm-DB: ``skip_ingest=True`` runs the query/metrics phase over a SUT that
+    already carries the corpus bridge (f7 §5a) — no re-ingestion, no re-embed."""
+    # 1. Ingest once into a template facade, capture the bridge.
+    facade, storage = build_facade(tmp_path / "template.db")
+    template_sut = SeahorseSUT(
+        facade,
+        lambda: build_facade(tmp_path / "template2.db")[0],
+        reader_llm=FakeReaderLLM(),
+        tokenizer=FakeTokenizer(),
+        fact_id_to_session={},
+    )
+    CorpusBuilder(template_sut).ingest(synthetic_dataset)
+    bridge = {
+        "ep_id_to_session": dict(template_sut._ep_id_to_session),
+        "fact_id_to_session": dict(template_sut.fact_id_to_session),
+        "fact_key_to_ep_id": dict(template_sut.fact_key_to_ep_id),
+    }
+    storage.close()
+
+    # 2. Run the runner over a copy of the template DB with skip_ingest=True.
+    import shutil
+
+    shutil.copy2(tmp_path / "template.db", tmp_path / "bench.db")
+    shutil.copy2(tmp_path / "template.db", tmp_path / "bench2.db")
+
+    def sut_factory() -> SeahorseSUT:
+        facade, _ = build_facade(tmp_path / "bench.db")
+        return SeahorseSUT(
+            facade,
+            lambda: build_facade(tmp_path / "bench2.db")[0],
+            reader_llm=FakeReaderLLM(),
+            tokenizer=FakeTokenizer(),
+            fact_id_to_session=dict(bridge["fact_id_to_session"]),
+            ep_id_to_session=dict(bridge["ep_id_to_session"]),
+            fact_key_to_ep_id=dict(bridge["fact_key_to_ep_id"]),
+        )
+
+    runner = EvaluationRunner(
+        BenchmarkConfig(),
+        loader=_FakeLoader(synthetic_dataset),
+        sut_factory=sut_factory,
+        metric_registry=_make_registry(FakeTokenizer()),
+        reporters=[_RecordingReporter()],
+        tokenizer=FakeTokenizer(),
+    )
+    manifest = runner.run(skip_ingest=True)
+    assert "recall@10" in manifest.metrics
+    assert manifest.metrics["recall@10"].n_samples > 0
+    assert manifest.metrics["ndcg@10"].n_samples > 0
+
+
 def test_runner_uses_advancing_clock_for_temporal_ordering(tmp_path, synthetic_dataset):
     """The runner's SUT ingests sessions in date order (oldest first)."""
     runner, _ = _make_runner(tmp_path, synthetic_dataset)

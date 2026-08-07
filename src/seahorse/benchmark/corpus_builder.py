@@ -40,6 +40,15 @@ class AdvancingClock:
         self._i += 1
         return t
 
+    def position(self) -> datetime:
+        """The current time WITHOUT advancing (f7 §5a warm-DB).
+
+        After a corpus ingest, ``position()`` is the next ``now`` a query would
+        see — the warm-DB variant clock seeds from it so the recency boost reads
+        the same ``now`` vs ``created_at`` spread as a fresh-DB run.
+        """
+        return self._base + self._i * self._delta
+
 
 def earliest_session_date(dataset: BenchmarkDataset) -> datetime:
     """The clock base: the earliest session date across the haystack."""

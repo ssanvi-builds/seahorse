@@ -535,12 +535,22 @@ def benchmark_experiment_cmd(
     temporal: bool = typer.Option(
         True, "--temporal/--no-temporal", help="Temporal ingestion (source_type=human, f7 §4)."
     ),
+    retrieval_only: bool = typer.Option(
+        False,
+        "--retrieval-only",
+        help=(
+            "Retrieval-only pass: deterministic stub reader (no Ollama). The F1/F3 "
+            "decision metrics (recall@10/ndcg@10) never consume the reader's answer "
+            "(f5-16 §4.4 honest floor) — identical decision numbers, zero LLM cost."
+        ),
+    ),
 ) -> None:
     """Run an F7 experiment and print the sweep table + decision (f7 §5)."""
     from seahorse.benchmark.experiments.runner import (
         render_experiment_report,
         run_experiment,
     )
+    from seahorse.benchmark.harness.reader_llm import StubReaderLLM
 
     report = run_experiment(
         experiment=experiment,
@@ -550,6 +560,7 @@ def benchmark_experiment_cmd(
         judge_model=judge_model,
         top_k=top_k,
         temporal=temporal,
+        reader_llm=StubReaderLLM() if retrieval_only else None,
     )
     typer.echo(render_experiment_report(report))
 

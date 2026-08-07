@@ -42,6 +42,26 @@ def test_ingest_populates_bridge(sut):
     assert set(sut._ep_id_to_session.values()) == {"s1"}
 
 
+def test_sut_accepts_prepopulated_bridge(tmp_path, fake_reader, fake_tokenizer):
+    """Warm-DB: a variant SUT over a copied corpus DB receives the template's
+    bridge (ep_id→session, fact_id→session, fact_key→ep_id) instead of
+    re-ingesting (f7 §5a warm-DB — the recency variants share one ingest)."""
+    facade, storage = build_facade(tmp_path / "bench.db")
+    sut = SeahorseSUT(
+        facade,
+        lambda: build_facade(tmp_path / "bench2.db")[0],
+        reader_llm=fake_reader,
+        tokenizer=fake_tokenizer,
+        fact_id_to_session={"f1": "s1"},
+        ep_id_to_session={"e1": "s1"},
+        fact_key_to_ep_id={"france-capital": "e1"},
+    )
+    assert sut.fact_id_to_session == {"f1": "s1"}
+    assert sut._ep_id_to_session == {"e1": "s1"}
+    assert sut.fact_key_to_ep_id == {"france-capital": "e1"}
+    storage.close()
+
+
 def test_ingest_temporal_mode_sets_valid_at(sut):
     d = datetime(2026, 1, 1, tzinfo=UTC)
     temporal = SeahorseSUT(
