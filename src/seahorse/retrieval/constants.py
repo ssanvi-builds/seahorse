@@ -24,4 +24,21 @@ hops=1) + RRF + handoff to ``materialize_index``. TIMELINE (150ms) / FULL (100ms
 are owned by #8 (separate anchor-based calls, outside this budget). Asserted by
 the #16 benchmark harness, NOT by #11 unit tests (no wall-clock claims here)."""
 
-__all__ = ["RRF_K", "INDEX_P95_MS"]
+RECENCY_GAMMA: float = 0.5
+"""F1 recency — max multiplicative boost at age 0 (cerebras-f-feasibility §3).
+
+``score' = score · (1 + γ·exp(-ln2·age_days/half_life))``, factor in ``[1, 1+γ]``.
+A fresh-but-irrelevant candidate cannot outrank a relevant one by more than
+``1+γ``. Pinned here (ADR-10: a single hyper-parameter fixed up front, NOT tuned
+on a batch); the F7 recency experiment (LMEB) decides the real calibration.
+Default-OFF: ``recall`` applies the boost only when a ``RecencyConfig`` is
+explicitly passed AND ``pit is None`` (recency is a "now"-regime signal; PIT
+queries reproduce state as-of-``t`` with pure RRF)."""
+
+RECENCY_HALF_LIFE_DAYS: float = 30.0
+"""F1 recency — exponential half-life of the signal, in days.
+
+After ``half_life_days`` the boost halves; after ~5 half-lives it is ~3% of
+``γ``. Pinned here (ADR-10); calibrated by the F7 experiment."""
+
+__all__ = ["RRF_K", "INDEX_P95_MS", "RECENCY_GAMMA", "RECENCY_HALF_LIFE_DAYS"]

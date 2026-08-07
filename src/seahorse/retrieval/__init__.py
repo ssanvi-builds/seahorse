@@ -27,17 +27,27 @@ References:
 
 from __future__ import annotations
 
-from seahorse.retrieval.constants import INDEX_P95_MS, RRF_K
+from seahorse.retrieval.constants import (
+    INDEX_P95_MS,
+    RECENCY_GAMMA,
+    RECENCY_HALF_LIFE_DAYS,
+    RRF_K,
+)
 from seahorse.retrieval.engine import recall
 from seahorse.retrieval.errors import BfsKnownAtUnsupported, RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
+from seahorse.retrieval.recency import RecencyConfig, apply_recency_boost
 
 __all__ = [
     "BfsKnownAtUnsupported",
     "INDEX_P95_MS",
+    "RECENCY_GAMMA",
+    "RECENCY_HALF_LIFE_DAYS",
     "RRF_K",
+    "RecencyConfig",
     "RetrievalInvalidPITKind",
     "SourceList",
+    "apply_recency_boost",
     "recall",
     "rrf_fuse",
 ]

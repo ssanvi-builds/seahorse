@@ -270,6 +270,63 @@ class FakeEpisodeRepo:
         yield
 
 
+class FakeIndexRepo:
+    """``EpisodeIndexRepository`` double for the F1 recency batch ``created_at``
+    read. Records ``get_rows`` calls (assert one ``IN`` query, no N+1) and returns
+    configurable rows keyed by ``ep_id``."""
+
+    def __init__(self) -> None:
+        self.get_rows_calls: list[list[str]] = []
+        self.rows: dict[str, IndexRowData] = {}
+
+    def get_rows(self, ep_ids: Sequence[str]) -> list[IndexRowData]:
+        self.get_rows_calls.append(list(ep_ids))
+        return [self.rows[e] for e in ep_ids if e in self.rows]
+
+    def add(self, row: IndexRowData) -> None:
+        self.rows[row.ep_id] = row
+
+    # The remaining accessors are unused by #11; raise to fail loud if reached.
+    def get_rows_state_at(
+        self, ep_ids: Sequence[str], t: datetime
+    ) -> list[IndexRowData]:  # pragma: no cover
+        raise NotImplementedError
+
+    def get_rows_known_at(
+        self, ep_ids: Sequence[str], t: datetime
+    ) -> list[IndexRowData]:  # pragma: no cover
+        raise NotImplementedError
+
+    def chain_rows_from(self, ep_id: str) -> list[IndexRowData]:  # pragma: no cover
+        raise NotImplementedError
+
+    def find_vigent_row_by_fact_id(
+        self, fact_id: str, exclude: str | None = None
+    ) -> IndexRowData | None:  # pragma: no cover
+        raise NotImplementedError
+
+    def range_rows_state_at(
+        self, t_start: datetime, t_end: datetime, *, subject: str | None = None
+    ) -> list[IndexRowData]:  # pragma: no cover
+        raise NotImplementedError
+
+    def range_rows_known_at(
+        self, t_start: datetime, t_end: datetime, *, subject: str | None = None
+    ) -> list[IndexRowData]:  # pragma: no cover
+        raise NotImplementedError
+
+    def bfs_neighbors_state_at(
+        self,
+        ep_id: str,
+        pit: datetime,
+        *,
+        pit_kind: PITKind,
+        hops: int,
+        include_tags_soft: bool,
+    ) -> list[IndexRowData]:  # pragma: no cover
+        raise NotImplementedError
+
+
 class FakeBfsIndexRepo:
     """``EpisodeIndexRepository`` double for the BFS axis. Records the
     ``pit_kind``/``hops``/``t`` the engine passed (axis-isolation R13). Only
@@ -363,6 +420,11 @@ def bfs_repo() -> FakeBfsIndexRepo:
 
 
 @pytest.fixture()
+def index_repo() -> FakeIndexRepo:
+    return FakeIndexRepo()
+
+
+@pytest.fixture()
 def clock_now() -> datetime:
     """Fixed clock value for reproducible ``pit=None`` resolution."""
     return datetime(2024, 6, 1, 12, 0, tzinfo=UTC)
@@ -378,6 +440,7 @@ __all__ = [
     "FakeBfsIndexRepo",
     "FakeEpisodeRepo",
     "FakeFtsRepo",
+    "FakeIndexRepo",
     "FakeQueryEmbedder",
     "FakeVectorRepo",
     "_ep",

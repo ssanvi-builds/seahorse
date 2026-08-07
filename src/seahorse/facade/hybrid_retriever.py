@@ -26,6 +26,7 @@ from seahorse.disclosure.types import TOP_K, PITPoint
 from seahorse.facade.errors import PitRecallNotSupportedMVP0
 from seahorse.facade.types import FacadeConfig
 from seahorse.facade.vigente_retriever import VigenteListingRetriever
+from seahorse.retrieval.recency import RecencyConfig
 
 _logger = logging.getLogger("seahorse.facade.hybrid_retriever")
 
@@ -46,6 +47,7 @@ class HybridRetriever:
         clock: Callable[[], datetime],
         config: FacadeConfig,
         fallback: VigenteListingRetriever,
+        recency: RecencyConfig | None = None,
     ) -> None:
         self._embedder = embedder
         self._vector_repo = vector_repo
@@ -55,6 +57,8 @@ class HybridRetriever:
         self._clock = clock
         self._config = config
         self._fallback = fallback
+        # F1 recency (default-OFF, ADR-10): None keeps the pure-RRF fingerprint.
+        self._recency = recency
 
     def recall(
         self,
@@ -107,6 +111,7 @@ class HybridRetriever:
             fts_repo=self._fts_repo,
             episode_repo=self._episode_repo,
             graph_repo=self._graph_repo,
+            index_repo=self._graph_repo,  # same episode_index repo (batch created_at)
             k=k,
             cognitive_type=cognitive_type,
             subject_filter=subject_filter,
@@ -115,6 +120,7 @@ class HybridRetriever:
             bfs_as_index_enabled=False,
             bfs_known_at_supported=False,
             clock=self._clock,
+            recency=self._recency,
         )
 
     def _g2(

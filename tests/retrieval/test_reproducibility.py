@@ -80,6 +80,30 @@ class TestIdenticalRuns:
         assert by_id["e2"].score == _rrf(2)
 
 
+class TestRecencyDefaultOff:
+    def test_explicit_recency_none_preserves_pure_rrf(
+        self, embedder, vector_repo, fts_repo, episode_repo
+    ):
+        # F1 default-OFF (ADR-10): passing recency=None (or omitting it) keeps the
+        # pure-RRF bit-comparable fingerprint — the boost is never applied.
+
+        vector_repo.knn_hits = [VectorHit("e1", 0.1, 0.9), VectorHit("e2", 0.2, 0.83)]
+        fts_repo.search_hits = [FullTextHit("e1", 1.0, 0.37)]
+        result = recall(
+            "q",
+            pit=None,
+            embedder=embedder,
+            vector_repo=vector_repo,
+            fts_repo=fts_repo,
+            episode_repo=episode_repo,
+            k=10,
+            recency=None,  # explicit default-off
+        )
+        by_id = {c.ep_id: c for c in result}
+        assert by_id["e1"].score == _rrf(1) * 2
+        assert by_id["e2"].score == _rrf(2)
+
+
 class TestTieBreak:
     def test_tie_broken_by_ep_id_asc(self, embedder, vector_repo, fts_repo, episode_repo):
         # eB vector rank1, eA bm25 rank1 -> equal score -> ep_id asc: eA first.

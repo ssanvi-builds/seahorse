@@ -64,6 +64,7 @@ References:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any, TypeVar
@@ -87,11 +88,14 @@ from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
 from seahorse.retrieval.errors import BfsKnownAtUnsupported, RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
+from seahorse.retrieval.recency import RecencyConfig, apply_recency_boost
 
 # A hit from either source axis. ``_filter_hits_by_cognitive_type`` is generic so
 # it preserves the concrete hit type (``list[VectorHit]`` / ``list[FullTextHit]``)
 # instead of widening to ``list[VectorHit | FullTextHit]`` (mypy-safe reassignment).
 _HitT = TypeVar("_HitT", VectorHit, FullTextHit)
+
+_logger = logging.getLogger("seahorse.retrieval.engine")
 
 
 def _default_clock() -> datetime:
@@ -107,6 +111,7 @@ def recall(
     fts_repo: FullTextIndexRepository,
     episode_repo: EpisodeRepository,
     graph_repo: EpisodeIndexRepository | None = None,
+    index_repo: EpisodeIndexRepository | None = None,
     k: int = TOP_K,
     cognitive_type: str | None = None,
     subject_filter: str | None = None,
@@ -115,6 +120,7 @@ def recall(
     bfs_as_index_enabled: bool = False,
     bfs_known_at_supported: bool = False,
     clock: Callable[[], datetime] | None = None,
+    recency: RecencyConfig | None = None,
 ) -> list[FusedCandidate]:
     """Hybrid retrieval entrypoint — 2-stage RRF fusion (ADR-10, ADR-03).
 
@@ -126,6 +132,14 @@ def recall(
     Robust to partial/empty source lists (f5-11 §11): RRF fuses whatever each
     source returned; it never pads with invented scores (ADR-10). If stage 1 is
     empty AND no ``anchor_ep_id`` is given, stage 2 is skipped (no anchor).
+
+    F1 recency (cerebras-f-feasibility §3): when ``recency`` is passed AND
+    ``pit is None``, the fused list gets a bounded exponential recency boost
+    folded into ``FusedCandidate.score`` (``index_repo.get_rows`` batch-reads
+    ``created_at`` — one ``IN`` query for ≤k candidates, no N+1). Default-OFF:
+    ``recency=None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10);
+    PIT queries (``state_at``/``known_at``) reproduce state as-of-``t`` with pure
+    RRF and are NEVER boosted.
     """
     _validate_pit(pit)
     now = clock() if clock is not None else _default_clock()
@@ -166,7 +180,7 @@ def recall(
                 bfs_rows = []
 
     # --- Fusion over the union of stage 1 + stage 2 ---------------------
-    return rrf_fuse(
+    fused = rrf_fuse(
         [
             SourceList("vector", vec_hits, _hit_ep_id),
             SourceList("bm25", fts_hits, _hit_ep_id),
@@ -175,6 +189,29 @@ def recall(
         ],
         k=k,
     )
+    # F1 recency (default-OFF, ADR-10): boost ONLY in the "now" regime (pit is
+    # None); PIT queries reproduce state as-of-t with pure RRF. The boost is
+    # folded into FusedCandidate.score (never an external reorder) so #8's
+    # IndexRow.score passthrough stays truthful. Requires index_repo to batch-
+    # read created_at; without it the boost is skipped (honest, never invented).
+    if recency is not None and pit is None:
+        if index_repo is None:
+            # Honest skip (ADR-10): recency requested but no index_repo to batch-
+            # read created_at — the boost is never invented. Log for observability.
+            _logger.warning(
+                "recency requested but index_repo is None; boost skipped (pure RRF)"
+            )
+        else:
+            try:
+                created_at = _read_created_at_batch(index_repo, [c.ep_id for c in fused])
+                fused = apply_recency_boost(fused, created_at, now, recency, k=k)
+            except Exception:  # noqa: BLE001 — a failure in the OPTIONAL recency
+                # signal must not kill the whole ranking (which would degrade the
+                # hybrid path to G2). Keep the pure-RRF result (ADR-10 honest).
+                _logger.warning(
+                    "recency boost failed; keeping pure RRF", exc_info=True
+                )
+    return fused
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +229,19 @@ def _episode_id(episode: Episode) -> str:
 
 def _row_ep_id(row: IndexRowData) -> str:
     return row.ep_id
+
+
+def _read_created_at_batch(
+    index_repo: EpisodeIndexRepository, ep_ids: Sequence[str]
+) -> dict[str, datetime]:
+    """Batch-read ``created_at`` for ≤k candidates (one ``IN`` query, no N+1).
+
+    F1 recency (cerebras-f-feasibility §3.3): ``index_repo.get_rows`` is a single
+    ``IN`` query over the fused candidate ids. Rows missing from the result are
+    simply absent from the map — ``apply_recency_boost`` leaves them unboosted.
+    """
+    rows = index_repo.get_rows(list(ep_ids))
+    return {r.ep_id: r.created_at for r in rows}
 
 
 def _validate_pit(pit: PITPoint | None) -> None:
