@@ -69,3 +69,5 @@ seahorse.sqlite*
 # Workflow scripts persist here per session; they are reproducible from the
 # conversation, not source. Do not commit.
 .claude-workflows/
+# F7 experiment output (reproducible artifacts)
+exp-*/
