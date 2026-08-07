@@ -8,6 +8,41 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **F7 experiments (a) recency + (c) embed — harness + enablers (f7 §5)**.
+  - **Enabler (a)** `build_facade(..., recency: RecencyConfig | None)` →
+    `HybridRetriever` (composition root, single-point swap); default `None`
+    keeps the pure-RRF bit-comparable fingerprint (ADR-10). Benchmark CLI gains
+    `--recency-gamma` / `--recency-half-life` (pair-or-error); the recency
+    config is baked into `BenchmarkConfig.config_hash` so the run_id differs
+    from the baseline.
+  - **Enabler (c)** `RetrievalIndexer(embed_mode="body" | "body+summary")` —
+    `body+summary` embeds `summary\n\nbody` (summary leads), honest body-only
+    fallback when no summary, `content_hash` over the EFFECTIVE text (reindex
+    under a new mode re-embeds via cache miss). `EMBED_MODES` single-sourced in
+    `embeddings/types.py` (numpy-light, import-laziness preserved). Benchmark
+    CLI + `seahorse index rebuild` gain `--embed-mode`.
+  - **Correctness fixes the experiments exposed**: `improve` now indexes the
+    successor via a `MemoryFacade.on_episode_improved` hook wired to the
+    write-path indexer in the hybrid regime (G2 no-op) — `knowledge_update_accuracy`
+    (f5-16 §4.6) becomes measurable in hybrid; `SeahorseSUT` evaluates
+    temporal-reasoning questions with `pit=state_at(question_date)` (f5-16
+    §3.4) with an honest G2 degrade (active-now, no crash).
+  - **Experiment harness** `seahorse/benchmark/experiments/` — variants ((a)
+    baseline `mvp1_rrf` + 9-combo sweep γ∈{0.25,0.5,1.0} × half_life∈{7,30,90}d;
+    (c) `body` vs `body+summary`), pure decision logic (f7 §5 thresholds:
+    recency must not degrade global ndcg@10 >1pp AND improve recall@10 on
+    temporal-reasoning/knowledge-update ≥1pp; embed recall@10 ≥1pp to flip F3;
+    `invalid_regime` when the baseline ran `fallback_g2` — ADR-10 honesty),
+    deterministic synthetic corpus + `HashEmbedder` (content-hash passages keep
+    the vec0 kNN path real without a model download — mechanical CI
+    verification), and `run_experiment` (wires the `AdvancingClock`, base =
+    earliest session date, delta = 1 day → `created_at` spans the haystack;
+    runs each variant via `EvaluationRunner`, writes per-variant manifest
+    artifacts, applies the decision) + CLI `seahorse benchmark experiment
+    --experiment recency|embed --corpus synthetic|lmeb-s [--temporal]`.
+  - **1859 tests / ruff+mypy clean.** The authoritative F1/F3 decision is the
+    LMEB-S run (pending: `uv sync --extra dev --extra benchmark --extra
+    embeddings`).
 - **F7 skeleton #16 — LMEB benchmark harness (MVP-1 scope, f5-16 §7.1)** —
   `seahorse/benchmark/`: contracts + config (`BenchmarkConfig.validate()`
   rejects `reader_model == judge_model`), metrics (Recall@k, nDCG@k binary,
