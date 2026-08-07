@@ -51,7 +51,7 @@ class _FakePassageEmbedder:
         )
 
 
-def _episode(ep_id: str, body: str) -> Episode:
+def _episode(ep_id: str, body: str, *, summary: str | None = None) -> Episode:
     return Episode(
         id=ep_id,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -62,6 +62,7 @@ def _episode(ep_id: str, body: str) -> Episode:
         cognitive_type="fact",
         source_type="agent",
         title=ep_id,
+        summary=summary,
     )
 
 
@@ -105,6 +106,63 @@ def test_index_episode_skips_empty_body_and_missing_episode(mgr) -> None:
     assert vector.count() == 0
     assert fts.count() == 0
     assert embedder.calls == []
+
+
+# ----------------------------------------------------------- embed_mode (F7 (c))
+
+def test_embed_mode_body_summary_combines_body_and_summary(mgr) -> None:
+    # F3 vectorial candidate (f7 §5c): embed body+summary so the vector captures
+    # the editorial summary, not just the body. The effective embedded text is
+    # ``summary\n\nbody`` (summary leads — the distilled signal).
+    episodes = SqliteEpisodeRepository(mgr)
+    vector = SqliteVectorIndexRepository(mgr)
+    fts = SqliteFullTextIndexRepository(mgr)
+    embedder = _FakePassageEmbedder()
+    indexer = RetrievalIndexer(
+        embedder, vector, fts, episodes, mgr, embed_mode="body+summary"
+    )
+    episodes.append(_episode("e1", "detailed body text", summary="The distilled gist"))
+    indexer.index_episode("e1")
+    assert vector.count() == 1
+    assert fts.count() == 1  # FTS still indexes the body (unchanged)
+    assert embedder.calls == [(["The distilled gist\n\ndetailed body text"], "passage")]
+    row = mgr.writer.execute(
+        "SELECT content_hash FROM vec_episodes_meta WHERE ep_id='e1'"
+    ).fetchone()
+    assert row[0] == _content_hash("The distilled gist\n\ndetailed body text", "passage")
+
+
+def test_embed_mode_body_summary_without_summary_falls_back_to_body(mgr) -> None:
+    # Honest fallback: no summary → embed the body alone (never a fabricated
+    # text, never skip the episode).
+    episodes = SqliteEpisodeRepository(mgr)
+    vector = SqliteVectorIndexRepository(mgr)
+    fts = SqliteFullTextIndexRepository(mgr)
+    embedder = _FakePassageEmbedder()
+    indexer = RetrievalIndexer(
+        embedder, vector, fts, episodes, mgr, embed_mode="body+summary"
+    )
+    episodes.append(_episode("e1", "madrid spain"))
+    indexer.index_episode("e1")
+    assert embedder.calls == [(["madrid spain"], "passage")]
+
+
+def test_embed_mode_body_is_default(mgr) -> None:
+    indexer, embedder, vector, fts, episodes = _stack(mgr)  # embed_mode="body"
+    episodes.append(_episode("e1", "madrid spain", summary="a gist"))
+    indexer.index_episode("e1")
+    # body-only: the summary is ignored for the embedding
+    assert embedder.calls == [(["madrid spain"], "passage")]
+
+
+def test_invalid_embed_mode_rejected(mgr) -> None:
+    episodes = SqliteEpisodeRepository(mgr)
+    vector = SqliteVectorIndexRepository(mgr)
+    fts = SqliteFullTextIndexRepository(mgr)
+    with pytest.raises(ValueError, match="embed_mode"):
+        RetrievalIndexer(
+            _FakePassageEmbedder(), vector, fts, episodes, mgr, embed_mode="bogus"
+        )
 
 
 def test_index_episode_best_effort_on_embedder_failure(mgr) -> None:

@@ -154,3 +154,62 @@ def test_run_benchmark_recency_variant_reported(tmp_path):
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["fingerprint"]["score_source"] == "mvp1_rrf_recency"
     assert manifest["fingerprint"]["sut_name"] == "seahorse"
+
+
+# ---------------------------------------------------------------- embed mode (c)
+
+def test_run_benchmark_wires_embed_mode_to_facade(tmp_path, monkeypatch):
+    """The composition root receives ``embed_mode`` (F7 enabler (c))."""
+    import seahorse.benchmark.cli as bcli
+
+    captured: dict = {}
+    real = bcli.build_facade
+
+    def spy(db_path, **kwargs):
+        captured.update(kwargs)
+        return real(db_path, **kwargs)
+
+    monkeypatch.setattr(bcli, "build_facade", spy)
+    code = run_benchmark(
+        adapter="fake-cli",
+        output_dir=str(tmp_path),
+        reader_model="fake-reader",
+        judge_model="fake-judge",
+        reader_llm=FakeReaderLLM(),
+        embed_mode="body+summary",
+    )
+    assert code == 0
+    assert captured["embed_mode"] == "body+summary"
+
+
+def test_run_benchmark_default_embed_mode_body(tmp_path, monkeypatch):
+    import seahorse.benchmark.cli as bcli
+
+    captured: dict = {}
+    real = bcli.build_facade
+
+    def spy(db_path, **kwargs):
+        captured.update(kwargs)
+        return real(db_path, **kwargs)
+
+    monkeypatch.setattr(bcli, "build_facade", spy)
+    run_benchmark(
+        adapter="fake-cli",
+        output_dir=str(tmp_path),
+        reader_model="fake-reader",
+        judge_model="fake-judge",
+        reader_llm=FakeReaderLLM(),
+    )
+    assert captured["embed_mode"] == "body"
+
+
+def test_run_benchmark_invalid_embed_mode_rejected(tmp_path):
+    with pytest.raises(ValueError, match="embed_mode"):
+        run_benchmark(
+            adapter="fake-cli",
+            output_dir=str(tmp_path),
+            reader_model="fake-reader",
+            judge_model="fake-judge",
+            reader_llm=FakeReaderLLM(),
+            embed_mode="bogus",
+        )

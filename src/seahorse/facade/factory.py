@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.disclosure.shaper import DisclosureShaperImpl
+from seahorse.embeddings.types import EMBED_MODES
 from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import FacadeConfig
@@ -51,6 +52,7 @@ def build_facade(
     retrieval_available: bool | None = None,
     llm_client: LLMClient | None = None,
     recency: RecencyConfig | None = None,
+    embed_mode: str = "body",
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
 
@@ -84,7 +86,17 @@ def build_facade(
     default ``None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10); the
     benchmark SUT and CLI wire it to run the recency A/B + sweep experiment
     (f7-experimental-design §5(a)).
+
+    The ``embed_mode`` slot (F7 enabler (c)) selects the passage text the write-
+    path indexer embeds: ``body`` (baseline) or ``body+summary`` (summary leads
+    the vector). Validated at the boundary (fail-fast); propagated to the
+    ``RetrievalIndexer`` (single-point swap for the F3 reindex experiment,
+    f7-experimental-design §5(c)).
     """
+    if embed_mode not in EMBED_MODES:
+        raise ValueError(
+            f"embed_mode must be one of {EMBED_MODES!r}, got {embed_mode!r}"
+        )
     own_storage = storage if storage is not None else Storage(db_path)
     engine = BiTemporalEngine(repo=own_storage.episodes, audit=own_storage.audit)
     shaper = DisclosureShaperImpl(
@@ -119,6 +131,7 @@ def build_facade(
             fts,
             own_storage.episodes,
             own_storage._cm,  # noqa: SLF001 — composition root owns Storage
+            embed_mode=embed_mode,
         )
         write_path = StubWritePath(engine=engine, indexer=indexer, llm_client=llm_client)
         facade_embedder: QueryEmbedder | None = query_embedder

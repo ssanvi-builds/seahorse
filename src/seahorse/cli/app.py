@@ -488,6 +488,11 @@ def benchmark_run_cmd(
         "--recency-half-life",
         help="F1 recency half-life in days (pairs with --recency-gamma).",
     ),
+    embed_mode: str = typer.Option(
+        "body",
+        "--embed-mode",
+        help="Passage text to embed: body (baseline) | body+summary (F3 candidate).",
+    ),
 ) -> None:
     """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
     from seahorse.benchmark.cli import run_benchmark
@@ -503,6 +508,7 @@ def benchmark_run_cmd(
         score_source=score_source,
         recency_gamma=recency_gamma,
         recency_half_life=recency_half_life,
+        embed_mode=embed_mode,
     )
     raise typer.Exit(code=code)
 
@@ -623,9 +629,21 @@ app.add_typer(index_app, name="index")
 
 
 @index_app.command(name="rebuild")
-def index_rebuild_cmd(ctx: typer.Context) -> None:
+def index_rebuild_cmd(
+    ctx: typer.Context,
+    embed_mode: str = typer.Option(
+        "body",
+        "--embed-mode",
+        help="Passage text to embed: body (baseline) | body+summary (F3 candidate).",
+    ),
+) -> None:
     """Rebuild the sidecar index from the vault's .md notes (clear-then-rebuild)."""
-    run_index_rebuild(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+    run_index_rebuild(
+        ctx.obj.resolved_config(),
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+        embed_mode=embed_mode,
+    )
 
 
 @index_app.command(name="verify")

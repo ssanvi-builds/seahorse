@@ -19,6 +19,12 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 if TYPE_CHECKING:
     import numpy as np
 
+# F3 vectorial experiment (f7-experimental-design §5c): what text the passage
+# embedder receives. ``body`` is the baseline; ``body+summary`` folds the
+# editorial summary in front of the body. Single source for the facade factory
+# and the indexer (this module stays numpy-light — import-laziness, C8.2).
+EMBED_MODES = ("body", "body+summary")
+
 Role = Literal["query", "passage"]
 
 
@@ -78,4 +84,4 @@ def _l2_normalize(vecs: np.ndarray) -> np.ndarray:
     return arr / norms
 
 
-__all__ = ["ModelIdentity", "Embedder", "Role", "_l2_normalize"]
+__all__ = ["ModelIdentity", "Embedder", "Role", "EMBED_MODES", "_l2_normalize"]

@@ -69,6 +69,7 @@ def run_benchmark(
     score_source: str = "mvp1_rrf",
     recency_gamma: float | None = None,
     recency_half_life: float | None = None,
+    embed_mode: str = "body",
     thresholds: dict[str, float] | None = None,
     reader_llm=None,
 ) -> int:
@@ -84,6 +85,7 @@ def run_benchmark(
         top_k=top_k,
         score_source=score_source,  # type: ignore[arg-type]
         recency_config=recency_config,
+        embed_mode=embed_mode,
     )
     config.validate()
     loader = AdapterRegistry.get(adapter)
@@ -92,17 +94,22 @@ def run_benchmark(
     tmp = tempfile.mkdtemp(prefix="seahorse-bench-")
 
     def sut_factory() -> SeahorseSUT:
-        # F7 enabler (a): the composition-root swap is the ONLY wiring — the SUT
-        # knows nothing about RecencyConfig (delegation purity, f5-16 §2.4).
+        # F7 enabler (a)/(c): the composition-root swap is the ONLY wiring — the
+        # SUT knows nothing about RecencyConfig/embed_mode internals (delegation
+        # purity, f5-16 §2.4).
         recency = (
             RecencyConfig(**config.recency_config)
             if config.recency_config is not None
             else None
         )
-        facade, storage = build_facade(Path(tmp) / "bench.db", recency=recency)
+        facade, storage = build_facade(
+            Path(tmp) / "bench.db", recency=recency, embed_mode=config.embed_mode
+        )
         return SeahorseSUT(
             facade,
-            lambda: build_facade(Path(tmp) / "bench2.db", recency=recency)[0],
+            lambda: build_facade(
+                Path(tmp) / "bench2.db", recency=recency, embed_mode=config.embed_mode
+            )[0],
             reader_llm=reader,
             tokenizer=tokenizer,
             fact_id_to_session={},
@@ -110,6 +117,7 @@ def run_benchmark(
             top_k=top_k,
             score_source=score_source,
             recency_config=config.recency_config,
+            embed_mode=config.embed_mode,
         )
 
     runner = EvaluationRunner(

@@ -229,6 +229,45 @@ class TestBuildFacade:
             storage.close()
 
 
+class TestEmbedModeSlot:
+    """F7 enabler (c) — ``build_facade`` gains an ``embed_mode`` slot.
+
+    Propagated to the ``RetrievalIndexer`` (composition root, single-point swap)
+    so the F3 vectorial experiment can re-index with ``body+summary`` without
+    touching the write path (f7-experimental-design §5c). Default ``body`` is
+    the baseline.
+    """
+
+    def _hybrid(self, monkeypatch, tmp_path, *, embed_mode="body"):
+        import seahorse.facade.factory as factory
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
+        return build_facade(
+            tmp_path / "f.db",
+            embedder=_QueryEmbedder384(),
+            retrieval_available=True,
+            embed_mode=embed_mode,
+        )
+
+    def test_default_embed_mode_body(self, monkeypatch, tmp_path) -> None:
+        facade, storage = self._hybrid(monkeypatch, tmp_path)
+        try:
+            assert facade._write_path._indexer._embed_mode == "body"  # noqa: SLF001
+        finally:
+            storage.close()
+
+    def test_embed_mode_propagated_to_indexer(self, monkeypatch, tmp_path) -> None:
+        facade, storage = self._hybrid(monkeypatch, tmp_path, embed_mode="body+summary")
+        try:
+            assert facade._write_path._indexer._embed_mode == "body+summary"  # noqa: SLF001
+        finally:
+            storage.close()
+
+    def test_invalid_embed_mode_rejected(self, monkeypatch, tmp_path) -> None:
+        with pytest.raises(ValueError, match="embed_mode"):
+            self._hybrid(monkeypatch, tmp_path, embed_mode="bogus")
+
+
 class TestEmbedderSlot:
     """C8.4 — ``build_facade`` gains an ``embedder`` slot (composition-root seam).
 

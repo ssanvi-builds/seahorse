@@ -215,6 +215,46 @@ def test_index_rebuild_creates_db_if_absent(tmp_path):
     assert cfg.db_path.exists()
 
 
+def test_index_rebuild_backfill_uses_embed_mode(tmp_path, monkeypatch):
+    """F7 enabler (c): ``index rebuild --embed-mode`` re-embeds with the new mode.
+
+    The backfill ``RetrievalIndexer`` receives the requested ``embed_mode`` so a
+    reindex under ``body+summary`` re-embeds honestly (new content hash → cache
+    miss, f7-experimental-design §5(c)).
+    """
+    import numpy as np
+
+    import seahorse.cli.vault_ops as vo
+    import seahorse.embeddings.indexer as idx_mod
+    from seahorse.embeddings.types import ModelIdentity
+
+    class _FakePassageEmbedder:
+        dim = 384
+
+        async def embed(self, texts, role):
+            return np.ones((len(texts), 384), dtype=np.float32)
+
+        def model_identity(self) -> ModelIdentity:
+            return ModelIdentity(
+                backend="test", model_name="m", revision="r",
+                dim=384, quantization="fp32", normalized=True,
+            )
+
+    monkeypatch.setattr(vo, "_try_build_passage_embedder", lambda: _FakePassageEmbedder())
+    captured: dict = {}
+    real_indexer = idx_mod.RetrievalIndexer
+
+    def spy(*args, **kwargs):
+        captured["embed_mode"] = kwargs.get("embed_mode")
+        return real_indexer(*args, **kwargs)
+
+    monkeypatch.setattr(idx_mod, "RetrievalIndexer", spy)
+    v, cfg = _config(tmp_path)
+    _write_note(v, "madrid", ep_id=_uuid7("01"))
+    run_index_rebuild(cfg, fmt="json", out=_out(), embed_mode="body+summary")
+    assert captured["embed_mode"] == "body+summary"
+
+
 def test_index_rebuild_empty_vault_is_clean_zero(tmp_path):
     v, cfg = _config(tmp_path)
     # no .md notes at all

@@ -22,7 +22,7 @@ from seahorse.contracts.persistence import (
 )
 from seahorse.embeddings.cache import _content_hash
 from seahorse.embeddings.query_adapter import run_coroutine
-from seahorse.embeddings.types import Embedder
+from seahorse.embeddings.types import EMBED_MODES, Embedder
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.sqlite_episode_repo import SqliteEpisodeRepository
 
@@ -30,7 +30,13 @@ _logger = logging.getLogger("seahorse.embeddings.indexer")
 
 
 class RetrievalIndexer:
-    """Embed + index a single episode into vec0/FTS (best-effort)."""
+    """Embed + index a single episode into vec0/FTS (best-effort).
+
+    ``embed_mode`` selects the embedded text (f7 §5c): ``body`` (baseline) or
+    ``body+summary`` (summary leads, then the body — the FTS doc is unchanged).
+    The content hash reflects the EFFECTIVE embedded text, so re-indexing under
+    a new mode re-embeds (cache miss) honestly.
+    """
 
     def __init__(
         self,
@@ -39,12 +45,19 @@ class RetrievalIndexer:
         fts_repo: FullTextIndexRepository,
         episode_repo: SqliteEpisodeRepository,
         cm: ConnectionManager,
+        *,
+        embed_mode: str = "body",
     ) -> None:
+        if embed_mode not in EMBED_MODES:
+            raise ValueError(
+                f"embed_mode must be one of {EMBED_MODES!r}, got {embed_mode!r}"
+            )
         self._embedder = embedder
         self._vector_repo = vector_repo
         self._fts_repo = fts_repo
         self._episode_repo = episode_repo
         self._cm = cm
+        self._embed_mode = embed_mode
 
     def index_episode(self, ep_id: str) -> None:
         """Embed ``ep_id``'s body and upsert vec0 + FTS in one atomic.
@@ -71,6 +84,17 @@ class RetrievalIndexer:
             return
         self._index(ep.id, body, ep.title, ep.summary, ep.subject)
 
+    def _embed_text(self, body: str, summary: str | None) -> str:
+        """The effective text the passage embedder receives (f7 §5c).
+
+        ``body+summary`` folds the summary in front (``summary\\n\\nbody``) so the
+        vector captures the distilled editorial signal; a missing/blank summary
+        honestly falls back to the body alone (never a fabricated text).
+        """
+        if self._embed_mode == "body+summary" and summary and summary.strip():
+            return f"{summary.strip()}\n\n{body}"
+        return body
+
     def _index(
         self,
         ep_id: str,
@@ -79,7 +103,8 @@ class RetrievalIndexer:
         summary: str | None,
         subject: str | None,
     ) -> None:
-        vecs = self._embed_safe(ep_id, body)
+        text = self._embed_text(body, summary)
+        vecs = self._embed_safe(ep_id, text)
         if vecs is None:
             return
         blob = np.asarray(vecs[0], dtype=np.float32).tobytes()
@@ -91,7 +116,7 @@ class RetrievalIndexer:
                 blob,
                 dim=identity.dim,
                 model_identity=identity.cache_key(),
-                content_hash=_content_hash(body, "passage"),
+                content_hash=_content_hash(text, "passage"),
                 embedded_at=now,
             )
             self._fts_repo.upsert(
@@ -104,9 +129,9 @@ class RetrievalIndexer:
                 )
             )
 
-    def _embed_safe(self, ep_id: str, body: str) -> Any | None:
+    def _embed_safe(self, ep_id: str, text: str) -> Any | None:
         try:
-            return run_coroutine(self._embedder.embed([body], "passage"))
+            return run_coroutine(self._embedder.embed([text], "passage"))
         except Exception:  # noqa: BLE001 — best-effort (ADR-10)
             _logger.warning(
                 "indexer.embed_failed ep_id=%s; episode stays unindexed "

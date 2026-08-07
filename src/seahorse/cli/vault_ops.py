@@ -160,11 +160,14 @@ def _try_build_passage_embedder() -> Embedder | None:
         return None
 
 
-def _run_backfill(vault: Path, storage: Storage) -> str:
+def _run_backfill(vault: Path, storage: Storage, *, embed_mode: str = "body") -> str:
     """M1-B.5: best-effort vec0/FTS backfill over the rebuilt index.
 
-    Returns an honest report line; never raises (the episode_index rebuild is
-    the primary op — the index backfill is derived/best-effort, ADR-10).
+    ``embed_mode`` (F7 enabler (c)) selects the passage text — re-running under
+    ``body+summary`` re-embeds honestly (new content hash → cache miss, f5-16
+    §5.4). Returns an honest report line; never raises (the episode_index
+    rebuild is the primary op — the index backfill is derived/best-effort,
+    ADR-10).
     """
     from seahorse.embeddings.indexer import RetrievalIndexer
     from seahorse.frontmatter.adapter import parse_file
@@ -174,7 +177,8 @@ def _run_backfill(vault: Path, storage: Storage) -> str:
     if embedder is None:
         return "skipped (embedder unavailable)"
     indexer = RetrievalIndexer(
-        embedder, storage.vector, storage.fts, storage.episodes, storage._cm  # noqa: SLF001
+        embedder, storage.vector, storage.fts, storage.episodes, storage._cm,  # noqa: SLF001
+        embed_mode=embed_mode,
     )
     count = 0
     for path in discover_notes(vault):
@@ -190,6 +194,7 @@ def run_index_rebuild(
     *,
     fmt: OutputFormat = "human",
     out: TextIO,
+    embed_mode: str = "body",
 ) -> None:
     """``seahorse index rebuild`` — regenerate the sidecar from the vault.
 
@@ -200,6 +205,10 @@ def run_index_rebuild(
     ADR-10: a non-empty ``skipped`` raises ``CliRebuildConflicts`` (exit 94) —
     NO auto-pick. A parse failure surfaces as ``FrontmatterInvalid`` (Cat A exit
     90) — NO silent skip.
+
+    ``embed_mode`` (F7 enabler (c)) drives the vec0/FTS backfill — reindex under
+    ``body+summary`` to flip F3 vectorial. The ``episode_index`` rebuild itself
+    is embed-mode-independent.
     """
     # Lazy import: frontmatter.rebuild transitively pulls ruamel (via
     # frontmatter.adapter). Importing it at module top would leak ruamel into
@@ -220,7 +229,7 @@ def run_index_rebuild(
             secondary_index_wipes=(vec_wipe, fts_wipe),
         )
         # M1-B.5: best-effort vec0/FTS backfill over the rebuilt index.
-        backfill = _run_backfill(config.vault, storage)
+        backfill = _run_backfill(config.vault, storage, embed_mode=embed_mode)
     finally:
         storage.close()
     conflicts = [asdict(c) for c in report.skipped]
