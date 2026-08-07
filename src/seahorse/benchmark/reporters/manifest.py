@@ -91,16 +91,24 @@ class RunManifest:
     run_errors: list[str] = field(default_factory=list)  # skipped instance_ids (f5-16 §8.3)
 
 
+def _manifest_data(manifest: RunManifest) -> dict:
+    """Canonical dict form, with the derived ``run_id`` injected into the
+    fingerprint section (the spec's manifest JSON includes it, f5-16 §6.4)."""
+    data = _canonical(asdict(manifest))
+    data["fingerprint"]["run_id"] = manifest.fingerprint.run_id
+    return data
+
+
 def write_manifest(manifest: RunManifest, path: Path) -> None:
     """Canonical serialization: sort_keys=True, indent=2, UTF-8, LF.
 
     The fingerprint section is byte-identical between identical runs. The
     round-trip assertion verifies the ACTUAL nested structure (f5-16 §5.5 F6).
     """
-    canonical = _canonical(asdict(manifest))
-    content = json.dumps(canonical, sort_keys=True, indent=2, ensure_ascii=False)
+    data = _manifest_data(manifest)
+    content = json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False)
     path.write_text(content, encoding="utf-8")
-    assert json.loads(path.read_text("utf-8")) == canonical
+    assert json.loads(path.read_text("utf-8")) == data
 
 
 __all__ = ["PinningFingerprint", "ExecutionMetadata", "RunManifest", "write_manifest"]
