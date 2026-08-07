@@ -66,6 +66,15 @@ embeddings = [
 llm = [
     "litellm>=1.0",
 ]
+# #16 LMEB Benchmark Skeleton (f5-16): the harness's own deps live HERE, never
+# in the core. `datasets` (HuggingFace loader for LongMemEval-S) and `tiktoken`
+# (real token counting) are imported lazily inside the benchmark package, so
+# `import seahorse.benchmark` stays importable without this extra. Install with
+# `uv sync --extra dev --extra benchmark`.
+benchmark = [
+    "datasets>=3.0",
+    "tiktoken>=0.7",
+]
 
 [build-system]
 requires = ["hatchling"]

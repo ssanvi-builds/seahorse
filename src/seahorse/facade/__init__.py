@@ -7,6 +7,8 @@ symbols the facade surface needs, and ``MemoryFacade`` itself. #13 (MCP) and
 
 from __future__ import annotations
 
+from seahorse.contracts.engine import WriteResult
+from seahorse.contracts.episode import Episode
 from seahorse.disclosure.types import (
     TOP_K,
     FullBatchTooLarge,
@@ -76,6 +78,10 @@ __all__ = [
     "FullBatchTooLarge",
     "PitFullNotSupported",
     "NotInMVP0",
+    # return types of #12 primitives (canonical for #16 benchmark skeleton —
+    # the skeleton imports ONLY from seahorse.facade, delegation purity f5-16 §2.4)
+    "WriteResult",
+    "Episode",
     # id generation re-exported so #14 (CLI) does not reach into #2 (engine)
     # directly — the facade is the only seam (f5-14 §1, §2.3 uuid_extensions).
     "new_uuid7",
