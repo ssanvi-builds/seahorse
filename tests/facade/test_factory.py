@@ -268,6 +268,89 @@ class TestEmbedModeSlot:
             self._hybrid(monkeypatch, tmp_path, embed_mode="bogus")
 
 
+class TestPassageEmbedderSlot:
+    """F7 experiment seam — ``build_facade`` accepts a ``passage_embedder`` override.
+
+    The synthetic experiment (mechanical CI verification, f7 §5) needs a
+    deterministic passage embedder; the composition-root seam keeps the wiring
+    honest (no monkeypatching). Default None keeps the auto-resolved fastembed
+    path. The indexer stores the override; the retriever's query seam is derived
+    over it (same async→sync adapter as the real path).
+    """
+
+    def test_passage_embedder_override_reaches_indexer_and_query_seam(
+        self, tmp_path
+    ) -> None:
+        from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder
+        from seahorse.facade.hybrid_retriever import HybridRetriever
+
+        facade, storage = build_facade(
+            tmp_path / "f.db",
+            retrieval_available=True,
+            passage_embedder=_FakeAsyncEmbedder(),
+        )
+        try:
+            assert isinstance(facade._retriever, HybridRetriever)
+            # The write-path indexer embeds with the injected passage embedder.
+            assert facade._write_path._indexer._embedder is not None  # noqa: SLF001
+            # The query seam is the async→sync adapter over the same embedder.
+            assert isinstance(facade._retriever._embedder, AsyncToSyncQueryEmbedder)  # noqa: SLF001
+        finally:
+            storage.close()
+
+    def test_default_resolves_fastembed_path(self, monkeypatch, tmp_path) -> None:
+        # passage_embedder=None keeps the auto-resolution (fastembed extra) —
+        # the existing `_build_passage_embedder` seam.
+        import seahorse.facade.factory as factory
+
+        captured: dict = {}
+        monkeypatch.setattr(
+            factory,
+            "_build_passage_embedder",
+            lambda: captured.setdefault("called", True) or _FakeAsyncEmbedder(),
+        )
+        build_facade(
+            tmp_path / "f.db", retrieval_available=True, embedder=_QueryEmbedder384()
+        )
+        assert captured.get("called") is True
+
+
+class TestImproveIndexesSuccessor:
+    """F7 experiment enabler — the hybrid composition root indexes the successor.
+
+    ``improve`` writes the new version via ``engine.improve`` (NOT #5); without
+    an index hook the successor never reaches vec0/FTS, so hybrid recall cannot
+    recover it and ``knowledge_update_accuracy`` (f5-16 §4.6) would be 0. The
+    factory wires ``on_episode_improved`` to the write-path indexer.
+    """
+
+    def test_hybrid_facade_indexes_improve_successor(self, monkeypatch, tmp_path) -> None:
+        import seahorse.facade.factory as factory
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
+        clock, _ = _controllable_clock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        facade, storage = build_facade(
+            tmp_path / "f.db",
+            embedder=_QueryEmbedder384(),
+            retrieval_available=True,
+            clock=clock,
+        )
+        try:
+            old = facade.remember(
+                RememberPayload(body="The capital of France is Paris", by=_agent_by())
+            )
+            new_ep = facade.improve(
+                old.ep_id, "The capital of France is now Lyon", by=_agent_by()
+            )
+            # The successor is now retrievable via the hybrid path (indexed).
+            rows = facade.recall("capital of France", k=5)
+            assert any(r.ep_id == new_ep.id for r in rows), (
+                "the improve successor must be retrievable post-index"
+            )
+        finally:
+            storage.close()
+
+
 class TestEmbedderSlot:
     """C8.4 — ``build_facade`` gains an ``embedder`` slot (composition-root seam).
 

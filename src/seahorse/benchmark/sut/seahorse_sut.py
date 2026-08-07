@@ -23,7 +23,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from seahorse.benchmark.contracts import SUTResponse
+from seahorse.disclosure.types import PITPoint
 from seahorse.facade import MemoryFacade
+from seahorse.facade.errors import PitRecallNotSupportedMVP0
 from seahorse.facade.types import Provenance, RememberPayload
 
 _MIN_DT = datetime.min.replace(tzinfo=UTC)
@@ -143,7 +145,7 @@ class SeahorseSUT:
         ``len*50``. ``retrieved_session_ids`` is resolved via the ep_id bridge.
         """
         t0 = time.perf_counter()
-        index_rows = self._facade.recall(question, k=self._top_k)
+        index_rows = self._recall(question, question_date)
         latency_index = (time.perf_counter() - t0) * 1000
         retrieved_ep_ids = tuple(r.ep_id for r in index_rows)
         retrieved_fact_ids = tuple(r.fact_id for r in index_rows)
@@ -178,6 +180,25 @@ class SeahorseSUT:
             else:
                 self._detected_score_source = self._score_source
         return self._detected_score_source
+
+    def _recall(self, question: str, question_date: datetime | None) -> Any:
+        """#12.recall with the temporal PIT when the question anchors a date.
+
+        f5-16 §3.4: temporal-reasoning questions evaluate with
+        ``pit=state_at(question_date)`` in temporal mode, so the state as-of-the-
+        question is what gets ranked (the old version, pre-update). Honest
+        degrade (ADR-10): a regime without a PIT axis (G2, ADR-03) raises
+        ``PitRecallNotSupportedMVP0`` from #12 → fall back to active-now, never
+        crash the run.
+        """
+        if self._temporal_mode and question_date is not None:
+            try:
+                return self._facade.recall(
+                    question, k=self._top_k, pit=PITPoint(kind="state_at", t=question_date)
+                )
+            except PitRecallNotSupportedMVP0:
+                pass  # honest G2 degrade → active-now below
+        return self._facade.recall(question, k=self._top_k)
 
     @staticmethod
     def _format_index_rows(rows) -> str:

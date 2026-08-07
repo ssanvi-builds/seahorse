@@ -53,6 +53,7 @@ def build_facade(
     llm_client: LLMClient | None = None,
     recency: RecencyConfig | None = None,
     embed_mode: str = "body",
+    passage_embedder: Any | None = None,
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
 
@@ -92,6 +93,11 @@ def build_facade(
     the vector). Validated at the boundary (fail-fast); propagated to the
     ``RetrievalIndexer`` (single-point swap for the F3 reindex experiment,
     f7-experimental-design §5(c)).
+
+    The ``passage_embedder`` slot (F7 experiment seam) overrides the auto-
+    resolved fastembed backend with a deterministic embedder (the synthetic
+    mechanical verification in CI). When None, ``_build_passage_embedder``
+    resolves the real backend exactly as before.
     """
     if embed_mode not in EMBED_MODES:
         raise ValueError(
@@ -105,7 +111,7 @@ def build_facade(
     clk = clock or _default_clock
     cfg = config or FacadeConfig()
     retriever: Any  # HybridRetriever (retrieval) or VigenteListingRetriever (G2)
-    retrieval = _resolve_retrieval(embedder, retrieval_available)
+    retrieval = _resolve_retrieval(embedder, retrieval_available, passage_embedder)
     if retrieval is not None:
         query_embedder, passage_embedder = retrieval
         from seahorse.embeddings.indexer import RetrievalIndexer  # lazy: numpy
@@ -139,6 +145,12 @@ def build_facade(
         retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
         write_path = StubWritePath(engine=engine, llm_client=llm_client)
         facade_embedder = embedder
+    # F7 enabler: the hybrid composition root indexes the improve successor
+    # (f5-16 §4.6 knowledge_update_accuracy). improve bypasses #5, so without
+    # this hook the new version never reaches vec0/FTS. G2 wires nothing.
+    on_improve: Callable[[str], None] | None = None
+    if retrieval is not None:
+        on_improve = indexer.index_episode
     facade = MemoryFacade(
         engine=engine,
         write_path=write_path,
@@ -147,24 +159,29 @@ def build_facade(
         clock=clk,
         config=cfg,
         embedder=facade_embedder,
+        on_episode_improved=on_improve,
     )
     return facade, own_storage
 
 
 def _resolve_retrieval(
-    embedder: QueryEmbedder | None, retrieval_available: bool | None
+    embedder: QueryEmbedder | None,
+    retrieval_available: bool | None,
+    passage_embedder: Any | None = None,
 ) -> tuple[Any, Any] | None:
     """Resolve the hybrid regime wiring, or None (honest G2).
 
     Returns ``(query_embedder, passage_embedder)``: the sync query seam the
     retriever calls (the injected one, or an adapter over the async #7
-    embedder) plus the async passage embedder for the write-path indexer.
+    embedder) plus the async passage embedder for the write-path indexer. An
+    explicit ``passage_embedder`` override (F7 experiment seam — deterministic
+    synthetic embedder) replaces the auto-resolved fastembed backend.
     """
     if retrieval_available is False:
         return None
     if os.environ.get("SEAHORSE_EMBEDDING_BACKEND") == "stub":
         return None
-    passage = _build_passage_embedder()
+    passage = passage_embedder if passage_embedder is not None else _build_passage_embedder()
     if passage is None:
         return None  # the 'embeddings' extra is not installed -> G2
     from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder  # lazy

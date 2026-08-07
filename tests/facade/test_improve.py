@@ -131,6 +131,41 @@ class TestImproveLog:
         assert log == [("improve", "updated")]
 
 
+class TestImproveIndexesSuccessor:
+    """F7 experiment enabler — improve must make the successor retrievable.
+
+    f5-16 §4.6: ``knowledge_update_accuracy`` = fraction where the new version
+    post-``improve`` is in top-k. In the hybrid regime the new version is only
+    retrievable if the composition root indexes it — a pure ``engine.improve``
+    write leaves it in the ``episodes`` table but not in vec0/FTS. The facade
+    exposes an optional ``on_episode_improved`` callback (dependency injection —
+    the facade never knows the indexer); the composition root wires it.
+    """
+
+    def test_callback_fires_with_successor_id(self, engine) -> None:
+        from tests.facade.conftest import make_facade as _mf
+
+        fired: list[str] = []
+        f, _log = _mf(on_episode_improved=fired.append)
+        f._engine.improve_result = make_episode("e2")
+        f.improve("e1", "new body", by=_by())
+        assert fired == ["e2"]
+
+    def test_callback_not_fired_without_hook(self, facade, engine) -> None:
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())  # default hook=None → no-op
+
+    def test_callback_not_fired_on_collision(self, engine) -> None:
+        from tests.facade.conftest import make_facade as _mf
+
+        fired: list[str] = []
+        f, _log = _mf(on_episode_improved=fired.append)
+        f._engine.improve_raise = EngineError(E_COLLISION_EXISTS, collisions=["c1"])
+        with pytest.raises(EngineError):
+            f.improve("e1", "new body", by=_by())
+        assert fired == []  # the callback fires only on a successful supersede
+
+
 class TestImproveBoundaryValidation:
     def test_empty_new_body(self, facade) -> None:
         with pytest.raises(SeahorseError) as exc:

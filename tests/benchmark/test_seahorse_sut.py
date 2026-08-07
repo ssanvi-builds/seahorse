@@ -164,3 +164,78 @@ def test_identity_reports_experiment_flags(sut):
     assert ident["recency_config"] is None
     assert ident["rerank_enabled"] is False
     assert ident["embed_mode"] == "body"
+
+
+# --------------------------------------------------------- PIT temporal-reasoning
+
+def test_query_passes_state_at_pit_in_temporal_mode(sut):
+    """f5-16 §3.4: temporal-reasoning questions evaluate with ``state_at`` PIT."""
+    from seahorse.disclosure.types import PITPoint
+
+    calls: list = []
+
+    class _SpyFacade:
+        def recall(self, query, *, pit=None, k=10, **kwargs):
+            calls.append(pit)
+            return []
+
+    temporal = SeahorseSUT(
+        _SpyFacade(),
+        lambda: _SpyFacade(),
+        reader_llm=FakeReaderLLM(),
+        tokenizer=FakeTokenizer(),
+        fact_id_to_session={},
+        temporal_mode=True,
+    )
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    temporal.query("What was the capital on day 1?", question_date=d)
+    assert calls == [PITPoint(kind="state_at", t=d)]
+
+
+def test_query_no_pit_without_question_date(sut):
+    calls: list = []
+
+    class _SpyFacade:
+        def recall(self, query, *, pit=None, k=10, **kwargs):
+            calls.append(pit)
+            return []
+
+    temporal = SeahorseSUT(
+        _SpyFacade(),
+        lambda: _SpyFacade(),
+        reader_llm=FakeReaderLLM(),
+        tokenizer=FakeTokenizer(),
+        fact_id_to_session={},
+        temporal_mode=True,
+    )
+    temporal.query("What is the capital?")  # no question_date
+    assert calls == [None]
+
+
+def test_query_falls_back_without_pit_when_unsupported(sut):
+    """G2 (no PIT axis, ADR-03): honest degrade to active-now, no crash."""
+    from seahorse.disclosure.types import PITPoint
+    from seahorse.facade.errors import PitRecallNotSupportedMVP0
+
+    calls: list = []
+
+    class _G2Facade:
+        supports_pit = False
+
+        def recall(self, query, *, pit=None, k=10, **kwargs):
+            calls.append(pit)
+            if pit is not None:
+                raise PitRecallNotSupportedMVP0()
+            return []
+
+    temporal = SeahorseSUT(
+        _G2Facade(),
+        lambda: _G2Facade(),
+        reader_llm=FakeReaderLLM(),
+        tokenizer=FakeTokenizer(),
+        fact_id_to_session={},
+        temporal_mode=True,
+    )
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    temporal.query("What was the capital on day 1?", question_date=d)
+    assert calls == [PITPoint(kind="state_at", t=d), None]  # pit attempt + fallback

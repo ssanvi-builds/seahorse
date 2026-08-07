@@ -188,6 +188,7 @@ class MemoryFacade:
         config: FacadeConfig | None = None,
         primitive_log: Callable[[str, str], None] | None = None,
         embedder: QueryEmbedder | None = None,
+        on_episode_improved: Callable[[str], None] | None = None,
     ) -> None:
         self._engine = engine
         self._write_path = write_path
@@ -201,6 +202,12 @@ class MemoryFacade:
         # default stub raises E_NOT_IN_MVP_0 if a non-skip path invokes it. MVP-1
         # swaps in the real #7 adapter here — a single-point change.
         self._embedder: QueryEmbedder = embedder if embedder is not None else StubQueryEmbedder()
+        # F7 enabler — post-``improve`` index hook (dependency injection, the
+        # facade never knows the indexer). ``improve`` bypasses #5 (manual
+        # supersede edit), so the successor would never reach vec0/FTS and the
+        # hybrid recall could not recover it (f5-16 §4.6 knowledge_update_accuracy
+        # = 0). The composition root wires this to the write-path indexer.
+        self._on_episode_improved = on_episode_improved
 
     # ------------------------------------------------------------------ now
 
@@ -375,6 +382,11 @@ class MemoryFacade:
         result = self._engine.improve(
             ep_id, new_body, by=effective_by, valid_at=valid_at, reason=reason, now=self._now(now)
         )
+        # F7 enabler: index the successor so the hybrid recall can recover the
+        # new version (fires ONLY on success — a collision raises above). The
+        # G2 regime wires no hook → honest no-op.
+        if self._on_episode_improved is not None:
+            self._on_episode_improved(result.id)
         self._log("improve", "updated")
         return result
 
