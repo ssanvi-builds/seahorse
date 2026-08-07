@@ -40,9 +40,41 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     runs each variant via `EvaluationRunner`, writes per-variant manifest
     artifacts, applies the decision) + CLI `seahorse benchmark experiment
     --experiment recency|embed --corpus synthetic|lmeb-s [--temporal]`.
-  - **1859 tests / ruff+mypy clean.** The authoritative F1/F3 decision is the
-    LMEB-S run (pending: `uv sync --extra dev --extra benchmark --extra
-    embeddings`).
+  - **1859 tests / ruff+mypy clean.**
+- **F7 LMEB-S run (a)(c) — authoritative F1/F3 decision (2026-08-07)**.
+  - **Warm-DB shared ingest**: variants that embed the same text share ONE
+    corpus ingest (recency = 10 variants over identical embeddings; fresh-DB
+    would re-embed ~49M tokens × 10 ≈ 28h, warm-DB ≈ 2 ingests). The template
+    DB is copied per variant (fast) and the SUT re-attaches the bridge
+    (`skip_ingest`); variant clocks seed from the template's post-ingest
+    position so the recency boost reads the same `now` vs `created_at` spread
+    (bit-identical metrics vs fresh-DB, verified by test).
+  - **Retrieval-only pass**: `StubReaderLLM` + `--retrieval-only` — the F1/F3
+    decision metrics (recall@10/ndcg@10) never consume the reader's answer
+    (f5-16 §4.4 honest floor), so a retrieval-only run gives identical decision
+    numbers with zero Ollama cost.
+  - **Correctness fixes the real run surfaced**: LMEB loader broken under
+    pyarrow 25 (`OverflowError` int32 on the mixed-type `/answer` column) →
+    stdlib-json prematerialization via `hf_hub_download` (no
+    `trust_remote_code`); real LMEB row shape (parallel session arrays) +
+    `parse_date` for `YYYY/MM/DD (Weekday) HH:MM`; skip-path title derivation
+    for conversational turns + empty-turn filter; clock delta derived from the
+    haystack date spread (fixed 1-day-per-write made `created_at` span 547
+    years); `SeahorseSUT.pit_queries=False` + non-temporal ingestion so the
+    recency boost (gate `pit is None`) actually fires; nDCG dedup for repeated
+    golden sessions (was >1.0); fastembed idempotent registration (warm-DB
+    variant facades silently degraded to G2); `HybridRetriever` top_k cap
+    parity with G2.
+  - **Decisions (subsampled LMEB-S, 100/500 questions balanced — full corpus
+    ingests ~2.2h/template + FTS5 hang; honest label `subsampled_lmeb_s`)**:
+    **F1 `keep_off`** — the recency boost is applied (ndcg@10 varies
+    0.390-0.398) but does not change the top-10 set (recall@10 identical 0.467;
+    slices tr=0.372/ku=0.717); F1 stays default-off. **F3 `flip_f3`** — LMEB
+    episodes DO have summaries (derived by `deterministic_extract` first
+    sentence); `body+summary` embeds `summary\n\nbody` → recall@10 +2.7%
+    (0.467→0.494) ≥1% threshold; flip F3 vectorial via `seahorse index rebuild
+    --embed-mode body+summary`.
+  - **1876 tests / ruff+mypy clean (144 src files).**
 - **F7 skeleton #16 — LMEB benchmark harness (MVP-1 scope, f5-16 §7.1)** —
   `seahorse/benchmark/`: contracts + config (`BenchmarkConfig.validate()`
   rejects `reader_model == judge_model`), metrics (Recall@k, nDCG@k binary,
