@@ -66,9 +66,38 @@ from seahorse.benchmark.sut.seahorse_sut import SeahorseSUT
 from seahorse.facade import build_facade
 from seahorse.retrieval.recency import RecencyConfig
 
-# One day per clock call: created_at spans the haystack dates, giving the F1
-# recency boost a meaningful age spread (f5-16 §3.5 U5).
+# Fallback clock delta (1 day) when the dataset has no usable date spread.
 _CLOCK_DELTA_DAYS = 86400.0
+
+
+def _clock_delta_seconds(dataset: BenchmarkDataset) -> float:
+    """Delta per write so ``created_at`` spans the haystack's REAL date range.
+
+    The ``AdvancingClock`` is called once per write. A fixed 1-day delta would
+    make ``created_at`` span ``N_writes`` days — 547 years for LMEB's 199K
+    turns — so the recency boost's ``age = now - created_at`` would be
+    meaningless (every episode ancient → factor ≈ 1). Deriving the delta from
+    the deduped session-date spread keeps the boost's age in the corpus's
+    actual time range (f5-16 §3.5 U5: "la diferencia real entre sesiones").
+    """
+    seen: set[str] = set()
+    dates: list[datetime] = []
+    n_turns = 0
+    for inst in dataset.instances:
+        for session in inst.haystack:
+            sid = session["session_id"]
+            if sid in seen:
+                continue
+            seen.add(sid)
+            if session.get("date") is not None:
+                dates.append(session["date"])
+            n_turns += len(session.get("turns", []))
+    if not dates or n_turns <= 0:
+        return _CLOCK_DELTA_DAYS
+    span = (max(dates) - min(dates)).total_seconds()
+    if span <= 0:
+        return _CLOCK_DELTA_DAYS
+    return span / n_turns
 
 
 @dataclass(frozen=True)
@@ -201,7 +230,7 @@ def _build_template(
     """
     template_dir = Path(tempfile.mkdtemp(prefix="seahorse-template-"))
     clock = AdvancingClock(
-        base=earliest_session_date(dataset), delta_seconds=_CLOCK_DELTA_DAYS
+        base=earliest_session_date(dataset), delta_seconds=_clock_delta_seconds(dataset)
     )
     build = _facade_factory(corpus, clock, _template_variant(embed_mode))
     facade, storage = build(template_dir / "bench.db")
@@ -235,7 +264,7 @@ def _build_template(
         db_path=template_dir / "bench.db",
         bridge=bridge,
         clock_base=clock_base,
-        clock_delta=_CLOCK_DELTA_DAYS,
+        clock_delta=_clock_delta_seconds(dataset),
     )
 
 
@@ -282,6 +311,7 @@ def run_experiment(
     reader_llm=None,
     warm_db: bool = True,
     template_cache: dict | None = None,
+    pit_queries: bool = True,
 ) -> ExperimentReport:
     """Run an F7 experiment and return the report with the decision verdict.
 
@@ -334,6 +364,7 @@ def run_experiment(
                     tokenizer=tokenizer,
                     registry=registry,
                     template_cache=cache,
+                    pit_queries=pit_queries,
                 )
             )
 
@@ -363,6 +394,7 @@ def _run_variant(
     tokenizer: Tokenizer,
     registry: MetricRegistry,
     template_cache: dict | None = None,
+    pit_queries: bool = True,
 ) -> ExperimentResult:
     """Run one variant through the ``EvaluationRunner`` and collect the metrics.
 
@@ -399,15 +431,19 @@ def _run_variant(
             )
             template_cache[key] = template
 
-    clock = AdvancingClock(base=earliest_session_date(dataset), delta_seconds=_CLOCK_DELTA_DAYS)
+    clock = AdvancingClock(
+        base=earliest_session_date(dataset), delta_seconds=_clock_delta_seconds(dataset)
+    )
     if template is not None:
         clock = AdvancingClock(base=template.clock_base, delta_seconds=template.clock_delta)
     build = _facade_factory(corpus, clock, variant)
     db_dir = tmp / variant.name
     db_dir.mkdir(parents=True, exist_ok=True)
     if template is not None:
+        # The variant queries the copied corpus DB; ``bench2.db`` stays a fresh
+        # empty DB (build_facade creates it) — the SUT's ``reset()`` semantics
+        # (start over) are preserved and no ~1GB copy is wasted per variant.
         shutil.copy2(template.db_path, db_dir / "bench.db")
-        shutil.copy2(template.db_path, db_dir / "bench2.db")
     out_dir = output_dir / variant.name
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -429,6 +465,7 @@ def _run_variant(
                 dict(template.bridge["fact_id_to_session"]) if template else {}
             ),
             temporal_mode=variant_config.temporal_mode,
+            pit_queries=pit_queries,
             top_k=variant_config.top_k,
             score_source=variant_config.score_source,
             recency_config=variant_config.recency_config,

@@ -46,6 +46,7 @@ class SeahorseSUT:
         top_k: int = 10,
         enable_progressive_disclosure: bool = False,
         temporal_mode: bool = False,
+        pit_queries: bool = True,
         score_source: str = "mvp1_rrf",
         recency_config: dict | None = None,
         rerank_enabled: bool = False,
@@ -61,6 +62,7 @@ class SeahorseSUT:
         self._top_k = top_k
         self._enable_pd = enable_progressive_disclosure
         self._temporal_mode = temporal_mode
+        self._pit_queries = pit_queries
         self._score_source = score_source
         self._recency_config = recency_config
         self._rerank_enabled = rerank_enabled
@@ -194,8 +196,13 @@ class SeahorseSUT:
         degrade (ADR-10): a regime without a PIT axis (G2, ADR-03) raises
         ``PitRecallNotSupportedMVP0`` from #12 → fall back to active-now, never
         crash the run.
+
+        ``pit_queries=False`` (F7 §5a recency): the recency boost's gate is
+        ``pit is None`` — the recency experiment queries the active-now regime
+        even in temporal mode, so the boost is actually testable (all LMEB
+        questions carry a question_date, which would otherwise PIT every query).
         """
-        if self._temporal_mode and question_date is not None:
+        if self._temporal_mode and self._pit_queries and question_date is not None:
             try:
                 return self._facade.recall(
                     question, k=self._top_k, pit=PITPoint(kind="state_at", t=question_date)

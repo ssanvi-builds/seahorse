@@ -362,7 +362,10 @@ class TestEmbedderSlot:
     """
 
     def test_default_wires_stub_embedder(self, tmp_path) -> None:
-        facade, storage = build_facade(tmp_path / "f.db")
+        # G2 regime forced explicitly: with the ``embeddings`` extra installed the
+        # default auto-resolves the hybrid retrieval (real embedder), so the
+        # MVP-0 stub behavior is pinned via ``retrieval_available=False``.
+        facade, storage = build_facade(tmp_path / "f.db", retrieval_available=False)
         try:
             assert isinstance(facade._embedder, StubQueryEmbedder)
             assert isinstance(facade._embedder, QueryEmbedder)
@@ -379,7 +382,7 @@ class TestEmbedderSlot:
             storage.close()
 
     def test_default_stub_raises_not_in_mvp_0_if_invoked(self, tmp_path) -> None:
-        facade, storage = build_facade(tmp_path / "f.db")
+        facade, storage = build_facade(tmp_path / "f.db", retrieval_available=False)
         try:
             with pytest.raises(SeahorseError) as excinfo:
                 facade._embedder.embed_query("x")
@@ -393,7 +396,9 @@ class TestEmbedderSlot:
         # present but inert. MVP-1 swaps the retriever to the hybrid adapter that
         # DOES call it (single-point change at this composition root).
         embedder = _RecordingEmbedder()
-        facade, storage = build_facade(tmp_path / "f.db", embedder=embedder)
+        facade, storage = build_facade(
+            tmp_path / "f.db", embedder=embedder, retrieval_available=False
+        )
         try:
             facade.remember(RememberPayload(body="Sergio lives in Madrid", by=_agent_by()))
             facade.recall("madrid")

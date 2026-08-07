@@ -304,6 +304,19 @@ def test_warm_db_embed_reuses_body_template(tmp_path):
     assert any(k[1] == "body+summary" for k in cache)
 
 
+def test_clock_delta_spans_real_date_range(synthetic_dataset):
+    """The AdvancingClock delta is derived from the haystack's real date spread
+    (span / deduped turns), NOT a fixed 1-day-per-write — a fixed delta would
+    make created_at span N_writes days (547 years for LMEB's 199K turns) and
+    the recency boost's age would be meaningless (f7 §5a)."""
+    from seahorse.benchmark.experiments.runner import _clock_delta_seconds
+
+    delta = _clock_delta_seconds(synthetic_dataset)
+    # 3 deduped sessions spanning 2026-01-01..01-03 (2 days) → 16h per write.
+    assert delta == pytest.approx(57600.0)
+    assert delta < 86400.0  # strictly less than the old fixed 1-day delta
+
+
 def test_experiments_and_corpora_constants():
     assert set(EXPERIMENTS) == {"recency", "embed"}
     assert set(CORPORA) == {"synthetic", "lmeb-s"}

@@ -69,9 +69,13 @@ class HybridRetriever:
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
     ) -> Sequence[FusedCandidate]:
+        # Parity with the G2 retriever (``k_eff = min(k, config.top_k)``): the
+        # config's ``top_k`` (e.g. the MCP ``seahorse.toml``) caps the hybrid
+        # path too — surfaced when the embeddings extra wired the hybrid regime.
+        k_eff = min(k, self._config.top_k)
         if self._can_serve():
             try:
-                return self._hybrid(query, pit, k, cognitive_type, subject_filter)
+                return self._hybrid(query, pit, k_eff, cognitive_type, subject_filter)
             except PitRecallNotSupportedMVP0:
                 raise
             except Exception:
@@ -80,8 +84,8 @@ class HybridRetriever:
                 _logger.warning(
                     "hybrid recall degraded to G2 (query=%r)", query, exc_info=True
                 )
-                return self._g2(query, pit, k, cognitive_type, subject_filter)
-        return self._g2(query, pit, k, cognitive_type, subject_filter)
+                return self._g2(query, pit, k_eff, cognitive_type, subject_filter)
+        return self._g2(query, pit, k_eff, cognitive_type, subject_filter)
 
     def _can_serve(self) -> bool:
         try:

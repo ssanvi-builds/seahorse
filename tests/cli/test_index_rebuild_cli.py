@@ -138,8 +138,13 @@ def test_index_verify_still_reserved_exit_75(tmp_path, vault):
 # --- M1-B.5: vector/FTS backfill over the rebuilt index ----------------------
 
 
-def test_index_rebuild_backfill_skipped_without_embedder(tmp_path, vault):
-    # The default `uv sync --extra dev` has no fastembed -> honest skip (G2).
+def test_index_rebuild_backfill_skipped_without_embedder(monkeypatch, tmp_path, vault):
+    # No embedder available -> honest skip (G2). Forced explicitly: with the
+    # ``embeddings`` extra installed the real fastembed backend resolves, so the
+    # unavailable path is pinned via a None embedder.
+    import seahorse.cli.vault_ops as vo
+
+    monkeypatch.setattr(vo, "_try_build_passage_embedder", lambda: None)
     _write_note(vault, "madrid", ep_id=_uuid7("01"))
     code, out, err = invoke(["--vault", str(vault), "--json", "index", "rebuild"])
     assert code == 0, err

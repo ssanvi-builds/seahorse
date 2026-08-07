@@ -130,14 +130,24 @@ def build_fastembed_embedder(
     # fastembed >=0.8 requires a ModelSource dataclass (dict shorthand broke in
     # 0.8.0: model_management reads model.sources.hf). ModelSource exists with
     # the same shape across the declared >=0.6.0 range.
-    TextEmbedding.add_custom_model(
-        model=MODEL_NAME,
-        pooling=PoolingType.MEAN,
-        normalization=True,
-        sources=ModelSource(hf=MODEL_NAME),
-        dim=DIM,
-        model_file=MODEL_FILE,
-    )
+    #
+    # Idempotent registration: ``add_custom_model`` raises "already registered"
+    # on a second call in the same process. The F7 warm-DB experiment builds a
+    # facade per variant (each calls this), so the second+ calls must reuse the
+    # registered model instead of failing (which would silently degrade the
+    # hybrid regime to G2 via ``_build_passage_embedder``'s swallow).
+    try:
+        TextEmbedding.add_custom_model(
+            model=MODEL_NAME,
+            pooling=PoolingType.MEAN,
+            normalization=True,
+            sources=ModelSource(hf=MODEL_NAME),
+            dim=DIM,
+            model_file=MODEL_FILE,
+        )
+    except ValueError as exc:
+        if "already registered" not in str(exc):
+            raise
     model = TextEmbedding(model_name=MODEL_NAME)
     identity = ModelIdentity(
         backend="fastembed",

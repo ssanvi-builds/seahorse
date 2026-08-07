@@ -75,6 +75,16 @@ def test_ndcg_at_k_binary_relevance():
     assert abs(result.report.global_value - expected) < 1e-6
 
 
+def test_ndcg_at_k_dedupes_recovered_sessions():
+    """A golden session appearing multiple times in the top-k (multiple episodes
+    from the same session) must be counted ONCE — otherwise DCG overcounts and
+    nDCG exceeds 1.0 (surfaced by the LMEB-S run: ndcg@10 = 1.136)."""
+    inst = _inst("q1", ["s1"])
+    resp = _resp(["s1", "s1", "s1", "s1", "s1", "s1", "s1", "s1", "s1", "s1"])
+    result = NDCGAtK().compute([inst], [resp], BenchmarkConfig())
+    assert abs(result.report.global_value - 1.0) < 1e-9
+
+
 def test_ndcg_at_k_perfect_is_one():
     inst = _inst("q1", ["s1", "s2"])
     resp = _resp(["s1", "s2"])

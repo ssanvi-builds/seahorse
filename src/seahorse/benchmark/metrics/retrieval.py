@@ -121,7 +121,11 @@ class NDCGAtK:
             relevant = set(inst.golden_session_ids)
             if not relevant:
                 continue
-            recovered = resp.retrieved_session_ids[:k]
+            # Dedupe preserving order: multiple episodes from the same session
+            # (the ep_id→session bridge maps them to one session_id) must count
+            # ONCE — otherwise DCG overcounts and nDCG exceeds 1.0 (surfaced by
+            # the LMEB-S run: ndcg@10 = 1.136).
+            recovered = list(dict.fromkeys(resp.retrieved_session_ids[:k]))
             dcg = sum(
                 1.0 / math.log2(i + 2) for i, sid in enumerate(recovered) if sid in relevant
             )

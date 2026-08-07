@@ -64,7 +64,7 @@ class _Fallback:
         return []
 
 
-def _make(*, vec_count=3, fts_count=3, dim=384, fallback=None) -> HybridRetriever:
+def _make(*, vec_count=3, fts_count=3, dim=384, fallback=None, config=None) -> HybridRetriever:
     return HybridRetriever(
         embedder=_Emb(dim),
         vector_repo=_Vec(vec_count),
@@ -72,7 +72,7 @@ def _make(*, vec_count=3, fts_count=3, dim=384, fallback=None) -> HybridRetrieve
         episode_repo=_Ep(),
         graph_repo=_Graph(),
         clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
-        config=FacadeConfig(),
+        config=config or FacadeConfig(),
         fallback=fallback or _Fallback(),
     )
 
@@ -112,6 +112,24 @@ def test_hybrid_recall_delegates_to_retrieval_engine(monkeypatch) -> None:
     assert kw["hops"] == 1
     assert kw["bfs_as_index_enabled"] is False
     assert kw["bfs_known_at_supported"] is False
+
+
+def test_hybrid_recall_caps_k_at_config_top_k(monkeypatch) -> None:
+    """Parity with the G2 retriever: k is capped at ``config.top_k`` (the MCP
+    ``seahorse.toml`` top_k must be honored by the hybrid path too — surfaced
+    when the embeddings extra wired the hybrid regime)."""
+    import seahorse.retrieval.engine as re_mod
+
+    calls: list[tuple[str, dict]] = []
+
+    def fake_recall(query: str, **kwargs):
+        calls.append((query, kwargs))
+        return [FusedCandidate(ep_id="e1", score=1.0, sources=("vector",))]
+
+    monkeypatch.setattr(re_mod, "recall", fake_recall)
+    hybrid = _make(config=FacadeConfig(top_k=2))
+    hybrid.recall("madrid", pit=None, k=10)
+    assert calls[0][1]["k"] == 2
 
 
 def test_hybrid_degrades_to_g2_when_no_index_data() -> None:

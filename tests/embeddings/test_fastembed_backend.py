@@ -116,3 +116,15 @@ def test_build_fastembed_embedder_real(gate_model_tests) -> None:
     mid = embedder.model_identity()
     assert mid.model_name == "intfloat/multilingual-e5-small"
     assert mid.backend == "fastembed"
+
+
+def test_build_fastembed_embedder_idempotent(gate_model_tests) -> None:
+    # F7 warm-DB: a facade is built per variant, each calling this — the second
+    # call must reuse the registered model, not raise "already registered"
+    # (which would silently degrade the hybrid regime to G2).
+    from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
+
+    e1 = build_fastembed_embedder()
+    e2 = build_fastembed_embedder()
+    assert e1.dim == e2.dim == 384
+    assert e1.model_identity().model_name == e2.model_identity().model_name

@@ -13,12 +13,16 @@ from tests.benchmark.conftest import FakeReaderLLM, FakeTokenizer
 
 @pytest.fixture
 def sut(tmp_path, fake_reader, fake_tokenizer):
-    """A SeahorseSUT over a real G2 facade (no embeddings needed)."""
+    """A SeahorseSUT over a real G2 facade (no embeddings needed).
+
+    ``retrieval_available=False`` forces the G2 regime explicitly — with the
+    ``embeddings`` extra installed the default auto-resolves the hybrid path.
+    """
     db = tmp_path / "bench.db"
-    facade, storage = build_facade(db)
+    facade, storage = build_facade(db, retrieval_available=False)
     sut = SeahorseSUT(
         facade,
-        lambda: build_facade(tmp_path / "bench2.db")[0],
+        lambda: build_facade(tmp_path / "bench2.db", retrieval_available=False)[0],
         reader_llm=fake_reader,
         tokenizer=fake_tokenizer,
         fact_id_to_session={},
@@ -210,6 +214,31 @@ def test_query_passes_state_at_pit_in_temporal_mode(sut):
     d = datetime(2026, 1, 1, tzinfo=UTC)
     temporal.query("What was the capital on day 1?", question_date=d)
     assert calls == [PITPoint(kind="state_at", t=d)]
+
+
+def test_query_pit_queries_false_queries_active_now(sut):
+    """F7 §5a: the recency boost's gate is ``pit is None`` — the recency
+    experiment queries the active-now regime (no PIT) even in temporal mode, so
+    the boost is actually testable (all LMEB questions carry a question_date)."""
+    calls: list = []
+
+    class _SpyFacade:
+        def recall(self, query, *, pit=None, k=10, **kwargs):
+            calls.append(pit)
+            return []
+
+    temporal = SeahorseSUT(
+        _SpyFacade(),
+        lambda: _SpyFacade(),
+        reader_llm=FakeReaderLLM(),
+        tokenizer=FakeTokenizer(),
+        fact_id_to_session={},
+        temporal_mode=True,
+        pit_queries=False,
+    )
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    temporal.query("What was the capital on day 1?", question_date=d)
+    assert calls == [None]  # active-now, no PIT → the recency boost can fire
 
 
 def test_query_no_pit_without_question_date(sut):
