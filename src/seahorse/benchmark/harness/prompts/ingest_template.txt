@@ -1,0 +1,5 @@
+# Seahorse benchmark ingest template
+
+The corpus is ingested with extraction_mode=skip (zero LLM, deterministic).
+Each haystack turn is remembered as a markdown note with a derivable subject
+(title or first H1). No LLM is involved in ingestion.
