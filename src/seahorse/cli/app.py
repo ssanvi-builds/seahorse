@@ -456,6 +456,63 @@ def import_cmd(
     )
 
 
+# ``benchmark`` group: ``benchmark run`` / ``benchmark list`` / ``benchmark adapters``.
+benchmark_app = typer.Typer(help="LMEB benchmark harness (#16).")
+app.add_typer(benchmark_app, name="benchmark")
+
+
+@benchmark_app.command("run")
+def benchmark_run_cmd(
+    ctx: typer.Context,
+    adapter: str = typer.Option("lmeb", "--adapter", help="Dataset adapter (e.g. lmeb)."),
+    dataset_config: str = typer.Option("s", "--config", help="Dataset config (e.g. s)."),
+    reader_model: str = typer.Option(
+        "ollama/qwen3:1.7b", "--reader-model", help="Reader LLM (t=0, seed=42)."
+    ),
+    judge_model: str = typer.Option(
+        "ollama/qwen2.5:7b", "--judge-model", help="Judge LLM (family-disjoint from reader)."
+    ),
+    temporal: bool = typer.Option(False, "--temporal", help="Temporal mode (source_type=human)."),
+    output_dir: str = typer.Option("benchmark-output", "--output-dir"),
+    top_k: int = typer.Option(10, "--top-k", "-k"),
+    score_source: str = typer.Option(
+        "mvp1_rrf", "--score-source", help="mvp1_rrf | mvp1_rrf_recency | rrf_rerank."
+    ),
+) -> None:
+    """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
+    from seahorse.benchmark.cli import run_benchmark
+
+    code = run_benchmark(
+        adapter=adapter,
+        dataset_config=dataset_config,
+        reader_model=reader_model,
+        judge_model=judge_model,
+        temporal=temporal,
+        output_dir=output_dir,
+        top_k=top_k,
+        score_source=score_source,
+    )
+    raise typer.Exit(code=code)
+
+
+@benchmark_app.command("list")
+def benchmark_list_cmd(ctx: typer.Context) -> None:
+    """List available dataset adapters."""
+    from seahorse.benchmark.cli import list_benchmarks
+
+    for name in list_benchmarks():
+        typer.echo(name)
+
+
+@benchmark_app.command("adapters")
+def benchmark_adapters_cmd(ctx: typer.Context) -> None:
+    """List available SUT adapters."""
+    from seahorse.benchmark.cli import list_adapters
+
+    for name in list_adapters():
+        typer.echo(name)
+
+
 @app.command()
 def mcp(ctx: typer.Context) -> None:
     """Run the stdio MCP server (io.seahorse.memory/v1) for this vault.
