@@ -25,6 +25,7 @@ from seahorse.benchmark.reporters.markdown_reporter import MarkdownReporter
 from seahorse.benchmark.runner import EvaluationRunner
 from seahorse.benchmark.sut.seahorse_sut import SeahorseSUT
 from seahorse.facade import build_facade
+from seahorse.retrieval.recency import RecencyConfig
 
 
 def _make_registry(tokenizer: Tokenizer) -> MetricRegistry:
@@ -40,6 +41,22 @@ def _make_registry(tokenizer: Tokenizer) -> MetricRegistry:
     return reg
 
 
+def _recency_config(gamma: float | None, half_life_days: float | None) -> dict | None:
+    """Translate the ``--recency-*`` CLI flags to a ``RecencyConfig`` dict.
+
+    Both flags are required together (fail-loud, no silent half-configuration):
+    the F1 recency experiment sweeps γ × half_life as pairs (f7-experimental-design
+    §5(a)). Returns None (pure RRF) when neither flag is set.
+    """
+    if gamma is None and half_life_days is None:
+        return None
+    if gamma is None or half_life_days is None:
+        raise ValueError(
+            "--recency-gamma and --recency-half-life must be set together"
+        )
+    return {"gamma": gamma, "half_life_days": half_life_days}
+
+
 def run_benchmark(
     *,
     adapter: str = "lmeb",
@@ -50,10 +67,13 @@ def run_benchmark(
     output_dir: str = "benchmark-output",
     top_k: int = 10,
     score_source: str = "mvp1_rrf",
+    recency_gamma: float | None = None,
+    recency_half_life: float | None = None,
     thresholds: dict[str, float] | None = None,
     reader_llm=None,
 ) -> int:
     """Run the benchmark and return the CI exit code (0/10/3)."""
+    recency_config = _recency_config(recency_gamma, recency_half_life)
     config = BenchmarkConfig(
         adapter=adapter,
         dataset_config=dataset_config,
@@ -63,6 +83,7 @@ def run_benchmark(
         output_dir=output_dir,
         top_k=top_k,
         score_source=score_source,  # type: ignore[arg-type]
+        recency_config=recency_config,
     )
     config.validate()
     loader = AdapterRegistry.get(adapter)
@@ -71,16 +92,24 @@ def run_benchmark(
     tmp = tempfile.mkdtemp(prefix="seahorse-bench-")
 
     def sut_factory() -> SeahorseSUT:
-        facade, storage = build_facade(Path(tmp) / "bench.db")
+        # F7 enabler (a): the composition-root swap is the ONLY wiring — the SUT
+        # knows nothing about RecencyConfig (delegation purity, f5-16 §2.4).
+        recency = (
+            RecencyConfig(**config.recency_config)
+            if config.recency_config is not None
+            else None
+        )
+        facade, storage = build_facade(Path(tmp) / "bench.db", recency=recency)
         return SeahorseSUT(
             facade,
-            lambda: build_facade(Path(tmp) / "bench2.db")[0],
+            lambda: build_facade(Path(tmp) / "bench2.db", recency=recency)[0],
             reader_llm=reader,
             tokenizer=tokenizer,
             fact_id_to_session={},
             temporal_mode=temporal,
             top_k=top_k,
             score_source=score_source,
+            recency_config=config.recency_config,
         )
 
     runner = EvaluationRunner(

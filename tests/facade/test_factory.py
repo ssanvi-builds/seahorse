@@ -45,6 +45,16 @@ def _advancing_clock(start: datetime, step: timedelta):
     return _now
 
 
+def _controllable_clock(start: datetime):
+    """A clock whose current time is externally settable via ``state["now"]``."""
+    state = {"now": start}
+
+    def _now() -> datetime:
+        return state["now"]
+
+    return _now, state
+
+
 def _agent_by() -> dict:
     return {"source_type": "agent", "agent_id": "a1", "session_id": "s1"}
 
@@ -321,5 +331,116 @@ class TestRetrievalRegime:
             assert facade._retriever._embedder is embedder  # noqa: SLF001
             # ...and the write path carries the indexer.
             assert facade._write_path._indexer is not None  # noqa: SLF001
+        finally:
+            storage.close()
+
+
+class _QueryEmbedder384:
+    """``QueryEmbedder`` double whose dim matches ``_FakeAsyncEmbedder`` (384).
+
+    Returns a deterministic float32 BLOB (the vec0 ``knn`` contract) with a
+    non-zero vector so the kNN path serves (a zero vector has no norm).
+    """
+
+    embedding_dim = 384
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def embed_query(self, query: str) -> bytes:
+        self.calls.append(query)
+        import numpy as np
+
+        return np.full(384, 0.5, dtype=np.float32).tobytes()
+
+    def embed_queries(self, texts) -> list[bytes]:  # type: ignore[no-untyped-def]
+        self.calls.extend(texts)
+        import numpy as np
+
+        return [np.full(384, 0.5, dtype=np.float32).tobytes() for _ in texts]
+
+
+class TestRecencySlot:
+    """F7 enabler (a) — ``build_facade`` gains a ``recency`` slot (composition root).
+
+    The ``HybridRetriever`` already propagates ``RecencyConfig | None`` (Sprint A);
+    the composition root must expose it so the benchmark SUT and CLI can wire the
+    recency experiment without touching the facade internals (single-point swap,
+    f7-experimental-design §3). Default None keeps the pure-RRF fingerprint
+    (ADR-10).
+    """
+
+    def _hybrid(self, monkeypatch, tmp_path, db_name, *, clock, recency=None):
+        import seahorse.facade.factory as factory
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
+        return build_facade(
+            tmp_path / db_name,
+            embedder=_QueryEmbedder384(),
+            retrieval_available=True,
+            clock=clock,
+            recency=recency,
+        )
+
+    def test_default_recency_is_none(self, monkeypatch, tmp_path) -> None:
+        from seahorse.facade.hybrid_retriever import HybridRetriever
+
+        clock, _ = _controllable_clock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        facade, storage = self._hybrid(monkeypatch, tmp_path, "f.db", clock=clock)
+        try:
+            assert isinstance(facade._retriever, HybridRetriever)
+            assert facade._retriever._recency is None  # noqa: SLF001
+        finally:
+            storage.close()
+
+    def test_recency_config_is_propagated(self, monkeypatch, tmp_path) -> None:
+        from seahorse.facade.hybrid_retriever import HybridRetriever
+        from seahorse.retrieval.recency import RecencyConfig
+
+        cfg = RecencyConfig(gamma=0.7, half_life_days=21.0)
+        clock, _ = _controllable_clock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        facade, storage = self._hybrid(monkeypatch, tmp_path, "f.db", clock=clock, recency=cfg)
+        try:
+            assert isinstance(facade._retriever, HybridRetriever)
+            assert facade._retriever._recency is cfg  # noqa: SLF001
+        finally:
+            storage.close()
+
+    def test_recall_boosted_with_recency_pure_rrf_without(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """With recency the candidate scores are boosted vs the pure-RRF run.
+
+        The same facade serves both recalls (same DB, same ep_id, same
+        ``created_at``, same ``now``): first with ``recency=None`` (pure RRF,
+        bit-identical baseline), then with a recency config re-wired on the
+        retriever. A long half-life makes the factor ≈ (1+γ) strictly > 1.
+        """
+        from seahorse.retrieval.recency import RecencyConfig
+
+        start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        later = datetime(2026, 1, 2, 12, 0, tzinfo=UTC)
+        clock, state = _controllable_clock(start)
+        facade, storage = self._hybrid(monkeypatch, tmp_path, "f.db", clock=clock)
+        try:
+            facade.remember(
+                RememberPayload(body="The capital of France is Paris", by=_agent_by())
+            )
+            state["now"] = later
+            baseline = facade.recall("capital of France", k=5)
+            assert baseline and baseline[0].score > 0.0  # hybrid path served
+            base_by_id = {r.ep_id: r.score for r in baseline}
+            # Wire the F1 recency signal on the SAME retriever (test hook — the
+            # build-time propagation is covered by test_recency_config_is_propagated).
+            facade._retriever._recency = RecencyConfig(  # noqa: SLF001
+                gamma=1.0, half_life_days=365.0
+            )
+            boosted_rows = facade.recall("capital of France", k=5)
+            assert boosted_rows
+            for r in boosted_rows:
+                assert r.ep_id in base_by_id
+                assert r.score > base_by_id[r.ep_id], (
+                    "recency boost must strictly increase the score of a present candidate"
+                )
         finally:
             storage.close()

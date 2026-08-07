@@ -21,7 +21,7 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.disclosure.shaper import DisclosureShaperImpl
@@ -32,6 +32,9 @@ from seahorse.facade.vigente_retriever import VigenteListingRetriever
 from seahorse.llm import LLMClient
 from seahorse.persistence.storage import Storage
 from seahorse.write_path.stub import StubWritePath
+
+if TYPE_CHECKING:
+    from seahorse.retrieval.recency import RecencyConfig
 
 
 def _default_clock() -> datetime:
@@ -47,6 +50,7 @@ def build_facade(
     embedder: QueryEmbedder | None = None,
     retrieval_available: bool | None = None,
     llm_client: LLMClient | None = None,
+    recency: RecencyConfig | None = None,
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
 
@@ -74,6 +78,12 @@ def build_facade(
     the CLI builds a real ``LiteLLMBackend`` from the ``[llm]`` config
     (``seahorse init --llm``) and passes it here. ``MemoryFacade`` does not
     change — the client is a write-path concern.
+
+    The ``recency`` slot (F7 enabler (a)) is the F1 recency configuration passed
+    through to the ``HybridRetriever`` (composition root, single-point swap). The
+    default ``None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10); the
+    benchmark SUT and CLI wire it to run the recency A/B + sweep experiment
+    (f7-experimental-design §5(a)).
     """
     own_storage = storage if storage is not None else Storage(db_path)
     engine = BiTemporalEngine(repo=own_storage.episodes, audit=own_storage.audit)
@@ -101,6 +111,7 @@ def build_facade(
             clock=clk,
             config=cfg,
             fallback=fallback,
+            recency=recency,
         )
         indexer = RetrievalIndexer(
             passage_embedder,

@@ -478,6 +478,16 @@ def benchmark_run_cmd(
     score_source: str = typer.Option(
         "mvp1_rrf", "--score-source", help="mvp1_rrf | mvp1_rrf_recency | rrf_rerank."
     ),
+    recency_gamma: float | None = typer.Option(
+        None,
+        "--recency-gamma",
+        help="F1 recency max boost at age 0 (pairs with --recency-half-life).",
+    ),
+    recency_half_life: float | None = typer.Option(
+        None,
+        "--recency-half-life",
+        help="F1 recency half-life in days (pairs with --recency-gamma).",
+    ),
 ) -> None:
     """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
     from seahorse.benchmark.cli import run_benchmark
@@ -491,6 +501,8 @@ def benchmark_run_cmd(
         output_dir=output_dir,
         top_k=top_k,
         score_source=score_source,
+        recency_gamma=recency_gamma,
+        recency_half_life=recency_half_life,
     )
     raise typer.Exit(code=code)
 
