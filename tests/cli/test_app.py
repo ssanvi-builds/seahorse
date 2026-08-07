@@ -24,6 +24,56 @@ from tests.cli.conftest import invoke
 # ---------------------------------------------------------------------------
 
 
+def _make_claude_mem_db(tmp_path) -> str:
+    """Create a minimal claude-mem observations DB for the import command."""
+    import sqlite3
+
+    db = tmp_path / "claude-mem.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "CREATE TABLE observations (id INTEGER PRIMARY KEY, project TEXT, "
+            "type TEXT, title TEXT, narrative TEXT, created_at TEXT, agent_id TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO observations (id, project, type, title, narrative, created_at, agent_id) "
+            "VALUES (1, 'seahorse', 'decision', 'A decision', 'The narrative.', "
+            "'2026-08-01T00:00:00Z', 'claude-code')"
+        )
+    return str(db)
+
+
+def test_import_dry_run(vault, tmp_path):
+    db = _make_claude_mem_db(tmp_path)
+    code, out, err = invoke(
+        ["--vault", str(vault), "import", "--source", db, "--mode", "dry-run"]
+    )
+    assert code == 0, err
+    assert "records_read=1" in out
+    assert "notes_emitted=1" in out
+    assert "integrity_ok=true" in out
+
+
+def test_import_commit_then_recall(vault, tmp_path):
+    db = _make_claude_mem_db(tmp_path)
+    code, out, err = invoke(
+        ["--vault", str(vault), "import", "--source", db, "--mode", "commit"]
+    )
+    assert code == 0, err
+    assert "notes_emitted=1" in out
+
+    code, out, err = invoke(["--vault", str(vault), "recall", "decision"])
+    assert code == 0, err
+    assert "1 results" in out
+
+
+def test_import_missing_db_exit_1(vault, tmp_path):
+    code, out, err = invoke(
+        ["--vault", str(vault), "import", "--source", str(tmp_path / "nope.db")]
+    )
+    assert code == 1, out  # FileNotFoundError -> generic exit 1
+    assert "claude-mem DB not found" in err
+
+
 def test_init_then_remember_then_recall(vault, tmp_path):
     code, out, err = invoke(["--vault", str(vault), "remember", "hello world"])
     assert code == 0, err

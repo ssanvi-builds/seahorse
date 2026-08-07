@@ -42,6 +42,7 @@ from seahorse.cli.config import (
 )
 from seahorse.cli.doctor import run_doctor
 from seahorse.cli.exit_codes import EXIT_SUCCESS, translate
+from seahorse.cli.importer import run_import
 from seahorse.cli.management import run_init, run_reserved, run_status, run_uuid7
 from seahorse.cli.output import OutputFormat
 from seahorse.cli.primitives import (
@@ -425,6 +426,34 @@ def revalidate(
 ) -> None:
     """Revalidate a decayed fact — RESERVED in MVP-0 (SO-14-05)."""
     run_expire_revalidate("revalidate")
+
+
+@app.command(name="import")
+def import_cmd(
+    ctx: typer.Context,
+    source: str | None = typer.Option(
+        None, "--source", help="claude-mem DB path (default: ~/.claude-mem/claude-mem.db)."
+    ),
+    mode: str = typer.Option(
+        "dry-run", "--mode", help="dry-run (default) | commit."
+    ),
+    project: str | None = typer.Option(
+        None, "--project", help="Filter observations by project name."
+    ),
+    output_dir: str | None = typer.Option(
+        None, "--output-dir", help="Manifest output dir (default: not persisted)."
+    ),
+) -> None:
+    """Import claude-mem observations as F3.1 episodes (migration bridge, #15)."""
+    run_import(
+        ctx.obj.facade(),
+        source=source,
+        mode=mode,
+        project=project,
+        output_dir=output_dir,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+    )
 
 
 @app.command()
