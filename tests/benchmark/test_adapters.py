@@ -100,6 +100,27 @@ def test_lmeb_from_row_numeric_answer_normalized():
     assert inst.golden_answer == "3"
 
 
+def test_lmeb_turns_get_derivable_title():
+    """Conversational LMEB turns (no H1) need a title for the skip path's
+    subject derivation (f5-16 §3.3) — ``deterministic_extract`` raises
+    ``SubjectDerivationError`` otherwise (verified on the real S snapshot)."""
+    row = {
+        "question_id": "q1",
+        "question": "Q?",
+        "answer": "A",
+        "answer_session_ids": ["s1"],
+        "question_type": "single-session-user",
+        "haystack_session_ids": ["s1"],
+        "haystack_dates": ["2023/05/20 (Sat) 02:21"],
+        "haystack_sessions": [
+            [{"role": "user", "content": "The farmer needs to transport a fox across a river."}]
+        ],
+    }
+    inst = LMEBLoader._from_row(row)
+    turn = inst.haystack[0]["turns"][0]
+    assert turn["title"]  # non-empty → the skip path can derive a subject
+
+
 def test_lmeb_split_name_for_config():
     assert LMEBLoader._split_name("s") == "longmemeval_s_cleaned"
     assert LMEBLoader._split_name("m") == "longmemeval_m_cleaned"

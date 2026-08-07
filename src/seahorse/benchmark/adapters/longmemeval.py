@@ -156,10 +156,40 @@ class LMEBLoader:
                 {
                     "session_id": session_id,
                     "date": date,
-                    "turns": tuple({"body": t.get("content", "")} for t in turns),
+                    # Empty turns (10/199,509 in LMEB-S) are dropped — the write
+                    # path raises E_EMPTY_BODY on a blank body.
+                    "turns": tuple(
+                        {
+                            "body": content,
+                            # Conversational turns have no H1; the skip path's
+                            # subject derivation (title > H1 > None) needs a
+                            # title or it raises (f5-16 §3.3). A truncated
+                            # content prefix is a meaningful, mostly-distinct
+                            # subject.
+                            "title": _turn_title(content),
+                        }
+                        for t in turns
+                        if (content := t.get("content", "")).strip()
+                    ),
                 }
             )
         return tuple(canon)
+
+
+_TITLE_PREFIX_CHARS = 60
+
+
+def _turn_title(content: str) -> str:
+    """A derivable subject for a conversational turn (no H1 in LMEB content).
+
+    The skip path's ``deterministic_extract`` raises ``SubjectDerivationError``
+    when neither a title nor an H1 is present (f5-16 §3.3: the corpus builder
+    must ensure a derivable subject). A whitespace-collapsed content prefix is
+    a meaningful, mostly-distinct subject; the empty fallback keeps the turn
+    ingestible.
+    """
+    cleaned = " ".join(content.split())
+    return cleaned[:_TITLE_PREFIX_CHARS] or "untitled"
 
 
 def _resolve_raw_json_path(config: BenchmarkConfig) -> Path:
