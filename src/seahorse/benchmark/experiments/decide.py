@@ -1,0 +1,185 @@
+"""F7 decision logic — thresholds from f7-experimental-design §5.
+
+Pure functions over ``ExperimentResult`` values; the runner feeds them the
+per-variant retrieval metrics and they emit the honest F1/F3 verdict.
+
+Thresholds (f7 §5(a) / §5(c)):
+
+- (a) recency: ON must NOT degrade global ``ndcg@10`` by > 1pp AND must improve
+  ``recall@10`` on the ``temporal-reasoning`` / ``knowledge-update`` slices by
+  ≥ 1pp (at least one). The best passing variant (largest combined slice
+  improvement, then highest ndcg@10) is the calibrated F1 config; if none
+  passes, keep F1 OFF.
+- (c) embed: ``body+summary`` must improve global ``recall@10`` by ≥ 1pp to flip
+  F3 vectorial; otherwise keep ``body``-only.
+
+Honesty (ADR-10): if the baseline ran in the ``fallback_g2`` regime (hybrid
+retrieval not wired), the experiment is INVALID — no decision is claimed.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+from seahorse.benchmark.contracts import MetricReport
+from seahorse.benchmark.experiments.variants import ExperimentVariant
+
+# 1pp = 0.01 (percent-point deltas on recall@10 / ndcg@10).
+NDCG_DEGRADATION_PP = 0.01
+RECALL_IMPROVEMENT_PP = 0.01
+
+# The slices the recency signal must improve (f7 §5(a)).
+RECENCY_SLICES = ("temporal-reasoning", "knowledge-update")
+
+# The honest detected regime that invalidates a hybrid-regime experiment.
+_FALLBACK_G2 = "fallback_g2"
+
+
+@dataclass(frozen=True)
+class ExperimentResult:
+    """A single variant run — retrieval metrics + honest regime detection."""
+
+    variant: ExperimentVariant
+    metrics: dict[str, MetricReport]
+    detected_score_source: str
+    run_errors: list[str]
+    run_id: str
+
+    def metric(self, name: str) -> MetricReport:
+        if name not in self.metrics:
+            raise KeyError(f"metric {name!r} not in run metrics {sorted(self.metrics)}")
+        return self.metrics[name]
+
+
+def _ndcg10(result: ExperimentResult) -> float:
+    return result.metric("ndcg@10").global_value
+
+
+def _recall10_by_slice(result: ExperimentResult) -> dict[str, float]:
+    return result.metric("recall@10").by_slice
+
+
+def _recall10_global(result: ExperimentResult) -> float:
+    return result.metric("recall@10").global_value
+
+
+def decide_recency(
+    baseline: ExperimentResult, variants: Sequence[ExperimentResult]
+) -> dict:
+    """Apply the f7 §5(a) thresholds and pick the calibrated F1 config, or keep OFF.
+
+    Returns a decision dict (``decision``, ``flip``, ``variant``, ``reason``,
+    ``passing``). If the baseline is ``fallback_g2`` the hybrid regime was NOT
+    wired and no decision is claimed (``invalid_regime``, ADR-10 honesty).
+    """
+    if baseline.detected_score_source == _FALLBACK_G2:
+        return {
+            "decision": "invalid_regime",
+            "flip": False,
+            "variant": None,
+            "reason": (
+                "baseline ran in the G2 fallback (hybrid retrieval not wired); "
+                "recency A/B is not meaningful — re-run with the embeddings extra"
+            ),
+            "passing": [],
+        }
+    base_ndcg = _ndcg10(baseline)
+    base_slices = _recall10_by_slice(baseline)
+    passing: list[ExperimentResult] = []
+    for v in variants:
+        if _ndcg10(v) < base_ndcg - NDCG_DEGRADATION_PP:
+            continue  # ON degrades global ndcg@10 by > 1pp → rejected
+        v_slices = _recall10_by_slice(v)
+        improvements = [
+            v_slices.get(s, base_slices.get(s, 0.0)) - base_slices.get(s, 0.0)
+            for s in RECENCY_SLICES
+            if base_slices.get(s) is not None and v_slices.get(s) is not None
+        ]
+        if improvements and max(improvements) >= RECALL_IMPROVEMENT_PP:
+            passing.append(v)
+    if not passing:
+        return {
+            "decision": "keep_off",
+            "flip": False,
+            "variant": None,
+            "reason": (
+                f"no recency config improved recall@10 on {RECENCY_SLICES} by "
+                f">= {RECALL_IMPROVEMENT_PP:.0%} without degrading global ndcg@10 "
+                f"by > {NDCG_DEGRADATION_PP:.0%}; F1 stays default-OFF"
+            ),
+            "passing": [],
+        }
+
+    def _score(v: ExperimentResult) -> tuple[float, float]:
+        v_slices = _recall10_by_slice(v)
+        improvement = max(
+            v_slices.get(s, 0.0) - base_slices.get(s, 0.0) for s in RECENCY_SLICES
+        )
+        return improvement, _ndcg10(v)
+
+    best = max(passing, key=_score)
+    return {
+        "decision": "flip_f1",
+        "flip": True,
+        "variant": best.variant.name,
+        "recency_config": best.variant.recency_config,
+        "reason": (
+            f"best calibrated config {best.variant.description!r} improves "
+            f"recall@10 on {RECENCY_SLICES} >= {RECALL_IMPROVEMENT_PP:.0%} with "
+            f"global ndcg@10 within {NDCG_DEGRADATION_PP:.0%} of baseline"
+        ),
+        "passing": [v.variant.name for v in passing],
+    }
+
+
+def decide_embed(baseline: ExperimentResult, variant: ExperimentResult) -> dict:
+    """Apply the f7 §5(c) threshold: flip F3 iff recall@10 improves ≥ 1pp.
+
+    Returns a decision dict (``decision``, ``flip``, ``variant``, ``reason``,
+    ``recall_delta``). Invalid (no decision) when the baseline is ``fallback_g2``.
+    """
+    if baseline.detected_score_source == _FALLBACK_G2:
+        return {
+            "decision": "invalid_regime",
+            "flip": False,
+            "variant": None,
+            "reason": (
+                "baseline ran in the G2 fallback (hybrid retrieval not wired); "
+                "embed A/B is not meaningful — re-run with the embeddings extra"
+            ),
+            "recall_delta": None,
+        }
+    delta = _recall10_global(variant) - _recall10_global(baseline)
+    if delta >= RECALL_IMPROVEMENT_PP:
+        return {
+            "decision": "flip_f3",
+            "flip": True,
+            "variant": variant.variant.name,
+            "reason": (
+                f"embed body+summary improves global recall@10 by "
+                f"{delta:.1%} (>= {RECALL_IMPROVEMENT_PP:.0%}); flip F3 vectorial "
+                f"via reindex with embed_mode='body+summary'"
+            ),
+            "recall_delta": delta,
+        }
+    return {
+        "decision": "keep_body_only",
+        "flip": False,
+        "variant": None,
+        "reason": (
+            f"embed body+summary recall@10 delta {delta:+.1%} < "
+            f"{RECALL_IMPROVEMENT_PP:.0%}; keep embed_mode='body' (F3 not flipped)"
+        ),
+        "recall_delta": delta,
+    }
+
+
+__all__ = [
+    "NDCG_DEGRADATION_PP",
+    "RECALL_IMPROVEMENT_PP",
+    "RECENCY_SLICES",
+    "ExperimentResult",
+    "decide_recency",
+    "decide_embed",
+]

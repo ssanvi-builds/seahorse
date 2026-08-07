@@ -13,12 +13,9 @@ from pathlib import Path
 from seahorse.benchmark.adapters.registry import AdapterRegistry
 from seahorse.benchmark.config import BenchmarkConfig
 from seahorse.benchmark.contracts import MetricResult
+from seahorse.benchmark.experiments.runner import make_metric_registry
 from seahorse.benchmark.harness.reader_llm import ReaderLLMClient
 from seahorse.benchmark.harness.tokenizer import Tokenizer
-from seahorse.benchmark.metrics.efficiency import LatencyP95Metric, TokenEfficiencyMetric
-from seahorse.benchmark.metrics.memory import FAMAGapMetric, KnowledgeUpdateAccuracyMetric
-from seahorse.benchmark.metrics.registry import MetricRegistry
-from seahorse.benchmark.metrics.retrieval import MRR, NDCGAtK, PrecisionAtK, RecallAtK
 from seahorse.benchmark.reporters.ci_gate import CIGate
 from seahorse.benchmark.reporters.json_reporter import JsonReporter
 from seahorse.benchmark.reporters.markdown_reporter import MarkdownReporter
@@ -26,19 +23,6 @@ from seahorse.benchmark.runner import EvaluationRunner
 from seahorse.benchmark.sut.seahorse_sut import SeahorseSUT
 from seahorse.facade import build_facade
 from seahorse.retrieval.recency import RecencyConfig
-
-
-def _make_registry(tokenizer: Tokenizer) -> MetricRegistry:
-    reg = MetricRegistry()
-    reg.register(RecallAtK())
-    reg.register(NDCGAtK())
-    reg.register(MRR())
-    reg.register(PrecisionAtK())
-    reg.register(FAMAGapMetric())
-    reg.register(KnowledgeUpdateAccuracyMetric())
-    reg.register(TokenEfficiencyMetric(tokenizer))
-    reg.register(LatencyP95Metric())
-    return reg
 
 
 def _recency_config(gamma: float | None, half_life_days: float | None) -> dict | None:
@@ -124,7 +108,7 @@ def run_benchmark(
         config,
         loader=loader,
         sut_factory=sut_factory,
-        metric_registry=_make_registry(tokenizer),
+        metric_registry=make_metric_registry(tokenizer),
         reporters=[JsonReporter(output_dir), MarkdownReporter(output_dir)],
         tokenizer=tokenizer,
     )

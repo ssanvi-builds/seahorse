@@ -513,6 +513,47 @@ def benchmark_run_cmd(
     raise typer.Exit(code=code)
 
 
+@benchmark_app.command("experiment")
+def benchmark_experiment_cmd(
+    ctx: typer.Context,
+    experiment: str = typer.Argument(
+        ..., help="recency | embed (which F7 experiment to run)."
+    ),
+    corpus: str = typer.Option(
+        "synthetic",
+        "--corpus",
+        help="synthetic (CI mechanical verification) | lmeb-s (authoritative).",
+    ),
+    output_dir: str = typer.Option("benchmark-output", "--output-dir"),
+    reader_model: str = typer.Option(
+        "ollama/qwen3:1.7b", "--reader-model", help="Reader LLM (t=0, seed=42)."
+    ),
+    judge_model: str = typer.Option(
+        "ollama/qwen2.5:7b", "--judge-model", help="Judge LLM (family-disjoint from reader)."
+    ),
+    top_k: int = typer.Option(10, "--top-k", "-k"),
+    temporal: bool = typer.Option(
+        True, "--temporal/--no-temporal", help="Temporal ingestion (source_type=human, f7 §4)."
+    ),
+) -> None:
+    """Run an F7 experiment and print the sweep table + decision (f7 §5)."""
+    from seahorse.benchmark.experiments.runner import (
+        render_experiment_report,
+        run_experiment,
+    )
+
+    report = run_experiment(
+        experiment=experiment,
+        corpus=corpus,
+        output_dir=output_dir,
+        reader_model=reader_model,
+        judge_model=judge_model,
+        top_k=top_k,
+        temporal=temporal,
+    )
+    typer.echo(render_experiment_report(report))
+
+
 @benchmark_app.command("list")
 def benchmark_list_cmd(ctx: typer.Context) -> None:
     """List available dataset adapters."""
