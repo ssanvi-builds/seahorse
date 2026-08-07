@@ -39,7 +39,13 @@ def make_synthetic_dataset() -> BenchmarkDataset:
                 _session(
                     "s1",
                     d1,
-                    [{"body": "# France\n\nThe capital of France is Paris.", "title": "France"}],
+                    [
+                        {
+                            "body": "# France\n\nThe capital of France is Paris.",
+                            "title": "France",
+                            "fact_key": "france-capital",
+                        }
+                    ],
                 ),
             ),
         ),
@@ -195,7 +201,7 @@ class FakeTokenizer:
     """Deterministic tokenizer double: 1 token per 4 chars (heuristic)."""
 
     def count(self, text: str) -> int:
-        return max(1, len(text) // 4)
+        return len(text) // 4
 
 
 @pytest.fixture
