@@ -4,6 +4,38 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Sprint A — F1 recency seam (default-OFF), OQ3 summary enabler, and the
+claude-mem importer (#15). No version bump (features land on the next release).
+
+### Added
+
+- **F1 recency as a ranking signal (seam default-OFF, ADR-10)** — a small,
+  localized post-RRF step in `seahorse.retrieval.recall`:
+  `apply_recency_boost` folds a bounded exponential decay
+  (`score' = score · (1 + γ·exp(-ln2·age_days/half_life))`, factor in `[1, 1+γ]`)
+  INTO `FusedCandidate.score` (never an external reorder). Gated on `pit is
+  None` (PIT queries reproduce state as-of-`t` with pure RRF); default-OFF
+  (`recency=None`) preserves the bit-comparable fingerprint. `created_at` is
+  batch-read via `index_repo.get_rows` (one `IN` query, no N+1). Pins
+  `RECENCY_GAMMA`/`RECENCY_HALF_LIFE_DAYS` in `retrieval/constants.py`;
+  `HybridRetriever` propagates `RecencyConfig | None`.
+- **OQ3 enabler — `remember` accepts `summary`** (f5-09 §6.2): `summary` is an
+  additive editorial field on `RememberPayload` (facade + CLI `--summary` + MCP
+  wire). When absent, the write path derives a deterministic zero-LLM fallback
+  (first sentence of the body, skipping the H1, truncated to
+  `SUMMARY_MAX_CHARS=200`) — covers 100% of episodes including the skip path.
+  `engine.remember` persists it; the frontmatter round-trip preserves it.
+- **claude-mem importer (#15)** — the migration/coexistence bridge
+  (obsiforge §15.4): a pure `import_record` (f5-15 pattern) mapping claude-mem
+  observations to F3.1 episodes + a loss report, wrapped by an `ImportRunner`
+  (dry-run/commit, manifest `seahorse.importer.manifest/1.0`, idempotency via
+  deterministic UUIDv5, collisions via `WriteResult.collisions_detected` —
+  never raised). `source_type=importer` forces the skip path (existing
+  `decide_path` guard); claude-mem is NEVER a runtime dependency. New CLI
+  command `seahorse import [--source] [--mode dry-run|commit] [--project]`.
+
 ## [0.2.0] - 2026-08-06
 
 MVP-1 sealed. Hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by
