@@ -4,6 +4,33 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **F7 skeleton #16 — LMEB benchmark harness (MVP-1 scope, f5-16 §7.1)** —
+  `seahorse/benchmark/`: contracts + config (`BenchmarkConfig.validate()`
+  rejects `reader_model == judge_model`), metrics (Recall@k, nDCG@k binary,
+  MRR, Precision@k with `k_effectivo`, FAMA-gap sanity check,
+  knowledge_update_accuracy, REAL token efficiency, p95 latency per level),
+  `SeahorseSUT` (#12→SUT adapter with the `fact_id→session` bridge + honest
+  `fallback_g2` detection + F7 flags `recency_config`/`rerank_enabled`/
+  `embed_mode`), `CorpusBuilder` (skip-mode, deterministic `AdvancingClock`),
+  `KnowledgeUpdateSimulator` (OQ-16-13: derives update pairs from the
+  haystack), `EvaluationRunner` + `LevelProbeRunner` (isolated p95
+  TIMELINE/FULL without the reader LLM), reporters (bit-comparable
+  `PinningFingerprint` + separate `ExecutionMetadata`, json/markdown/ci_gate
+  exit 0/10/3), `LMEBLoader` + `AdapterRegistry`, harness (ReaderLLMClient
+  t=0 seed=42, Tokenizer tiktoken, git-tracked prompts) + `LLMJudge` (bias
+  mitigations: generator≠judge, position swap, strict+lenient), and
+  reproducibility (`ModelPin`/`pin_ollama_model`, SQLite `OutputCache`) + CLI
+  `seahorse benchmark run/list/adapters`. OQ-16-11 (bridge test
+  `WriteResult.fact_id == IndexRow.fact_id`) and OQ-16-12 (manifest
+  `embedding_batch_config=batch_size=1_forced` + `knn_completeness=1.0`)
+  closed. Delegation purity: the skeleton imports only from
+  `seahorse.facade`; `datasets`/`tiktoken`/`litellm` are lazy (the `benchmark`
+  extra). 1810 tests / coverage 96% / ruff+mypy clean.
+
 ## [0.3.0] - 2026-08-07
 
 Sprint A — F1 recency seam (default-OFF), OQ3 summary enabler, and the
