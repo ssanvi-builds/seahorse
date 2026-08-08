@@ -22,10 +22,11 @@ RECENCY_SWEEP_GAMMAS = (0.25, 0.5, 1.0)
 RECENCY_SWEEP_HALF_LIVES_DAYS = (7, 30, 90)
 
 # Experiment kinds the runner understands.
-EXPERIMENTS = ("recency", "embed")
+EXPERIMENTS = ("recency", "embed", "batch")
 
-# Corpora: synthetic (mechanical CI verification) or the real LMEB-S haystack.
-CORPORA = ("synthetic", "lmeb-s")
+# Corpora: synthetic (mechanical CI verification), the real LMEB-S haystack,
+# or the real claude-mem corpus (batch-por-turno, f7 §5d).
+CORPORA = ("synthetic", "lmeb-s", "claude-mem")
 
 
 @dataclass(frozen=True)

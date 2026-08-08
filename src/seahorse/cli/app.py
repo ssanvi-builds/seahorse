@@ -517,12 +517,15 @@ def benchmark_run_cmd(
 def benchmark_experiment_cmd(
     ctx: typer.Context,
     experiment: str = typer.Argument(
-        ..., help="recency | embed (which F7 experiment to run)."
+        ..., help="recency | embed | batch (which F7 experiment to run)."
     ),
     corpus: str = typer.Option(
         "synthetic",
         "--corpus",
-        help="synthetic (CI mechanical verification) | lmeb-s (authoritative).",
+        help=(
+            "synthetic (CI mechanical verification) | lmeb-s (authoritative) | "
+            "claude-mem (batch-por-turno real corpus)."
+        ),
     ),
     output_dir: str = typer.Option("benchmark-output", "--output-dir"),
     reader_model: str = typer.Option(

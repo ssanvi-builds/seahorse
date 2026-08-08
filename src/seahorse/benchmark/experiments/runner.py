@@ -102,13 +102,19 @@ def _clock_delta_seconds(dataset: BenchmarkDataset) -> float:
 
 @dataclass(frozen=True)
 class ExperimentReport:
-    """The full experiment artifact: per-variant results + the F1/F3 verdict."""
+    """The full experiment artifact: per-variant results + the verdict.
+
+    ``batch_result`` is set only for the batch-por-turno experiment (f7 §5d),
+    which is a standalone measurement (no per-variant ``EvaluationRunner``
+    results) — the turn-cluster recall@k + the decision.
+    """
 
     experiment: str
     corpus: str
     temporal_mode: bool
     results: tuple[ExperimentResult, ...]
     decision: dict
+    batch_result: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -270,6 +276,15 @@ def _build_template(
 
 def render_experiment_report(report: ExperimentReport) -> str:
     """Human-readable sweep table + decision block (for the CLI)."""
+    if report.experiment == "batch":
+        from seahorse.benchmark.experiments.batch import (
+            BatchExperimentResult,
+            render_batch_report,
+        )
+
+        return render_batch_report(
+            cast(BatchExperimentResult, report.batch_result), report.decision
+        )
     lines = [
         f"# F7 experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
@@ -331,6 +346,31 @@ def run_experiment(
         raise ValueError(f"unknown experiment: {experiment!r} (expected {EXPERIMENTS!r})")
     if corpus not in CORPORA:
         raise ValueError(f"unknown corpus: {corpus!r} (expected {CORPORA!r})")
+
+    if experiment == "batch":
+        # (d) batch-por-turno is a standalone measurement (f7 §5d): no
+        # EvaluationRunner, no BenchmarkDataset — the corpus is the real
+        # claude-mem episodes (or the synthetic mechanical verification) and the
+        # metric is the turn-cluster recall@k. Delegates to the batch module.
+        from seahorse.benchmark.experiments.batch import (
+            decide_batch,
+            run_batch_experiment,
+        )
+
+        if corpus not in ("synthetic", "claude-mem"):
+            raise ValueError(
+                f"batch experiment corpus must be 'synthetic' or 'claude-mem', "
+                f"got {corpus!r}"
+            )
+        batch_result = run_batch_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="batch",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_batch(batch_result),
+            batch_result=batch_result,
+        )
 
     base_config = BenchmarkConfig(
         adapter="lmeb" if corpus == "lmeb-s" else "synthetic",
