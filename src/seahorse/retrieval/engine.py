@@ -84,11 +84,14 @@ from seahorse.contracts.persistence import (
     VectorHit,
     VectorIndexRepository,
 )
+from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
+from seahorse.retrieval.constants import RERANK_OVERFETCH_K
 from seahorse.retrieval.errors import BfsKnownAtUnsupported, RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
 from seahorse.retrieval.recency import RecencyConfig, apply_recency_boost
+from seahorse.retrieval.rerank import apply_rerank
 
 # A hit from either source axis. ``_filter_hits_by_cognitive_type`` is generic so
 # it preserves the concrete hit type (``list[VectorHit]`` / ``list[FullTextHit]``)
@@ -121,8 +124,10 @@ def recall(
     bfs_known_at_supported: bool = False,
     clock: Callable[[], datetime] | None = None,
     recency: RecencyConfig | None = None,
+    reranker: QueryReranker | None = None,
+    k_rerank: int = RERANK_OVERFETCH_K,
 ) -> list[FusedCandidate]:
-    """Hybrid retrieval entrypoint — 2-stage RRF fusion (ADR-10, ADR-03).
+    """Hybrid retrieval entrypoint — 2-stage RRF fusion + optional stage-3 rerank.
 
     Stage 1 = kNN + BM25 (query-driven). Stage 2 = chain [+ BFS if mediano] over
     the stage-1 top-1 anchor (or ``anchor_ep_id``), hops=1. RRF over the union.
@@ -140,21 +145,34 @@ def recall(
     ``recency=None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10);
     PIT queries (``state_at``/``known_at``) reproduce state as-of-``t`` with pure
     RRF and are NEVER boosted.
+
+    F2 rerank (cerebras-f-feasibility §4, f7 §5b): when ``reranker`` is passed,
+    the RRF fusion over-fetches to ``k_rerank`` (NOT ``k``), the candidates are
+    hydrated with summary/subject (``index_repo.get_rows`` — NOT ``body_md``),
+    each (query, text) pair is scored by the cross-encoder, and the list is
+    reordered + truncated to ``k``. The cross-encoder score REPLACES the RRF
+    score (the manifest records ``score_source: "rrf_rerank"``). Default-OFF:
+    ``reranker=None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10).
+    Honest degrade: a missing ``index_repo`` (no text to hydrate) or a reranker
+    failure keeps the RRF order truncated to ``k`` — never invented scores.
     """
     _validate_pit(pit)
     now = clock() if clock is not None else _default_clock()
+    # F2: the RRF fusion over-fetches to k_rerank so the cross-encoder has ~20
+    # candidates to reorder before truncating to k (f7 §5b).
+    k_fuse = k_rerank if reranker is not None else k
 
     # --- Stage 1: query-driven kNN + BM25 -------------------------------
     query_vec = embedder.embed_query(query)
-    vec_hits = _knn(query_vec, k, pit, cognitive_type, vector_repo, episode_repo)
-    fts_hits = _bm25(query, k, pit, subject_filter, cognitive_type, fts_repo, episode_repo)
+    vec_hits = _knn(query_vec, k_fuse, pit, cognitive_type, vector_repo, episode_repo)
+    fts_hits = _bm25(query, k_fuse, pit, subject_filter, cognitive_type, fts_repo, episode_repo)
 
     stage1 = rrf_fuse(
         [
             SourceList("vector", vec_hits, _hit_ep_id),
             SourceList("bm25", fts_hits, _hit_ep_id),
         ],
-        k=k,
+        k=k_fuse,
     )
 
     # --- Stage 2: anchor-driven chain [+ BFS if mediano] ----------------
@@ -187,13 +205,15 @@ def recall(
             SourceList("chain", chain_eps, _episode_id),
             SourceList("bfs", bfs_rows, _row_ep_id),
         ],
-        k=k,
+        k=k_fuse,
     )
     # F1 recency (default-OFF, ADR-10): boost ONLY in the "now" regime (pit is
     # None); PIT queries reproduce state as-of-t with pure RRF. The boost is
     # folded into FusedCandidate.score (never an external reorder) so #8's
     # IndexRow.score passthrough stays truthful. Requires index_repo to batch-
     # read created_at; without it the boost is skipped (honest, never invented).
+    # When rerank is enabled, the boost keeps k_rerank candidates (k=k_fuse) so
+    # the cross-encoder still has the full over-fetch set to reorder.
     if recency is not None and pit is None:
         if index_repo is None:
             # Honest skip (ADR-10): recency requested but no index_repo to batch-
@@ -204,13 +224,38 @@ def recall(
         else:
             try:
                 created_at = _read_created_at_batch(index_repo, [c.ep_id for c in fused])
-                fused = apply_recency_boost(fused, created_at, now, recency, k=k)
+                fused = apply_recency_boost(fused, created_at, now, recency, k=k_fuse)
             except Exception:  # noqa: BLE001 — a failure in the OPTIONAL recency
                 # signal must not kill the whole ranking (which would degrade the
                 # hybrid path to G2). Keep the pure-RRF result (ADR-10 honest).
                 _logger.warning(
                     "recency boost failed; keeping pure RRF", exc_info=True
                 )
+    # F2 rerank (default-OFF, ADR-10): the cross-encoder reorders the fused
+    # candidates by relevance to the query, replacing the RRF score (the
+    # manifest records score_source="rrf_rerank"). Text = summary/subject via
+    # index_repo.get_rows (NOT body_md, f7 §5b). Honest degrade: no index_repo
+    # or a reranker failure keeps the RRF order truncated to k.
+    if reranker is not None:
+        if index_repo is None:
+            _logger.warning(
+                "rerank requested but index_repo is None; keeping RRF order (k)"
+            )
+            fused = fused[:k]
+        else:
+            try:
+                rows = index_repo.get_rows([c.ep_id for c in fused])
+                text_by_ep = {r.ep_id: _rerank_text(r) for r in rows}
+                docs = [text_by_ep.get(c.ep_id, "") for c in fused]
+                scores = reranker.rerank(query, docs)
+                fused = apply_rerank(fused, scores, k=k)
+            except Exception:  # noqa: BLE001 — a failure in the OPTIONAL rerank
+                # must not kill the whole ranking (which would degrade the hybrid
+                # path to G2). Keep the RRF order truncated to k (ADR-10 honest).
+                _logger.warning(
+                    "rerank failed; keeping RRF order", exc_info=True
+                )
+                fused = fused[:k]
     return fused
 
 
@@ -229,6 +274,17 @@ def _episode_id(episode: Episode) -> str:
 
 def _row_ep_id(row: IndexRowData) -> str:
     return row.ep_id
+
+
+def _rerank_text(row: IndexRowData) -> str:
+    """The text the cross-encoder scores: summary or subject (NOT body_md, f7 §5b).
+
+    ``FusedCandidate`` is body-less; the stage-3 hydrates the searchable text
+    via ``index_repo.get_rows`` (summary/subject, ~20×200 chars). The body is
+    deliberately NOT read — LMEB measures whether the body adds signal before
+    paying its cost (cerebras-f §4.3).
+    """
+    return row.summary or row.subject or ""
 
 
 def _read_created_at_batch(

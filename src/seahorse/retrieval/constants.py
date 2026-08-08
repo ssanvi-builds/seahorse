@@ -41,4 +41,27 @@ RECENCY_HALF_LIFE_DAYS: float = 30.0
 After ``half_life_days`` the boost halves; after ~5 half-lives it is ~3% of
 ``γ``. Pinned here (ADR-10); calibrated by the F7 experiment."""
 
-__all__ = ["RRF_K", "INDEX_P95_MS", "RECENCY_GAMMA", "RECENCY_HALF_LIFE_DAYS"]
+RERANK_OVERFETCH_K: int = 20
+"""F2 rerank — the over-fetch size for the stage-3 cross-encoder (f7 §5b).
+
+The RRF fusion runs with ``k_rerank`` (NOT ``k``) when a ``QueryReranker`` is
+wired, so the cross-encoder has ~20 candidates to reorder before truncating to
+``k``. Fixed cost per query (O(top-k)), NOT per episode — changing the model
+never requires a reindex (query-time pure, cerebras-f §4.2)."""
+
+INDEX_RERANK_P95_MS: int = 500
+"""F2 rerank — p95 latency budget for the INDEX call when rerank is enabled.
+
+Owned by #11 (f7 §5b, cerebras-f §4.3). The base path keeps its 250ms promise
+(``INDEX_P95_MS``); the rerank path has its OWN budget (``p95_index_rerank_ms
+<= 500ms``) because the cross-encoder adds a fixed O(k_rerank) scoring step.
+Measured by the #16 benchmark harness, NOT by #11 unit tests."""
+
+__all__ = [
+    "RRF_K",
+    "INDEX_P95_MS",
+    "RECENCY_GAMMA",
+    "RECENCY_HALF_LIFE_DAYS",
+    "RERANK_OVERFETCH_K",
+    "INDEX_RERANK_P95_MS",
+]

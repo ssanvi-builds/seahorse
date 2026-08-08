@@ -71,3 +71,4 @@ seahorse.sqlite*
 .claude-workflows/
 # F7 experiment output (reproducible artifacts)
 exp-*/
+benchmark-output/
