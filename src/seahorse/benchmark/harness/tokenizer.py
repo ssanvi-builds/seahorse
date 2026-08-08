@@ -27,7 +27,11 @@ class Tokenizer:
             except ImportError:
                 self._enc = False
         if self._enc:
-            return len(self._enc.encode(text))
+            # ``disallowed_special=()``: real corpora (e.g. LMEB-S) contain the
+            # literal ``<|endoftext|>`` artifact in some turns; tiktoken's default
+            # raises on it. Treat special tokens as normal text — the count is a
+            # token-efficiency measurement, not a generation boundary.
+            return len(self._enc.encode(text, disallowed_special=()))
         return max(1, len(text) // 4)  # deterministic heuristic fallback
 
 

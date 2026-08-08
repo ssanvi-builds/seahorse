@@ -66,6 +66,14 @@ def test_tokenizer_real_count_when_tiktoken_available():
     assert tok.count("hello world") > 0
 
 
+def test_tokenizer_handles_endoftext_artifact():
+    """Real corpora (LMEB-S) contain the literal ``<|endoftext|>`` artifact in
+    some turns; tiktoken's default raises on it. The count must treat it as
+    normal text (token-efficiency measurement, not a generation boundary)."""
+    tok = Tokenizer()
+    assert tok.count("Skipped 1 messages<|endoftext|>") > 0
+
+
 def test_tokenizer_encoding_name():
     tok = Tokenizer(encoding_name="cl100k_base")
     assert tok._encoding_name == "cl100k_base"
