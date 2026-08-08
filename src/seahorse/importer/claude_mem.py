@@ -24,6 +24,11 @@ Mapping (claude-mem ``observations`` table -> F3.1):
 - ``provenance`` carries the importer contract + the vendor id as
   ``source_record_id`` (the engine's deterministic-UUIDv5 input) and
   ``x-claude-mem-source-id`` (f5-15 §6.8 preservation convention).
+- ``provenance`` also preserves the vendor **turn structure** (f7 §5d): the
+  ``memory_session_id`` and ``prompt_number`` survive as
+  ``x-claude-mem-session-id`` / ``x-claude-mem-prompt-number`` so the
+  batch-por-turno experiment can group episodes by turn. The provenance
+  ``session_id`` itself stays run-scoped (f5-15 §3.3).
 
 References:
 - f5-15-importers.md §2.1 (import_record contract), §2.2 (mapping table),
@@ -53,7 +58,6 @@ _UNMAPPED_FIELDS = (
     "concepts",
     "files_read",
     "files_modified",
-    "prompt_number",
     "content_hash",
     "generated_by_model",
     "metadata",
@@ -126,6 +130,12 @@ def _map_claude_mem(record: dict) -> ImporterResult:
         "source_record_id": source_id,
         "importer_loss": loss,
         "x-claude-mem-source-id": source_id,
+        # Turn structure (f7 §5d): the vendor session + prompt_number survive so
+        # the batch-por-turno experiment can group episodes by turn. The
+        # provenance ``session_id`` stays run-scoped (f5-15 §3.3); these
+        # preservation fields carry the vendor's own grouping (f5-15 §6.8).
+        "x-claude-mem-session-id": record.get("memory_session_id"),
+        "x-claude-mem-prompt-number": record.get("prompt_number"),
     }
 
     ep = Episode(
@@ -162,6 +172,10 @@ def _build_loss_report(
         fields_synthesized.append("valid_at:synthesized_from_created_at")
     fields_synthesized.append("cognitive_type:inferred_heuristic")
     fields_synthesized.append("session_id:synthesized_run_scoped")
+    if record.get("memory_session_id") is not None:
+        fields_synthesized.append("session_id:vendor_session_preserved_x_claude_mem_session_id")
+    if record.get("prompt_number") is not None:
+        fields_synthesized.append("prompt_number:preserved_x_claude_mem_prompt_number")
     if not record.get("agent_id"):
         fields_synthesized.append("agent_id:defaulted_no_vendor_agent_id")
 

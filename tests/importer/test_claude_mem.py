@@ -50,6 +50,8 @@ def _record(**over) -> dict:
         "concepts": '["how-it-works"]',
         "created_at": "2026-08-06T20:40:45.420Z",
         "agent_id": "claude-code",
+        "memory_session_id": "sess-abc-123",
+        "prompt_number": 3,
     }
     base.update(over)
     return base
@@ -86,6 +88,32 @@ class TestImportRecord:
         )
         assert ep.id == expected
         assert uuid.UUID(ep.id).version == 5
+
+    def test_preserves_vendor_session_id(self) -> None:
+        """The vendor ``memory_session_id`` survives in provenance (f7 §5d turn
+        structure — the batch-por-turno experiment groups by it)."""
+        ep = import_record(_record(), "claude-mem")["notes"][0]
+        assert ep.provenance["x-claude-mem-session-id"] == "sess-abc-123"
+
+    def test_preserves_prompt_number(self) -> None:
+        """The vendor ``prompt_number`` survives in provenance (f7 §5d turn
+        structure — the batch-por-turno experiment groups by it)."""
+        ep = import_record(_record(), "claude-mem")["notes"][0]
+        assert ep.provenance["x-claude-mem-prompt-number"] == 3
+
+    def test_prompt_number_not_reported_lost(self) -> None:
+        """``prompt_number`` is now mapped to provenance, not lost (f7 §5d)."""
+        loss = import_record(_record(), "claude-mem")["loss_report"]
+        assert not any("prompt_number" in f for f in loss["fields_lost"])
+
+    def test_missing_turn_fields_fall_back(self) -> None:
+        """Records without ``memory_session_id``/``prompt_number`` still import
+        (the preservation fields are additive, never required)."""
+        ep = import_record(_record(memory_session_id=None, prompt_number=None), "claude-mem")[
+            "notes"
+        ][0]
+        assert ep.provenance.get("x-claude-mem-session-id") is None
+        assert ep.provenance.get("x-claude-mem-prompt-number") is None
 
     def test_pure_function_same_input_same_output(self) -> None:
         r1 = import_record(_record(), "claude-mem")
