@@ -43,7 +43,7 @@ class ExperimentVariant:
     name: str
     score_source: ScoreSource
     recency_config: dict | None = None
-    embed_mode: str = "body"
+    embed_mode: str = "body+summary"  # F3 flip default (f7-experiment-embed)
     rerank_enabled: bool = False
     description: str = ""
 
