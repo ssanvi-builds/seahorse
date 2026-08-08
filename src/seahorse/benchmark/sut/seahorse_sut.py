@@ -163,13 +163,19 @@ class SeahorseSUT:
         t0_reader = time.perf_counter()
         answer = self._reader_llm.generate(question, context, question_date)
         reader_latency = (time.perf_counter() - t0_reader) * 1000
+        latency_ms = {"index": latency_index}
+        if self._rerank_enabled:
+            # F2 (f7 §5b): the rerank-path INDEX latency — the stage-3 budget
+            # (p95_index_rerank_ms <= 500ms). The base path keeps its 250ms
+            # promise; the rerank path has its OWN budget (cerebras-f §4.3).
+            latency_ms["index_rerank"] = latency_index
         return SUTResponse(
             answer=answer,
             retrieved_ep_ids=retrieved_ep_ids,
             retrieved_fact_ids=retrieved_fact_ids,
             retrieved_session_ids=retrieved_session_ids,
             tokens_consumed_measured=tokens_measured,
-            latency_ms={"index": latency_index},
+            latency_ms=latency_ms,
             reader_latency_ms=reader_latency,
             total_query_latency_ms=latency_index + reader_latency,
             sut_metadata={

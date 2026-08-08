@@ -98,6 +98,30 @@ def test_query_returns_response_with_bridge(sut, fake_reader):
     assert "index" in resp.latency_ms
 
 
+def test_query_records_index_rerank_latency_when_enabled(sut, fake_reader):
+    """F2 (f7 §5b): with rerank_enabled the SUT records latency_ms["index_rerank"]
+    (the rerank-path INDEX latency — the stage-3 budget)."""
+    sut._rerank_enabled = True  # noqa: SLF001 — test hook
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    sut.ingest(
+        [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
+    )
+    resp = sut.query("What is the capital of France?")
+    assert "index_rerank" in resp.latency_ms
+    assert resp.latency_ms["index_rerank"] >= 0
+
+
+def test_query_omits_index_rerank_when_disabled(sut, fake_reader):
+    """Baseline (rerank OFF): no index_rerank key — the base path keeps its
+    250ms promise (f7 §5b)."""
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    sut.ingest(
+        [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
+    )
+    resp = sut.query("What is the capital of France?")
+    assert "index_rerank" not in resp.latency_ms
+
+
 def test_query_detects_fallback_g2(sut):
     """In the G2 regime all scores are 0.0 → honest score_source=fallback_g2."""
     d = datetime(2026, 1, 1, tzinfo=UTC)

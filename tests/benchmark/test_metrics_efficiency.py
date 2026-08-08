@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from seahorse.benchmark.config import BenchmarkConfig
 from seahorse.benchmark.contracts import BenchmarkInstance, SUTResponse
-from seahorse.benchmark.metrics.efficiency import LatencyP95Metric, TokenEfficiencyMetric
+from seahorse.benchmark.metrics.efficiency import (
+    LatencyP95Metric,
+    LatencyP95RerankMetric,
+    TokenEfficiencyMetric,
+)
 from tests.benchmark.conftest import FakeTokenizer
 
 
@@ -75,3 +79,29 @@ def test_latency_p95_merges_probe_results():
     result = LatencyP95Metric(probe).compute([inst], [resp], BenchmarkConfig())
     assert result.report.by_slice["timeline"] == 42.7
     assert result.report.by_slice["full"] == 18.3
+
+
+def test_latency_p95_rerank_reads_index_rerank_key():
+    """F2 (f7 §5b): the rerank-path INDEX p95 comes from latency_ms["index_rerank"]
+    (set by the SUT only when rerank_enabled)."""
+    inst = _inst_with_haystack("x")
+    responses = [
+        SUTResponse(
+            answer="A", retrieved_ep_ids=(), retrieved_fact_ids=(),
+            latency_ms={"index": 10.0, "index_rerank": 300.0},
+        ),
+        SUTResponse(
+            answer="A", retrieved_ep_ids=(), retrieved_fact_ids=(),
+            latency_ms={"index": 20.0, "index_rerank": 450.0},
+        ),
+    ]
+    result = LatencyP95RerankMetric().compute([inst], responses, BenchmarkConfig())
+    assert result.report.global_value == 450.0  # nearest-rank p95 of [300, 450]
+
+
+def test_latency_p95_rerank_zero_when_absent():
+    """Baseline variants (rerank OFF) have no index_rerank key → 0.0."""
+    inst = _inst_with_haystack("x")
+    resp = _resp(0)  # latency_ms = {"index": 10.0} only
+    result = LatencyP95RerankMetric().compute([inst], [resp], BenchmarkConfig())
+    assert result.report.global_value == 0.0

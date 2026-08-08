@@ -493,6 +493,11 @@ def benchmark_run_cmd(
         "--embed-mode",
         help="Passage text to embed: body+summary (F3 flip default) | body (baseline).",
     ),
+    rerank_enable: bool = typer.Option(
+        False,
+        "--rerank-enable",
+        help="F2 cross-encoder rerank (opt-in, score_source=rrf_rerank, f7 §5b).",
+    ),
 ) -> None:
     """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
     from seahorse.benchmark.cli import run_benchmark
@@ -509,6 +514,7 @@ def benchmark_run_cmd(
         recency_gamma=recency_gamma,
         recency_half_life=recency_half_life,
         embed_mode=embed_mode,
+        rerank_enable=rerank_enable,
     )
     raise typer.Exit(code=code)
 
@@ -517,7 +523,7 @@ def benchmark_run_cmd(
 def benchmark_experiment_cmd(
     ctx: typer.Context,
     experiment: str = typer.Argument(
-        ..., help="recency | embed | batch (which F7 experiment to run)."
+        ..., help="recency | rerank | embed | batch (which F7 experiment to run)."
     ),
     corpus: str = typer.Option(
         "synthetic",

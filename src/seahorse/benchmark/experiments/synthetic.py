@@ -15,6 +15,8 @@ science — the authoritative F1/F3 decision comes from an LMEB-S run
 from __future__ import annotations
 
 import hashlib
+import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from seahorse.benchmark.contracts import BenchmarkDataset, BenchmarkInstance
@@ -226,4 +228,29 @@ class HashEmbedder:
         )
 
 
-__all__ = ["make_synthetic_dataset", "HashEmbedder"]
+class HashReranker:
+    """Deterministic content-overlap reranker (synthetic experiment, f7 §5b).
+
+    Scores each doc by the number of query tokens it shares (higher = more
+    relevant), so the stage-3 reorder behaves plausibly without any model
+    download. Tokens are normalized (lower-cased, punctuation stripped) so
+    "france?" matches "france" — the real cross-encoder's tokenizer handles
+    this; the stub must too or the synthetic verification would score 0.0.
+    Determinism is bit-stable across runs/processes (pure stdlib). Verifies the
+    harness MECHANICS — NOT the science (ADR-10).
+    """
+
+    def rerank(self, query: str, docs: Sequence[str]) -> Sequence[float]:
+        q_tokens = set(_normalize_tokens(query))
+        return [
+            float(sum(1 for t in _normalize_tokens(doc) if t in q_tokens))
+            for doc in docs
+        ]
+
+
+def _normalize_tokens(text: str) -> list[str]:
+    """Lower-case + strip non-alphanumeric tokens (HashReranker tokenizer)."""
+    return [t for t in re.sub(r"[^a-z0-9 ]", "", text.lower()).split() if t]
+
+
+__all__ = ["make_synthetic_dataset", "HashEmbedder", "HashReranker"]

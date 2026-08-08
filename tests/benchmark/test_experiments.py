@@ -15,12 +15,16 @@ from seahorse.benchmark.experiments import (
     CORPORA,
     EXPERIMENTS,
     NDCG_DEGRADATION_PP,
+    NDCG_IMPROVEMENT_PP,
     RECALL_IMPROVEMENT_PP,
     RECENCY_SLICES,
+    RERANK_P95_MS,
     decide_embed,
     decide_recency,
+    decide_rerank,
     embed_variants,
     recency_variants,
+    rerank_variants,
     run_experiment,
     variants_for,
 )
@@ -68,6 +72,22 @@ class TestEmbedVariants:
         assert variants[1].name == "embed_body_summary"
 
 
+class TestRerankVariants:
+    def test_baseline_vs_rerank(self):
+        variants = rerank_variants()
+        assert [v.name for v in variants] == ["mvp1_rrf", "rrf_rerank"]
+        assert variants[0].rerank_enabled is False
+        assert variants[0].score_source == "mvp1_rrf"
+        assert variants[1].rerank_enabled is True
+        assert variants[1].score_source == "rrf_rerank"
+
+    def test_rerank_variant_config_kwargs(self):
+        variant = rerank_variants()[1]
+        kwargs = variant.as_config_kwargs()
+        assert kwargs["rerank_enabled"] is True
+        assert kwargs["score_source"] == "rrf_rerank"
+
+
 class TestVariantsFor:
     def test_unknown_experiment_rejected(self):
         with pytest.raises(ValueError, match="experiment"):
@@ -75,6 +95,7 @@ class TestVariantsFor:
 
     def test_known_kinds(self):
         assert variants_for("recency") == recency_variants()
+        assert variants_for("rerank") == rerank_variants()
         assert variants_for("embed") == embed_variants()
 
 
@@ -172,6 +193,61 @@ class TestDecideRecency:
         assert decision["variant"] == "recency_g1_hl7"
 
 
+# ---------------------------------------------------------------- decide (b)
+
+def _rerank_result(name: str, ndcg: float, p95: float, *,
+                   detected: str = "mvp1_rrf") -> ExperimentResult:
+    return ExperimentResult(
+        variant=next(v for v in rerank_variants() if v.name == name),
+        metrics={
+            "recall@10": MetricReport("recall@10", 0.5),
+            "ndcg@10": MetricReport("ndcg@10", ndcg),
+            "latency_p95_rerank_ms": MetricReport("latency_p95_rerank_ms", p95),
+        },
+        detected_score_source=detected,
+        run_errors=[],
+        run_id="r",
+    )
+
+
+class TestDecideRerank:
+    def test_implement_f2_when_ndcg_improves_and_p95_within_budget(self):
+        baseline = _rerank_result("mvp1_rrf", ndcg=0.4, p95=0.0)
+        variant = _rerank_result(
+            "rrf_rerank", ndcg=0.4 + NDCG_IMPROVEMENT_PP + 0.01, p95=300.0
+        )
+        decision = decide_rerank(baseline, variant)
+        assert decision["decision"] == "implement_f2"
+        assert decision["flip"] is True
+        assert decision["variant"] == "rrf_rerank"
+        assert decision["p95_index_rerank_ms"] == pytest.approx(300.0)
+
+    def test_keep_rrf_when_ndcg_below_threshold(self):
+        baseline = _rerank_result("mvp1_rrf", ndcg=0.4, p95=0.0)
+        variant = _rerank_result(
+            "rrf_rerank", ndcg=0.4 + NDCG_IMPROVEMENT_PP / 2, p95=300.0
+        )
+        decision = decide_rerank(baseline, variant)
+        assert decision["decision"] == "keep_rrf"
+        assert decision["flip"] is False
+
+    def test_keep_rrf_when_p95_exceeds_budget(self):
+        baseline = _rerank_result("mvp1_rrf", ndcg=0.4, p95=0.0)
+        variant = _rerank_result(
+            "rrf_rerank", ndcg=0.5, p95=RERANK_P95_MS + 100.0
+        )
+        decision = decide_rerank(baseline, variant)
+        assert decision["decision"] == "keep_rrf"
+        assert decision["flip"] is False
+
+    def test_invalid_regime_when_baseline_fallback_g2(self):
+        baseline = _rerank_result("mvp1_rrf", ndcg=0.4, p95=0.0, detected="fallback_g2")
+        variant = _rerank_result("rrf_rerank", ndcg=0.5, p95=300.0)
+        decision = decide_rerank(baseline, variant)
+        assert decision["decision"] == "invalid_regime"
+        assert decision["flip"] is False
+
+
 # ---------------------------------------------------------------- decide (c)
 
 class TestDecideEmbed:
@@ -237,6 +313,23 @@ class TestRunExperimentSynthetic:
         assert len(report.results) == 2
         assert [r.variant.embed_mode for r in report.results] == ["body", "body+summary"]
         assert report.decision["decision"] in ("keep_body_only", "flip_f3")
+
+    def test_rerank_report_shape(self, tmp_path):
+        report = run_experiment(
+            experiment="rerank", corpus="synthetic", output_dir=str(tmp_path),
+            **_fake_kwargs(),
+        )
+        assert len(report.results) == 2
+        assert [r.variant.name for r in report.results] == ["mvp1_rrf", "rrf_rerank"]
+        # Both variants ran in the hybrid regime (no fallback_g2).
+        assert all(r.detected_score_source in ("mvp1_rrf", "rrf_rerank")
+                   for r in report.results)
+        for r in report.results:
+            assert "ndcg@10" in r.metrics
+            assert "latency_p95_rerank_ms" in r.metrics
+        # The rerank variant pinned its model in the fingerprint.
+        assert report.results[1].run_id != report.results[0].run_id
+        assert report.decision["decision"] in ("keep_rrf", "implement_f2")
 
     def test_unknown_experiment_rejected(self, tmp_path):
         with pytest.raises(ValueError, match="experiment"):
@@ -318,5 +411,5 @@ def test_clock_delta_spans_real_date_range(synthetic_dataset):
 
 
 def test_experiments_and_corpora_constants():
-    assert set(EXPERIMENTS) == {"recency", "embed", "batch"}
+    assert set(EXPERIMENTS) == {"recency", "rerank", "embed", "batch"}
     assert set(CORPORA) == {"synthetic", "lmeb-s", "claude-mem"}

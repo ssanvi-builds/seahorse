@@ -113,4 +113,39 @@ class LatencyP95Metric:
         )
 
 
-__all__ = ["TokenEfficiencyMetric", "LatencyP95Metric"]
+class LatencyP95RerankMetric:
+    """p95 of the INDEX call latency when rerank is enabled (f7 §5b).
+
+    ``p95_index_rerank_ms`` is the stage-3 rerank budget (NFR: <= 500ms,
+    cerebras-f §4.3). The SUT records ``latency_ms["index_rerank"]`` ONLY when
+    ``rerank_enabled`` (the rerank-path INDEX latency); the metric reports 0.0
+    when absent (baseline variants — the base path keeps its 250ms promise).
+    """
+
+    def name(self) -> str:
+        return "latency_p95_rerank_ms"
+
+    def requires_golden(self) -> bool:
+        return False
+
+    def requires_retrieval(self) -> bool:
+        return True
+
+    def compute(
+        self,
+        instances: Sequence[BenchmarkInstance],
+        responses: Sequence[SUTResponse],
+        config: BenchmarkConfig,
+    ) -> MetricResult:
+        rerank_lat = [r.latency_ms.get("index_rerank", 0.0) for r in responses]
+        return MetricResult(
+            metric_name=self.name(),
+            report=MetricReport(
+                metric_name=self.name(),
+                global_value=_p95(rerank_lat),
+                n_samples=len(responses),
+            ),
+        )
+
+
+__all__ = ["TokenEfficiencyMetric", "LatencyP95Metric", "LatencyP95RerankMetric"]

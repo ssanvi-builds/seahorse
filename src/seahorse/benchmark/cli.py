@@ -54,6 +54,7 @@ def run_benchmark(
     recency_gamma: float | None = None,
     recency_half_life: float | None = None,
     embed_mode: str = "body+summary",
+    rerank_enable: bool = False,
     thresholds: dict[str, float] | None = None,
     reader_llm=None,
 ) -> int:
@@ -70,6 +71,7 @@ def run_benchmark(
         score_source=score_source,  # type: ignore[arg-type]
         recency_config=recency_config,
         embed_mode=embed_mode,
+        rerank_enabled=rerank_enable,
     )
     config.validate()
     loader = AdapterRegistry.get(adapter)
@@ -77,22 +79,36 @@ def run_benchmark(
     reader = reader_llm or ReaderLLMClient(reader_model)
     tmp = tempfile.mkdtemp(prefix="seahorse-bench-")
 
+    def _reranker():
+        # F2 (f7 §5b): the cross-encoder is query-time pure — wiring it never
+        # requires a reindex. Lazy import keeps the default run model-free.
+        from seahorse.embeddings.rerank_backend import build_fastembed_reranker
+
+        return build_fastembed_reranker()
+
     def sut_factory() -> SeahorseSUT:
-        # F7 enabler (a)/(c): the composition-root swap is the ONLY wiring — the
-        # SUT knows nothing about RecencyConfig/embed_mode internals (delegation
-        # purity, f5-16 §2.4).
+        # F7 enablers (a)/(b)/(c): the composition-root swap is the ONLY wiring —
+        # the SUT knows nothing about RecencyConfig/reranker/embed_mode internals
+        # (delegation purity, f5-16 §2.4).
         recency = (
             RecencyConfig(**config.recency_config)
             if config.recency_config is not None
             else None
         )
+        reranker = _reranker() if rerank_enable else None
         facade, storage = build_facade(
-            Path(tmp) / "bench.db", recency=recency, embed_mode=config.embed_mode
+            Path(tmp) / "bench.db",
+            recency=recency,
+            embed_mode=config.embed_mode,
+            reranker=reranker,
         )
         return SeahorseSUT(
             facade,
             lambda: build_facade(
-                Path(tmp) / "bench2.db", recency=recency, embed_mode=config.embed_mode
+                Path(tmp) / "bench2.db",
+                recency=recency,
+                embed_mode=config.embed_mode,
+                reranker=reranker,
             )[0],
             reader_llm=reader,
             tokenizer=tokenizer,
@@ -101,6 +117,7 @@ def run_benchmark(
             top_k=top_k,
             score_source=score_source,
             recency_config=config.recency_config,
+            rerank_enabled=rerank_enable,
             embed_mode=config.embed_mode,
         )
 

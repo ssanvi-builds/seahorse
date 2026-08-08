@@ -41,8 +41,13 @@ from seahorse.benchmark.experiments.decide import (
     ExperimentResult,
     decide_embed,
     decide_recency,
+    decide_rerank,
 )
-from seahorse.benchmark.experiments.synthetic import HashEmbedder, make_synthetic_dataset
+from seahorse.benchmark.experiments.synthetic import (
+    HashEmbedder,
+    HashReranker,
+    make_synthetic_dataset,
+)
 from seahorse.benchmark.experiments.variants import (
     CORPORA,
     EXPERIMENTS,
@@ -52,7 +57,11 @@ from seahorse.benchmark.experiments.variants import (
 from seahorse.benchmark.harness.reader_llm import ReaderLLMClient
 from seahorse.benchmark.harness.tokenizer import Tokenizer
 from seahorse.benchmark.knowledge_update_simulator import KnowledgeUpdateSimulator
-from seahorse.benchmark.metrics.efficiency import LatencyP95Metric, TokenEfficiencyMetric
+from seahorse.benchmark.metrics.efficiency import (
+    LatencyP95Metric,
+    LatencyP95RerankMetric,
+    TokenEfficiencyMetric,
+)
 from seahorse.benchmark.metrics.memory import (
     FAMAGapMetric,
     KnowledgeUpdateAccuracyMetric,
@@ -147,6 +156,9 @@ def make_metric_registry(tokenizer: Tokenizer) -> MetricRegistry:
     reg.register(KnowledgeUpdateAccuracyMetric())
     reg.register(TokenEfficiencyMetric(tokenizer))
     reg.register(LatencyP95Metric())
+    # F2 (f7 §5b): the rerank-path INDEX p95 (0.0 for baseline variants — the
+    # SUT records latency_ms["index_rerank"] only when rerank_enabled).
+    reg.register(LatencyP95RerankMetric())
     return reg
 
 
@@ -185,10 +197,29 @@ def _recency_config(variant: ExperimentVariant) -> RecencyConfig | None:
     return RecencyConfig(**variant.recency_config)
 
 
+def _reranker_for(corpus: str):
+    """The cross-encoder for a corpus: deterministic stub (synthetic) or the real
+    fastembed backend (lmeb-s). Query-time pure — never requires a reindex."""
+    if corpus == "synthetic":
+        return HashReranker()
+    from seahorse.embeddings.rerank_backend import build_fastembed_reranker  # lazy
+
+    return build_fastembed_reranker()
+
+
+def _rerank_model_name(corpus: str) -> str:
+    """The pinned cross-encoder identity for the fingerprint (cerebras-f §4.4)."""
+    if corpus == "synthetic":
+        return "hash"
+    from seahorse.embeddings.rerank_backend import MODEL_NAME  # lazy
+
+    return MODEL_NAME
+
+
 def _facade_factory(
     corpus: str, clock: Callable[[], Any], variant: ExperimentVariant
 ) -> Callable[[Path], tuple[Any, Any]]:
-    """Composition-root wiring per variant + corpus (f7 enablers a/c, §3)."""
+    """Composition-root wiring per variant + corpus (f7 enablers a/b/c, §3)."""
 
     def _build(db_path: Path):
         kwargs: dict = {
@@ -201,6 +232,11 @@ def _facade_factory(
             # kNN path REAL without a model download.
             kwargs["retrieval_available"] = True
             kwargs["passage_embedder"] = HashEmbedder()
+        if variant.rerank_enabled:
+            # F2 (f7 §5b): the composition-root swap is the ONLY wiring — the
+            # SUT knows nothing about the cross-encoder internals (delegation
+            # purity, f5-16 §2.4).
+            kwargs["reranker"] = _reranker_for(corpus)
         return build_facade(db_path, **kwargs)
 
     return _build
@@ -306,6 +342,12 @@ def render_experiment_report(report: ExperimentReport) -> str:
             tr = by_slice.get("temporal-reasoning", float("nan"))
             ku = by_slice.get("knowledge-update", float("nan"))
             lines.append(f"  {r.variant.name:<28} tr={tr:.3f} ku={ku:.3f}")
+    if report.experiment == "rerank":
+        lines.append("")
+        lines.append("p95_index_rerank_ms (rerank-path INDEX latency):")
+        for r in report.results:
+            p95 = r.metric("latency_p95_rerank_ms").global_value
+            lines.append(f"  {r.variant.name:<28} p95={p95:.0f}ms")
     lines.append("")
     lines.append("## Decision")
     lines.append(f"decision: {report.decision.get('decision')}")
@@ -411,6 +453,8 @@ def run_experiment(
     baseline, sweep = results[0], results[1:]
     if experiment == "recency":
         decision = decide_recency(baseline, sweep)
+    elif experiment == "rerank":
+        decision = decide_rerank(baseline, sweep[0])
     else:
         decision = decide_embed(baseline, sweep[0])
     return ExperimentReport(
@@ -448,6 +492,10 @@ def _run_variant(
     from dataclasses import replace
 
     variant_config = replace(base_config, **variant.as_config_kwargs())
+    if variant.rerank_enabled:
+        # F2 (f7 §5b): pin the cross-encoder identity in the fingerprint — the
+        # run_id differs from the baseline (cerebras-f §4.4).
+        variant_config = replace(variant_config, rerank_model=_rerank_model_name(corpus))
     variant_config.validate()
 
     template = None
@@ -509,6 +557,7 @@ def _run_variant(
             top_k=variant_config.top_k,
             score_source=variant_config.score_source,
             recency_config=variant_config.recency_config,
+            rerank_enabled=variant_config.rerank_enabled,
             embed_mode=variant_config.embed_mode,
             ep_id_to_session=(
                 dict(template.bridge["ep_id_to_session"]) if template else None

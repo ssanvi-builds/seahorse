@@ -58,6 +58,7 @@ class BenchmarkConfig:
     # Experiment variants (f7 §3 — harness requirements, not options)
     recency_config: dict | None = None  # {"gamma": 0.5, "half_life_days": 30} | None
     rerank_enabled: bool = False
+    rerank_model: str = ""  # pinned cross-encoder identity ("" when rerank OFF)
     embed_mode: str = "body+summary"  # "body" | "body+summary" — F3 flip default
 
     # Reproducibility
@@ -91,6 +92,11 @@ class BenchmarkConfig:
         if self.embed_mode not in ("body", "body+summary"):
             raise ValueError(
                 f"embed_mode must be 'body' or 'body+summary', got {self.embed_mode!r}"
+            )
+        if self.rerank_enabled and not self.rerank_model:
+            raise ValueError(
+                "rerank_enabled requires a pinned rerank_model (the cross-encoder "
+                "identity goes in the fingerprint, cerebras-f §4.4)"
             )
 
     def config_hash(self) -> str:

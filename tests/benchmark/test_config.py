@@ -60,6 +60,28 @@ def test_experiment_variants_are_configurable():
     for score_source in ("mvp1_rrf", "mvp1_rrf_recency", "rrf_rerank"):
         cfg = BenchmarkConfig(score_source=score_source)  # type: ignore[arg-type]
         cfg.validate()
-    cfg = BenchmarkConfig(recency_config={"gamma": 0.5, "half_life_days": 30}, rerank_enabled=True)
+    cfg = BenchmarkConfig(
+        recency_config={"gamma": 0.5, "half_life_days": 30},
+        rerank_enabled=True,
+        rerank_model="hooman650/bge-reranker-v2-m3-onnx-o4",
+    )
     cfg.validate()
     assert cfg.recency_config == {"gamma": 0.5, "half_life_days": 30}
+    assert cfg.rerank_model == "hooman650/bge-reranker-v2-m3-onnx-o4"
+
+
+def test_rerank_enabled_requires_pinned_model():
+    """F2 (f7 §5b): rerank_enabled without a pinned rerank_model is rejected —
+    the cross-encoder identity goes in the fingerprint (cerebras-f §4.4)."""
+    with pytest.raises(ValueError, match="rerank_model"):
+        BenchmarkConfig(rerank_enabled=True).validate()
+
+
+def test_rerank_model_changes_config_hash():
+    """The reranker identity is part of the fingerprint — the rerank run_id
+    differs from the baseline (cerebras-f §4.4)."""
+    base = BenchmarkConfig().config_hash()
+    rerank = BenchmarkConfig(
+        rerank_enabled=True, rerank_model="hooman650/bge-reranker-v2-m3-onnx-o4"
+    ).config_hash()
+    assert base != rerank
