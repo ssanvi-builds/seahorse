@@ -580,3 +580,94 @@ class TestRecencySlot:
                 )
         finally:
             storage.close()
+
+
+class _FakeReranker:
+    """Deterministic ``QueryReranker`` double: scores docs by query-token overlap."""
+
+    def rerank(self, query, docs):
+        q_tokens = set(query.lower().split())
+        return [float(sum(1 for t in d.lower().split() if t in q_tokens)) for d in docs]
+
+
+class TestRerankSlot:
+    """F7 enabler (b) — ``build_facade`` gains a ``reranker`` slot (composition root).
+
+    The ``HybridRetriever`` propagates ``QueryReranker | None``; the composition
+    root must expose it so the benchmark SUT and CLI can wire the rerank A/B
+    experiment without touching the facade internals (single-point swap,
+    f7-experimental-design §3). Default None keeps the pure-RRF fingerprint
+    (ADR-10). Query-time pure: wiring a reranker never requires a reindex.
+    """
+
+    def _hybrid(self, monkeypatch, tmp_path, db_name, *, clock, reranker=None):
+        import seahorse.facade.factory as factory
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
+        return build_facade(
+            tmp_path / db_name,
+            embedder=_QueryEmbedder384(),
+            retrieval_available=True,
+            clock=clock,
+            reranker=reranker,
+        )
+
+    def test_default_reranker_is_none(self, monkeypatch, tmp_path) -> None:
+        from seahorse.facade.hybrid_retriever import HybridRetriever
+
+        clock, _ = _controllable_clock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        facade, storage = self._hybrid(monkeypatch, tmp_path, "f.db", clock=clock)
+        try:
+            assert isinstance(facade._retriever, HybridRetriever)
+            assert facade._retriever._reranker is None  # noqa: SLF001
+        finally:
+            storage.close()
+
+    def test_reranker_is_propagated(self, monkeypatch, tmp_path) -> None:
+        from seahorse.facade.hybrid_retriever import HybridRetriever
+
+        reranker = _FakeReranker()
+        clock, _ = _controllable_clock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        facade, storage = self._hybrid(
+            monkeypatch, tmp_path, "f.db", clock=clock, reranker=reranker
+        )
+        try:
+            assert isinstance(facade._retriever, HybridRetriever)
+            assert facade._retriever._reranker is reranker  # noqa: SLF001
+        finally:
+            storage.close()
+
+    def test_recall_rerank_reorders_by_cross_encoder_score(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """With a reranker the candidate order follows the cross-encoder score.
+
+        Two episodes about France: the one whose summary/subject shares more
+        query tokens scores higher and ranks first (the RRF order is replaced by
+        the rerank order — score_source=rrf_rerank).
+        """
+        clock, _ = _controllable_clock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        facade, storage = self._hybrid(
+            monkeypatch, tmp_path, "f.db", clock=clock, reranker=_FakeReranker()
+        )
+        try:
+            facade.remember(
+                RememberPayload(
+                    body="# France\n\nThe capital of France is Paris.",
+                    by=_agent_by(),
+                    summary="The capital of France is Paris.",
+                )
+            )
+            facade.remember(
+                RememberPayload(
+                    body="# Weather\n\nIt is sunny in Madrid.",
+                    by=_agent_by(),
+                    summary="It is sunny in Madrid.",
+                )
+            )
+            rows = facade.recall("capital of France", k=5)
+            assert rows
+            assert rows[0].subject == "france"  # the relevant episode ranks first
+            assert rows[0].score != 0.0  # hybrid path served (no G2)
+        finally:
+            storage.close()

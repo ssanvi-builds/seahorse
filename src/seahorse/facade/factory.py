@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from seahorse.contracts.embeddings import QueryEmbedder
+from seahorse.contracts.rerank import QueryReranker
 from seahorse.disclosure.shaper import DisclosureShaperImpl
 from seahorse.embeddings.types import EMBED_MODES
 from seahorse.engine.engine import BiTemporalEngine
@@ -54,6 +55,7 @@ def build_facade(
     recency: RecencyConfig | None = None,
     embed_mode: str = "body+summary",
     passage_embedder: Any | None = None,
+    reranker: QueryReranker | None = None,
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
 
@@ -99,6 +101,13 @@ def build_facade(
     resolved fastembed backend with a deterministic embedder (the synthetic
     mechanical verification in CI). When None, ``_build_passage_embedder``
     resolves the real backend exactly as before.
+
+    The ``reranker`` slot (F7 enabler (b)) is the F2 cross-encoder passed
+    through to the ``HybridRetriever`` (composition root, single-point swap).
+    The default ``None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10);
+    the benchmark SUT and CLI wire it to run the rerank A/B experiment
+    (f7-experimental-design §5(b)). Query-time pure: wiring a reranker never
+    requires a reindex (cerebras-f §4.2).
     """
     if embed_mode not in EMBED_MODES:
         raise ValueError(
@@ -131,6 +140,7 @@ def build_facade(
             config=cfg,
             fallback=fallback,
             recency=recency,
+            reranker=reranker,
         )
         indexer = RetrievalIndexer(
             passage_embedder,

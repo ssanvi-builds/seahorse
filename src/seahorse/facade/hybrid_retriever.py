@@ -21,6 +21,7 @@ from seahorse.contracts.persistence import (
     FullTextIndexRepository,
     VectorIndexRepository,
 )
+from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
 from seahorse.facade.errors import PitRecallNotSupportedMVP0
@@ -48,6 +49,7 @@ class HybridRetriever:
         config: FacadeConfig,
         fallback: VigenteListingRetriever,
         recency: RecencyConfig | None = None,
+        reranker: QueryReranker | None = None,
     ) -> None:
         self._embedder = embedder
         self._vector_repo = vector_repo
@@ -59,6 +61,9 @@ class HybridRetriever:
         self._fallback = fallback
         # F1 recency (default-OFF, ADR-10): None keeps the pure-RRF fingerprint.
         self._recency = recency
+        # F2 rerank (default-OFF, ADR-10): None keeps the pure-RRF fingerprint.
+        # The composition root wires the cross-encoder here (single-point swap).
+        self._reranker = reranker
 
     def recall(
         self,
@@ -125,6 +130,7 @@ class HybridRetriever:
             bfs_known_at_supported=False,
             clock=self._clock,
             recency=self._recency,
+            reranker=self._reranker,
         )
 
     def _g2(
