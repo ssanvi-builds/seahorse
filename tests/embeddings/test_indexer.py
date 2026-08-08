@@ -147,12 +147,48 @@ def test_embed_mode_body_summary_without_summary_falls_back_to_body(mgr) -> None
     assert embedder.calls == [(["madrid spain"], "passage")]
 
 
-def test_embed_mode_body_is_default(mgr) -> None:
-    indexer, embedder, vector, fts, episodes = _stack(mgr)  # embed_mode="body"
+def test_embed_mode_body_summary_is_default(mgr) -> None:
+    # F3 flip (f7-experiment-embed §decide): body+summary is the product
+    # default — the summary leads the vector (distilled signal first).
+    indexer, embedder, vector, fts, episodes = _stack(mgr)  # embed_mode="body+summary"
     episodes.append(_episode("e1", "madrid spain", summary="a gist"))
     indexer.index_episode("e1")
-    # body-only: the summary is ignored for the embedding
-    assert embedder.calls == [(["madrid spain"], "passage")]
+    assert embedder.calls == [(["a gist\n\nmadrid spain"], "passage")]
+
+
+def test_reindex_with_body_summary_produces_distinct_vectors(mgr) -> None:
+    # F3 flip: reindexing the SAME episode under body+summary re-embeds honestly
+    # — the effective text changes (summary leads), so the content_hash over the
+    # EFFECTIVE text differs → cache miss vs the body-only index (f7 §5c).
+    episodes = SqliteEpisodeRepository(mgr)
+    vector = SqliteVectorIndexRepository(mgr)
+    fts = SqliteFullTextIndexRepository(mgr)
+    episodes.append(_episode("e1", "detailed body text", summary="The distilled gist"))
+
+    body_embedder = _FakePassageEmbedder()
+    body_indexer = RetrievalIndexer(
+        body_embedder, vector, fts, episodes, mgr, embed_mode="body"
+    )
+    body_indexer.index_episode("e1")
+    assert body_embedder.calls == [(["detailed body text"], "passage")]
+    body_hash = mgr.writer.execute(
+        "SELECT content_hash FROM vec_episodes_meta WHERE ep_id='e1'"
+    ).fetchone()[0]
+    assert body_hash == _content_hash("detailed body text", "passage")
+
+    bs_embedder = _FakePassageEmbedder()
+    bs_indexer = RetrievalIndexer(
+        bs_embedder, vector, fts, episodes, mgr, embed_mode="body+summary"
+    )
+    bs_indexer.index_episode("e1")
+    assert bs_embedder.calls == [(["The distilled gist\n\ndetailed body text"], "passage")]
+    bs_hash = mgr.writer.execute(
+        "SELECT content_hash FROM vec_episodes_meta WHERE ep_id='e1'"
+    ).fetchone()[0]
+    assert bs_hash == _content_hash("The distilled gist\n\ndetailed body text", "passage")
+    # distinct effective text → distinct content_hash → honest cache miss + a
+    # different vector than the body-only reindex
+    assert body_hash != bs_hash
 
 
 def test_invalid_embed_mode_rejected(mgr) -> None:

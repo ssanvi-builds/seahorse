@@ -160,11 +160,12 @@ def _try_build_passage_embedder() -> Embedder | None:
         return None
 
 
-def _run_backfill(vault: Path, storage: Storage, *, embed_mode: str = "body") -> str:
+def _run_backfill(vault: Path, storage: Storage, *, embed_mode: str = "body+summary") -> str:
     """M1-B.5: best-effort vec0/FTS backfill over the rebuilt index.
 
-    ``embed_mode`` (F7 enabler (c)) selects the passage text — re-running under
-    ``body+summary`` re-embeds honestly (new content hash → cache miss, f5-16
+    ``embed_mode`` (F7 enabler (c)) selects the passage text. Default
+    ``body+summary`` is the F3 flip (f7-experiment-embed §decide); re-running
+    under a new mode re-embeds honestly (new content hash → cache miss, f5-16
     §5.4). Returns an honest report line; never raises (the episode_index
     rebuild is the primary op — the index backfill is derived/best-effort,
     ADR-10).
@@ -194,7 +195,7 @@ def run_index_rebuild(
     *,
     fmt: OutputFormat = "human",
     out: TextIO,
-    embed_mode: str = "body",
+    embed_mode: str = "body+summary",
 ) -> None:
     """``seahorse index rebuild`` — regenerate the sidecar from the vault.
 
@@ -206,9 +207,9 @@ def run_index_rebuild(
     NO auto-pick. A parse failure surfaces as ``FrontmatterInvalid`` (Cat A exit
     90) — NO silent skip.
 
-    ``embed_mode`` (F7 enabler (c)) drives the vec0/FTS backfill — reindex under
-    ``body+summary`` to flip F3 vectorial. The ``episode_index`` rebuild itself
-    is embed-mode-independent.
+    ``embed_mode`` (F7 enabler (c)) drives the vec0/FTS backfill — the F3 flip
+    makes ``body+summary`` the default (f7-experiment-embed §decide). The
+    ``episode_index`` rebuild itself is embed-mode-independent.
     """
     # Lazy import: frontmatter.rebuild transitively pulls ruamel (via
     # frontmatter.adapter). Importing it at module top would leak ruamel into

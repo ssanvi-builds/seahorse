@@ -53,7 +53,7 @@ def run_benchmark(
     score_source: str = "mvp1_rrf",
     recency_gamma: float | None = None,
     recency_half_life: float | None = None,
-    embed_mode: str = "body",
+    embed_mode: str = "body+summary",
     thresholds: dict[str, float] | None = None,
     reader_llm=None,
 ) -> int:

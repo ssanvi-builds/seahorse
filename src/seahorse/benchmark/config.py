@@ -58,7 +58,7 @@ class BenchmarkConfig:
     # Experiment variants (f7 §3 — harness requirements, not options)
     recency_config: dict | None = None  # {"gamma": 0.5, "half_life_days": 30} | None
     rerank_enabled: bool = False
-    embed_mode: str = "body"  # "body" | "body+summary"
+    embed_mode: str = "body+summary"  # "body" | "body+summary" — F3 flip default
 
     # Reproducibility
     repetitions: int = 1

@@ -52,7 +52,7 @@ def build_facade(
     retrieval_available: bool | None = None,
     llm_client: LLMClient | None = None,
     recency: RecencyConfig | None = None,
-    embed_mode: str = "body",
+    embed_mode: str = "body+summary",
     passage_embedder: Any | None = None,
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
@@ -89,10 +89,11 @@ def build_facade(
     (f7-experimental-design §5(a)).
 
     The ``embed_mode`` slot (F7 enabler (c)) selects the passage text the write-
-    path indexer embeds: ``body`` (baseline) or ``body+summary`` (summary leads
-    the vector). Validated at the boundary (fail-fast); propagated to the
-    ``RetrievalIndexer`` (single-point swap for the F3 reindex experiment,
-    f7-experimental-design §5(c)).
+    path indexer embeds. Default ``body+summary`` (F3 flip, f7-experiment-embed
+    §decide — summary leads the vector, +2.7% recall@10); ``body`` remains
+    selectable for the F3 A/B. Validated at the boundary (fail-fast);
+    propagated to the ``RetrievalIndexer`` (single-point swap for the F3 reindex
+    experiment, f7-experimental-design §5(c)).
 
     The ``passage_embedder`` slot (F7 experiment seam) overrides the auto-
     resolved fastembed backend with a deterministic embedder (the synthetic

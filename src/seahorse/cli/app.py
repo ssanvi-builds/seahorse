@@ -489,9 +489,9 @@ def benchmark_run_cmd(
         help="F1 recency half-life in days (pairs with --recency-gamma).",
     ),
     embed_mode: str = typer.Option(
-        "body",
+        "body+summary",
         "--embed-mode",
-        help="Passage text to embed: body (baseline) | body+summary (F3 candidate).",
+        help="Passage text to embed: body+summary (F3 flip default) | body (baseline).",
     ),
 ) -> None:
     """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
@@ -684,9 +684,9 @@ app.add_typer(index_app, name="index")
 def index_rebuild_cmd(
     ctx: typer.Context,
     embed_mode: str = typer.Option(
-        "body",
+        "body+summary",
         "--embed-mode",
-        help="Passage text to embed: body (baseline) | body+summary (F3 candidate).",
+        help="Passage text to embed: body+summary (F3 flip default) | body (baseline).",
     ),
 ) -> None:
     """Rebuild the sidecar index from the vault's .md notes (clear-then-rebuild)."""

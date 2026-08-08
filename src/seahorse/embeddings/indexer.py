@@ -34,8 +34,10 @@ class RetrievalIndexer:
 
     ``embed_mode`` selects the embedded text (f7 §5c): ``body`` (baseline) or
     ``body+summary`` (summary leads, then the body — the FTS doc is unchanged).
-    The content hash reflects the EFFECTIVE embedded text, so re-indexing under
-    a new mode re-embeds (cache miss) honestly.
+    The F3 flip makes ``body+summary`` the default (f7-experiment-embed §decide,
+    +2.7% recall@10); ``body`` stays selectable for the F3 A/B. The content hash
+    reflects the EFFECTIVE embedded text, so re-indexing under a new mode
+    re-embeds (cache miss) honestly.
     """
 
     def __init__(
@@ -46,7 +48,7 @@ class RetrievalIndexer:
         episode_repo: SqliteEpisodeRepository,
         cm: ConnectionManager,
         *,
-        embed_mode: str = "body",
+        embed_mode: str = "body+summary",
     ) -> None:
         if embed_mode not in EMBED_MODES:
             raise ValueError(

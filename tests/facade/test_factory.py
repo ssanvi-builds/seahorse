@@ -234,11 +234,11 @@ class TestEmbedModeSlot:
 
     Propagated to the ``RetrievalIndexer`` (composition root, single-point swap)
     so the F3 vectorial experiment can re-index with ``body+summary`` without
-    touching the write path (f7-experimental-design §5c). Default ``body`` is
-    the baseline.
+    touching the write path (f7-experimental-design §5c). Default ``body+summary``
+    is the F3-flipped product default (f7-experiment-embed §decide).
     """
 
-    def _hybrid(self, monkeypatch, tmp_path, *, embed_mode="body"):
+    def _hybrid(self, monkeypatch, tmp_path, *, embed_mode="body+summary"):
         import seahorse.facade.factory as factory
 
         monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
@@ -249,10 +249,19 @@ class TestEmbedModeSlot:
             embed_mode=embed_mode,
         )
 
-    def test_default_embed_mode_body(self, monkeypatch, tmp_path) -> None:
-        facade, storage = self._hybrid(monkeypatch, tmp_path)
+    def test_default_embed_mode_body_summary(self, monkeypatch, tmp_path) -> None:
+        # The F3 flip is at the composition root: build_facade without embed_mode
+        # wires body+summary (no explicit pass-through masks the default).
+        import seahorse.facade.factory as factory
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
+        facade, storage = build_facade(
+            tmp_path / "f.db",
+            embedder=_QueryEmbedder384(),
+            retrieval_available=True,
+        )
         try:
-            assert facade._write_path._indexer._embed_mode == "body"  # noqa: SLF001
+            assert facade._write_path._indexer._embed_mode == "body+summary"  # noqa: SLF001
         finally:
             storage.close()
 

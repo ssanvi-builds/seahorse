@@ -182,7 +182,8 @@ def test_run_benchmark_wires_embed_mode_to_facade(tmp_path, monkeypatch):
     assert captured["embed_mode"] == "body+summary"
 
 
-def test_run_benchmark_default_embed_mode_body(tmp_path, monkeypatch):
+def test_run_benchmark_default_embed_mode_body_summary(tmp_path, monkeypatch):
+    """F3 flip: the benchmark CLI defaults to the flipped product default."""
     import seahorse.benchmark.cli as bcli
 
     captured: dict = {}
@@ -200,7 +201,7 @@ def test_run_benchmark_default_embed_mode_body(tmp_path, monkeypatch):
         judge_model="fake-judge",
         reader_llm=FakeReaderLLM(),
     )
-    assert captured["embed_mode"] == "body"
+    assert captured["embed_mode"] == "body+summary"
 
 
 def test_run_benchmark_invalid_embed_mode_rejected(tmp_path):

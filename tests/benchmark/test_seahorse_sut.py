@@ -187,7 +187,7 @@ def test_identity_reports_experiment_flags(sut):
     assert ident["score_source"] == "mvp1_rrf"
     assert ident["recency_config"] is None
     assert ident["rerank_enabled"] is False
-    assert ident["embed_mode"] == "body"
+    assert ident["embed_mode"] == "body+summary"  # F3 flip product default
 
 
 # --------------------------------------------------------- PIT temporal-reasoning

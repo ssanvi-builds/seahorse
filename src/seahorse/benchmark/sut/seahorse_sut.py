@@ -50,7 +50,7 @@ class SeahorseSUT:
         score_source: str = "mvp1_rrf",
         recency_config: dict | None = None,
         rerank_enabled: bool = False,
-        embed_mode: str = "body",
+        embed_mode: str = "body+summary",
         ep_id_to_session: dict[str, str] | None = None,
         fact_key_to_ep_id: dict[str, str] | None = None,
     ) -> None:

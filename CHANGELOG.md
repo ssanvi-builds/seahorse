@@ -98,6 +98,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `seahorse.facade`; `datasets`/`tiktoken`/`litellm` are lazy (the `benchmark`
   extra). 1810 tests / coverage 96% / ruff+mypy clean.
 
+### Changed
+
+- **F3 vectorial flip applied (f7-experiment-embed §decide, 2026-08-08)** — the
+  `embed_mode` default flips from `body` to `body+summary` (summary leads the
+  passage vector) in every product default: `build_facade` (composition root),
+  the benchmark CLI + `BenchmarkConfig`, `SeahorseSUT`, the `seahorse index
+  rebuild` backfill, and `RetrievalIndexer` itself. Reindexing under the new
+  default re-embeds honestly — `content_hash` is computed over the EFFECTIVE
+  text (`summary\n\nbody`), so the body-only vectors are a genuine cache miss
+  (f7 §5c). The F3 experiment A/B remains explicit and intact
+  (`embed_mode='body'` baseline in `benchmark/experiments/variants.py`); the
+  flip is a product default, not a harness change. Verified: reindex of a test
+  vault under the new default populates vec0/FTS and hybrid recall returns
+  non-zero RRF scores (no `fallback_g2`). Decision source: LMEB-S subsample
+  (100/500 questions), recall@10 +2.7% (0.467→0.494) ≥1% threshold. 1877 tests
+  / ruff+mypy clean (144 src files).
+
 ## [0.3.0] - 2026-08-07
 
 Sprint A — F1 recency seam (default-OFF), OQ3 summary enabler, and the
