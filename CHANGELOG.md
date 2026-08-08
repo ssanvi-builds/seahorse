@@ -8,6 +8,32 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **F7 experiment (d) batch-por-turno — harness + authoritative run (f7 §5d)**.
+  - **Importer turn-structure preservation** (`seahorse/importer/claude_mem.py`):
+    the vendor `memory_session_id` and `prompt_number` now survive in provenance
+    as `x-claude-mem-session-id` / `x-claude-mem-prompt-number` (f5-15 §6.8
+    preservation convention). The run-scoped `session_id` contract (f5-15 §3.3)
+    is unchanged; the loss report documents the preservation instead of the
+    loss. The batch-por-turno experiment needs the turn structure, which the
+    importer previously dropped (measured against the real DB — ADR-10).
+  - **Batch experiment harness** `seahorse/benchmark/experiments/batch.py` — a
+    standalone measurement (no `EvaluationRunner`/`BenchmarkDataset`: (d) is a
+    retrieval-clustering measurement, not a QA benchmark): corpus builders
+    (real claude-mem via importer #15 + synthetic with `HashEmbedder` for CI),
+    `compute_turn_clusters` (groups by `x-claude-mem-session-id` +
+    `x-claude-mem-prompt-number`), leave-one-out cluster recall@k (batch-por-
+    turno) + individual recall@k (por-sesión), `decide_batch` (threshold 0.5,
+    `invalid_regime` on `fallback_g2` — ADR-10). Registered in
+    `variants.py`/`runner.py`/CLI (`seahorse benchmark experiment batch
+    --corpus claude-mem|synthetic`).
+  - **Authoritative run (2026-08-08, real claude-mem corpus)**: 281 obs → 236
+    episodes (45 subject collisions excluded), 27 turns ≥2 obs, 215 leave-one-
+    out queries, real fastembed backend (hybrid, no `fallback_g2`). **Decision
+    `por_sesion`**: cluster recall@10 = 0.336 < 0.5 threshold (individual
+    recall@10 = 1.000; robust across k=5/10/20 → 0.224/0.336/0.336). The turn
+    is NOT a recoverable unit — Sprint B degrades to per-session batching.
+    Large turns (diverse observations) are the drag; small focused turns are
+    recoverable. 1896 tests / ruff+mypy clean.
 - **F7 experiments (a) recency + (c) embed — harness + enablers (f7 §5)**.
   - **Enabler (a)** `build_facade(..., recency: RecencyConfig | None)` →
     `HybridRetriever` (composition root, single-point swap); default `None`
