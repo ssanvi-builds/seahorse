@@ -8,6 +8,40 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **F7 experiment (b) rerank — cross-encoder seam + harness + run (f7 §5b)**.
+  - **ADR-10 enmienda (vault)**: "no LLM generativo en el query path; un
+    cross-encoder dedicado, pinneado por identidad de modelo y con presupuesto
+    de latencia separado, está permitido como opt-in." Distinción estructural:
+    generativo autoregresivo (prohibido) vs discriminativo rank-only on-device
+    (opt-in). El gate de benchmark y el tipo de modelo (bge-reranker-v2-m3,
+    MIT) van ANTES de tocar el ADR (cerebras-f §4.4).
+  - **Seam `QueryReranker`** (`contracts/rerank.py`, patrón frontier
+    `QueryEmbedder`): `rerank(query, docs) -> Sequence[float]`. Owned by #11.
+  - **Stage-3 en `recall()`** (`retrieval/engine.py` + `retrieval/rerank.py`):
+    fusiona con `k_rerank=20`, hidrata summary/subject vía
+    `index_repo.get_rows` (NO body_md), puntúa pares, reordena, truncate a `k`.
+    El score del cross-encoder REEMPLAZA el RRF score (`score_source:
+    "rrf_rerank"`). Degrade honesto (ADR-10): sin `index_repo` o fallo del
+    reranker → orden RRF truncado a `k`. Constantes `RERANK_OVERFETCH_K=20` /
+    `INDEX_RERANK_P95_MS=500`.
+  - **Backend cross-encoder** (`embeddings/rerank_backend.py`): `FastEmbedReranker`
+    sobre fastembed `TextCrossEncoder` (0.8.0, sin dependencia nueva). Bundle
+    `hooman650/bge-reranker-v2-m3-onnx-o4` (MIT, multilingüe, ~1.1GB) —
+    validado en arm64: 20 pares ≈ 204ms (dentro del budget 500ms). El jina
+    default es cc-by-nc-4.0 (incompatible Apache-2.0, ADR-011).
+  - **`build_facade(..., reranker)`** → `HybridRetriever` (single-point swap,
+    default None = RRF puro ADR-10). Query-time puro: cambiar el modelo nunca
+    exige reindex.
+  - **Harness F7**: variants `mvp1_rrf` vs `rrf_rerank`, `decide_rerank`
+    (ndcg@10 ≥ 2pp Y p95 ≤ 500ms; `invalid_regime` en `fallback_g2`),
+    `LatencyP95RerankMetric` (lee `latency_ms["index_rerank"]`), `rerank_model`
+    pinneado en la fingerprint (run_id distinto del baseline), `HashReranker`
+    sintético (token-overlap, puntuación normalizada), CLI `--rerank-enable`.
+  - **Run LMEB-S (submuestreado, 2026-08-08)**: **keep_rrf — F2 NO implementado**.
+    El cross-encoder degrada ambas métricas: ndcg@10 −2.8pp (0.110 → 0.082),
+    recall@10 −2.4pp (0.130 → 0.106), y p95_index_rerank_ms 1244ms > 500ms
+    (2.5× el budget). El seam `QueryReranker` + stage-3 + backend quedan como
+    opt-in inactivo (default None), listos para re-evaluar.
 - **F7 experiment (d) batch-por-turno — harness + authoritative run (f7 §5d)**.
   - **Importer turn-structure preservation** (`seahorse/importer/claude_mem.py`):
     the vendor `memory_session_id` and `prompt_number` now survive in provenance
