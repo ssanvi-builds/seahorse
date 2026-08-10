@@ -57,6 +57,13 @@ DEFAULT_LLM_TIMEOUT_S = 20.0  # extraction role timeout (f5-04 §4.4)
 # the config file).
 _VALID_CONFIG_MODES = frozenset({"skip", "llm"})
 
+# Observer defaults (obsiforge §4.3/§4.6). The observer is OPT-IN: a vault
+# without an ``[observe]`` section has ``observe=None`` until ``seahorse setup``
+# writes it. ``skip_tools`` / ``drop_tools`` mirror the threshold module.
+DEFAULT_SKIP_TOOLS: tuple[str, ...] = ("WebSearch", "WebFetch")
+DEFAULT_DROP_TOOLS: tuple[str, ...] = ("Read", "Bash")
+DEFAULT_OBSERVE_SOCKET = "observer/observer.sock"
+
 _VAULT_ENV = "SEAHORSE_VAULT"
 
 
@@ -78,13 +85,33 @@ class LlmConfig:
 
 
 @dataclass(frozen=True)
+class ObserveConfig:
+    """The ``[observe]`` section — the observer capture policy (obsiforge §4).
+
+    ``enabled`` is True when the section is present (``seahorse setup`` writes
+    it). ``extraction`` is the write-path mode (skip-first default, ADR-09).
+    ``skip_tools`` / ``drop_tools`` are the threshold allowlists (§4.3).
+    ``socket_path`` is relative to ``.seahorse/`` (the unix socket the hooks
+    POST to, §4.4). ``token`` is the optional auth token (§15.2 redesign 10).
+    """
+
+    enabled: bool = True
+    extraction: str = "skip"
+    skip_tools: tuple[str, ...] = DEFAULT_SKIP_TOOLS
+    drop_tools: tuple[str, ...] = DEFAULT_DROP_TOOLS
+    socket_path: str = DEFAULT_OBSERVE_SOCKET
+    token: str | None = None
+
+
+@dataclass(frozen=True)
 class SeahorseConfig:
     """Resolved Seahorse configuration for a vault.
 
     ``vault`` is the vault root; ``seahorse_dir`` is ``<vault>/.seahorse``;
     ``db_path`` is absolute. ``default_extraction_mode`` / ``top_k`` feed
     ``FacadeConfig`` via ``build_facade``; ``llm`` (optional ``[llm]`` section)
-    feeds the write-path ``LiteLLMBackend`` route.
+    feeds the write-path ``LiteLLMBackend`` route; ``observe`` (optional
+    ``[observe]`` section) feeds the observer capture layer.
     """
 
     vault: Path
@@ -93,6 +120,7 @@ class SeahorseConfig:
     default_extraction_mode: str = DEFAULT_EXTRACTION_MODE
     top_k: int = DEFAULT_TOP_K
     llm: LlmConfig | None = None
+    observe: ObserveConfig | None = None
 
     def with_overrides(
         self, *, extraction_mode: str | None = None, top_k: int | None = None
@@ -191,6 +219,10 @@ def load_config(
     # honest llm→skip degrade). Present → validate the role route.
     llm = _parse_llm_section(data.get("llm"))
 
+    # Optional [observe] section (Sprint B). Missing → observe=None (the
+    # observer is opt-in until `seahorse setup` writes it).
+    observe = _parse_observe_section(data.get("observe"))
+
     return SeahorseConfig(
         vault=vault,
         seahorse_dir=seahorse_dir,
@@ -198,6 +230,7 @@ def load_config(
         default_extraction_mode=mode,
         top_k=top_k,
         llm=llm,
+        observe=observe,
     )
 
 
@@ -237,6 +270,51 @@ def _parse_llm_section(raw: object) -> LlmConfig | None:
         secondary=secondary,
         tertiary=tertiary,
         timeout_s=float(timeout_s),
+    )
+
+
+def _parse_observe_section(raw: object) -> ObserveConfig | None:
+    """Validate an optional ``[observe]`` section into an ``ObserveConfig``.
+
+    ``None`` input (no section) → ``None`` (observer opt-in). Any structurally
+    wrong value is a ``CliConfigInvalid`` (Cat C, exit 83) — a config typo
+    fails loud, not as a silent degrade at runtime.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise CliConfigInvalid("observe must be a [observe] table")
+
+    extraction = raw.get("extraction", "skip")
+    if not isinstance(extraction, str) or extraction not in _VALID_CONFIG_MODES:
+        raise CliConfigInvalid(
+            f"observe.extraction={extraction!r}; expected 'skip' or 'llm'"
+        )
+
+    def _tool_list(key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+        v = raw.get(key, default)
+        if not isinstance(v, (list, tuple)) or not all(isinstance(x, str) and x for x in v):
+            raise CliConfigInvalid(f"observe.{key} must be a list of non-empty strings")
+        return tuple(v)
+
+    skip_tools = _tool_list("skip_tools", DEFAULT_SKIP_TOOLS)
+    drop_tools = _tool_list("drop_tools", DEFAULT_DROP_TOOLS)
+
+    socket_path = raw.get("socket_path", DEFAULT_OBSERVE_SOCKET)
+    if not isinstance(socket_path, str) or not socket_path:
+        raise CliConfigInvalid("observe.socket_path must be a non-empty string")
+
+    token = raw.get("token")
+    if token is not None and (not isinstance(token, str) or not token):
+        raise CliConfigInvalid("observe.token must be a non-empty string or absent")
+
+    return ObserveConfig(
+        enabled=True,
+        extraction=extraction,
+        skip_tools=skip_tools,
+        drop_tools=drop_tools,
+        socket_path=socket_path,
+        token=token,
     )
 
 
@@ -305,8 +383,12 @@ __all__ = [
     "DEFAULT_TOP_K",
     "DEFAULT_LLM_PRIMARY",
     "DEFAULT_LLM_TIMEOUT_S",
+    "DEFAULT_SKIP_TOOLS",
+    "DEFAULT_DROP_TOOLS",
+    "DEFAULT_OBSERVE_SOCKET",
     "SeahorseConfig",
     "LlmConfig",
+    "ObserveConfig",
     "is_initialized",
     "resolve_vault",
     "config_path_for",

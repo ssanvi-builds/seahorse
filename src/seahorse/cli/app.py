@@ -456,6 +456,43 @@ def import_cmd(
     )
 
 
+# ``observe`` group: ``observe start|stop|status|run`` (Sprint B, #17).
+observe_app = typer.Typer(help="Observer capture layer (Sprint B).")
+app.add_typer(observe_app, name="observe")
+
+
+@observe_app.command("start")
+def observe_start_cmd(ctx: typer.Context) -> None:
+    """Start the observer as a background process (single-writer, §4.5)."""
+    from seahorse.observe.cli import run_observe_start
+
+    run_observe_start(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+
+
+@observe_app.command("stop")
+def observe_stop_cmd(ctx: typer.Context) -> None:
+    """Stop the observer (SIGTERM)."""
+    from seahorse.observe.cli import run_observe_stop
+
+    run_observe_stop(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+
+
+@observe_app.command("status")
+def observe_status_cmd(ctx: typer.Context) -> None:
+    """Report whether the observer is running."""
+    from seahorse.observe.cli import run_observe_status
+
+    run_observe_status(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+
+
+@observe_app.command("run")
+def observe_run_cmd(ctx: typer.Context) -> None:
+    """Run the observer in the foreground (endpoint + worker loop)."""
+    from seahorse.observe.cli import run_observe_run
+
+    run_observe_run(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+
+
 # ``benchmark`` group: ``benchmark run`` / ``benchmark list`` / ``benchmark adapters``.
 benchmark_app = typer.Typer(help="LMEB benchmark harness (#16).")
 app.add_typer(benchmark_app, name="benchmark")

@@ -143,6 +143,8 @@ CLI_CONFIG_INVALID = 83
 # fresh 90–99 slot so the rebuild-conflict concern is distinct from the
 # reserved-stub 75 even on the int exit code. Both stay Cat C (never Cat A).
 CLI_REBUILD_CONFLICTS = 94
+# Sprint B: ``seahorse observe start`` when the observer is already running.
+CLI_OBSERVER_RUNNING = 95
 
 # ---------------------------------------------------------------------------
 # Component-of-origin attribution for stderr ``component:`` (parity with #13).
@@ -290,6 +292,7 @@ __all__ = [
     "CLI_VAULT_NOT_FOUND",
     "CLI_CONFIG_INVALID",
     "CLI_REBUILD_CONFLICTS",
+    "CLI_OBSERVER_RUNNING",
     "translate",
     "message_for",
 ]

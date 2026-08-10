@@ -11,10 +11,6 @@ scores, never a crash that would drop the hybrid path to G2.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
-import pytest
-
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.retrieval.constants import RERANK_OVERFETCH_K
 from seahorse.retrieval.rerank import apply_rerank

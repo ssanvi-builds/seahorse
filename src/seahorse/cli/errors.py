@@ -29,6 +29,7 @@ from typing import Any
 from seahorse.cli.exit_codes import (
     CLI_CONFIG_INVALID,
     CLI_NOT_IN_MVP_0,
+    CLI_OBSERVER_RUNNING,
     CLI_REBUILD_CONFLICTS,
     CLI_VAULT_NOT_FOUND,
     EXIT_USAGE,
@@ -114,6 +115,23 @@ class CliUsageError(CliError):
             exit_code=EXIT_USAGE,
             name="CLI_USAGE",
             detail=detail,
+        )
+
+
+class CliObserverRunning(CliError):
+    """``seahorse observe start`` when the observer is already running.
+
+    The observer is a single-writer process (obsiforge §4.5); a second ``start``
+    would spawn a competing writer. Fail loud at exit 95 (ADR-10) — the
+    operator must ``seahorse observe stop`` first.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        super().__init__(
+            exit_code=CLI_OBSERVER_RUNNING,
+            name="CLI_OBSERVER_RUNNING",
+            detail=f"observer is already running (pid {pid}); run `seahorse observe stop` first",
         )
 
 

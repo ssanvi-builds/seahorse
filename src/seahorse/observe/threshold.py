@@ -1,12 +1,12 @@
 """Skip/drop tool policy for the observer (obsiforge §4.3).
 
-Two distinct policies:
+Two distinct policies (obsiforge §4.3):
 - ``skip_tools`` — DISCARD the event (it never reaches the turn body). Default:
   WebSearch/WebFetch (network results are noise, not memory).
-- ``drop_tools`` — DISCARD the event entirely (the whole turn is dropped).
-  Default: Read/Bash — their content is entirely secret (obsiforge §15.2
-  redesign 3: the "stronger than claude-mem" claim only holds if Read/Bash
-  content is covered; redaction alone cannot guarantee it).
+- ``drop_tools`` — DISCARD the event entirely, not just redact it. Default:
+  Read/Bash — their content is entirely secret (obsiforge §15.2 redesign 3: the
+  "stronger than claude-mem" claim only holds if Read/Bash content is covered;
+  redaction alone cannot guarantee it).
 
 Pure functions — the policy is a deterministic allowlist, configurable per
 vault via the ``[observe]`` section.
