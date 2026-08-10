@@ -6,6 +6,41 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Sprint B (todo-en-uno, 2026-08-10)
+
+- **observe (#17)** — the capture layer (`seahorse/observe/`, stdlib-only, zero
+  harness imports in the core): `protocol.py` (tolerant envelope, caps ≤256) ·
+  `redact.py` (deterministic structural JSON walk, bearer/API keys/PEM/
+  userinfo/prefixes, pure) · `threshold.py` (skip_tools WebSearch/WebFetch vs
+  drop_tools Read/Bash) · `batcher.py` (deterministic turn render, H1
+  `{first line} [session_tag:prompt_number]`, byte truncation never splitting a
+  codepoint) · `queue.py` (own SQLite, ConnectionManager, single-writer WAL+ack,
+  dedup `(session_id, prompt_number, event_fingerprint)` INSERT OR IGNORE,
+  **prompt_number persisted** §15.2 redesign 2) · `worker.py` (drains by
+  session — por_sesion, skip-first ADR-09, OQ3 summary skipping the H1) ·
+  `endpoint.py` (unix socket 0600 + auth token §15.2 redesign 10, redacts
+  before enqueue, drop_tools never persisted) · `runner.py` (endpoint thread +
+  worker loop) · `adapters/claude_code.py` (4 hooks: SessionStart /
+  UserPromptSubmit / PostToolUse / Stop — the only harness binding) · CLI
+  `seahorse observe start|stop|status|run|event`.
+- **context (§6)** — `MemoryFacade.context()` (four INDEX-level blocks: recent
+  G2 sort, vigente, last session grouped by `provenance.session_id` — INDEX
+  list not abstractive summary, header + counter + pointer) +
+  `seahorse/context/assembler.py` (pure render) + CLI `seahorse context`
+  (degrades to "no context" without a DB).
+- **consolidate (§5)** — `seahorse/distill/`: `cluster.py` (clustering key
+  distinct from the stored subject §15.2 redesign 1, N≥3) · `distill.py`
+  (`distill_episodes` → `engine.remember(cognitive_type=semantic,
+  extraction_mode=consolidated, supersedes=representative,
+  supersedes_reason=merge, synthetic consolidate-* session)`, sources stay
+  vigente) · `consolidate.py` (idempotent §5.5, session-end signal OFF §15.2
+  redesign 5) + `engine.remember` additive `supersedes`/`supersedes_reason` +
+  CLI `seahorse consolidate`.
+- **setup (§4.7)** — `seahorse setup` (writes `[observe]` with a generated
+  auth token + merges the Claude Code hooks into `~/.claude/settings.json`
+  coexisting with claude-mem §15.3-4) + `--uninstall` (`observe event` marker).
+- `[observe]` section in `seahorse.toml` (opt-in until `seahorse setup`).
+
 ### Added
 
 - **F7 experiment (b) rerank — cross-encoder seam + harness + run (f7 §5b)**.

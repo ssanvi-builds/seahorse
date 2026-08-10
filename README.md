@@ -49,6 +49,21 @@ seahorse recall "madrid"
 seahorse improve <ep_id> "Sergio lives in Barcelona" --reason correction
 seahorse forget <ep_id> --reason done
 
+# The todo-en-uno (Sprint B): capture, context, consolidate.
+# Install the observer (writes [observe] + merges the Claude Code hooks into
+# ~/.claude/settings.json, coexisting with claude-mem):
+seahorse setup
+# Start the observer (unix socket + worker), then the next session is captured
+# automatically (skip-first, redacted, deterministic summary):
+seahorse observe start
+seahorse observe status
+# Bootstrap context by recency (the SessionStart hook injects this):
+seahorse context
+# Distill recurrent episodes into semantic knowledge notes (N≥3, idempotent):
+seahorse consolidate
+# Remove the observer:
+seahorse setup --uninstall
+
 # Serve an agent over stdio MCP (io.seahorse.memory/v1):
 seahorse-mcp --vault myvault
 # …equivalently:
