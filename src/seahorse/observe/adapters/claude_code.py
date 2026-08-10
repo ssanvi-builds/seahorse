@@ -1,0 +1,145 @@
+"""Claude Code adapter — the first harness adapter (obsiforge §4.2).
+
+The adapter is the ONLY piece that touches a harness. It builds envelopes from
+hook payloads, REDACTS before enqueue (nothing raw is ever persisted, §4.4),
+and applies ``drop_tools`` (Read/Bash) BEFORE enqueue — their content is
+entirely secret and redaction cannot guarantee it is clean (§15.2 redesign 3).
+The worker owns ``skip_tools`` (discard from the turn body) + the drop backstop.
+
+The four hooks (obsiforge §4.2):
+- ``SessionStart`` — registers the session (prompt_number=0).
+- ``UserPromptSubmit`` — advances the persisted prompt_number (turn boundary)
+  and enqueues the prompt event.
+- ``PostToolUse`` — redacts + enqueues the tool event (drop_tools never reach
+  the queue).
+- ``Stop`` — enqueues the stop marker (drains the open turn).
+
+The engine never sees a hook — only ``RememberPayload`` (delegation purity).
+
+References:
+- obsiforge-evolution-architecture.md §4.2 (event contract, adapter)
+- obsiforge-evolution-architecture.md §4.4 (redaction at enqueue)
+- obsiforge-evolution-architecture.md §15.2 redesign 3 (drop_tools Read/Bash)
+"""
+
+from __future__ import annotations
+
+from seahorse.observe.protocol import (
+    EVENT_POST_TOOL_USE,
+    EVENT_STOP,
+    EVENT_USER_PROMPT_SUBMIT,
+    Envelope,
+)
+from seahorse.observe.queue import ObserverQueue
+from seahorse.observe.redact import redact_payload
+from seahorse.observe.threshold import should_drop_event
+
+_HARNESS_ID = "claude-code"
+
+
+def _envelope(
+    queue: ObserverQueue,
+    *,
+    session_id: str,
+    event_type: str,
+    payload: dict,
+    agent_id: str | None = None,
+) -> Envelope:
+    return Envelope(
+        schema_version="1.0",
+        harness_id=_HARNESS_ID,
+        session_id=session_id,
+        agent_id=agent_id or "unknown",
+        prompt_number=queue.current_prompt_number(session_id),
+        event_type=event_type,
+        ts="",
+        payload=payload,
+    )
+
+
+def handle_session_start(
+    queue: ObserverQueue, *, session_id: str, agent_id: str | None = None
+) -> None:
+    """SessionStart hook: register the session at prompt_number=0."""
+    queue.register_session(session_id)
+
+
+def handle_user_prompt_submit(
+    queue: ObserverQueue,
+    *,
+    session_id: str,
+    prompt: str,
+    agent_id: str | None = None,
+) -> None:
+    """UserPromptSubmit hook: advance the persisted prompt_number (turn
+    boundary, §15.2) and enqueue the prompt event."""
+    prompt_number = queue.advance_prompt_number(session_id)
+    env = Envelope(
+        schema_version="1.0",
+        harness_id=_HARNESS_ID,
+        session_id=session_id,
+        agent_id=agent_id or "unknown",
+        prompt_number=prompt_number,
+        event_type=EVENT_USER_PROMPT_SUBMIT,
+        ts="",
+        payload={"prompt": prompt},
+    )
+    queue.enqueue(env)
+
+
+def handle_post_tool_use(
+    queue: ObserverQueue,
+    *,
+    session_id: str,
+    tool_name: str,
+    tool_use_id: str,
+    tool_input: str,
+    tool_response: str,
+    agent_id: str | None = None,
+) -> None:
+    """PostToolUse hook: redact + enqueue the tool event.
+
+    ``drop_tools`` (Read/Bash) are dropped BEFORE enqueue — their content is
+    entirely secret and redaction cannot guarantee it is clean (§15.2 redesign
+    3). Nothing raw is ever persisted (§4.4).
+    """
+    if should_drop_event(tool_name):
+        return
+    payload = redact_payload(
+        {
+            "tool_name": tool_name,
+            "tool_use_id": tool_use_id,
+            "tool_input": tool_input,
+            "tool_response": tool_response,
+        }
+    )
+    env = _envelope(
+        queue,
+        session_id=session_id,
+        event_type=EVENT_POST_TOOL_USE,
+        payload=payload,
+        agent_id=agent_id,
+    )
+    queue.enqueue(env)
+
+
+def handle_stop(
+    queue: ObserverQueue, *, session_id: str, agent_id: str | None = None
+) -> None:
+    """Stop hook: enqueue the stop marker (drains the open turn)."""
+    env = _envelope(
+        queue,
+        session_id=session_id,
+        event_type=EVENT_STOP,
+        payload={},
+        agent_id=agent_id,
+    )
+    queue.enqueue(env)
+
+
+__all__ = [
+    "handle_session_start",
+    "handle_user_prompt_submit",
+    "handle_post_tool_use",
+    "handle_stop",
+]
