@@ -110,6 +110,8 @@ CAT_B: dict[str, int] = {
     "InvalidationConflictError": -32051,
     "NotFound": -32052,  # server error: no vigente to mutate
     "IntegrityError": -32603,  # internal: storage constraint
+    # Sprint C: procedural-skill validation (canonical body) — client-of-#12.
+    "ProceduralError": -32053,
 }
 
 # ---------------------------------------------------------------------------
@@ -136,6 +138,8 @@ _ORIGIN_BY_CLASS = {
     "InvalidationConflictError": "#2",
     # storage → #6
     "IntegrityError": "#6",
+    # procedural skills (Sprint C) — client of #12
+    "ProceduralError": "#procedural",
     # frontmatter (#3, commit 5)
     "FrontmatterInvalid": "#3",
     "MigrationError": "#3",

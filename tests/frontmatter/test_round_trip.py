@@ -259,3 +259,44 @@ class TestSupersedesReasonRoundTrip:
         assert "supersedes_reason: correction" in text
         _cm, _body, ep2 = parse_file(vault / "note.md")
         assert ep2.supersedes_reason == "correction"
+
+
+class TestProceduralCognitiveTypeRoundTrip:
+    """Un-reserve ``procedural`` (L2c §6.1): the wire enum and COGNITIVE_TYPES
+    already accept it; the frontmatter round-trip must preserve it idempotently
+    (a skill is a portable F3.1 .md)."""
+
+    def test_procedural_round_trips_in_frontmatter(self, vault: Path) -> None:
+        ep = make_episode(
+            cognitive_type="procedural",
+            provenance={
+                "agent_id": "seahorse/skill",
+                "session_id": "s1",
+                "source_type": "agent",
+                "extraction_mode": "skip",
+                "x-seahorse-skill-trigger": "user asks how to do X",
+                "x-seahorse-skill-version": "1.0",
+            },
+        )
+        text = _write_round_trip(vault, ep, exclude_none=False)
+        assert "cognitive_type: procedural" in text
+        _cm, _body, ep2 = parse_file(vault / "note.md")
+        assert ep2.cognitive_type == "procedural"
+        assert ep2.provenance["x-seahorse-skill-trigger"] == "user asks how to do X"
+
+    def test_procedural_write_parse_write_is_byte_identical(self, vault: Path) -> None:
+        ep = make_episode(
+            cognitive_type="procedural",
+            provenance={
+                "agent_id": "seahorse/skill",
+                "session_id": "s1",
+                "source_type": "agent",
+                "extraction_mode": "skip",
+            },
+        )
+        p = vault / "note.md"
+        serialize(ep, p, exclude_none=True)
+        first = p.read_text()
+        ep2 = hydrate(p)
+        serialize(ep2, p, exclude_none=True)
+        assert p.read_text() == first

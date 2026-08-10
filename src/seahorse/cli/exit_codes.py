@@ -130,6 +130,9 @@ CAT_B: dict[str, int] = {
     "InvalidationConflictError": 87,
     "NotFound": 88,
     "IntegrityError": 89,
+    # Sprint C: procedural-skill validation (canonical body) — a client-of-#12
+    # domain error, propagated without a stable code (parity with #13).
+    "ProceduralError": 96,
 }
 
 # ---------------------------------------------------------------------------
@@ -165,6 +168,8 @@ _ORIGIN_BY_CLASS = {
     "NotFound": "#2",
     "InvalidationConflictError": "#2",
     "IntegrityError": "#6",
+    # procedural skills (Sprint C) — client of #12
+    "ProceduralError": "#procedural",
     # frontmatter (#3, commit 5)
     "FrontmatterInvalid": "#3",
     "MigrationError": "#3",

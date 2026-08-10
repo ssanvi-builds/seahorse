@@ -124,6 +124,7 @@ class RecordingFacade:
         self.improve_calls: list[dict[str, Any]] = []
         self.forget_calls: list[dict[str, Any]] = []
         self.build_pit_calls: list[dict[str, Any]] = []
+        self.get_vigente_calls: list[dict[str, Any]] = []
 
         self.remember_result = make_write_result()
         self.recall_result: list = [make_index_row()]
@@ -133,6 +134,7 @@ class RecordingFacade:
         self.forget_result = make_episode("ep-1", invalid_at=T0)
         self.build_pit_result: PITPoint | None = None
         self.build_pit_raise: Exception | None = None
+        self.vigente_result: list = []
 
     def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
         self.remember_calls.append(
@@ -171,6 +173,10 @@ class RecordingFacade:
         if self.build_pit_raise is not None:
             raise self.build_pit_raise
         return self.build_pit_result
+
+    def get_vigente(self, subject=None, *, now=None):
+        self.get_vigente_calls.append({"subject": subject, "now": now})
+        return list(self.vigente_result)
 
 
 __all__ = [

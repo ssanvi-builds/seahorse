@@ -165,9 +165,10 @@ def test_cat_b_class_maps_to_exit(exc, expected):
     assert "seahorse_code" not in info  # no synthetic code (would lie)
 
 
-def test_cat_b_table_is_six_classes():
-    assert len(CAT_B) == 6
-    assert sorted(CAT_B.values()) == [84, 85, 86, 87, 88, 89]
+def test_cat_b_table_is_seven_classes():
+    # Sprint C: ProceduralError (procedural-skill validation) added at 96.
+    assert len(CAT_B) == 7
+    assert sorted(CAT_B.values()) == [84, 85, 86, 87, 88, 89, 96]
 
 
 # ---------------------------------------------------------------------------

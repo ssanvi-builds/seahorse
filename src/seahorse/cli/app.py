@@ -56,6 +56,12 @@ from seahorse.cli.primitives import (
     run_recall_timeline,
     run_remember,
 )
+from seahorse.cli.skills import (
+    run_skill_add,
+    run_skill_list,
+    run_skill_search,
+    run_skill_show,
+)
 from seahorse.cli.vault_ops import run_index_rebuild, run_inspect, run_migrate
 from seahorse.contracts.index import PIT_KIND_VALUES
 from seahorse.facade.facade import MemoryFacade
@@ -789,6 +795,72 @@ def index_rebuild_cmd(
 def index_verify_cmd(ctx: typer.Context) -> None:
     """Verify index integrity — RESERVED in MVP-0."""
     run_reserved("index-verify")
+
+
+# ``skill`` group: procedural skills (L2c §6.1) — add / list / search / show.
+skill_app = typer.Typer(help="Procedural skills (deterministic, skip-first).")
+app.add_typer(skill_app, name="skill")
+
+
+@skill_app.command(name="add")
+def skill_add_cmd(
+    ctx: typer.Context,
+    body: str = typer.Argument(..., help="Canonical SKILL.md body (## Trigger/Steps/...)."),
+    title: str | None = typer.Option(None, "--title"),
+    trigger: str | None = typer.Option(None, "--trigger", help="x-seahorse-skill-trigger."),
+    scope: str | None = typer.Option(None, "--scope", help="x-seahorse-skill-scope."),
+    version: str | None = typer.Option(None, "--version", help="x-seahorse-skill-version."),
+    source_type: str = typer.Option("agent", "--source-type"),
+    agent_id: str | None = typer.Option(None, "--agent-id"),
+    session_id: str | None = typer.Option(None, "--session-id"),
+) -> None:
+    """Add a procedural skill (deterministic, cost ≈ 0)."""
+    run_skill_add(
+        ctx.obj.facade(),
+        body=body,
+        title=title,
+        trigger=trigger,
+        scope=scope,
+        version=version,
+        source_type=source_type,
+        agent_id=agent_id,
+        session_id=session_id,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+    )
+
+
+@skill_app.command(name="list")
+def skill_list_cmd(
+    ctx: typer.Context,
+    top_k: int = typer.Option(10, "--top-k"),
+) -> None:
+    """List procedural skills (Discovery level)."""
+    run_skill_list(ctx.obj.facade(), top_k=top_k, fmt=ctx.obj.fmt, out=_out(ctx))
+
+
+@skill_app.command(name="search")
+def skill_search_cmd(
+    ctx: typer.Context,
+    query: str = typer.Argument(..., help="Search query."),
+    top_k: int = typer.Option(10, "--top-k"),
+) -> None:
+    """Search procedural skills (hybrid recall, procedural filter)."""
+    run_skill_search(
+        ctx.obj.facade(), query=query, top_k=top_k, fmt=ctx.obj.fmt, out=_out(ctx)
+    )
+
+
+@skill_app.command(name="show")
+def skill_show_cmd(
+    ctx: typer.Context,
+    ep_id: str = typer.Argument(..., help="Skill episode id."),
+    min_trust: str = typer.Option("medium", "--min-trust", help="low | medium | high"),
+) -> None:
+    """Show a skill's gated body (Execution level, R5 trust gate)."""
+    run_skill_show(
+        ctx.obj.facade(), ep_id=ep_id, min_trust=min_trust, fmt=ctx.obj.fmt, out=_out(ctx)
+    )
 
 
 # ---------------------------------------------------------------------------

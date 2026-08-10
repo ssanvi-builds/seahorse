@@ -27,7 +27,7 @@ from typing import Protocol, runtime_checkable
 
 from seahorse.contracts.engine import EpisodeRepository, freshness_of
 from seahorse.contracts.episode import Episode
-from seahorse.contracts.index import HopsCapExceeded, IndexRowData, MAX_HOPS_MVP1
+from seahorse.contracts.index import MAX_HOPS_MVP1, HopsCapExceeded, IndexRowData
 from seahorse.contracts.persistence import EpisodeIndexRepository
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import (
