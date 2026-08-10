@@ -22,6 +22,15 @@
   identical). **2103 tests / coverage 94% / 4 commits (`9ba56a9`→`c972d5e`, 136
   accumulated, not pushed)**. See vault `session-2026-08-10-e2e-fresh-user.md`.
 
+- **Research + planning (2026-08-10, no code)**: observer-agnostic capture
+  expanded to consumer platforms (ChatGPT/Gemini/Antigravity/Claude.ai) → vault
+  `Claude/observer-agnostic-capture-platforms.md` (no hooks in consumer apps →
+  MCP-native capture + platform importers; current MCP server is stdio-only →
+  remote Streamable HTTP is the SaaS piece; "the store is MCP"). **Sprint C
+  prompt ready** → vault `Claude/prompt-sprint-c.md` (skills L2c + #10 BFS +
+  viewer TUI; seams verified — materialize, don't build). Pending: bump v0.4.0 +
+  push (31 commits ahead of origin).
+
 - Fase 5 detailed design: COMPLETE (16/16 components, `f5-01`..`f5-16`).
 - F6 sign-off sprint: COMPLETE (8/8 blocking decisions signed, ranks 1-8; ranks 9-15 close inline during F6). Register: `Claude/f6-signoffs.md`.
 - Repo bootstrap: `3c655fe chore: initial scaffold` on `main` (LICENSE Apache-2.0, README, .gitignore, pyproject.toml).
