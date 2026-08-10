@@ -4,7 +4,7 @@ Open standard for persistent, self-evolving LLM agent memory. Monetized open-cor
 an Apache-2.0 reference standard plus a proprietary SaaS and an enterprise self-host
 BSL track. The acquisition-by-a-lab path is explicitly **not** a goal (ADR-011).
 
-> Status: **v0.3.0 — Sprint A (F1 recency + OQ3 summary + claude-mem importer)**.
+> Status: **v0.4.0 — Sprint B (observe + context + consolidate + setup)**.
 > The memory engine works end-to-end from a clean install: write episodes, recall
 > them with hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by RRF),
 > extract with a real multi-LLM path (local-first, CI-gated), improve and forget

@@ -6,6 +6,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-10
+
+Sprint B (todo-en-uno) + E2E fresh-user + F7 experiments (d)(b) + observer-agnostic research.
+
 ### Added — Sprint B (todo-en-uno, 2026-08-10)
 
 - **observe (#17)** — the capture layer (`seahorse/observe/`, stdlib-only, zero
