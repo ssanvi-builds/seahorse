@@ -207,6 +207,30 @@ def run_recall(
 
 
 # ---------------------------------------------------------------------------
+# context
+# ---------------------------------------------------------------------------
+
+
+def run_context(
+    facade: MemoryFacade,
+    *,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+) -> None:
+    """``seahorse context`` — the memory bootstrap (SessionStart hook, §6.3).
+
+    Renders the four INDEX-level blocks (recent / vigente / last session /
+    header + counter + pointer) via the context assembler. The hook calls the
+    CLI which calls the facade — the facade's ``context()`` is the single point
+    of change (obsiforge §6.3). Degrades to "no context" when the DB is empty.
+    """
+    from seahorse.context.assembler import render_context
+
+    data = facade.context()
+    out.write(render_context(data) + "\n")
+
+
+# ---------------------------------------------------------------------------
 # recall-timeline
 # ---------------------------------------------------------------------------
 

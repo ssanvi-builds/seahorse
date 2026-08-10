@@ -144,6 +144,35 @@ class FacadeConfig:
     phase: Literal["mvp0", "mvp1", "mediano"] = "mvp0"
 
 
+@dataclass(frozen=True)
+class ContextEpisode:
+    """One INDEX-level row of the context bootstrap (§6.2). No body."""
+
+    ep_id: str
+    subject: str | None
+    summary: str | None
+    created_at: datetime
+    session_id: str | None
+
+
+@dataclass(frozen=True)
+class ContextData:
+    """The context bootstrap data (obsiforge §6.2) — assembled by the facade.
+
+    ``recent`` is the top-k vigente episodes (created_at desc, ep_id asc — sort
+    G2, ADR-10). ``vigente_count`` is the full vigente set size. ``last_session``
+    is the most recent session's episodes grouped by ``provenance.session_id`` —
+    an INDEX list, NOT an abstractive summary (honesty: Seahorse has no session
+    summaries yet, §6.2). The assembler renders this to the bootstrap text.
+    """
+
+    recent: list[ContextEpisode]
+    vigente_count: int
+    last_session_id: str | None
+    last_session: list[ContextEpisode]
+    total_episodes: int
+
+
 __all__ = [
     "Provenance",
     "ExtractionMode",
@@ -152,6 +181,8 @@ __all__ = [
     "RememberPayload",
     "RecallPayload",
     "FacadeConfig",
+    "ContextEpisode",
+    "ContextData",
     "PITPoint",
     "TOP_K",
 ]

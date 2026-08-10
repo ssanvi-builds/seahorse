@@ -46,6 +46,7 @@ from seahorse.cli.importer import run_import
 from seahorse.cli.management import run_init, run_reserved, run_status, run_uuid7
 from seahorse.cli.output import OutputFormat
 from seahorse.cli.primitives import (
+    run_context,
     run_expire_revalidate,
     run_forget,
     run_improve,
@@ -320,6 +321,12 @@ def recall_cmd(
         fmt=ctx.obj.fmt,
         out=_out(ctx),
     )
+
+
+@app.command()
+def context(ctx: typer.Context) -> None:
+    """Render the memory bootstrap context (SessionStart hook, §6.3)."""
+    run_context(ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command(name="recall-timeline")

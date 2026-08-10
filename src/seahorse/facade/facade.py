@@ -62,6 +62,8 @@ from seahorse.facade.errors import (
 )
 from seahorse.facade.stub_embedder import StubQueryEmbedder
 from seahorse.facade.types import (
+    ContextData,
+    ContextEpisode,
     ExtractionMode,
     FacadeConfig,
     Provenance,
@@ -474,6 +476,59 @@ class MemoryFacade:
             )
         self._validate_pit_kind(pit_kind)
         return PITPoint(kind=cast(PITKind, pit_kind), t=t)
+
+    # --------------------------------------------------------------- context
+
+    def context(self, *, top_k: int | None = None) -> ContextData:
+        """Bootstrap context by RECENCY, not semantics (obsiforge §6.1-6.2).
+
+        The shared method behind the SessionStart hook and the CLI ``context``
+        subcommand (single point of change). Four blocks at INDEX level, no
+        body: (1) recent episodes (created_at desc, ep_id asc — sort G2,
+        ADR-10); (2) current vigente state; (3) last session grouped by
+        ``provenance.session_id`` (INDEX list, NOT an abstractive summary —
+        honesty, §6.2); (4) header + counter + pointer (rendered by the
+        assembler). Deterministic (ADR-10).
+        """
+        k = top_k if top_k is not None else self._config.top_k
+        eps = self._engine.get_vigente(None, now=self._clock())
+        # Deterministic G2 sort: created_at desc, ep_id asc tie-break (two
+        # stable sorts, mirroring the vigente retriever).
+        eps = sorted(eps, key=lambda e: e.id)
+        eps = sorted(eps, key=lambda e: e.created_at, reverse=True)
+        recent = eps[:k]
+
+        by_session: dict[str, list[Episode]] = {}
+        for e in recent:
+            sid = e.provenance.get("session_id")
+            if isinstance(sid, str) and sid:
+                by_session.setdefault(sid, []).append(e)
+        last_session_id: str | None = None
+        last_session: list[Episode] = []
+        if by_session:
+            last_session_id = max(
+                by_session,
+                key=lambda sid: max(e.created_at for e in by_session[sid]),
+            )
+            last_session = by_session[last_session_id]
+
+        return ContextData(
+            recent=[self._to_context_episode(e) for e in recent],
+            vigente_count=len(eps),
+            last_session_id=last_session_id,
+            last_session=[self._to_context_episode(e) for e in last_session],
+            total_episodes=len(eps),
+        )
+
+    @staticmethod
+    def _to_context_episode(e: Episode) -> ContextEpisode:
+        return ContextEpisode(
+            ep_id=e.id,
+            subject=e.subject,
+            summary=e.summary,
+            created_at=e.created_at,
+            session_id=e.provenance.get("session_id"),
+        )
 
     # --------------------------------------------------------- MVP-1 stubs
 
