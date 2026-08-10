@@ -292,12 +292,18 @@ def run_recall_timeline(
     *,
     anchor_ep_id: str,
     axis: str = "supersedes_chain",
+    hops: int = 1,
     pit_kind: str | None = None,
     pit_t: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse recall-timeline`` — TIMELINE level (anchor-based, no body)."""
+    """``seahorse recall-timeline`` — TIMELINE level (anchor-based, no body).
+
+    ``hops`` is the #10 ``graph_bfs`` traversal depth (1-2; >2 surfaces #8's
+    ``HopsCapExceeded`` — the CLI does NOT replicate the cap, delegation
+    purity).
+    """
 
     _require_le(anchor_ep_id, limit=EP_ID_MAX_CHARS, field="anchor-ep-id")
 
@@ -306,7 +312,7 @@ def run_recall_timeline(
         t = _parse_dt(pit_t, field="pit-t") if pit_t is not None else None
         pit = facade.build_pit(pit_kind=pit_kind, t=t)
 
-    window = facade.recall_timeline(anchor_ep_id, axis=axis, pit=pit)
+    window = facade.recall_timeline(anchor_ep_id, axis=axis, hops=hops, pit=pit)
     render_timeline(window, fmt=fmt, out=out)
 
 

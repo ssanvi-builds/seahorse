@@ -43,7 +43,7 @@ from seahorse.constants import (
     TAG_MAX_CHARS,
     TAGS_MAX_ITEMS,
 )
-from seahorse.contracts.index import PIT_KIND_VALUES
+from seahorse.contracts.index import MAX_HOPS_MVP1, PIT_KIND_VALUES
 from seahorse.disclosure.types import MAX_FULL_BATCH, SUMMARY_MAX_CHARS
 from seahorse.facade.types import ExtractionMode
 
@@ -64,7 +64,7 @@ _PIT_KIND_REQUIRED_ENUM: list[Any] = sorted(PIT_KIND_VALUES)
 # NOT routable by single-episode ingestion; ``llm_partial`` stays reserved.
 _EXTRACTION_MODE_ENUM: list[Any] = sorted(get_args(ExtractionMode)) + [None]
 _REASON_ENUM: list[Any] = ["contradiction", "correction", "merge", "revalidation"]
-_AXIS_ENUM: list[Any] = ["supersedes_chain", "fact_id_scope"]
+_AXIS_ENUM: list[Any] = ["supersedes_chain", "fact_id_scope", "graph_bfs"]
 
 # ---------------------------------------------------------------------------
 # $defs — shared JSON Schema reusables.
@@ -164,6 +164,7 @@ RECALL_TIMELINE_SCHEMA: dict[str, Any] = {
     "properties": {
         "anchor_ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
         "axis": {"type": "string", "enum": _AXIS_ENUM},
+        "hops": {"type": "integer", "minimum": 1, "maximum": MAX_HOPS_MVP1},
         **_PIT_INPUT_PROPS,
     },
 }

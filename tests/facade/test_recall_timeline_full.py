@@ -52,13 +52,15 @@ class TestRecallTimeline:
         facade.recall_timeline("e1", pit=pit)
         assert shaper.timeline_calls[0]["pit"] is pit
 
-    def test_no_now_forwarded(self, facade, shaper) -> None:
-        # materialize_timeline has no `now` parameter — confirm it is not passed.
+    def test_now_forwarded_from_clock(self, facade, shaper, clock) -> None:
+        # Sprint C: materialize_timeline gains `now` so graph_bfs can resolve
+        # pit=None → state_at(now) (ADR-03, no silent known_at). The facade
+        # forwards its clock; the MVP-0 axes ignore it.
         shaper.timeline_result = TimelineWindow(
             anchor_ep_id="e1", axis="supersedes_chain", entries=(), pit=None
         )
         facade.recall_timeline("e1")
-        assert "now" not in shaper.timeline_calls[0]
+        assert shaper.timeline_calls[0]["now"] == clock()
 
     def test_invalid_pit_kind_rejected(self, facade, shaper) -> None:
         pit = PITPoint(kind="future", t=datetime(2026, 1, 1, tzinfo=UTC))  # type: ignore[arg-type]

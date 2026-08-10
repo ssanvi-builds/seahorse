@@ -145,8 +145,10 @@ class RecordingFacade:
         self.recall_calls.append({"query": query, **kwargs})
         return list(self.recall_result)
 
-    def recall_timeline(self, anchor_ep_id, *, axis="supersedes_chain", pit=None):
-        self.recall_timeline_calls.append({"anchor": anchor_ep_id, "axis": axis, "pit": pit})
+    def recall_timeline(self, anchor_ep_id, *, axis="supersedes_chain", pit=None, hops=1):
+        self.recall_timeline_calls.append(
+            {"anchor": anchor_ep_id, "axis": axis, "pit": pit, "hops": hops}
+        )
         return self.timeline_result
 
     def recall_full(self, ep_ids, *, pit=None):

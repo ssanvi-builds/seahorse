@@ -95,7 +95,13 @@ class _ShaperLike(Protocol):
     ) -> list[IndexRow]: ...
 
     def materialize_timeline(
-        self, anchor_ep_id: str, *, axis: Any, pit: PITPoint | None
+        self,
+        anchor_ep_id: str,
+        *,
+        axis: Any,
+        pit: PITPoint | None,
+        hops: int = 1,
+        now: datetime | None = None,
     ) -> TimelineWindow: ...
 
     def materialize_full(
@@ -326,11 +332,19 @@ class MemoryFacade:
         *,
         axis: str = "supersedes_chain",
         pit: PITPoint | None = None,
+        hops: int = 1,
     ) -> TimelineWindow:
-        """Recall the TIMELINE level (delegates to #8 ``materialize_timeline``)."""
+        """Recall the TIMELINE level (delegates to #8 ``materialize_timeline``).
+
+        ``hops`` is the #10 ``graph_bfs`` traversal depth (1-2; >2 raises
+        ``HopsCapExceeded`` in #8). ``pit=None`` resolves to ``state_at`` at
+        the facade clock (ADR-03, no silent ``known_at``).
+        """
         if pit is not None:
             self._validate_pit_kind(pit.kind)
-        return self._shaper.materialize_timeline(anchor_ep_id, axis=axis, pit=pit)
+        return self._shaper.materialize_timeline(
+            anchor_ep_id, axis=axis, pit=pit, hops=hops, now=self._clock()
+        )
 
     def recall_full(
         self, ep_ids: Sequence[str], *, pit: PITPoint | None = None

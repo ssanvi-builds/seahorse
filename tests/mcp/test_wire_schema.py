@@ -24,7 +24,7 @@ from seahorse.constants import (
     SUBJECT_FILTER_MAX_CHARS,
     TAG_MAX_CHARS,
 )
-from seahorse.contracts.index import PIT_KIND_VALUES, PITKind
+from seahorse.contracts.index import MAX_HOPS_MVP1, PIT_KIND_VALUES, PITKind
 from seahorse.disclosure.types import MAX_FULL_BATCH
 from seahorse.mcp.wire_schema import (
     BUILD_PIT_SCHEMA,
@@ -208,14 +208,21 @@ class TestRecallTimelineSchema:
     def test_required_anchor_ep_id(self) -> None:
         assert RECALL_TIMELINE_SCHEMA["required"] == ["anchor_ep_id"]
 
-    def test_axis_enum_mvp0_only(self) -> None:
+    def test_axis_enum_mvp0_plus_graph_bfs(self) -> None:
+        # Sprint C: graph_bfs (#10 MVP-1 BFS) is materialized; created_at/valid_at
+        # stay out of the wire enum until their own MVP-1 materialization.
         enum = RECALL_TIMELINE_SCHEMA["properties"]["axis"]["enum"]
-        assert set(enum) == {"supersedes_chain", "fact_id_scope"}
+        assert set(enum) == {"supersedes_chain", "fact_id_scope", "graph_bfs"}
 
-    def test_axis_no_mvp1_values(self) -> None:
+    def test_axis_no_unmaterialized_mvp1_values(self) -> None:
         enum = RECALL_TIMELINE_SCHEMA["properties"]["axis"]["enum"]
         assert "created_at" not in enum
-        assert "graph_bfs" not in enum
+        assert "valid_at" not in enum
+
+    def test_hops_capped_to_max(self) -> None:
+        hops = RECALL_TIMELINE_SCHEMA["properties"]["hops"]
+        assert hops["minimum"] == 1
+        assert hops["maximum"] == MAX_HOPS_MVP1
 
 
 class TestRecallFullSchema:

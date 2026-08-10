@@ -120,7 +120,35 @@ class FakeIndexRepo:
     def bfs_neighbors_state_at(
         self, ep_id: str, pit: datetime, *, pit_kind: PITKind, hops: int, include_tags_soft: bool
     ) -> list[IndexRowData]:
-        raise NotImplementedError
+        """Supersedes-based BFS mirror of the SQLite impl (SO-8b).
+
+        Traverses ``supersedes`` edges in both directions (rows pointing INTO
+        the current layer, and rows the current layer points to), collecting
+        rows that satisfy the PIT predicate at each layer.
+        """
+        if include_tags_soft:
+            raise NotImplementedError
+        seen: set[str] = {ep_id}
+        current_layer: set[str] = {ep_id}
+        collected: list[IndexRowData] = []
+        for _depth in range(hops + 1):
+            if not current_layer:
+                break
+            for ep in current_layer:
+                row = self.rows.get(ep)
+                if row is not None and self._pit_ok(row, pit_kind, pit):
+                    collected.append(row)
+            newer = {r.ep_id for r in self.rows.values() if r.supersedes in current_layer}
+            older = {
+                r.supersedes
+                for r in self.rows.values()
+                if r.ep_id in current_layer and r.supersedes is not None
+            }
+            next_layer = (newer | older) - seen
+            seen |= next_layer
+            current_layer = next_layer
+        result = sorted(collected, key=lambda r: r.ep_id)
+        return result
 
 
 class FakeEpisodeRepo:

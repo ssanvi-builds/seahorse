@@ -341,10 +341,10 @@ def test_invalid_extraction_mode_exit_66(vault):
 
 
 def test_bad_timeline_axis_exit_86(vault):
-    """recall-timeline with a non-MVP-0 axis → NotInMVP0 (Cat B 86, component #8)."""
+    """recall-timeline with a non-materialized axis → NotInMVP0 (Cat B 86, #8)."""
     _, out, _ = invoke(["--vault", str(vault), "--json", "remember", "x"])
     ep = json.loads(out)["ep_id"]
-    code, out, err = invoke(["--vault", str(vault), "recall-timeline", ep, "--axis", "graph_bfs"])
+    code, out, err = invoke(["--vault", str(vault), "recall-timeline", ep, "--axis", "created_at"])
     assert code == 86, err
     assert "NotInMVP0" in err
     assert "component: #8" in err

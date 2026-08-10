@@ -341,6 +341,7 @@ def recall_timeline_cmd(
     ctx: typer.Context,
     anchor_ep_id: str = typer.Argument(..., help="Anchor episode id."),
     axis: str = typer.Option("supersedes_chain", "--axis"),
+    hops: int = typer.Option(1, "--hops", help="graph_bfs traversal depth (1-2)."),
     pit_kind: str | None = typer.Option(
         None, "--pit-kind", help=f"PIT kind: {' | '.join(sorted(PIT_KIND_VALUES))}."
     ),
@@ -351,6 +352,7 @@ def recall_timeline_cmd(
         ctx.obj.facade(),
         anchor_ep_id=anchor_ep_id,
         axis=axis,
+        hops=hops,
         pit_kind=pit_kind,
         pit_t=pit_t,
         fmt=ctx.obj.fmt,

@@ -27,7 +27,7 @@ from typing import Protocol, runtime_checkable
 
 from seahorse.contracts.engine import EpisodeRepository, freshness_of
 from seahorse.contracts.episode import Episode
-from seahorse.contracts.index import IndexRowData
+from seahorse.contracts.index import HopsCapExceeded, IndexRowData, MAX_HOPS_MVP1
 from seahorse.contracts.persistence import EpisodeIndexRepository
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import (
@@ -121,7 +121,13 @@ class DisclosureShaper(Protocol):
     ) -> list[IndexRow]: ...
 
     def materialize_timeline(
-        self, anchor_ep_id: str, *, axis: TimelineAxis, pit: PITPoint | None = None
+        self,
+        anchor_ep_id: str,
+        *,
+        axis: TimelineAxis,
+        pit: PITPoint | None = None,
+        hops: int = 1,
+        now: datetime | None = None,
     ) -> TimelineWindow: ...
 
     def materialize_full(
@@ -187,12 +193,49 @@ class DisclosureShaperImpl:
         *,
         axis: TimelineAxis,
         pit: PITPoint | None = None,
+        hops: int = 1,
+        now: datetime | None = None,
     ) -> TimelineWindow:
+        if axis == "graph_bfs":
+            return self._materialize_graph_bfs(anchor_ep_id, axis, pit, hops, now)
         if axis not in MVP0_AXES:
             raise NotInMVP0(axis)
         rows = self._timeline_rows(anchor_ep_id, axis)
         if pit is not None:
             rows = self._pit_filter(rows, pit)
+        entries = tuple(
+            _row_to_timeline_entry(r) for r in rows[:MAX_TIMELINE_WINDOW]
+        )
+        return TimelineWindow(
+            anchor_ep_id=anchor_ep_id, axis=axis, entries=entries, pit=pit
+        )
+
+    def _materialize_graph_bfs(
+        self,
+        anchor_ep_id: str,
+        axis: TimelineAxis,
+        pit: PITPoint | None,
+        hops: int,
+        now: datetime | None,
+    ) -> TimelineWindow:
+        """#10 MVP-1 BFS timeline (f5-10 §1.4/§2). PIT-aware by construction.
+
+        Traversal projection over ``episode_index`` via #6's signed SO-8b method
+        ``bfs_neighbors_state_at`` (NO graph DB, NO edges, NO NER). ``hops`` is
+        capped to ``MAX_HOPS_MVP1`` — ``hops > 2`` raises ``HopsCapExceeded``
+        (fail-loud, no silent cap). ``pit=None`` resolves to ``state_at`` at the
+        injected ``now``. #10 supplies the ``cognitive_type=semantic`` filter
+        (G1 client-side over the returned rows).
+        """
+        if hops > MAX_HOPS_MVP1:
+            raise HopsCapExceeded(hops, MAX_HOPS_MVP1)
+        now_dt = self._now(now)
+        t = pit.t if pit is not None else now_dt
+        kind = pit.kind if pit is not None else "state_at"
+        rows = self._index.bfs_neighbors_state_at(
+            anchor_ep_id, t, pit_kind=kind, hops=hops, include_tags_soft=False
+        )
+        rows = [r for r in rows if r.cognitive_type == "semantic"]
         entries = tuple(
             _row_to_timeline_entry(r) for r in rows[:MAX_TIMELINE_WINDOW]
         )

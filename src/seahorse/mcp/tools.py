@@ -86,7 +86,8 @@ def handle_recall_timeline(
     validate(args, schema_for("recall_timeline"))
     pit = _resolve_pit(facade, args, t_field="pit_t")
     axis = args.get("axis", "supersedes_chain")
-    result = facade.recall_timeline(args["anchor_ep_id"], axis=axis, pit=pit)
+    hops = args.get("hops", 1)
+    result = facade.recall_timeline(args["anchor_ep_id"], axis=axis, pit=pit, hops=hops)
     return success_response(request_id, result)
 
 

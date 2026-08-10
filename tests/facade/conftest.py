@@ -205,9 +205,17 @@ class RecordingShaper:
         return list(self.index_result)
 
     def materialize_timeline(
-        self, anchor_ep_id: str, *, axis: Any, pit: PITPoint | None
+        self,
+        anchor_ep_id: str,
+        *,
+        axis: Any,
+        pit: PITPoint | None,
+        hops: int = 1,
+        now: datetime | None = None,
     ) -> TimelineWindow:
-        self.timeline_calls.append({"anchor": anchor_ep_id, "axis": axis, "pit": pit})
+        self.timeline_calls.append(
+            {"anchor": anchor_ep_id, "axis": axis, "pit": pit, "hops": hops, "now": now}
+        )
         if self.timeline_raise is not None:
             raise self.timeline_raise
         assert self.timeline_result is not None

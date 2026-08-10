@@ -22,7 +22,7 @@ import pytest
 
 from seahorse.contracts.engine import EpisodeRepository
 from seahorse.contracts.episode import Episode
-from seahorse.contracts.index import IndexRowData
+from seahorse.contracts.index import HopsCapExceeded, IndexRowData, MAX_HOPS_MVP1
 from seahorse.contracts.persistence import EpisodeIndexRepository
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.shaper import DisclosureShaper, DisclosureShaperImpl
@@ -334,7 +334,9 @@ def test_timeline_fact_id_scope_returns_anchor_when_vigent(index, repo):
 
 
 def test_timeline_mvp1_axis_raises_not_in_mvp0(index, repo):
-    for axis in ("created_at", "valid_at", "graph_bfs"):
+    # graph_bfs is MVP-1 (materialized in Sprint C); created_at/valid_at stay
+    # NotInMVP0 until their own MVP-1 materialization.
+    for axis in ("created_at", "valid_at"):
         with pytest.raises(NotInMVP0) as exc:
             _shaper(index, repo).materialize_timeline("e1", axis=axis)  # type: ignore[arg-type]
         assert exc.value.axis == axis
@@ -389,6 +391,69 @@ def test_timeline_bounded_by_max_window(index, repo):
         index.add(r)
     win = _shaper(index, repo).materialize_timeline("e0", axis="supersedes_chain")
     assert len(win.entries) <= MAX_TIMELINE_WINDOW
+
+
+# ---------------------------------------------------------------------------
+# materialize_timeline — graph_bfs (#10 MVP-1 BFS).
+# ---------------------------------------------------------------------------
+
+
+def test_timeline_graph_bfs_returns_semantic_neighbors(index, repo):
+    # e1 (semantic) supersedes e0; e2 (episodic) supersedes e1. BFS from e1
+    # with hops=1 collects e1 + its semantic neighbors only.
+    index.add(_idx_row("e0", fact_id="f0", cognitive_type="semantic"))
+    index.add(_idx_row("e1", fact_id="f1", cognitive_type="semantic", supersedes="e0"))
+    index.add(_idx_row("e2", fact_id="f2", cognitive_type="episodic", supersedes="e1"))
+    win = _shaper(index, repo).materialize_timeline("e1", axis="graph_bfs", hops=1)
+    assert win.axis == "graph_bfs"
+    assert {e.ep_id for e in win.entries} == {"e0", "e1"}
+    assert all(e.cognitive_type == "semantic" for e in win.entries)
+    assert all(e.score is None for e in win.entries)
+
+
+def test_timeline_graph_bfs_hops_2_reaches_two_layers(index, repo):
+    # e0 <- e1 <- e2 (all semantic). hops=2 from e1 reaches e0 and e2.
+    index.add(_idx_row("e0", fact_id="f0", cognitive_type="semantic"))
+    index.add(_idx_row("e1", fact_id="f1", cognitive_type="semantic", supersedes="e0"))
+    index.add(_idx_row("e2", fact_id="f2", cognitive_type="semantic", supersedes="e1"))
+    win = _shaper(index, repo).materialize_timeline("e1", axis="graph_bfs", hops=2)
+    assert {e.ep_id for e in win.entries} == {"e0", "e1", "e2"}
+
+
+def test_timeline_graph_bfs_hops_over_cap_raises(index, repo):
+    index.add(_idx_row("e1", fact_id="f1", cognitive_type="semantic"))
+    with pytest.raises(HopsCapExceeded) as exc:
+        _shaper(index, repo).materialize_timeline("e1", axis="graph_bfs", hops=3)
+    assert exc.value.hops == 3
+    assert exc.value.cap == MAX_HOPS_MVP1
+
+
+def test_timeline_graph_bfs_pit_state_at_filters(index, repo):
+    # e1 valid only in the future → excluded at NOW.
+    index.add(_idx_row("e0", fact_id="f0", cognitive_type="semantic"))
+    index.add(
+        _idx_row(
+            "e1",
+            fact_id="f1",
+            cognitive_type="semantic",
+            supersedes="e0",
+            valid_at=NOW + timedelta(days=1),
+        )
+    )
+    win = _shaper(index, repo).materialize_timeline(
+        "e1", axis="graph_bfs", hops=1, pit=PITPoint(kind="state_at", t=NOW)
+    )
+    assert {e.ep_id for e in win.entries} == {"e0"}
+
+
+def test_timeline_graph_bfs_pit_none_resolves_state_at_now(index, repo):
+    # pit=None → state_at at the injected now (ADR-03, no silent known_at).
+    index.add(_idx_row("e0", fact_id="f0", cognitive_type="semantic"))
+    index.add(_idx_row("e1", fact_id="f1", cognitive_type="semantic", supersedes="e0"))
+    win = _shaper(index, repo).materialize_timeline(
+        "e1", axis="graph_bfs", hops=1, now=NOW
+    )
+    assert {e.ep_id for e in win.entries} == {"e0", "e1"}
 
 
 # ---------------------------------------------------------------------------
@@ -620,5 +685,5 @@ def test_full_pit_raises_before_any_fetch(index, counting_repo):
 def test_timeline_mvp1_axis_raises_before_any_fetch(rec_index, repo):
     rec_index.add(_idx_row("e1"))
     with pytest.raises(NotInMVP0):
-        _shaper(rec_index, repo).materialize_timeline("e1", axis="graph_bfs")  # type: ignore[arg-type]
+        _shaper(rec_index, repo).materialize_timeline("e1", axis="created_at")  # type: ignore[arg-type]
     assert sum(rec_index.calls.values()) == 0
