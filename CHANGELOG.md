@@ -41,6 +41,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   coexisting with claude-mem §15.3-4) + `--uninstall` (`observe event` marker).
 - `[observe]` section in `seahorse.toml` (opt-in until `seahorse setup`).
 
+### Fixed
+
+- **`seahorse setup` crashed on a fresh user** (no `~/.claude/`): `merge_hooks`
+  now creates the parent directory before writing `settings.json`. The observer
+  is a Claude Code capture adapter, not a product binding — the rest of Seahorse
+  is agent-agnostic.
+- **Observer spawn**: `observe start` placed `--vault` after `observe run`, but
+  it is a global option that must precede the subcommand — the observer died
+  immediately with "No such option: --vault". Fixed in `observe/cli.py` + order
+  assertion in the test.
+- **`seahorse doctor` prerequisite checks**: new `python` / `uv` / `obsidian` /
+  `sqlite_vec` checks (the last detects a Python build whose `sqlite3` lacks
+  `enable_load_extension`, which breaks sqlite-vec with a cryptic
+  `AttributeError`).
+- **README Prerequisites section** (Python ≥3.11 + sqlite load_extension, uv,
+  Obsidian optional).
+- **`scripts/e2e-fresh-user.sh`** — fresh-user E2E in an isolated sandbox
+  (overridden HOME, temp vault; never touches `~/.claude`, `~/.claude-mem`, or
+  `~/obsidian-vaults`). Validates install → init → core CLI → hybrid embeddings
+  → LLM (honest degrade) → observer → import → MCP, with no-corruption
+  post-flight checks. 47/0 green.
+
 ### Added
 
 - **F7 experiment (b) rerank — cross-encoder seam + harness + run (f7 §5b)**.
