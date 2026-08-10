@@ -6,6 +6,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-10
+
+Sprint C — skills L2c determinista + #10 MVP-1 BFS + viewer TUI mínimo + [procedural] config.
+
 ### Added — Sprint C (skills L2c + #10 BFS + viewer TUI, 2026-08-10)
 
 - **procedural skills (L2c §6.1)** — `seahorse/procedural/` (stdlib-only, client
