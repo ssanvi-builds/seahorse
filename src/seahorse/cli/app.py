@@ -63,6 +63,7 @@ from seahorse.cli.skills import (
     run_skill_show,
 )
 from seahorse.cli.vault_ops import run_index_rebuild, run_inspect, run_migrate
+from seahorse.cli.viewer import run_view
 from seahorse.contracts.index import PIT_KIND_VALUES
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.factory import build_facade
@@ -861,6 +862,12 @@ def skill_show_cmd(
     run_skill_show(
         ctx.obj.facade(), ep_id=ep_id, min_trust=min_trust, fmt=ctx.obj.fmt, out=_out(ctx)
     )
+
+
+@app.command()
+def view(ctx: typer.Context) -> None:
+    """Interactive read-only viewer (recent / search / timeline / skills)."""
+    run_view(ctx.obj.facade(), out=_out(ctx))
 
 
 # ---------------------------------------------------------------------------
