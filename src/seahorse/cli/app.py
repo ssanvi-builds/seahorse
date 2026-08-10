@@ -856,11 +856,19 @@ def skill_search_cmd(
 def skill_show_cmd(
     ctx: typer.Context,
     ep_id: str = typer.Argument(..., help="Skill episode id."),
-    min_trust: str = typer.Option("medium", "--min-trust", help="low | medium | high"),
+    min_trust: str | None = typer.Option(
+        None, "--min-trust", help="low | medium | high (default: [procedural] config)."
+    ),
 ) -> None:
     """Show a skill's gated body (Execution level, R5 trust gate)."""
+    cfg = ctx.obj.resolved_config()
+    default_trust = cfg.procedural.min_trust if cfg.procedural is not None else "medium"
     run_skill_show(
-        ctx.obj.facade(), ep_id=ep_id, min_trust=min_trust, fmt=ctx.obj.fmt, out=_out(ctx)
+        ctx.obj.facade(),
+        ep_id=ep_id,
+        min_trust=min_trust or default_trust,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
     )
 
 

@@ -103,6 +103,26 @@ class ObserveConfig:
     token: str | None = None
 
 
+# Procedural skill defaults (L2c §6.1). The section is OPT-IN: a vault without
+# a ``[procedural]`` section has ``procedural=None`` and the CLI uses the
+# module defaults (min_trust=medium, empty loadout).
+DEFAULT_MIN_TRUST = "medium"
+
+
+@dataclass(frozen=True)
+class ProceduralSection:
+    """The ``[procedural]`` section — skill defaults (L2c §6.1).
+
+    ``min_trust`` is the R5 trust-gate default (low | medium | high) applied by
+    ``seahorse skill show`` when the caller does not pass ``--min-trust``.
+    ``loadout`` is the explicit per-agent skill loadout (Tencent pattern): the
+    agent declares which skills it equips; empty means no loadout is pinned.
+    """
+
+    min_trust: str = DEFAULT_MIN_TRUST
+    loadout: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class SeahorseConfig:
     """Resolved Seahorse configuration for a vault.
@@ -121,6 +141,7 @@ class SeahorseConfig:
     top_k: int = DEFAULT_TOP_K
     llm: LlmConfig | None = None
     observe: ObserveConfig | None = None
+    procedural: ProceduralSection | None = None
 
     def with_overrides(
         self, *, extraction_mode: str | None = None, top_k: int | None = None
@@ -223,6 +244,10 @@ def load_config(
     # observer is opt-in until `seahorse setup` writes it).
     observe = _parse_observe_section(data.get("observe"))
 
+    # Optional [procedural] section (Sprint C). Missing → procedural=None (the
+    # CLI uses the module defaults: min_trust=medium, empty loadout).
+    procedural = _parse_procedural_section(data.get("procedural"))
+
     return SeahorseConfig(
         vault=vault,
         seahorse_dir=seahorse_dir,
@@ -231,6 +256,7 @@ def load_config(
         top_k=top_k,
         llm=llm,
         observe=observe,
+        procedural=procedural,
     )
 
 
@@ -316,6 +342,34 @@ def _parse_observe_section(raw: object) -> ObserveConfig | None:
         socket_path=socket_path,
         token=token,
     )
+
+
+def _parse_procedural_section(raw: object) -> ProceduralSection | None:
+    """Validate an optional ``[procedural]`` section into a ``ProceduralSection``.
+
+    ``None`` input (no section) → ``None`` (the CLI uses the module defaults:
+    min_trust=medium, empty loadout). Any structurally wrong value is a
+    ``CliConfigInvalid`` (Cat C, exit 83) — a config typo fails loud, not as a
+    silent degrade at runtime.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise CliConfigInvalid("procedural must be a [procedural] table")
+
+    min_trust = raw.get("min_trust", DEFAULT_MIN_TRUST)
+    if not isinstance(min_trust, str) or min_trust not in ("low", "medium", "high"):
+        raise CliConfigInvalid(
+            f"procedural.min_trust={min_trust!r}; expected 'low' | 'medium' | 'high'"
+        )
+
+    loadout = raw.get("loadout", ())
+    if not isinstance(loadout, (list, tuple)) or not all(
+        isinstance(x, str) and x for x in loadout
+    ):
+        raise CliConfigInvalid("procedural.loadout must be a list of non-empty strings")
+
+    return ProceduralSection(min_trust=min_trust, loadout=tuple(loadout))
 
 
 def write_default_config(vault: Path) -> Path:
