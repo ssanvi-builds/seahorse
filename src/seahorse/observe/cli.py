@@ -123,10 +123,11 @@ def run_observe_start(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
                 sys.executable,
                 "-m",
                 "seahorse.cli.app",
-                "observe",
-                "run",
+                # --vault is a GLOBAL option and must precede the subcommand.
                 "--vault",
                 str(cfg.vault),
+                "observe",
+                "run",
             ],
             stdout=log,
             stderr=log,

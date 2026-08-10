@@ -139,3 +139,6 @@ def test_start_spawns_and_writes_pid(tmp_path, monkeypatch) -> None:
     assert "seahorse.cli.app" in spawned["cmd"]
     assert "observe" in spawned["cmd"]
     assert "run" in spawned["cmd"]
+    # --vault is a GLOBAL option and must precede the subcommand (observe run);
+    # a regression here made the observer die with "No such option: --vault".
+    assert spawned["cmd"].index("--vault") < spawned["cmd"].index("observe")
