@@ -6,6 +6,21 @@
 
 **Fase 6 — Implementation** (in progress).
 
+- **Sprint C COMPLETE (2026-08-10)**: skills L2c determinista (`seahorse/procedural/`)
+  + #10 MVP-1 BFS (`graph_bfs`) + viewer TUI mínimo + `[procedural]` config.
+  **4 commits TDD** (`934fd6d`→`e5759ad`, 140 accumulated, not pushed). **2156
+  tests / ruff+mypy clean (174 src files) / smoke green.** Skills: `record_procedure`
+  (ADR-09 skip-first, cost ≈ 0, canonical body validated before any write) +
+  `ProceduralShaper` (3-level progressive disclosure) + R5 trust gate
+  (manual HIGH / agent MEDIUM / import+distilled LOW; low-trust delivered as
+  citation not instruction) + CLI `skill add|list|search|show` + un-reserve
+  `procedural` (frontmatter round-trip byte-identical). BFS: `graph_bfs`
+  materialized in the shaper (1-2 hop PIT-aware, `HopsCapExceeded` for >2,
+  `cognitive_type=semantic` filter, `recall-timeline --axis graph_bfs` + MCP
+  `hops`). Viewer: `seahorse view` read-only stdlib TUI (recent/search/timeline/
+  skills, honest empty-vault degrade). Config: `[procedural]` section
+  (min_trust + loadout). See vault `session-2026-08-10-sprint-c.md`.
+
 - **E2E fresh-user COMPLETE (2026-08-10)**: `scripts/e2e-fresh-user.sh` validates
   the clone-and-run promise from a fresh user's perspective in an isolated
   sandbox (overridden HOME, temp vault — never touches `~/.claude`,

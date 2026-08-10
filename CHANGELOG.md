@@ -6,6 +6,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Sprint C (skills L2c + #10 BFS + viewer TUI, 2026-08-10)
+
+- **procedural skills (L2c §6.1)** — `seahorse/procedural/` (stdlib-only, client
+  of #12/#8): `record_procedure` (deterministic creation, ADR-09 skip-first,
+  cost ≈ 0, canonical body `## Trigger/Steps/Validation/Rationale` validated
+  before any write) · `ProceduralShaper` (3-level progressive disclosure:
+  Discovery = INDEX summary ≤280, Activation = TIMELINE, Execution = FULL) ·
+  R5 trust gate (`trust.py`: manual HIGH / agent MEDIUM / import+distilled LOW;
+  low-trust skills delivered as citation/context, not instruction) · CLI
+  `seahorse skill add|list|search|show` (add validates canonical body, show
+  applies the trust gate) · un-reserve `procedural` (frontmatter round-trip
+  byte-identical). `ProceduralError` mapped as Cat B (CLI exit 96, MCP -32053).
+- **#10 MVP-1 BFS (`graph_bfs`)** — `materialize_timeline(axis=graph_bfs)`
+  materialized in the shaper: 1-2 hop PIT-aware via #6's signed SO-8b
+  `bfs_neighbors_state_at`, `HopsCapExceeded` for hops > 2, `cognitive_type=
+  semantic` filter, `pit=None` → `state_at(now)`. Exposed via
+  `recall-timeline --axis graph_bfs --hops` and MCP `recall_timeline` `hops`.
+- **viewer TUI** — `seahorse view`: read-only interactive stdlib TUI
+  (recent / search / timeline / skills), honest empty-vault degrade (ADR-10).
+- **`[procedural]` config** — `seahorse.toml` section (min_trust + loadout
+  defaults; opt-in, missing → module defaults).
+
+### Fixed
+
 ## [0.4.0] - 2026-08-10
 
 Sprint B (todo-en-uno) + E2E fresh-user + F7 experiments (d)(b) + observer-agnostic research.
