@@ -98,6 +98,16 @@ def test_merge_hooks_adds_observer_hooks(tmp_path) -> None:
         assert any(HOOK_MARKER in h["command"] for h in hooks[event])
 
 
+def test_merge_hooks_creates_missing_parent_dir(tmp_path) -> None:
+    """A fresh user has no ~/.claude/ — merge_hooks must create it, not crash."""
+    path = tmp_path / "does-not-exist" / "settings.json"
+    merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
+    assert path.is_file()
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    assert "hooks" in data
+
+
 def test_merge_hooks_coexists_with_existing_hooks(tmp_path) -> None:
     """Coexistence with claude-mem: the observer hooks are ADDED, not replacing."""
     path = _settings_path(tmp_path)

@@ -109,6 +109,10 @@ def merge_hooks(settings_path: Path | str, *, hook_command: str) -> None:
         entries = hooks.setdefault(event, [])
         if not any(HOOK_MARKER in h.get("command", "") for h in entries):
             entries.append({"matcher": matcher, "command": hook_command})
+    # A fresh user may not have ~/.claude/ yet (no Claude Code installed) — the
+    # hooks are written ready for when it is. The observer is a Claude Code
+    # capture adapter; the rest of Seahorse is agent-agnostic.
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
