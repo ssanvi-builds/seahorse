@@ -84,6 +84,61 @@ class TestDoctor:
         assert "nosuch/model-x" in api["detail"]
 
 
+class TestPrereqChecks:
+    def test_python_check_reports_version_ok(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        py = next(c for c in payload["checks"] if c["check"] == "python")
+        assert py["status"] == "OK"
+        assert ">=3.11 required" in py["detail"]
+
+    def test_uv_present_ok(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "seahorse.cli.doctor.shutil.which", lambda _name: "/usr/local/bin/uv"
+        )
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        uv = next(c for c in payload["checks"] if c["check"] == "uv")
+        assert uv["status"] == "OK"
+        assert uv["detail"] == "present"
+
+    def test_uv_absent_warns_and_unhealthy(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr("seahorse.cli.doctor.shutil.which", lambda _name: None)
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        uv = next(c for c in payload["checks"] if c["check"] == "uv")
+        assert uv["status"] == "WARN"
+        assert "docs.astral.sh/uv" in uv["detail"]
+        assert payload["healthy"] is False
+
+    def test_obsidian_optional_ok(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        obs = next(c for c in payload["checks"] if c["check"] == "obsidian")
+        assert obs["status"] == "OK"
+        assert "optional" in obs["detail"]
+
+    def test_sqlite_vec_supported_ok(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "seahorse.cli.doctor._sqlite_load_extension_supported", lambda: True
+        )
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        sv = next(c for c in payload["checks"] if c["check"] == "sqlite_vec")
+        assert sv["status"] == "OK"
+
+    def test_sqlite_vec_unsupported_fails(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "seahorse.cli.doctor._sqlite_load_extension_supported", lambda: False
+        )
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        sv = next(c for c in payload["checks"] if c["check"] == "sqlite_vec")
+        assert sv["status"] == "FAIL"
+        assert "load_extension" in sv["detail"]
+        assert payload["healthy"] is False
+
+
 class TestProviderSelfTest:
     def test_llm_error_reported_as_fail_not_crash(self, monkeypatch) -> None:
         from seahorse.cli.config import LlmConfig

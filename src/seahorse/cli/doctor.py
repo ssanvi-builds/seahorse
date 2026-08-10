@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
+import sqlite3
+import sys
 from typing import TextIO
 
 from pydantic import BaseModel, ConfigDict
@@ -30,6 +33,17 @@ class _SelfTestSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     subject: str | None = None
+
+
+def _sqlite_load_extension_supported() -> bool:
+    """True when the runtime ``sqlite3`` can load extensions (sqlite-vec needs it).
+
+    Some Python builds (e.g. a pyenv build without
+    ``SQLITE_ENABLE_LOAD_EXTENSION``) lack ``enable_load_extension`` entirely,
+    which breaks every DB command with a cryptic AttributeError. The doctor
+    surfaces it as an actionable FAIL instead.
+    """
+    return hasattr(sqlite3.Connection, "enable_load_extension")
 
 
 def _litellm_installed() -> bool:
@@ -151,6 +165,52 @@ def run_doctor(
             "detail": str(config.db_path),
         }
     )
+
+    checks.append(
+        {
+            "check": "python",
+            "status": "OK",
+            "detail": (
+                f"{sys.version_info.major}.{sys.version_info.minor}."
+                f"{sys.version_info.micro} (>=3.11 required)"
+            ),
+        }
+    )
+    if shutil.which("uv") is not None:
+        checks.append({"check": "uv", "status": "OK", "detail": "present"})
+    else:
+        checks.append(
+            {
+                "check": "uv",
+                "status": "WARN",
+                "detail": (
+                    "absent — install https://docs.astral.sh/uv/ "
+                    "(needed for `uv tool install .`)"
+                ),
+            }
+        )
+    checks.append(
+        {
+            "check": "obsidian",
+            "status": "OK",
+            "detail": "optional — markdown layer, not required",
+        }
+    )
+    if _sqlite_load_extension_supported():
+        checks.append(
+            {"check": "sqlite_vec", "status": "OK", "detail": "load_extension supported"}
+        )
+    else:
+        checks.append(
+            {
+                "check": "sqlite_vec",
+                "status": "FAIL",
+                "detail": (
+                    "sqlite3 lacks enable_load_extension — sqlite-vec cannot "
+                    "load; use a Python build with load_extension support"
+                ),
+            }
+        )
 
     healthy = all(c["status"] == "OK" for c in checks)
     payload = {"command": "doctor", "healthy": healthy, "checks": checks}

@@ -29,6 +29,19 @@ at any past point in time. Supersession and soft-delete are append-only: an
 `improve` invalidates the prior episode and supersedes it; a `forget` invalidates
 without destroying history.
 
+## Prerequisites
+
+- **Python ≥ 3.11** (any recent 3.11/3.12/3.13 works). The interpreter's
+  `sqlite3` must support `enable_load_extension` (sqlite-vec needs it); most
+  standard builds do — `seahorse doctor` reports it as a FAIL if not.
+- **uv** — the documented install path is `uv tool install .` (or `uv sync` in a
+  checkout). Install it from <https://docs.astral.sh/uv/>. Any other Python
+  package manager can install the wheel, but uv is what the Quickstart assumes.
+- **Obsidian is optional.** Seahorse runs on any directory of markdown — `seahorse
+  init` creates a `.seahorse/` sidecar in a plain folder. Obsidian is a
+  human-facing editor for the same folder; its `.obsidian/` directory is ignored
+  by Seahorse, never required.
+
 ## Quickstart
 
 ```bash
