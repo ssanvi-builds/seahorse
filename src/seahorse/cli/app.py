@@ -46,6 +46,7 @@ from seahorse.cli.importer import run_import
 from seahorse.cli.management import run_init, run_reserved, run_status, run_uuid7
 from seahorse.cli.output import OutputFormat
 from seahorse.cli.primitives import (
+    run_consolidate,
     run_context,
     run_expire_revalidate,
     run_forget,
@@ -327,6 +328,12 @@ def recall_cmd(
 def context(ctx: typer.Context) -> None:
     """Render the memory bootstrap context (SessionStart hook, §6.3)."""
     run_context(ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx))
+
+
+@app.command()
+def consolidate(ctx: typer.Context) -> None:
+    """Distill recurrent episodes into semantic knowledge notes (§5.3)."""
+    run_consolidate(ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command(name="recall-timeline")

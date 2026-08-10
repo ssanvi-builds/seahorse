@@ -158,3 +158,37 @@ def test_remember_agent_custom_valid_at_rejected_by_guard(engine):
             body="# X\n", by={"source_type": "agent"}, valid_at=NOW - timedelta(days=1), now=NOW
         )
     assert exc.value.code == errors.E_VALID_AT_HUMAN_ONLY
+
+# --- supersedes / supersedes_reason (Sprint B distill enabler) ---------------
+
+
+def test_remember_accepts_supersedes_and_reason(engine):
+    """The distill primitive writes a consolidated episode that references its
+    representative source via ``supersedes`` (obsiforge §5.2) WITHOUT
+    invalidating it — the sources stay vigente (they are the evidence)."""
+    eng, repo, audit = engine
+    source = eng.remember(body=_BODY, by={"source_type": "agent", "agent_id": "a1"}, now=NOW)
+    wr = eng.remember(
+        body="# Sergio uses Python\nfor data work.\n",
+        by={"source_type": "system", "agent_id": "consolidator"},
+        cognitive_type="semantic",
+        subject="sergio",
+        supersedes=source.ep_id,
+        supersedes_reason="merge",
+        now=NOW,
+    )
+    assert wr.status == "ACTIVE"
+    ep = repo.get(wr.ep_id)
+    assert ep.supersedes == source.ep_id
+    assert ep.supersedes_reason == "merge"
+    # The source stays vigente (not invalidated by the consolidation).
+    src = repo.get(source.ep_id)
+    assert src.invalid_at is None
+
+
+def test_remember_supersedes_defaults_none(engine):
+    eng, repo, audit = engine
+    wr = eng.remember(body=_BODY, by={"source_type": "agent", "agent_id": "a1"}, now=NOW)
+    ep = repo.get(wr.ep_id)
+    assert ep.supersedes is None
+    assert ep.supersedes_reason is None

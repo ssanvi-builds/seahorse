@@ -438,6 +438,38 @@ class MemoryFacade:
 
     # ----------------------------------------------------------- passthroughs
 
+    def get_vigente(self, subject: str | None = None) -> list[Episode]:
+        """Vigente episodes (passthrough to #2 ``get_vigente``).
+
+        Exposed for the consolidate CLI (Sprint B): the distillation clusters
+        the vigente set by subject recurrence (§5.3).
+        """
+        return self._engine.get_vigente(subject, now=self._clock())
+
+    def distill(
+        self,
+        source_ep_ids: list[str],
+        representative: Episode,
+        consolidated_body: str,
+        by: Provenance,
+    ) -> WriteResult:
+        """Distill source episodes into a consolidated semantic episode (§5.4).
+
+        Delegates to the ``distill_episodes`` primitive (a client of #2) — the
+        facade is the seam so the CLI never reaches the engine directly
+        (delegation purity). The consolidated episode references its
+        representative via ``supersedes`` WITHOUT invalidating the sources.
+        """
+        from seahorse.distill.distill import distill_episodes
+
+        return distill_episodes(
+            self._engine,
+            source_ep_ids,
+            representative,
+            consolidated_body,
+            dict(by),
+        )
+
     def freshness_view(self, ep_id: str) -> FreshnessView:
         """Freshness snapshot (delegates to #2 ``engine.freshness_view``)."""
         return self._engine.freshness_view(ep_id, now=self._clock())

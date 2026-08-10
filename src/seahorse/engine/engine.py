@@ -198,6 +198,8 @@ class BiTemporalEngine:
         title: str | None = None,
         summary: str | None = None,
         subject: str | None = None,
+        supersedes: str | None = None,
+        supersedes_reason: str | None = None,
         now: datetime | None = None,
     ) -> WriteResult:
         """Single write entry point (ADR-09). Picks the id by source (SO-4b).
@@ -256,7 +258,8 @@ class BiTemporalEngine:
                 valid_at=valid_at,
                 invalid_at=None,
                 expired_at=None,
-                supersedes=None,
+                supersedes=supersedes,
+                supersedes_reason=supersedes_reason,
                 cognitive_type=cognitive_type,
                 source_type=source_type,
                 title=title,

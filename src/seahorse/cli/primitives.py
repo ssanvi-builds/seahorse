@@ -231,6 +231,58 @@ def run_context(
 
 
 # ---------------------------------------------------------------------------
+# consolidate
+# ---------------------------------------------------------------------------
+
+
+def run_consolidate(
+    facade: MemoryFacade,
+    *,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+) -> None:
+    """``seahorse consolidate`` — distill recurrent episodes (§5.3).
+
+    Reads the vigente set, clusters by subject recurrence (N≥3), and distills
+    each cluster into a consolidated semantic knowledge note. Idempotent: a
+    cluster whose key already has a consolidated note is skipped (§5.5).
+    """
+    from seahorse.distill.consolidate import consolidate
+
+    report = consolidate(facade)
+    if fmt == "human":
+        if report.items:
+            for item in report.items:
+                out.write(
+                    f"consolidated: {item.key} ({item.source_count} sources) "
+                    f"-> {item.status}\n"
+                )
+        else:
+            out.write(f"consolidate: no clusters to distill ({report.clusters_found} found)\n")
+    else:
+        import json
+
+        out.write(
+            json.dumps(
+                {
+                    "clusters_found": report.clusters_found,
+                    "items": [
+                        {
+                            "key": i.key,
+                            "source_count": i.source_count,
+                            "status": i.status,
+                            "ep_id": i.ep_id,
+                        }
+                        for i in report.items
+                    ],
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+
+# ---------------------------------------------------------------------------
 # recall-timeline
 # ---------------------------------------------------------------------------
 
