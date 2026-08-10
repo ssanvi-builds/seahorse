@@ -154,6 +154,90 @@ def run_observe_stop(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> 
         out.write(json.dumps({"stopped": True, "pid": pid}) + "\n")
 
 
+# Hook event name → envelope event_type (Claude Code hook env vars).
+_HOOK_EVENT_TYPES: dict[str, str] = {
+    "SessionStart": "session_start",
+    "UserPromptSubmit": "user_prompt_submit",
+    "PostToolUse": "post_tool_use",
+    "Stop": "stop",
+}
+
+
+def _build_payload(event_name: str) -> dict:
+    """Build the envelope payload from the Claude Code hook env vars."""
+    if event_name == "UserPromptSubmit":
+        return {"prompt": os.environ.get("CLAUDE_PROMPT", "")}
+    if event_name == "PostToolUse":
+        return {
+            "tool_name": os.environ.get("CLAUDE_TOOL_NAME", ""),
+            "tool_use_id": os.environ.get("CLAUDE_TOOL_USE_ID", ""),
+            "tool_input": os.environ.get("CLAUDE_TOOL_INPUT", ""),
+            "tool_response": os.environ.get("CLAUDE_TOOL_RESPONSE", ""),
+        }
+    return {}
+
+
+def _post_event(cfg: SeahorseConfig, raw: dict) -> tuple[int, str]:
+    """POST an envelope to the observer unix socket; return (status, message)."""
+    import http.client
+    import socket as socket_module
+
+    sp = socket_path(cfg)
+    if not sp.exists():
+        return 0, "observer not running"
+
+    class _UnixHTTPConnection(http.client.HTTPConnection):
+        def __init__(self, socket_path: str, timeout: float = 5) -> None:
+            super().__init__("localhost", timeout=timeout)
+            self._socket_path = socket_path
+
+        def connect(self) -> None:
+            self.sock = socket_module.socket(socket_module.AF_UNIX, socket_module.SOCK_STREAM)
+            self.sock.connect(self._socket_path)
+
+    headers = {"Content-Type": "application/json"}
+    if cfg.observe is not None and cfg.observe.token:
+        headers["X-Seahorse-Token"] = cfg.observe.token
+    conn = _UnixHTTPConnection(str(sp))
+    try:
+        conn.request("POST", "/event", body=json.dumps(raw).encode(), headers=headers)
+        resp = conn.getresponse()
+        return resp.status, resp.read().decode()
+    finally:
+        conn.close()
+
+
+def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
+    """POST a hook event to the observer socket (called by the Claude Code hooks).
+
+    Reads the hook env vars (``CLAUDE_HOOK_EVENT_NAME`` / ``CLAUDE_SESSION_ID``
+    / ``CLAUDE_PROMPT`` / ``CLAUDE_TOOL_*``) and POSTs the envelope to the unix
+    socket. The hook must NEVER abort the agent session (§15.3 redesign 3): a
+    missing observer or a failed POST is a silent no-op (exit 0).
+    """
+    event_name = os.environ.get("CLAUDE_HOOK_EVENT_NAME", "")
+    event_type = _HOOK_EVENT_TYPES.get(event_name)
+    if event_type is None:
+        return  # unknown hook event — the observer ignores it
+    session_id = os.environ.get("CLAUDE_SESSION_ID", "")
+    if not session_id:
+        return  # no session — nothing to capture
+    raw: dict = {
+        "session_id": session_id,
+        "event_type": event_type,
+        "payload": _build_payload(event_name),
+    }
+    agent_id = os.environ.get("CLAUDE_AGENT_ID")
+    if agent_id:
+        raw["agent_id"] = agent_id
+    try:
+        status, _message = _post_event(cfg, raw)
+    except OSError:
+        return  # observer not reachable — silent no-op (hook must not abort)
+    if status not in (200, 0):
+        return  # non-200 — silent no-op (the observer logs its own errors)
+
+
 def run_observe_run(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
     """Run the observer in the foreground (endpoint thread + worker loop).
 
@@ -207,5 +291,6 @@ __all__ = [
     "run_observe_status",
     "run_observe_start",
     "run_observe_stop",
+    "run_observe_event",
     "run_observe_run",
 ]

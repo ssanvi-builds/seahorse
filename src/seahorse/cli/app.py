@@ -507,6 +507,14 @@ def observe_run_cmd(ctx: typer.Context) -> None:
     run_observe_run(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
+@observe_app.command("event")
+def observe_event_cmd(ctx: typer.Context) -> None:
+    """POST a hook event to the observer socket (called by the hooks)."""
+    from seahorse.observe.cli import run_observe_event
+
+    run_observe_event(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+
+
 # ``benchmark`` group: ``benchmark run`` / ``benchmark list`` / ``benchmark adapters``.
 benchmark_app = typer.Typer(help="LMEB benchmark harness (#16).")
 app.add_typer(benchmark_app, name="benchmark")
@@ -666,6 +674,23 @@ def mcp(ctx: typer.Context) -> None:
 # ---------------------------------------------------------------------------
 # Management commands.
 # ---------------------------------------------------------------------------
+
+
+@app.command()
+def setup(
+    ctx: typer.Context,
+    uninstall: bool = typer.Option(
+        False, "--uninstall", help="Remove the observer hooks + [observe] config."
+    ),
+) -> None:
+    """Install the observer: merge Claude Code hooks + write [observe] config."""
+    from seahorse.cli.setup import run_setup, run_setup_uninstall
+
+    cfg = ctx.obj.resolved_config()
+    if uninstall:
+        run_setup_uninstall(cfg.vault, fmt=ctx.obj.fmt, out=_out(ctx))
+    else:
+        run_setup(cfg.vault, fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command()

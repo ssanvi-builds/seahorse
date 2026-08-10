@@ -25,15 +25,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from seahorse.observe.adapters.claude_code import (
+    handle_post_tool_use,
+    handle_session_start,
+    handle_stop,
+    handle_user_prompt_submit,
+)
 from seahorse.observe.protocol import (
     EVENT_POST_TOOL_USE,
-    Envelope,
+    EVENT_SESSION_START,
+    EVENT_STOP,
+    EVENT_USER_PROMPT_SUBMIT,
     EnvelopeError,
     parse_envelope,
 )
 from seahorse.observe.queue import ObserverQueue
-from seahorse.observe.redact import redact_payload
-from seahorse.observe.threshold import should_drop_event
 
 _SOCKET_MODE = 0o600
 
@@ -92,8 +98,10 @@ class ObserverEndpoint:
         """Process one envelope. Returns ``(status_code, message)``.
 
         Auth first (token, §15.2 redesign 10), then tolerant parse (caps,
-        malformed → 400), then redact + drop_tools at the edge (nothing raw
-        persisted, §4.4).
+        malformed → 400), then dispatch to the adapter functions — which REDACTS
+        before enqueue (nothing raw persisted, §4.4), applies ``drop_tools``
+        (Read/Bash never reach the queue, §15.2 redesign 3), and manages the
+        persisted ``prompt_number`` (turn boundary, §15.2 redesign 2).
         """
         if self._token is not None and token != self._token:
             return 401, "unauthorized"
@@ -101,21 +109,31 @@ class ObserverEndpoint:
             env = parse_envelope(raw)
         except EnvelopeError as exc:
             return 400, str(exc)
-        if env.event_type == EVENT_POST_TOOL_USE:
-            tool_name = env.payload.get("tool_name", "")
-            if should_drop_event(tool_name):
-                return 200, "dropped"
-        redacted = Envelope(
-            schema_version=env.schema_version,
-            harness_id=env.harness_id,
-            session_id=env.session_id,
-            agent_id=env.agent_id,
-            prompt_number=env.prompt_number,
-            event_type=env.event_type,
-            ts=env.ts,
-            payload=redact_payload(env.payload),
-        )
-        self._queue.enqueue(redacted)
+        session_id = env.session_id
+        agent_id = env.agent_id if env.agent_id != "unknown" else None
+        if env.event_type == EVENT_SESSION_START:
+            handle_session_start(self._queue, session_id=session_id, agent_id=agent_id)
+        elif env.event_type == EVENT_USER_PROMPT_SUBMIT:
+            handle_user_prompt_submit(
+                self._queue,
+                session_id=session_id,
+                prompt=env.payload.get("prompt", ""),
+                agent_id=agent_id,
+            )
+        elif env.event_type == EVENT_POST_TOOL_USE:
+            handle_post_tool_use(
+                self._queue,
+                session_id=session_id,
+                tool_name=env.payload.get("tool_name", ""),
+                tool_use_id=env.payload.get("tool_use_id", ""),
+                tool_input=env.payload.get("tool_input", ""),
+                tool_response=env.payload.get("tool_response", ""),
+                agent_id=agent_id,
+            )
+        elif env.event_type == EVENT_STOP:
+            handle_stop(self._queue, session_id=session_id, agent_id=agent_id)
+        else:
+            return 400, f"unknown event_type: {env.event_type}"
         return 200, "ok"
 
     # ------------------------------------------------------------- lifecycle
