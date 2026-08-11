@@ -71,7 +71,7 @@ def test_main_serves_initialize_and_tools_list(tmp_path) -> None:
     assert resps[0]["result"]["protocolVersion"] == "2025-11-25"
     assert resps[0]["result"]["serverInfo"]["name"] == "seahorse-memory"
     names = {t["name"] for t in resps[1]["result"]["tools"]}
-    assert len(names) == 7
+    assert len(names) == 12
 
 
 def test_main_creates_db_and_runs_remember_recall(tmp_path) -> None:

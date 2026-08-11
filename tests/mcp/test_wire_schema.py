@@ -41,7 +41,9 @@ from seahorse.mcp.wire_schema import (
 
 
 class TestToolRoster:
-    def test_exactly_seven_tools(self) -> None:
+    def test_exactly_twelve_tools(self) -> None:
+        # Sprint C debt closure: + skill_add, skill_show, and the deferred
+        # read-only facade tools (freshness_view, audit_log, follow_supersedes_chain).
         assert set(TOOL_SCHEMAS) == {
             "remember",
             "recall",
@@ -50,6 +52,11 @@ class TestToolRoster:
             "improve",
             "forget",
             "build_pit",
+            "skill_add",
+            "skill_show",
+            "freshness_view",
+            "audit_log",
+            "follow_supersedes_chain",
         }
 
     def test_all_schemas_have_additional_properties_false(self) -> None:

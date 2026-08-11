@@ -187,6 +187,12 @@ def make_full_detail() -> FullDetail:
     )
 
 
+def make_freshness_view() -> FreshnessView:
+    return FreshnessView(
+        fact_id="fact-1", age_days=3, stale=True, pending_ingest=False, regime="agent"
+    )
+
+
 def make_write_result(status: str = "ACTIVE") -> WriteResult:
     return WriteResult(
         ep_id="ep-1", fact_id="fact-1", status=status, collisions_detected=[]
@@ -220,6 +226,9 @@ class RecordingFacade:
         self.improve_calls: list[dict[str, Any]] = []
         self.forget_calls: list[dict[str, Any]] = []
         self.build_pit_calls: list[dict[str, Any]] = []
+        self.freshness_calls: list[dict[str, Any]] = []
+        self.audit_calls: list[dict[str, Any]] = []
+        self.chain_calls: list[dict[str, Any]] = []
 
         # configurable returns
         self.remember_result = make_write_result()
@@ -235,6 +244,9 @@ class RecordingFacade:
         self.remember_raise: Exception | None = None
         self.recall_raise: Exception | None = None
         self.recall_full_raise: Exception | None = None
+        self.freshness_result = make_freshness_view()
+        self.audit_result: list = []
+        self.chain_result: list = []
 
     # The facade method names + signatures #13 calls.
     def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
@@ -297,6 +309,19 @@ class RecordingFacade:
             raise self.build_pit_raise
         return self.build_pit_result
 
+    # Sprint C debt closure: the deferred read-only facade tools.
+    def freshness_view(self, ep_id, *, now=None):
+        self.freshness_calls.append({"ep_id": ep_id, "now": now})
+        return self.freshness_result
+
+    def audit_log(self, ep_id):
+        self.audit_calls.append({"ep_id": ep_id})
+        return list(self.audit_result)
+
+    def follow_supersedes_chain(self, ep_id):
+        self.chain_calls.append({"ep_id": ep_id})
+        return list(self.chain_result)
+
 
 __all__ = [
     "_advancing_clock",
@@ -308,5 +333,6 @@ __all__ = [
     "make_full_detail",
     "make_write_result",
     "make_pit",
+    "make_freshness_view",
     "RecordingFacade",
 ]

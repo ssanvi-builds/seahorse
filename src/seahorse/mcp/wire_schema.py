@@ -232,6 +232,58 @@ BUILD_PIT_SCHEMA: dict[str, Any] = {
     },
 }
 
+# Sprint C debt closure — procedural skills + deferred read-only facade tools.
+SKILL_ADD_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["body", "by"],
+    "properties": {
+        "body": {"type": "string", "minLength": 1, "maxLength": BODY_MAX_CHARS},
+        "by": {"$ref": "#/$defs/Provenance"},
+        "title": {"type": ["string", "null"], "maxLength": SUBJECT_FILTER_MAX_CHARS},
+        "trigger": {"type": ["string", "null"], "maxLength": QUERY_MAX_CHARS},
+        "scope": {"type": ["string", "null"], "maxLength": QUERY_MAX_CHARS},
+        "version": {"type": ["string", "null"], "maxLength": QUERY_MAX_CHARS},
+    },
+}
+
+SKILL_SHOW_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["ep_id"],
+    "properties": {
+        "ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
+        "min_trust": {"type": ["string", "null"], "enum": ["low", "medium", "high"]},
+    },
+}
+
+FRESHNESS_VIEW_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["ep_id"],
+    "properties": {
+        "ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
+    },
+}
+
+AUDIT_LOG_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["ep_id"],
+    "properties": {
+        "ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
+    },
+}
+
+FOLLOW_SUPERSEDES_CHAIN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["ep_id"],
+    "properties": {
+        "ep_id": {"type": "string", "minLength": 1, "maxLength": EP_ID_MAX_CHARS},
+    },
+}
+
 
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "remember": REMEMBER_SCHEMA,
@@ -241,6 +293,11 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "improve": IMPROVE_SCHEMA,
     "forget": FORGET_SCHEMA,
     "build_pit": BUILD_PIT_SCHEMA,
+    "skill_add": SKILL_ADD_SCHEMA,
+    "skill_show": SKILL_SHOW_SCHEMA,
+    "freshness_view": FRESHNESS_VIEW_SCHEMA,
+    "audit_log": AUDIT_LOG_SCHEMA,
+    "follow_supersedes_chain": FOLLOW_SUPERSEDES_CHAIN_SCHEMA,
 }
 
 
@@ -262,6 +319,11 @@ __all__ = [
     "IMPROVE_SCHEMA",
     "FORGET_SCHEMA",
     "BUILD_PIT_SCHEMA",
+    "SKILL_ADD_SCHEMA",
+    "SKILL_SHOW_SCHEMA",
+    "FRESHNESS_VIEW_SCHEMA",
+    "AUDIT_LOG_SCHEMA",
+    "FOLLOW_SUPERSEDES_CHAIN_SCHEMA",
     "TOOL_SCHEMAS",
     "schema_for",
 ]

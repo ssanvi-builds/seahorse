@@ -17,11 +17,16 @@ from seahorse.disclosure.types import PITPoint
 from seahorse.facade.errors import PitRecallNotSupportedMVP0, SeahorseError
 from seahorse.facade.types import RememberPayload
 from seahorse.mcp.tools import dispatch, handle_build_pit
-from tests.mcp.conftest import RecordingFacade, make_pit
+from tests.mcp.conftest import RecordingFacade, make_episode, make_pit
 
 
 def _by() -> dict:
     return {"agent_id": "a", "session_id": "s", "source_type": "agent"}
+
+
+_CANONICAL_BODY = (
+    "## Trigger\n\nT\n\n## Steps\n\nS\n\n## Validation\n\nV\n\n## Rationale\n\nR"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -530,6 +535,11 @@ class TestHandlerDirectCall:
             ("improve", {"ep_id": "ep-1", "new_body": "new", "by": _by()}, "improve_calls"),
             ("forget", {"ep_id": "ep-1", "reason": "wrong", "by": _by()}, "forget_calls"),
             ("build_pit", {}, "build_pit_calls"),
+            ("skill_add", {"body": _CANONICAL_BODY, "by": _by()}, "remember_calls"),
+            ("skill_show", {"ep_id": "ep-1"}, "recall_full_calls"),
+            ("freshness_view", {"ep_id": "ep-1"}, "freshness_calls"),
+            ("audit_log", {"ep_id": "ep-1"}, "audit_calls"),
+            ("follow_supersedes_chain", {"ep_id": "ep-1"}, "chain_calls"),
         ],
     )
     def test_all_handlers_direct_callable(self, tool, args, record_attr) -> None:
@@ -544,3 +554,117 @@ class TestHandlerDirectCall:
         assert resp["id"] == 1
         assert resp["result"]["isError"] is False
         assert len(getattr(facade, record_attr)) == 1
+
+# ---------------------------------------------------------------------------
+# Sprint C debt closure — skill_add / skill_show + deferred read-only tools.
+# ---------------------------------------------------------------------------
+
+
+class TestSkillAddHandler:
+    def test_delegates_record_procedure_skip(self) -> None:
+        facade = RecordingFacade()
+        body = "## Trigger\n\nT\n\n## Steps\n\nS\n\n## Validation\n\nV\n\n## Rationale\n\nR"
+        resp = dispatch("skill_add", {"body": body, "by": _by()}, facade, 1)
+        assert resp["result"]["isError"] is False
+        assert len(facade.remember_calls) == 1
+        call = facade.remember_calls[0]
+        assert call["extraction_mode"] == "skip"
+        assert call["payload"].cognitive_type == "procedural"
+        assert call["payload"].body == body
+
+    def test_forwards_x_metadata(self) -> None:
+        facade = RecordingFacade()
+        body = "## Trigger\n\nT\n\n## Steps\n\nS\n\n## Validation\n\nV\n\n## Rationale\n\nR"
+        dispatch(
+            "skill_add",
+            {"body": body, "by": _by(), "trigger": "user asks X", "version": "1.0"},
+            facade,
+            1,
+        )
+        prov = facade.remember_calls[0]["payload"].by
+        assert prov["x-seahorse-skill-trigger"] == "user asks X"
+        assert prov["x-seahorse-skill-version"] == "1.0"
+
+
+class TestSkillShowHandler:
+    def test_gates_high_trust_as_instruction(self) -> None:
+        facade = RecordingFacade()
+        ep = make_episode(
+            source_type="human", provenance={"source_type": "human", "agent_id": "sergio"}
+        )
+        facade.full_result = [make_full_detail_for(ep)]
+        resp = dispatch("skill_show", {"ep_id": "ep-1"}, facade, 1)
+        out = json.loads(resp["result"]["content"][0]["text"])
+        assert out["trust"] == "high"
+        assert out["as_instruction"] is True
+
+    def test_gates_low_trust_as_citation(self) -> None:
+        facade = RecordingFacade()
+        ep = make_episode(
+            source_type="importer", provenance={"source_type": "importer", "importer_vendor": "x"}
+        )
+        facade.full_result = [make_full_detail_for(ep)]
+        resp = dispatch("skill_show", {"ep_id": "ep-1"}, facade, 1)
+        out = json.loads(resp["result"]["content"][0]["text"])
+        assert out["trust"] == "low"
+        assert out["as_instruction"] is False
+
+    def test_min_trust_high_gates_medium(self) -> None:
+        facade = RecordingFacade()
+        ep = make_episode(
+            source_type="agent", provenance={"source_type": "agent", "extraction_mode": "skip"}
+        )
+        facade.full_result = [make_full_detail_for(ep)]
+        resp = dispatch(
+            "skill_show", {"ep_id": "ep-1", "min_trust": "high"}, facade, 1
+        )
+        out = json.loads(resp["result"]["content"][0]["text"])
+        assert out["as_instruction"] is False
+
+
+class TestReadOnlyTools:
+    def test_freshness_view_delegates(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("freshness_view", {"ep_id": "ep-1"}, facade, 1)
+        assert resp["result"]["isError"] is False
+        assert facade.freshness_calls[0]["ep_id"] == "ep-1"
+        out = json.loads(resp["result"]["content"][0]["text"])
+        assert out["fact_id"] == "fact-1"
+        assert out["stale"] is True
+
+    def test_audit_log_delegates(self) -> None:
+        facade = RecordingFacade()
+        _ = dispatch("audit_log", {"ep_id": "ep-1"}, facade, 1)
+        assert facade.audit_calls[0]["ep_id"] == "ep-1"
+
+    def test_follow_supersedes_chain_delegates(self) -> None:
+        facade = RecordingFacade()
+        _ = dispatch("follow_supersedes_chain", {"ep_id": "ep-1"}, facade, 1)
+        assert facade.chain_calls[0]["ep_id"] == "ep-1"
+
+    def test_missing_ep_id_rejected_before_read(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("freshness_view", {}, facade, 1)
+        assert resp["error"]["code"] == -32602
+        assert facade.freshness_calls == []
+
+
+def make_full_detail_for(ep):
+    """Build a FullDetail from an Episode (for skill_show tests)."""
+    from seahorse.contracts.engine import FreshnessView
+    from seahorse.disclosure.types import EpisodeProvenance, FullDetail
+
+    return FullDetail(
+        episode=ep,
+        provenance=EpisodeProvenance(
+            agent_id=(ep.provenance or {}).get("agent_id"),
+            session_id=(ep.provenance or {}).get("session_id"),
+            source_type=ep.source_type,
+            extraction_mode=(ep.provenance or {}).get("extraction_mode"),
+            model_used=None,
+        ),
+        freshness=FreshnessView(
+            fact_id=ep.fact_id, age_days=0, stale=False, pending_ingest=False, regime="agent"
+        ),
+        pit=None,
+    )

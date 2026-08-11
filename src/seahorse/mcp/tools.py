@@ -135,6 +135,80 @@ def handle_build_pit(facade: MemoryFacade, args: dict[str, Any], request_id: _Re
 
 
 # ---------------------------------------------------------------------------
+# Sprint C debt closure — procedural skills + deferred read-only facade tools.
+# ---------------------------------------------------------------------------
+
+
+def handle_skill_add(
+    facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
+) -> dict:
+    validate(args, schema_for("skill_add"))
+    # Delegation purity: the wire projects onto the procedural client of #12
+    # (record_procedure), never onto the engine directly.
+    from seahorse.procedural.operations import record_procedure
+
+    result = record_procedure(
+        facade,
+        body=args["body"],
+        by=build_provenance(args["by"]),
+        title=args.get("title"),
+        trigger=args.get("trigger"),
+        scope=args.get("scope"),
+        version=args.get("version"),
+    )
+    return success_response(request_id, result)
+
+
+def handle_skill_show(
+    facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
+) -> dict:
+    validate(args, schema_for("skill_show"))
+    # The R5 trust gate lives in the procedural layer (a client of #12); #13
+    # projects onto it, applying the gate to the FULL-level episode.
+    from seahorse.procedural.trust import TrustLevel, gate_skill
+
+    min_trust_raw = args.get("min_trust") or "medium"
+    min_trust = TrustLevel[min_trust_raw.upper()]
+    details = facade.recall_full([args["ep_id"]])
+    if not details:
+        return success_response(request_id, None)
+    delivery = gate_skill(details[0].episode, min_trust=min_trust)
+    return success_response(
+        request_id,
+        {
+            "ep_id": delivery.ep_id,
+            "trust": delivery.trust.name.lower(),
+            "as_instruction": delivery.as_instruction,
+            "body": delivery.body,
+        },
+    )
+
+
+def handle_freshness_view(
+    facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
+) -> dict:
+    validate(args, schema_for("freshness_view"))
+    result = facade.freshness_view(args["ep_id"])
+    return success_response(request_id, result)
+
+
+def handle_audit_log(
+    facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
+) -> dict:
+    validate(args, schema_for("audit_log"))
+    result = facade.audit_log(args["ep_id"])
+    return success_response(request_id, result)
+
+
+def handle_follow_supersedes_chain(
+    facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
+) -> dict:
+    validate(args, schema_for("follow_supersedes_chain"))
+    result = facade.follow_supersedes_chain(args["ep_id"])
+    return success_response(request_id, result)
+
+
+# ---------------------------------------------------------------------------
 # Dispatch table + tool list (advertised via tools/list).
 # ---------------------------------------------------------------------------
 
@@ -146,6 +220,11 @@ TOOL_HANDLERS: dict[str, Callable[[MemoryFacade, dict[str, Any], _RequestId], di
     "improve": handle_improve,
     "forget": handle_forget,
     "build_pit": handle_build_pit,
+    "skill_add": handle_skill_add,
+    "skill_show": handle_skill_show,
+    "freshness_view": handle_freshness_view,
+    "audit_log": handle_audit_log,
+    "follow_supersedes_chain": handle_follow_supersedes_chain,
 }
 
 TOOL_LIST: list[dict[str, Any]] = [
@@ -191,6 +270,33 @@ TOOL_LIST: list[dict[str, Any]] = [
         "axes (state_at | known_at, never mixed). Returns the resolved PIT or null.",
         "inputSchema": schema_for("build_pit"),
     },
+    {
+        "name": "skill_add",
+        "description": "Create a procedural skill (deterministic, ADR-09 skip). "
+        "Validates the canonical body (## Trigger/Steps/Validation/Rationale).",
+        "inputSchema": schema_for("skill_add"),
+    },
+    {
+        "name": "skill_show",
+        "description": "Show a skill's gated body (R5 trust gate): low-trust skills "
+        "are delivered as citation/context (as_instruction=false), not instruction.",
+        "inputSchema": schema_for("skill_show"),
+    },
+    {
+        "name": "freshness_view",
+        "description": "Freshness snapshot of an episode (age, stale, pending_ingest).",
+        "inputSchema": schema_for("freshness_view"),
+    },
+    {
+        "name": "audit_log",
+        "description": "Audit events for an episode (the write-path history).",
+        "inputSchema": schema_for("audit_log"),
+    },
+    {
+        "name": "follow_supersedes_chain",
+        "description": "The supersedes closure for an episode (version history).",
+        "inputSchema": schema_for("follow_supersedes_chain"),
+    },
 ]
 
 
@@ -231,4 +337,9 @@ __all__ = [
     "handle_improve",
     "handle_forget",
     "handle_build_pit",
+    "handle_skill_add",
+    "handle_skill_show",
+    "handle_freshness_view",
+    "handle_audit_log",
+    "handle_follow_supersedes_chain",
 ]

@@ -95,11 +95,11 @@ def test_stdio_full_session(vault: Path) -> None:
             expected_version = "0.0.0"
         assert init["result"]["serverInfo"]["version"] == expected_version
 
-        # tools/list → exactly 7
+        # tools/list → exactly 12 (Sprint C debt closure)
         _send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         listing = _recv(proc)
         names = {t["name"] for t in listing["result"]["tools"]}
-        assert len(names) == 7
+        assert len(names) == 12
 
         # remember → ep_id
         _send(
@@ -194,16 +194,16 @@ def test_stdio_full_session(vault: Path) -> None:
         _send(proc, {"jsonrpc": "2.0", "id": 8, "method": "tools/list"})
         nt_reply = _recv(proc)
         assert nt_reply["id"] == 8
-        assert len(nt_reply["result"]["tools"]) == 7
+        assert len(nt_reply["result"]["tools"]) == 12
 
-        # deferred tool → -32601 (not in the MVP-0 surface)
+        # unknown tool → -32601 (expire is still outside the MCP surface)
         _send(
             proc,
             {
                 "jsonrpc": "2.0",
                 "id": 9,
                 "method": "tools/call",
-                "params": {"name": "freshness_view", "arguments": {}},
+                "params": {"name": "expire", "arguments": {}},
             },
         )
         assert _recv(proc)["error"]["code"] == -32601

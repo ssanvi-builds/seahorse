@@ -37,7 +37,7 @@ class TestStdioProtocol:
         assert len(resps) == 2
         assert resps[0]["result"]["protocolVersion"] == "2025-11-25"
         names = {t["name"] for t in resps[1]["result"]["tools"]}
-        assert len(names) == 7
+        assert len(names) == 12
         assert "remember" in names
 
     def test_notification_produces_no_response(self, real_facade) -> None:
@@ -64,7 +64,7 @@ class TestStdioProtocol:
         serve(real_facade, stdin=stdin, stdout=stdout)
         resps = _responses(stdout)
         assert len(resps) == 1
-        assert len(resps[0]["result"]["tools"]) == 7
+        assert len(resps[0]["result"]["tools"]) == 12
 
     def test_eof_ends_loop_cleanly(self, real_facade) -> None:
         # No exception; serve returns when stdin is exhausted.
@@ -210,7 +210,7 @@ class TestFullLifecycle:
         # ordered: handshake → list → remember → recall → build_pit
         assert resps[0]["id"] == 1
         assert resps[0]["result"]["protocolVersion"] == "2025-11-25"
-        assert len(resps[1]["result"]["tools"]) == 7
+        assert len(resps[1]["result"]["tools"]) == 12
         wr = self._content(resps[2])
         assert wr["status"] == "ACTIVE"
         old_id = wr["ep_id"]

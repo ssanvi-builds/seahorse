@@ -62,7 +62,7 @@ class TestInitializeAndList:
         assert "tools" in resp["result"]["capabilities"]
         assert resp["result"]["serverInfo"]["name"] == "seahorse-memory"
 
-    def test_tools_list_returns_seven(self) -> None:
+    def test_tools_list_returns_twelve(self) -> None:
         # tools/list does not touch the facade — handle_request needs one only for calls
         resp = handle_request(None, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         names = {t["name"] for t in resp["result"]["tools"]}
@@ -74,6 +74,11 @@ class TestInitializeAndList:
             "improve",
             "forget",
             "build_pit",
+            "skill_add",
+            "skill_show",
+            "freshness_view",
+            "audit_log",
+            "follow_supersedes_chain",
         }
 
     def test_each_tool_has_input_schema_with_defs(self) -> None:
