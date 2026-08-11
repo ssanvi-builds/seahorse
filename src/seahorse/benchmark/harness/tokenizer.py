@@ -21,7 +21,7 @@ class Tokenizer:
     def count(self, text: str) -> int:
         if self._enc is None:
             try:
-                import tiktoken  # noqa: F401  # type: ignore[import-not-found]  # the 'benchmark' extra
+                import tiktoken  # type: ignore[import-not-found]  # noqa: F401  # the 'benchmark' extra
 
                 self._enc = tiktoken.get_encoding(self._encoding_name)
             except ImportError:

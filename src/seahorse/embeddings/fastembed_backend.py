@@ -211,7 +211,7 @@ def retrieval_status() -> str:
     hybrid vs G2; the cache decides whether the first embed will download.
     """
     try:
-        import fastembed  # noqa: F401  # type: ignore[import-not-found]  # the 'embeddings' extra
+        import fastembed  # type: ignore[import-not-found]  # noqa: F401  # the 'embeddings' extra
     except ImportError:
         return "G2 listing (install seahorse[embeddings] for semantic recall)"
     if model_cached():

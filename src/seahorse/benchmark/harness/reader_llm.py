@@ -34,7 +34,7 @@ class ReaderLLMClient:
         self._system_prompt = _PROMPT_PATH.read_text(encoding="utf-8")
 
     def generate(self, question: str, context: str, question_date=None) -> str:
-        import litellm  # noqa: F401  # type: ignore[import-not-found]  # the 'llm' extra
+        import litellm  # type: ignore[import-not-found]  # noqa: F401  # the 'llm' extra
 
         messages = [
             {"role": "system", "content": self._system_prompt},

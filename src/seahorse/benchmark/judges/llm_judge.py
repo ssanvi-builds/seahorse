@@ -32,7 +32,7 @@ class LLMJudge:
 
     def judge(self, question: str, answer: str, golden_answer: str, rubric: str) -> bool:
         """Judge one answer against the golden answer with the given rubric."""
-        import litellm  # noqa: F401  # type: ignore[import-not-found]  # the 'llm' extra
+        import litellm  # type: ignore[import-not-found]  # noqa: F401  # the 'llm' extra
 
         prompt = rubric.format(question=question, golden=golden_answer, answer=answer)
         resp = litellm.completion(
@@ -57,7 +57,7 @@ class LLMJudge:
         return a_wins and not b_wins
 
     def _judge_pair_once(self, question: str, answer_a: str, answer_b: str) -> bool:
-        import litellm  # noqa: F401  # type: ignore[import-not-found]  # the 'llm' extra
+        import litellm  # type: ignore[import-not-found]  # noqa: F401  # the 'llm' extra
 
         prompt = (
             f"Question: {question}\n"
