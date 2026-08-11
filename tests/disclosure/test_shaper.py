@@ -22,7 +22,7 @@ import pytest
 
 from seahorse.contracts.engine import EpisodeRepository
 from seahorse.contracts.episode import Episode
-from seahorse.contracts.index import HopsCapExceeded, IndexRowData, MAX_HOPS_MVP1
+from seahorse.contracts.index import MAX_HOPS_MVP1, HopsCapExceeded, IndexRowData
 from seahorse.contracts.persistence import EpisodeIndexRepository
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.shaper import DisclosureShaper, DisclosureShaperImpl

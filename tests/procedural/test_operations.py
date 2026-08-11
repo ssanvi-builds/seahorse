@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from seahorse.facade.errors import E_MISSING_SOURCE_TYPE, SeahorseError
 from seahorse.procedural.operations import ProceduralError, record_procedure
 
 CANONICAL = """## Trigger
@@ -93,5 +94,6 @@ class TestRecordProcedure:
     def test_requires_source_type(self, facade, write_path):
         # The facade owns the source_type guard (E_MISSING_SOURCE_TYPE); the
         # procedural layer does not replicate it (delegation purity).
-        with pytest.raises(Exception):
+        with pytest.raises(SeahorseError) as excinfo:
             record_procedure(facade, body=CANONICAL, by=_by(source_type=None))
+        assert excinfo.value.code == E_MISSING_SOURCE_TYPE

@@ -58,7 +58,6 @@ def facade(write_path):
     from seahorse.facade.facade import MemoryFacade
     from seahorse.facade.types import FacadeConfig
     from seahorse.facade.vigente_retriever import VigenteListingRetriever
-
     from tests.facade.conftest import RecordingEngine, RecordingShaper
 
     eng = RecordingEngine()

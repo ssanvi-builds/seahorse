@@ -16,7 +16,6 @@ from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import (
     FullDetail,
     IndexRow,
-    PITPoint,
     TimelineWindow,
 )
 from seahorse.procedural.shaper import ProceduralShaper
