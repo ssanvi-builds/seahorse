@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from seahorse.benchmark.harness.reader_llm import ReaderLLMClient, StubReaderLLM
 from seahorse.benchmark.harness.tokenizer import Tokenizer
+from tests.benchmark.conftest import install_litellm
 
 
 def test_stub_reader_is_deterministic_no_litellm():
@@ -48,7 +49,7 @@ def test_reader_llm_generate(monkeypatch):
     class _Resp:
         choices = [_Choice()]
 
-    monkeypatch.setattr("litellm.completion", lambda **kw: _Resp())
+    install_litellm(monkeypatch, lambda **kw: _Resp())
     assert client.generate("Q?", "context") == "Paris"
 
 

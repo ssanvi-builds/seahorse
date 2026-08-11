@@ -6,6 +6,7 @@ import pytest
 
 from seahorse.benchmark.judges.llm_judge import LLMJudge
 from seahorse.benchmark.judges.rubrics import RubricRegistry
+from tests.benchmark.conftest import install_litellm
 
 
 def test_rubric_registry_register_get():
@@ -53,13 +54,13 @@ def _resp_with(content: str):
 
 def test_llm_judge_parses_yes(monkeypatch):
     judge = LLMJudge("ollama/qwen2.5:7b")
-    monkeypatch.setattr("litellm.completion", lambda **kw: _resp_with("yes"))
+    install_litellm(monkeypatch, lambda **kw: _resp_with("yes"))
     assert judge.judge("Q?", "A", "G", "rubric {question} {golden} {answer}") is True
 
 
 def test_llm_judge_parses_no(monkeypatch):
     judge = LLMJudge("ollama/qwen2.5:7b")
-    monkeypatch.setattr("litellm.completion", lambda **kw: _resp_with("no"))
+    install_litellm(monkeypatch, lambda **kw: _resp_with("no"))
     assert judge.judge("Q?", "A", "G", "rubric") is False
 
 
@@ -74,7 +75,7 @@ def test_llm_judge_pair_position_swap(monkeypatch):
         # forward: "Answer A: A" → yes; backward: "Answer A: B" → no
         return _resp_with("yes" if "Answer A: A" in content else "no")
 
-    monkeypatch.setattr("litellm.completion", fake_completion)
+    install_litellm(monkeypatch, fake_completion)
     # A wins only if judged better in both orders (f5-16 §6.3)
     assert judge.judge_pair("Q?", "A", "B", "rubric") is True
     assert len(calls) == 2  # forward + backward

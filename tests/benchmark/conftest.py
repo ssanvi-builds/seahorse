@@ -9,11 +9,22 @@ so the F7 experiment runner reuses the SAME corpus at runtime — no duplication
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from seahorse.benchmark.contracts import BenchmarkDataset
 from seahorse.benchmark.experiments.synthetic import make_synthetic_dataset
 from seahorse.facade.types import RememberPayload
+
+
+def install_litellm(monkeypatch, completion_fn) -> None:
+    """Install a fake ``litellm`` module so judge/reader tests run without the
+    ``llm`` extra (mirror of tests/llm/test_lite_llm_backend.py)."""
+    fake = types.ModuleType("litellm")
+    fake.completion = completion_fn
+    monkeypatch.setitem(sys.modules, "litellm", fake)
 
 
 @pytest.fixture

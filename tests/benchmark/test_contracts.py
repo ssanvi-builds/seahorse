@@ -90,8 +90,12 @@ def test_dataset_has_deterministic_identity(synthetic_dataset):
 
 
 def test_protocols_are_runtime_checkable():
-    """The four stable interfaces are @runtime_checkable Protocols."""
-    assert hasattr(DatasetLoader, "__protocol_attrs__")
-    assert hasattr(MemorySystemSUT, "__protocol_attrs__")
-    assert hasattr(Metric, "__protocol_attrs__")
-    assert hasattr(Reporter, "__protocol_attrs__")
+    """The four stable interfaces are @runtime_checkable Protocols.
+
+    ``_is_protocol`` is the portable marker (``__protocol_attrs__`` only
+    exists on Python 3.12+; the CI matrix runs 3.11).
+    """
+    assert getattr(DatasetLoader, "_is_protocol", False)
+    assert getattr(MemorySystemSUT, "_is_protocol", False)
+    assert getattr(Metric, "_is_protocol", False)
+    assert getattr(Reporter, "_is_protocol", False)
