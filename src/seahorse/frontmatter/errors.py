@@ -32,7 +32,14 @@ class FrontmatterInvalid(Exception):
     def __init__(self, path: Path, cause: Exception) -> None:
         self.path = path
         self.cause = cause
-        super().__init__(f"{self.code}: {path}: {cause}")
+        # Actionable hint (matrix finding, vault_legacy combo): a legacy Obsidian
+        # note (tags/created) or a malformed F3.1 note surfaces only the raw
+        # pydantic errors otherwise — no hint for a user who does not know the
+        # F3.1 shape. Name the required fields so the fix is discoverable.
+        super().__init__(
+            f"{self.code}: {path}: {cause} — note is not valid F3.1 frontmatter; "
+            "correct it (id, created_at, schema_version, provenance) or remove the note"
+        )
 
 
 class MigrationError(Exception):

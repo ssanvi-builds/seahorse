@@ -23,6 +23,12 @@ import contextlib
 import sqlite3
 from pathlib import Path
 
+# Concurrent first-migration on a fresh DB: two processes can both see a
+# version as "not present" and both try to insert it; the loser hits the UNIQUE
+# constraint. Retry a bounded number of times (matrix finding, concurrency
+# combo). A persistent conflict still fails loud.
+_MIGRATION_RETRIES = 5
+
 _SCHEMA_VERSION_DDL = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version    INTEGER PRIMARY KEY,
@@ -66,28 +72,40 @@ def apply_migrations(conn: sqlite3.Connection, *, up_to: int | None = None) -> i
     for version, path in _ordered_migrations():
         if up_to is not None and version > up_to:
             break
-        already = conn.execute(
-            "SELECT 1 FROM schema_version WHERE version = ?", (version,)
-        ).fetchone()
-        if already is not None:
-            continue
-        sql = path.read_text(encoding="utf-8")
-        script = (
-            "BEGIN;\n"
-            f"{sql}\n"
-            f"INSERT INTO schema_version (version) VALUES ({version});\n"
-            "COMMIT;"
-        )
-        try:
-            conn.executescript(script)
-        except BaseException:
-            # The failed statement left the BEGIN transaction open; roll it back
-            # so the DDL does not persist without the version row. Suppress a
-            # "no transaction is active" error (e.g. if the BEGIN itself failed).
-            with contextlib.suppress(sqlite3.OperationalError):
-                conn.execute("ROLLBACK")
-            raise
-        applied += 1
+        for attempt in range(_MIGRATION_RETRIES):
+            already = conn.execute(
+                "SELECT 1 FROM schema_version WHERE version = ?", (version,)
+            ).fetchone()
+            if already is not None:
+                break  # applied by us or a concurrent process
+            sql = path.read_text(encoding="utf-8")
+            script = (
+                "BEGIN;\n"
+                f"{sql}\n"
+                f"INSERT INTO schema_version (version) VALUES ({version});\n"
+                "COMMIT;"
+            )
+            try:
+                conn.executescript(script)
+                applied += 1
+                break
+            except sqlite3.IntegrityError:
+                # Concurrent migration (matrix finding, concurrency combo): two
+                # processes both saw "version N not present" and both tried to
+                # insert it; the loser hits the UNIQUE constraint. Roll back and
+                # re-check — the winner's version row is now visible.
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("ROLLBACK")
+                if attempt == _MIGRATION_RETRIES - 1:
+                    raise
+            except BaseException:
+                # The failed statement left the BEGIN transaction open; roll it
+                # back so the DDL does not persist without the version row.
+                # Suppress a "no transaction is active" error (e.g. if the BEGIN
+                # itself failed).
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute("ROLLBACK")
+                raise
     return applied
 
 

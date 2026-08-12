@@ -30,6 +30,7 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 import threading
+import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -42,6 +43,13 @@ _PRAGMAS = (
     "PRAGMA mmap_size = 268435456",
     "PRAGMA foreign_keys = ON",
 )
+
+# Concurrent first-open on a fresh DB: `PRAGMA journal_mode = WAL` needs an
+# exclusive lock and does NOT honor busy_timeout, so two processes opening the
+# same new file can race with "database is locked". Retry the pragma
+# application a bounded number of times (matrix finding, concurrency combo).
+_OPEN_RETRIES = 5
+_OPEN_RETRY_DELAY_S = 0.1
 
 
 class ConnectionManager:
@@ -91,7 +99,7 @@ class ConnectionManager:
             self._writer = sqlite3.connect(
                 self._db_path, isolation_level=None, check_same_thread=False
             )
-            self._apply_pragmas(self._writer)
+            self._apply_pragmas_with_retry(self._writer)
             if self._extensions:
                 self._load_extensions(self._writer)
             for _ in range(self._pool_size):
@@ -142,6 +150,23 @@ class ConnectionManager:
             conn.execute(pragma)
         conn.row_factory = sqlite3.Row
 
+    def _apply_pragmas_with_retry(self, conn: sqlite3.Connection) -> None:
+        """Apply the writer PRAGMAs, retrying a transient ``database is locked``.
+
+        ``PRAGMA journal_mode = WAL`` requires an exclusive lock and does not
+        honor ``busy_timeout``; two processes opening a fresh DB simultaneously
+        can therefore race here. Retry a bounded number of times; a persistent
+        lock still fails loud (no infinite loop, no silent swallow).
+        """
+        for attempt in range(_OPEN_RETRIES):
+            try:
+                self._apply_pragmas(conn)
+                return
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) or attempt == _OPEN_RETRIES - 1:
+                    raise
+                time.sleep(_OPEN_RETRY_DELAY_S)
+
     def _load_extensions(self, conn: sqlite3.Connection) -> None:
         """Load each named SQLite extension on ``conn`` (C8.2 MVP-1 seam).
 
@@ -159,6 +184,17 @@ class ConnectionManager:
         ``sqlite_vec`` is imported lazily here (never at module top) so the core
         import path stays free of heavy deps (C8.2 import-laziness guard).
         """
+        if not hasattr(conn, "enable_load_extension"):
+            # A Python build without SQLITE_ENABLE_LOAD_EXTENSION lacks the
+            # method entirely. Fail with an actionable message instead of a
+            # cryptic AttributeError (matrix finding: `uv sync` on a pyenv
+            # Python). doctor already reports this as a FAIL; the DB commands
+            # must not lie about the cause.
+            raise RuntimeError(
+                "this Python's sqlite3 lacks enable_load_extension (sqlite-vec "
+                "needs it); install Seahorse with a Python that supports it, "
+                "e.g. `uv tool install --python 3.13`"
+            )
         conn.enable_load_extension(True)
         try:
             for ext in self._extensions:

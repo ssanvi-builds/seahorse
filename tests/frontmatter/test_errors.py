@@ -22,6 +22,19 @@ def test_frontmatter_invalid_carries_path_and_cause() -> None:
     assert "naive datetime rejected" in str(err)
 
 
+def test_frontmatter_invalid_message_is_actionable() -> None:
+    # Matrix finding (vault_legacy combo): `index rebuild` on a legacy Obsidian
+    # note surfaced only the raw pydantic validation errors — no hint for a user
+    # who does not know the F3.1 shape. The message must say the note is not
+    # valid F3.1 and what to do about it.
+    cause = ValueError("id Field required")
+    err = FrontmatterInvalid(Path("/v/legacy.md"), cause)
+    msg = str(err)
+    assert "not valid F3.1" in msg
+    assert "correct" in msg
+    assert "id" in msg  # names a required field so the user knows what to fix
+
+
 def test_migration_error_is_base_class() -> None:
     assert issubclass(XReservedCollision, MigrationError)
     assert issubclass(SubjectEmpty, MigrationError)

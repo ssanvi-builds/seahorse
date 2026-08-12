@@ -241,6 +241,57 @@ def test_open_without_extensions_never_calls_load_extension(tmp_path, monkeypatc
     assert calls == []
 
 
+def test_open_retries_pragmas_on_database_locked(tmp_path, monkeypatch) -> None:
+    # Matrix finding (concurrency combo): two processes opening a FRESH vault
+    # simultaneously race on `PRAGMA journal_mode = WAL` (needs an exclusive
+    # lock, does not honor busy_timeout) → one fails with "database is locked".
+    # open() must retry the pragma application a bounded number of times.
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=2)
+    calls = {"n": 0}
+    orig = ConnectionManager._apply_pragmas  # noqa: SLF001 — spy on the seam
+
+    def flaky(self, conn) -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return orig(self, conn)
+
+    monkeypatch.setattr(ConnectionManager, "_apply_pragmas", flaky)
+    mgr.open()
+    try:
+        assert calls["n"] >= 2  # writer retried after the transient lock
+        assert not mgr.is_closed
+    finally:
+        mgr.close()
+
+
+def test_open_gives_up_after_retries_on_database_locked(tmp_path, monkeypatch) -> None:
+    # A persistent lock (not transient) must still fail loud after the bounded
+    # retries — no infinite loop, no silent swallow.
+    mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=2)
+
+    def always_locked(self, conn) -> None:  # noqa: ARG001
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(ConnectionManager, "_apply_pragmas", always_locked)
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        mgr.open()
+
+
+def test_load_extensions_raises_actionable_error_when_unsupported(tmp_path) -> None:
+    # Matrix finding (uv sync dev on a pyenv Python without
+    # SQLITE_ENABLE_LOAD_EXTENSION): the seam used to crash with a cryptic
+    # `AttributeError: 'sqlite3.Connection' object has no attribute
+    # 'enable_load_extension'`. It must fail with an actionable message instead
+    # (doctor already reports this as a FAIL; the DB commands must not lie).
+    class _NoExtensionLoading:
+        """A stand-in for a sqlite3.Connection on a build without the method."""
+
+    mgr = ConnectionManager(tmp_path / "seahorse.db", extensions=("vec0",))
+    with pytest.raises(RuntimeError, match="enable_load_extension"):
+        mgr._load_extensions(_NoExtensionLoading())  # type: ignore[arg-type]
+
+
 def test_extensions_vec0_loads_sqlite_vec_and_creates_virtual_table(tmp_path) -> None:
     # M1-A.1: with extensions=("vec0",), open() must load sqlite-vec so a vec0
     # virtual table can be created (the migration 010 path). Requires the

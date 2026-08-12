@@ -14,10 +14,11 @@ Transport: stdlib JSON-RPC 2.0 over stdio (newline-delimited), NOT the
 MCP is JSON-RPC 2.0 standard and SDK-independent. MCP spec pinned
 ``2025-11-25``.
 
-Scope MVP-0 (7 tools, f5-13 strict): ``remember``, ``recall``, ``recall_timeline``,
-``recall_full``, ``improve``, ``forget``, ``build_pit``. The 3 read-only
-passthroughs (``freshness_view``/``audit_log``/``follow_supersedes_chain``) and
-``expire``/``revalidate`` are deferred (MVP-1 / mediano).
+Tool surface (12 tools): the 7 memory primitives (``remember``, ``recall``,
+``recall_timeline``, ``recall_full``, ``improve``, ``forget``, ``build_pit``)
+plus 5 procedural / read-only tools (``skill_add``, ``skill_show``,
+``freshness_view``, ``audit_log``, ``follow_supersedes_chain``).
+``expire``/``revalidate`` remain deferred (MVP-1 / mediano).
 """
 
 from __future__ import annotations

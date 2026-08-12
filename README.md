@@ -4,7 +4,7 @@ Open standard for persistent, self-evolving LLM agent memory. Monetized open-cor
 an Apache-2.0 reference standard plus a proprietary SaaS and an enterprise self-host
 BSL track. The acquisition-by-a-lab path is explicitly **not** a goal (ADR-011).
 
-> Status: **v0.5.0 — Sprint C (skills L2c + #10 BFS + viewer TUI)**.
+> Status: **v0.5.1 — exhaustive review sprint (e2e matrix + core stress + fixes)**.
 > The memory engine works end-to-end from a clean install: write episodes, recall
 > them with hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by RRF),
 > extract with a real multi-LLM path (local-first, CI-gated), improve and forget
@@ -93,11 +93,13 @@ for agents. The `seahorse mcp` subcommand invokes the same stdio server as
 > (`hybrid RRF (model cached)` vs `G2 listing — install seahorse[embeddings]
 > for semantic recall`).
 
-## The agent surface — 7 memory-native primitives
+## The agent surface — 7 memory-native primitives + 5 procedural/read-only tools
 
 Exposed over stdio MCP (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`) and
 mirrored on the CLI. These are memory primitives, not generic CRUD: an agent calls
 `remember` / `recall` / `improve` / `forget` the way a human would talk about memory.
+
+The 7 primitives (write + retrieve):
 
 | Primitive | What it does |
 |-----------|--------------|
@@ -109,6 +111,16 @@ mirrored on the CLI. These are memory primitives, not generic CRUD: an agent cal
 | `forget` | Soft-delete an episode (append-only; history preserved). |
 | `build_pit` | Build a point-in-time projection (all-None → current state). |
 
+Plus 5 procedural / read-only tools (L2c skills + facade introspection):
+
+| Tool | What it does |
+|------|--------------|
+| `skill_add` | Create a procedural skill (deterministic, ADR-09 skip). |
+| `skill_show` | Show a skill's gated body (R5 trust gate). |
+| `freshness_view` | Freshness snapshot of an episode (age, stale, pending_ingest). |
+| `audit_log` | Audit events for an episode (write-path history). |
+| `follow_supersedes_chain` | The supersedes closure for an episode (version history). |
+
 Three retrieval levels give **progressive disclosure**: a cheap listing first
 (INDEX), the chain on demand (TIMELINE), and the full record only when needed
 (FULL). This keeps the common path cheap.
@@ -117,7 +129,8 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 
 - Bi-temporal, append-only episode store on stdlib `sqlite3` + sqlite-vec (FTS5
   + vec0). Auto-migrating schema (currently at `schema_version = 10`).
-- The 7 memory-native primitives, on both the CLI and stdio MCP.
+- The 7 memory-native primitives plus 5 procedural / read-only tools, on both
+  the CLI and stdio MCP (12 tools total).
 - Progressive disclosure (INDEX / TIMELINE / FULL) and point-in-time projection.
 - **Hybrid semantic retrieval (MVP-1)**: `recall` ranks by relevance — sqlite-vec
   kNN + FTS5 BM25 fused with Reciprocal Rank Fusion (`RRF_K=60`), with PIT
@@ -193,6 +206,20 @@ The BFS-as-INDEX axis of retrieval (graph expansion into the fusion) is mediano 
 > The FastAPI / SQLAlchemy / Postgres stack stays in the multi-agent rung
 > (Postgres + pgvector). The README states what ships now, not the target
 > architecture.
+
+## Testing
+
+- **Unit + integration**: `uv run pytest` (2170+ tests, coverage ≥ 80% gate).
+- **Fresh-user e2e**: `scripts/e2e-fresh-user.sh` — the full
+  install → init → core CLI → embeddings → LLM → import → MCP flow from a clean,
+  isolated HOME (never touches the real `~/.claude` / `~/.claude-mem`).
+- **Environment matrix**: `scripts/e2e-matrix.sh` — the fresh-user flow across
+  environment combinations (install method × extras × Obsidian × Ollama ×
+  online/offline × vault state × concurrency). `--ci-subset` runs the CI-safe
+  combos (`core_min` + `uv_sync_dev`); `--list` shows all combos.
+- **Core stress**: `scripts/stress-core.sh` — ingest 1000+ episodes, recall
+  `--top-k 100` p95 ≤ 250ms (in-process INDEX budget), concurrent single-writer,
+  reindex, idempotent import, improve/forget chain.
 
 ## Design & decisions
 

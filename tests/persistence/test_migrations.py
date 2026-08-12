@@ -35,6 +35,42 @@ def conn() -> sqlite3.Connection:
     c.close()
 
 
+def test_apply_migrations_retries_on_concurrent_integrity_error(tmp_path) -> None:
+    # Matrix finding (concurrency combo): two processes migrating a FRESH vault
+    # simultaneously both see "version N not present", both try to insert it,
+    # and one hits `UNIQUE constraint failed: schema_version.version`
+    # (IntegrityError → exit 89). apply_migrations must roll back and re-check
+    # instead of failing loud on a transient concurrent-migration race.
+    # sqlite3.Connection is a C-builtin (cannot be monkeypatched), so wrap it.
+    class _FlakyConn:
+        def __init__(self, real: sqlite3.Connection, calls: dict) -> None:
+            self._real = real
+            self._calls = calls
+
+        def __getattr__(self, name: str):
+            return getattr(self._real, name)
+
+        def executescript(self, script: str) -> None:
+            self._calls["n"] += 1
+            # call 1 is the schema_version DDL; call 2 is migration 001's script
+            if self._calls["n"] == 2:  # the first migration's executescript loses the race
+                raise sqlite3.IntegrityError("UNIQUE constraint failed: schema_version.version")
+            return self._real.executescript(script)
+
+    c = sqlite3.connect(tmp_path / "t.db")
+    _load_vec0(c)  # migration 010 (USING vec0) needs the extension
+    c.execute(
+        "CREATE TABLE IF NOT EXISTS schema_version ("
+        "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))"
+    )
+    calls = {"n": 0}
+    applied = apply_migrations(_FlakyConn(c, calls))  # type: ignore[arg-type]
+    assert applied == 10  # all migrations eventually applied
+    assert calls["n"] >= 11  # 10 migrations + at least one retry
+    assert current_version(c) == 10
+    c.close()
+
+
 # --- json_valid enforcement -------------------------------------------------
 
 

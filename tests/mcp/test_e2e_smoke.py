@@ -2,7 +2,7 @@
 
 Drives the stdio JSON-RPC loop in-process (``io.StringIO`` for stdin/stdout)
 against a real ``MemoryFacade`` built by the conftest ``real_facade`` fixture.
-Lifecycle: initialize → tools/list (7 tools) → remember → recall (shows it) →
+Lifecycle: initialize → tools/list (12 tools) → remember → recall (shows it) →
 improve → recall (new present, old gone) → forget → recall (gone) →
 notification (no response) → EOF (loop ends).
 """

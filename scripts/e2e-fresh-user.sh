@@ -322,7 +322,11 @@ try:
     send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = sorted(t["name"] for t in recv()["result"]["tools"])
     print("  MCP tools/list →", names)
-    assert len(names) == 7, names
+    # 7 memory primitives are the contract; procedural/read-only tools may grow
+    # over time, so assert a superset instead of an exact count (was 7, now 12).
+    primitives = {"remember", "recall", "recall_timeline", "recall_full",
+                  "improve", "forget", "build_pit"}
+    assert primitives.issubset(names), (names, primitives - set(names))
 
     send({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
         "name": "remember",
