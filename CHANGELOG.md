@@ -6,6 +6,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-12
+
+### Added — exhaustive review sprint (2026-08-12)
+
+- **`scripts/e2e-matrix.sh`** — fresh-user e2e across environment combinations
+  (install method × extras × Obsidian × Ollama × online/offline × vault state ×
+  concurrency). 8 priority combos, isolated sandbox per combo, PASS/FAIL report.
+  `--ci-subset` runs the CI-safe combos (`core_min` + `uv_sync_dev`); `--list`
+  shows all combos.
+- **`scripts/stress-core.sh`** — core load-test: ingest 1000+ episodes, recall
+  `--top-k 100` p95 ≤ 250ms (in-process INDEX budget), concurrent single-writer,
+  reindex, idempotent import, improve/forget chain.
+- **CI job `e2e-matrix`** — runs the CI-safe matrix subset on every push/PR.
+
+### Fixed
+
+- **`scripts/e2e-fresh-user.sh`** — MCP `tools/list` assertion now checks the 7
+  memory primitives as a superset instead of an exact count of 7 (the surface
+  grew to 12 tools in Sprint C).
+- **Actionable `enable_load_extension` error** — a Python build without
+  `SQLITE_ENABLE_LOAD_EXTENSION` (e.g. a pyenv build) used to crash every DB
+  command with a cryptic `AttributeError`; it now fails with a hint to install
+  with a supporting Python (`uv tool install --python 3.13`).
+- **Actionable `E_FRONTMATTER_INVALID`** — `index rebuild` on a legacy Obsidian
+  note surfaced only raw pydantic validation errors; the message now says the
+  note is not valid F3.1 and names the required fields.
+
+### Docs
+
+- README: "7 memory-native primitives" → 7 primitives + 5 procedural/read-only
+  tools (12 total); new Testing section (matrix + stress).
+
 ## [0.5.0] - 2026-08-10
 
 Sprint C — skills L2c determinista + #10 MVP-1 BFS + viewer TUI mínimo + [procedural] config.
