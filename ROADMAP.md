@@ -42,8 +42,8 @@
   `__protocol_attrs__` (3.12+ only) → `_is_protocol` (portable 3.11+). **CI and
   CI LLM Gate SUCCESS on `29b334b`.** See vault `session-2026-08-11-ci-fix.md`.
 
-- **Exhaustive review sprint COMPLETE + PUSHED (2026-08-12)**: 3 commits on `main`
-  pushed to origin (`9b4ef17`→`87e4766`, 147 accumulated, ahead=0) + tag `v0.5.1`.
+- **Exhaustive review sprint COMPLETE + PUSHED (2026-08-12)**: 5 commits on `main`
+  pushed to origin (`9b4ef17`→`e5309db`, 149 accumulated, ahead=0) + tag `v0.5.1`.
   Plan: vault `Claude/plan-revision-exhaustiva-2026-08-11.md`. **`9b4ef17`
   feat(scripts)**: `scripts/e2e-matrix.sh` (fresh-user e2e across 8 environment
   combos — install method × extras × Obsidian × Ollama × online/offline × vault
@@ -62,7 +62,12 @@
   IntegrityError (exit 89); bounded retry in `open()` and `apply_migrations`
   (0/20 failures in repro). Fase 0: e2e-fresh-user.sh assert 7→superset of the
   7 primitives, README 7→12 MCP tools. **`87e4766` chore**: bump v0.5.1 +
-  CHANGELOG. **2175 tests / ruff+mypy clean.** **Gap documented (roadmap item)**:
+  CHANGELOG. **2175 tests / ruff+mypy clean.** **CI fix (post-release)**: the new
+  `e2e-matrix` job failed on the Linux runner — `18f41b3` fix(scripts) portable
+  sandbox base (macOS `/private/tmp` is not writable on Linux; fall back to
+  `$TMPDIR`) + `e5309db` fix(scripts) don't tee the cleanup message after the
+  log is deleted (spurious exit 1 under `set -e`). **CI and CI LLM Gate SUCCESS
+  on `e5309db`.** **Gap documented (roadmap item)**:
   the frontmatter migrator (#3) is NOT wired into any CLI command — a user with
   a legacy Obsidian vault has no migration path (`index rebuild` fails honestly
   on legacy notes). See vault `session-2026-08-12-review-sprint.md`.
