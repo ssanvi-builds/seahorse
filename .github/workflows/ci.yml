@@ -48,3 +48,21 @@ jobs:
           # subprocess CLI + stdio MCP smokes run normally (the editable
           # install from `uv sync` provides the `seahorse` console script).
           SEAHORSE_RUN_INSTALL_SMOKE: "0"
+
+  e2e-matrix:
+    name: e2e matrix (CI subset)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # CI-safe subset only (core_min + uv_sync_dev): no heavy extras
+      # (fastembed/onnxruntime/litellm), no Ollama, no model download — keeps
+      # the pipeline fast while still exercising the fresh-user install paths.
+      - name: Run e2e matrix (core_min + uv_sync_dev)
+        run: scripts/e2e-matrix.sh --ci-subset
