@@ -42,6 +42,31 @@
   `__protocol_attrs__` (3.12+ only) → `_is_protocol` (portable 3.11+). **CI and
   CI LLM Gate SUCCESS on `29b334b`.** See vault `session-2026-08-11-ci-fix.md`.
 
+- **Exhaustive review sprint COMPLETE + PUSHED (2026-08-12)**: 3 commits on `main`
+  pushed to origin (`9b4ef17`→`87e4766`, 147 accumulated, ahead=0) + tag `v0.5.1`.
+  Plan: vault `Claude/plan-revision-exhaustiva-2026-08-11.md`. **`9b4ef17`
+  feat(scripts)**: `scripts/e2e-matrix.sh` (fresh-user e2e across 8 environment
+  combos — install method × extras × Obsidian × Ollama × online/offline × vault
+  state × concurrency; isolated sandbox per combo; `--ci-subset`/`--list`/
+  `--combo`; **local result 7 passed / 0 failed / 1 skipped** — pipx not
+  installed) + `scripts/stress-core.sh` (6 scenarios: ingest 1000+, recall
+  top-k 100 p95 in-process **3.8ms** ≤ 250ms budget, concurrent single-writer,
+  reindex, idempotent import, improve/forget chain — **13/13 PASS at full
+  load**) + CI job `e2e-matrix` (CI-safe subset core_min + uv_sync_dev).
+  **`e40a4e5` fix**: 4 bugs the matrix surfaced, fixed TDD — (1) `uv sync`
+  without a Python pin → cryptic `enable_load_extension` AttributeError (combo
+  pins `--python 3.13`); (2) `_load_extensions` AttributeError → actionable
+  RuntimeError; (3) `E_FRONTMATTER_INVALID` on legacy notes → actionable message
+  naming the F3.1 fields; (4) **concurrency race on fresh-vault first-open** —
+  `PRAGMA journal_mode=WAL` → "database is locked" + `apply_migrations` →
+  IntegrityError (exit 89); bounded retry in `open()` and `apply_migrations`
+  (0/20 failures in repro). Fase 0: e2e-fresh-user.sh assert 7→superset of the
+  7 primitives, README 7→12 MCP tools. **`87e4766` chore**: bump v0.5.1 +
+  CHANGELOG. **2175 tests / ruff+mypy clean.** **Gap documented (roadmap item)**:
+  the frontmatter migrator (#3) is NOT wired into any CLI command — a user with
+  a legacy Obsidian vault has no migration path (`index rebuild` fails honestly
+  on legacy notes). See vault `session-2026-08-12-review-sprint.md`.
+
 - **E2E fresh-user COMPLETE (2026-08-10)**: `scripts/e2e-fresh-user.sh` validates
   the clone-and-run promise from a fresh user's perspective in an isolated
   sandbox (overridden HOME, temp vault — never touches `~/.claude`,
