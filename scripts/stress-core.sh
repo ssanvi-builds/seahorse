@@ -27,10 +27,17 @@ set -euo pipefail
 # --- resolve paths -----------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SANDBOX="/private/tmp/seahorse-stress-$(date +%s)"
+# Sandbox base: macOS keeps /private/tmp (writable, shares the FASTEMBED cache
+# with e2e-fresh-user.sh); other platforms fall back to $TMPDIR (e.g. /tmp).
+if [[ -d /private/tmp && -w /private/tmp ]]; then
+  SANDBOX_BASE="/private/tmp"
+else
+  SANDBOX_BASE="${TMPDIR:-/tmp}"
+fi
+SANDBOX="$SANDBOX_BASE/seahorse-stress-$(date +%s)"
 LOG="$SANDBOX/stress.log"
 VAULT="$SANDBOX/vault"
-SHARED_FASTEMBED_CACHE="/private/tmp/seahorse-e2e-cache"
+SHARED_FASTEMBED_CACHE="$SANDBOX_BASE/seahorse-e2e-cache"
 REAL_HOME="$HOME"
 
 # --- args --------------------------------------------------------------------

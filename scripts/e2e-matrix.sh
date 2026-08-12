@@ -29,10 +29,18 @@ set -euo pipefail
 # --- resolve paths -----------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ROOT_SANDBOX="/private/tmp/seahorse-matrix-$(date +%s)"
+# Sandbox base: macOS keeps /private/tmp (writable, shares the FASTEMBED cache
+# with e2e-fresh-user.sh); Linux CI falls back to $TMPDIR (e.g. /tmp) — /private
+# does not exist on Linux runners (CI failure 2026-08-12).
+if [[ -d /private/tmp && -w /private/tmp ]]; then
+  SANDBOX_BASE="/private/tmp"
+else
+  SANDBOX_BASE="${TMPDIR:-/tmp}"
+fi
+ROOT_SANDBOX="$SANDBOX_BASE/seahorse-matrix-$(date +%s)"
 # Shared across the matrix AND with e2e-fresh-user.sh so the ~235MB mE5-small
 # model is downloaded at most once per machine.
-SHARED_FASTEMBED_CACHE="/private/tmp/seahorse-e2e-cache"
+SHARED_FASTEMBED_CACHE="$SANDBOX_BASE/seahorse-e2e-cache"
 LOG="$ROOT_SANDBOX/matrix.log"
 REAL_HOME="$HOME"
 
