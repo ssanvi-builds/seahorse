@@ -572,7 +572,9 @@ if (( KEEP_SANDBOX )); then
   info "Sandbox kept at $ROOT_SANDBOX (--keep-sandbox)"
 else
   rm -rf "$ROOT_SANDBOX"
-  info "Sandbox cleaned up (use --keep-sandbox to retain for debugging)"
+  # Direct echo, not info(): the log lives inside the sandbox and was just
+  # deleted — tee would fail and set -e would turn that into a spurious exit 1.
+  echo "Sandbox cleaned up (use --keep-sandbox to retain for debugging)" >&2
 fi
 
 exit $(( G_FAIL > 0 ? 1 : 0 ))
