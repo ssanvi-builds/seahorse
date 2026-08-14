@@ -28,6 +28,7 @@ from typing import Any
 
 from seahorse.cli.exit_codes import (
     CLI_CONFIG_INVALID,
+    CLI_MIGRATION_DEFERRED,
     CLI_NOT_IN_MVP_0,
     CLI_OBSERVER_RUNNING,
     CLI_REBUILD_CONFLICTS,
@@ -135,6 +136,38 @@ class CliObserverRunning(CliError):
         )
 
 
+class CliMigrationDeferred(CliError):
+    """``seahorse frontmatter migrate`` met incompatible notes — ADR-10 honesty.
+
+    The migrator classifies every note (A/B/C/D): A/B are migrated, C is
+    idempotent, D is REFUSED (logged, never overwritten). When apply meets one
+    or more case-D notes the run completes but the vault is not fully migrated,
+    so the CLI fails loud at exit 97 (Cat C) — a script must see that manual
+    resolution is required before ``index rebuild`` can succeed on those notes.
+    The manifest summary is rendered to stdout FIRST (index-rebuild pattern) so
+    the operator sees the deferred list AND the error.
+
+    ``count`` is the number of case-D notes; the structured payload carries it
+    so ``--json`` consumers can detect the partial state without re-running.
+    """
+
+    def __init__(self, count: int) -> None:
+        self.count = count
+        super().__init__(
+            exit_code=CLI_MIGRATION_DEFERRED,
+            name="CLI_MIGRATION_DEFERRED",
+            detail=(
+                f"frontmatter migrate stopped: {count} incompatible note(s) "
+                "(case D) require manual resolution"
+            ),
+        )
+
+    def info(self) -> dict[str, Any]:
+        payload = super().info()
+        payload["deferred"] = self.count
+        return payload
+
+
 class CliRebuildConflicts(CliError):
     """``seahorse index rebuild`` found conflicts — ADR-10 honesty (commit 5).
 
@@ -168,5 +201,6 @@ __all__ = [
     "CliVaultNotFound",
     "CliConfigInvalid",
     "CliUsageError",
+    "CliMigrationDeferred",
     "CliRebuildConflicts",
 ]

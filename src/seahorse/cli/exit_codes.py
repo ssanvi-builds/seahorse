@@ -45,9 +45,10 @@ Exit-code layout (64–99, ``sysexits.h`` application band):
   commit 5). The 4 frontmatter codes live in the previously-reserved 90–93 band
   because they are a distinct component origin (#3, not #12/#2) and the 64–81
   band was already full.
-- Cat C (4):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty, SO-14-05),
+- Cat C (5):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty, SO-14-05),
   82 ``CLI_VAULT_NOT_FOUND``, 83 ``CLI_CONFIG_INVALID``,
-  94 ``CLI_REBUILD_CONFLICTS`` (ADR-10 index-rebuild conflict honesty).
+  94 ``CLI_REBUILD_CONFLICTS`` (ADR-10 index-rebuild conflict honesty),
+  97 ``CLI_MIGRATION_DEFERRED`` (frontmatter migrate case-D honesty).
 - Cat B (6):  84–89.
 
 NOTE — 75 overload resolved (commit 6): ``CLI_NOT_IN_MVP_0`` and
@@ -148,6 +149,11 @@ CLI_CONFIG_INVALID = 83
 CLI_REBUILD_CONFLICTS = 94
 # Sprint B: ``seahorse observe start`` when the observer is already running.
 CLI_OBSERVER_RUNNING = 95
+# Frontmatter migrate (gap closure): apply met incompatible notes (case D).
+# ADR-10 honesty — the run completes (A/B/C migrated, D logged) but the vault is
+# not fully migrated, so scripts/chained commands must see it. 96 is Cat B
+# (ProceduralError), so 97 is the next free Cat C slot.
+CLI_MIGRATION_DEFERRED = 97
 
 # ---------------------------------------------------------------------------
 # Component-of-origin attribution for stderr ``component:`` (parity with #13).
@@ -298,6 +304,7 @@ __all__ = [
     "CLI_CONFIG_INVALID",
     "CLI_REBUILD_CONFLICTS",
     "CLI_OBSERVER_RUNNING",
+    "CLI_MIGRATION_DEFERRED",
     "translate",
     "message_for",
 ]

@@ -62,7 +62,12 @@ from seahorse.cli.skills import (
     run_skill_search,
     run_skill_show,
 )
-from seahorse.cli.vault_ops import run_index_rebuild, run_inspect, run_migrate
+from seahorse.cli.vault_ops import (
+    run_frontmatter_migrate,
+    run_index_rebuild,
+    run_inspect,
+    run_migrate,
+)
 from seahorse.cli.viewer import run_view
 from seahorse.contracts.index import PIT_KIND_VALUES
 from seahorse.facade.facade import MemoryFacade
@@ -796,6 +801,41 @@ def index_rebuild_cmd(
 def index_verify_cmd(ctx: typer.Context) -> None:
     """Verify index integrity — RESERVED in MVP-0."""
     run_reserved("index-verify")
+
+
+# ``frontmatter`` group: the vault migrator (F3.3 #3) — migrate legacy notes.
+frontmatter_app = typer.Typer(help="Frontmatter operations (migrate legacy notes to F3.1).")
+app.add_typer(frontmatter_app, name="frontmatter")
+
+
+@frontmatter_app.command(name="migrate")
+def frontmatter_migrate_cmd(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Classify + manifest only; never writes."
+    ),
+    resume: bool = typer.Option(
+        False, "--resume", help="Skip notes unchanged since the last manifest."
+    ),
+    batch_size: int | None = typer.Option(
+        None, "--batch-size", help="Manifest checkpoint cadence (default 500)."
+    ),
+) -> None:
+    """Migrate legacy Obsidian notes to F3.1 frontmatter (cases A/B/C/D).
+
+    MVP-0 runs serialized (workers=1, f5-03 §3.7); parallel parsing is MVP-1.
+    """
+    # resolve_vault (not resolved_config): migrating can precede `seahorse init`
+    # — the migrator only touches .md files + the manifest, no config needed.
+    vault = resolve_vault(ctx.obj.vault)
+    run_frontmatter_migrate(
+        vault,
+        dry_run=dry_run,
+        resume=resume,
+        batch_size=batch_size,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+    )
 
 
 # ``skill`` group: procedural skills (L2c §6.1) — add / list / search / show.

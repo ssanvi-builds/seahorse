@@ -1,6 +1,6 @@
 """Real vault-management commands for the CLI (#14, commit 5 of F3.3 #3).
 
-The three management commands whose dependencies ARE built in MVP-0:
+The four management commands whose dependencies ARE built in MVP-0:
 
 - ``run_migrate``      — apply SCHEMA migrations (DDL 001–009) to the sidecar DB.
   This is the SCHEMA migrations runner, NOT the frontmatter vault migrator: it
@@ -22,10 +22,19 @@ The three management commands whose dependencies ARE built in MVP-0:
   to stdout FIRST, then ``CliRebuildConflicts`` is raised (exit 94) so the
   operator sees the conflict list AND the error. A parse failure surfaces as
   ``FrontmatterInvalid`` (Cat A exit 90) — never a silent skip.
+- ``run_frontmatter_migrate`` — the FRONTMATTER vault migrator (gap closure,
+  2026-08-13): converts legacy Obsidian notes to F3.1 frontmatter (cases
+  A/B/C/D) via ``frontmatter.migrator.VaultMigrator``. This is the command the
+  original commit-5 plan intended for ``migrate`` before that slot was taken by
+  the schema runner. ADR-10 honesty: apply meeting case-D notes renders the
+  manifest summary to stdout FIRST, then raises ``CliMigrationDeferred``
+  (exit 97) — the vault is not fully migrated and scripts must see it. Dry-run
+  is always exit 0 (preview). Works before ``seahorse init`` (no config needed).
 
-Ruamel-confinement invariant: only ``run_index_rebuild`` transitively imports
-ruamel (via ``frontmatter.rebuild``); ``run_migrate`` / ``run_inspect`` are
-stdlib + #6 only.
+Ruamel-confinement invariant: only ``run_index_rebuild`` and
+``run_frontmatter_migrate`` transitively import ruamel (via ``frontmatter.rebuild``
+/ ``frontmatter.migrator``); ``run_migrate`` / ``run_inspect`` are stdlib + #6
+only.
 """
 
 from __future__ import annotations
@@ -34,13 +43,13 @@ import sqlite3
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 if TYPE_CHECKING:
     from seahorse.embeddings.types import Embedder
 
-from seahorse.cli.config import SeahorseConfig
-from seahorse.cli.errors import CliRebuildConflicts, CliUsageError
+from seahorse.cli.config import SEAHORSE_DIR_NAME, SeahorseConfig
+from seahorse.cli.errors import CliMigrationDeferred, CliRebuildConflicts, CliUsageError
 from seahorse.cli.output import OutputFormat, render_message
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.migrations.migrator import (
@@ -258,4 +267,120 @@ def run_index_rebuild(
         raise CliRebuildConflicts(len(report.skipped))
 
 
-__all__ = ["run_migrate", "run_inspect", "run_index_rebuild"]
+def run_frontmatter_migrate(
+    vault: Path,
+    *,
+    dry_run: bool = False,
+    resume: bool = False,
+    batch_size: int | None = None,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+) -> None:
+    """``seahorse frontmatter migrate`` — convert legacy notes to F3.1 (A/B/C/D).
+
+    Delegates to ``frontmatter.migrator.VaultMigrator`` (gap closure: the
+    migrator had no CLI surface — the ``migrate`` slot went to the schema DDL
+    runner). ``dry_run`` classifies + builds the manifest but never writes;
+    ``resume`` skips notes unchanged since the last manifest (mtime hint, hash
+    truth). ``batch_size`` checkpoints the manifest every N notes (default 500).
+
+    ADR-10 honesty (index-rebuild pattern): the manifest summary is rendered to
+    stdout FIRST, then apply meeting case-D notes raises ``CliMigrationDeferred``
+    (exit 97) — the vault is not fully migrated and scripts must see it. Dry-run
+    is always exit 0 (preview). Works before ``seahorse init`` (no config
+    needed — the migrator only touches ``.md`` files + the manifest).
+
+    Ruamel-confinement: ``VaultMigrator`` transitively imports ruamel (via
+    ``frontmatter.adapter``), so the import is lazy inside this function — the
+    same pattern as ``run_index_rebuild`` → ``rebuild_from_vault``. Importing
+    it at module top would leak ruamel into every CLI command.
+    """
+    from seahorse.facade import new_uuid7  # core, ruamel-free
+    from seahorse.frontmatter.migrator import DEFAULT_BATCH_SIZE, VaultMigrator  # lazy
+
+    if batch_size is None:
+        batch_size = DEFAULT_BATCH_SIZE
+    if batch_size < 0:
+        raise CliUsageError(
+            f"--batch-size must be a non-negative integer, got {batch_size}"
+        )
+
+    session_id = new_uuid7()
+    manifest_path = vault / SEAHORSE_DIR_NAME / "migration_manifest.json"
+    migrator = VaultMigrator(vault, session_id)
+    manifest = migrator.run(
+        dry_run=dry_run,
+        resume=resume,
+        batch_size=batch_size,
+        manifest_path=manifest_path,
+    )
+    _render_migration_payload(
+        manifest, manifest_path, vault, dry_run=dry_run, resume=resume, fmt=fmt, out=out
+    )
+    if (not dry_run) and manifest.stats.errors > 0:
+        raise CliMigrationDeferred(manifest.stats.errors)
+
+
+def _render_migration_payload(
+    manifest: Any,
+    manifest_path: Path,
+    vault: Path,
+    *,
+    dry_run: bool,
+    resume: bool,
+    fmt: OutputFormat,
+    out: TextIO,
+) -> None:
+    """Render the migration manifest summary (human or JSON) to ``out``.
+
+    The deferred list (case-D notes) is always included so the operator sees
+    which notes were refused and why — the error is raised by the caller AFTER
+    this render (ADR-10: report first, then fail loud).
+
+    ``manifest`` is typed ``Any`` to keep the ``frontmatter.manifest`` import
+    lazy (it is ruamel-free, but the module is part of the frontmatter package
+    and the CLI keeps all frontmatter imports lazy for the confinement guard).
+    """
+    deferred = [
+        {"path": e.path, "case": e.case, "error": e.error}
+        for e in manifest.notes.values()
+        if e.error is not None
+    ]
+    payload = {
+        "command": "frontmatter migrate",
+        "vault": str(vault),
+        "dry_run": dry_run,
+        "resume": resume,
+        "manifest_path": str(manifest_path),
+        "session_id": manifest.session_id,
+        "total_notes": manifest.stats.total_notes,
+        "migrated": manifest.stats.migrated,
+        "already_f31": manifest.stats.already_f31,
+        "errors": manifest.stats.errors,
+        "collisions": manifest.stats.collisions,
+        "deferred": deferred,
+    }
+    human_lines = [
+        f"Frontmatter migrate: {vault}",
+        f"  dry_run:      {str(dry_run).lower()}",
+        f"  total:        {manifest.stats.total_notes}",
+        f"  migrated:     {manifest.stats.migrated}",
+        f"  already_f31:  {manifest.stats.already_f31}",
+        f"  errors:       {manifest.stats.errors}",
+        f"  collisions:   {manifest.stats.collisions}",
+        f"  manifest:     {manifest_path}",
+    ]
+    if deferred:
+        human_lines.append("  deferred (case D — manual resolution required):")
+        for d in deferred:
+            human_lines.append(f"    - {d['path']} ({d['error']})")
+    human = "\n".join(human_lines) + "\n"
+    render_message(payload, fmt=fmt, out=out, human_text=human)
+
+
+__all__ = [
+    "run_migrate",
+    "run_inspect",
+    "run_index_rebuild",
+    "run_frontmatter_migrate",
+]
