@@ -205,14 +205,6 @@ stays fully reserved.
 The graph-expansion axis of retrieval (BFS into the fusion) is a medium-term
 goal — `recall` fuses vector + BM25 + supersedes chain today.
 
-## Architecture (three memory layers)
-
-| Layer | What | Where |
-|------|------|-------|
-| 1. claude-mem | Session observations ("how did we fix X") | local worker |
-| 2. Obsidian vault | Project knowledge, decisions, preferences | human-readable markdown |
-| 3. Native pointer | Pointer only, never duplicated knowledge | per-session |
-
 ## Stack
 
 - Python ≥ 3.11. stdlib `sqlite3` + sqlite-vec for storage (zero-infra single
