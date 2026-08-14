@@ -6,6 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Distribution renamed to `seahorse-memory`** — the PyPI name `seahorse` is
+  taken by an unrelated project, so the distribution is now published as
+  `seahorse-memory` (`pip install seahorse-memory`). The import package, the
+  `seahorse` / `seahorse-mcp` console scripts, and the repo name are unchanged.
+- **README rewritten for onboarding** — the README now leads with the problem
+  and a Claude Code use case, adds a comparison with other memory tools, a
+  curated benchmark section, and an FAQ, and moves the release-status block to
+  the end. Internal jargon (`CLI_NOT_IN_MVP_0`, reserved Spanish command names)
+  was removed from the public docs.
+- **Benchmark published** — `docs/benchmark.md` documents the LMEB-S harness,
+  the current numbers, their caveats, and how to reproduce them.
+- **`scripts/demo.sh`** — a presentational walkthrough (init → remember →
+  recall → improve → forget → import → observe status) for demos and recordings.
+
 ### Added
 
 - **`seahorse frontmatter migrate`** — CLI command to migrate a legacy Obsidian
@@ -16,6 +32,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Exit `97` `CLI_MIGRATION_DEFERRED`** — when apply meets incompatible notes
   (case D), the manifest summary is printed first, then the command fails loudly
   so scripts can see the vault is not fully migrated.
+- **`publish.yml` workflow** — release-on-tag build + publish to PyPI as
+  `seahorse-memory`.
 
 ### Fixed
 
