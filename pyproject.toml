@@ -1,7 +1,7 @@
 [project]
 name = "seahorse"
 version = "0.5.1"
-description = "Open standard for persistent, self-evolving LLM agent memory (open-core)."
+description = "Open standard for persistent, self-evolving LLM agent memory."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -16,19 +16,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-# Dependencies land incrementally per component during Fase 6 (persistence, engine,
-# llm, write-path, retrieval, graph). #14 CLI Bootstrap introduced the first
-# runtime dep: Typer is the terminal surface (L6, ADR-06) — the human and the
-# scripter invoke `seahorse ...`.
-#
-# #3 (frontmatter adapter/migrator) ships the canonical F3.1 `Episode` as a
-# Pydantic v2 model and migrates #6 to import it (B1 — single `Episode` type
-# system-wide). Pydantic therefore lands in the CORE (contracts → engine/
-# persistence/facade/mcp transitively). This relaxes the stdlib-only-core
-# contract; accepted deviation (F4 recommends Pydantic v2 canonical; B1 forces
-# it). Only `ruamel.yaml` + `python-frontmatter` stay confined to
-# `seahorse/frontmatter/` (they do NOT propagate to the core). Typer still lives
-# ONLY in the CLI layer.
+# Runtime dependencies:
+# - Typer is the CLI surface (humans and scripts) and lives only in seahorse.cli.
+# - Pydantic v2 is the canonical `Episode` contract, used across the core
+#   (contracts → engine/persistence/facade/mcp transitively).
+# - ruamel.yaml + python-frontmatter are confined to the frontmatter adapter and
+#   do NOT propagate to the core.
+# - sqlite-vec + numpy power the vector index and embedding blob shape.
 dependencies = [
     "typer>=0.12",
     "pydantic>=2",
@@ -37,6 +31,12 @@ dependencies = [
     "sqlite-vec==0.1.9",
     "numpy>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ssanvi-builds/seahorse"
+Repository = "https://github.com/ssanvi-builds/seahorse"
+Documentation = "https://github.com/ssanvi-builds/seahorse#readme"
+Issues = "https://github.com/ssanvi-builds/seahorse/issues"
 
 [project.scripts]
 seahorse = "seahorse.cli.app:main"
@@ -51,25 +51,25 @@ dev = [
     "mypy>=1.10",
     "hypothesis>=6.100",
 ]
-# M1-B.2: the heavy inference stack for #7 (FastEmbed ONNX, mE5-small fp32-O4
-# bundle — OQ-7-12). NOT in the default `uv sync --extra dev`: without this
-# extra, build_facade falls back to the honest G2 recall regime and no model
-# download happens. Install with `uv sync --extra dev --extra embeddings`.
+# The heavy inference stack for semantic retrieval (FastEmbed ONNX, mE5-small
+# fp32-O4 bundle). NOT in the default `uv sync --extra dev`: without this extra,
+# recall falls back to the honest current-state listing and no model download
+# happens. Install with `uv sync --extra dev --extra embeddings`.
 embeddings = [
     "fastembed>=0.6.0",
     "onnxruntime>=1.20",
 ]
-# M4-C.2: the #4 Multi-LLM backend (ADR-05 — LiteLLM unifies the 100+ provider
-# surface). Also optional: without this extra, `seahorse.llm` still imports
-# (the contract + StubLLMClient are stdlib-light) but the real path degrades
-# llm→skip with a setup hint. Install with `uv sync --extra dev --extra llm`.
+# The multi-LLM backend (LiteLLM unifies the 100+ provider surface). Also
+# optional: without this extra, `seahorse.llm` still imports (the contract +
+# StubLLMClient are stdlib-light) but the real path degrades llm→skip with a
+# setup hint. Install with `uv sync --extra dev --extra llm`.
 llm = [
     "litellm>=1.0",
 ]
-# #16 LMEB Benchmark Skeleton (f5-16): the harness's own deps live HERE, never
-# in the core. `datasets` (HuggingFace loader for LongMemEval-S) and `tiktoken`
-# (real token counting) are imported lazily inside the benchmark package, so
-# `import seahorse.benchmark` stays importable without this extra. Install with
+# The benchmark harness's own dependencies live HERE, never in the core.
+# `datasets` (HuggingFace loader) and `tiktoken` (real token counting) are
+# imported lazily inside the benchmark package, so `import seahorse.benchmark`
+# stays importable without this extra. Install with
 # `uv sync --extra dev --extra benchmark`.
 benchmark = [
     "datasets>=3.0",
@@ -94,7 +94,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --cov=seahorse --cov-fail-under=80 --cov-report=term-missing"
 markers = [
-    "mvp1_axis: TIMELINE MVP-1 accessors signed now but revisable until MVP-1 (SO-1 safeguard 2)",
+    "mvp1_axis: points-in-time accessors that are signed but still revisable before the feature seals",
     "property: hypothesis property-based / stateful invariant tests (bi-temporal safety net)",
-    "llm_gate: CI gate integration tests against a real Ollama (weakest model qwen3:0.6b); gated by SEAHORSE_RUN_LLM_TESTS=1, run via `pytest -m llm_gate` in ci-llm-gate.yml (f5-04 §2.2)",
+    "llm_gate: CI gate integration tests against a real Ollama (weakest model qwen3:0.6b); gated by SEAHORSE_RUN_LLM_TESTS=1, run via `pytest -m llm_gate` in ci-llm-gate.yml",
 ]
