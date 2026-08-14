@@ -67,7 +67,7 @@ seahorse forget <ep_id> --reason done
 
 # Session capture, context, and consolidation:
 # Install the observer (writes [observe] + merges the Claude Code hooks into
-# ~/.claude/settings.json, coexisting with claude-mem):
+# ~/.claude/settings.json):
 seahorse setup
 # Start the observer (unix socket + worker), then the next session is captured
 # automatically (skip-first, redacted, deterministic summary):
@@ -198,9 +198,8 @@ implemented yet rather than silently no-op'ing:
 
 Batch distillation (`consolidated`) is **schema-valid but not built**: the wire
 and frontmatter round-trip the value, but the single-episode write path refuses
-it loud and the `distill_episodes` primitive lands in a later milestone — it
-writes via `engine.remember` directly, not through `remember`. `llm_partial`
-stays fully reserved.
+it loud and the `distill_episodes` primitive lands in a later milestone.
+`llm_partial` stays fully reserved.
 
 The graph-expansion axis of retrieval (BFS into the fusion) is a medium-term
 goal — `recall` fuses vector + BM25 + supersedes chain today.
@@ -224,8 +223,8 @@ goal — `recall` fuses vector + BM25 + supersedes chain today.
   still imports (contract + `StubLLMClient`) and the real path degrades llm→skip
   with a setup hint.
 
-> The FastAPI / SQLAlchemy / Postgres stack stays in the multi-agent rung
-> (Postgres + pgvector). The README states what ships now, not the target
+> The FastAPI / SQLAlchemy / Postgres stack is planned for a later multi-agent
+> tier (Postgres + pgvector). The README states what ships now, not the target
 > architecture.
 
 ## Testing

@@ -99,13 +99,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from the stored subject, N≥3) · `distill.py` (writes a semantic episode with
   `cognitive_type=semantic` that supersedes the representative source; sources
   stay current) · `consolidate.py` (idempotent) + additive
-  `engine.remember` `supersedes`/`supersedes_reason` support + CLI `seahorse
+  `supersedes`/`supersedes_reason` support on the write path + CLI `seahorse
   consolidate`.
 - **Setup** — `seahorse setup` (writes `[observe]` with a generated auth token +
   merges the Claude Code hooks into `~/.claude/settings.json`, coexisting with
   claude-mem) + `--uninstall`.
 - `[observe]` section in `seahorse.toml` (opt-in until `seahorse setup`).
-- **Cross-encoder reranking seam (inactive opt-in)** — a `QueryReranker`
+- **Cross-encoder reranking stage (inactive opt-in)** — a `QueryReranker`
   contract, a stage-3 rerank step in `recall()`, and a FastEmbed cross-encoder
   backend. The default remains pure RRF fusion; an early evaluation on the
   benchmark corpus showed the cross-encoder degraded retrieval quality and
@@ -164,7 +164,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `RememberPayload` (facade + CLI `--summary` + MCP wire). When absent, the write
   path derives a deterministic zero-LLM fallback (first sentence of the body,
   skipping the H1, truncated to 200 chars) — covering 100% of episodes including
-  the skip path. `engine.remember` persists it; the frontmatter round-trip
+  the skip path. The write path persists it; the frontmatter round-trip
   preserves it.
 - **claude-mem importer** — `seahorse import [--source] [--mode dry-run|commit]
   [--project]`: migrates claude-mem observations to episodes with a loss report,
@@ -207,7 +207,7 @@ to a current-state listing when vectors/embedder are unavailable.
   loop, `<content>` injection delimiters), retry/fallback chain (backoff +
   jitter), and the `LiteLLMBackend` (optional `llm` extra).
 - `run_llm_path` (write path) with a strict episode frontmatter (subject
-  required); `engine.remember` gains an additive `subject` override;
+  required); the write path gains an additive `subject` override;
   `build_facade` gains the `llm_client` slot.
 - CLI onboarding: `seahorse init --llm` no-TUI provider wizard (detects Ollama /
   free-tier keys; factory default local-first `ollama/qwen3:1.7b`, 0.6b low-end);
@@ -292,4 +292,4 @@ episodes end-to-end from a clean install, and serves an agent over stdio MCP.
   no-op'ing.
 - The FastAPI / SQLAlchemy / LiteLLM / multilingual-e5 / ONNX stack from the
   long-term design is **not** in v0.1.0; it lands in later releases and the
-  multi-agent rung (Postgres + pgvector).
+  multi-agent tier (Postgres + pgvector).
