@@ -1,18 +1,17 @@
-# CI LLM Gate (f5-04 §2.2, stack-f4 §1.7) — real extraction path vs the WEAKEST
+# CI LLM Gate — real extraction path vs the WEAKEST
 # model of the qwen3 family (qwen3:0.6b) on a pinned Ollama service container.
 #
 # Adversarial local-first guarantee: if the extraction path works on the
 # smallest model (validator + retry + repair have to carry the load), it works
 # on all of them. The gate is RED if extraction only works with native
-# structured outputs (ADR-05 forbids the hard dependence) or only on strong
-# models (f5-04 §6.1/§7.2).
+# structured outputs, or only on strong models.
 #
 # This workflow is SEPARATE from ci.yml on purpose: the main CI never installs
 # the optional ``llm`` extra (litellm). Only the gate does
 # (``uv sync --extra dev --extra llm``), and only it hits a live Ollama.
 #
-# Version pins (stack-f4 §1.7 lesson — nomic-embed-text lowercasea inputs since
-# v0.30.0, so version drift breaks reproducibility):
+# Version pins (a version-drift lesson — nomic-embed-text lowercases inputs
+# since v0.30.0, so version drift breaks reproducibility):
 # - Ollama image: 0.32.5 @ sha256:98c19ce... (amd64, resolved 2026-08-05 from
 #   Docker Hub; the spec's 0.23.4 was stale).
 # - Model: qwen3:0.6b with the explicit tag (never a bare ``qwen3``).
@@ -48,8 +47,8 @@ jobs:
       # would SKIP silently and the gate would pass without ever running.
       SEAHORSE_RUN_LLM_TESTS: "1"
       # litellm reads OLLAMA_API_BASE for the ollama/ provider (verified in
-      # litellm/llms/ollama/common_utils.py). The f5-04 spec's OLLAMA_BASE_URL
-      # was a typo — litellm ignores it. Explicit here for clarity.
+      # litellm/llms/ollama/common_utils.py); OLLAMA_BASE_URL was a typo that
+      # litellm ignores. Explicit here for clarity.
       OLLAMA_API_BASE: "http://localhost:11434"
       LLM_GATE_MODEL: "ollama/qwen3:0.6b"
 
@@ -113,7 +112,7 @@ jobs:
       - name: Run LLM gate tests
         run: |
           set -o pipefail
-          # --reruns 2 (spec f5-04 §2.2): the gate runs the WEAKEST model, which
+          # --reruns 2: the gate runs the WEAKEST model, which
           # is stochastic — a single bad streak (invalid JSON 3x in a row) would
           # turn a path-correct run red on model variance. Reruns absorb that;
           # a DETERMINISTIC regression (e.g. response_format dependence) still

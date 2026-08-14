@@ -6,7 +6,7 @@
 # SEAHORSE_VAULT, shared FASTEMBED_CACHE_PATH) but fans out across a matrix of
 # environment combinations instead of a single happy-path run. Each combination
 # installs Seahorse a specific way, prepares a specific vault state, and runs a
-# subset of the B2–B9 steps (install → init → core CLI → embeddings → LLM →
+# subset of the steps (install → init → core CLI → embeddings → LLM →
 # import → MCP), with an isolated sandbox per combination.
 #
 # Combos are the 8 priorities from the plan (not the ~256 Cartesian product).
@@ -179,7 +179,7 @@ m_offline() {
   info "    mode: offline (HF_HUB_OFFLINE=1, empty cache)"
 }
 
-# --- shared steps (B2–B9 subset) ---------------------------------------------
+# --- shared steps ------------------------------------------------------------
 m_install_uvtool() {  # m_install_uvtool <extras>
   local extras="$1"
   m_run "uv tool install '.[$extras]'" bash -c "cd '$REPO_DIR' && uv tool install --python 3.13 '.[$extras]'"
@@ -201,7 +201,8 @@ m_install_uvsync() {  # dev workflow: extract committed tree + uv sync --extra d
   fi
   # Pin the same Python as `uv tool install` (3.13): the default interpreter
   # (e.g. a pyenv build without SQLITE_ENABLE_LOAD_EXTENSION) breaks every DB
-  # command with a cryptic AttributeError (see e2e-fresh-user.sh B2 note).
+  # command with a cryptic AttributeError (see the install note in
+  # e2e-fresh-user.sh).
   m_run "uv sync --python 3.13 --extra dev" bash -c "cd '$COMBO_DIR/src' && uv sync --python 3.13 --extra dev"
   SEAHORSE="$COMBO_DIR/src/.venv/bin/seahorse"
   SEAHORSE_MCP="$COMBO_DIR/src/.venv/bin/seahorse-mcp"
@@ -322,7 +323,7 @@ m_verify_setup_observer() {  # B7 subset in the isolated HOME
   fi
 }
 
-m_verify_mcp() {  # B9 subset: stdio session, 12-tool superset + remember/recall roundtrip
+m_verify_mcp() {  # MCP: stdio session, 12-tool superset + remember/recall roundtrip
   m_run "MCP stdio session" python3 - "$SEAHORSE_MCP" "$VAULT" <<'PY'
 import json, subprocess, sys
 

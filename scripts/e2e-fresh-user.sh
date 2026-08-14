@@ -153,7 +153,7 @@ info "  HOME=$HOME"
 info "  SEAHORSE_VAULT=$SEAHORSE_VAULT"
 info "  FASTEMBED_CACHE_PATH=$FASTEMBED_CACHE_PATH"
 
-# --- B2 install --------------------------------------------------------------
+# --- install ----------------------------------------------------------------
 step 2 "Install (fresh user): uv tool install . --extra embeddings --extra llm"
 # Pin a Python whose sqlite3 supports load_extension (needed by sqlite-vec).
 # `uv tool install` otherwise picks the default interpreter, which on some
@@ -291,7 +291,7 @@ run "import dry-run" "$SEAHORSE" import --source "$COPY" --project seahorse --mo
 run "import commit" "$SEAHORSE" import --source "$COPY" --project seahorse --mode commit
 run "recall imported term" "$SEAHORSE" recall "extraction_mode" --top-k 3
 
-# --- B9 MCP ------------------------------------------------------------------
+# --- MCP ---------------------------------------------------------------------
 step 9 "MCP: stdio JSON-RPC session (agent surface)"
 run "MCP stdio session" python3 - "$SEAHORSE_MCP" "$VAULT" <<'PY'
 import json, subprocess, sys

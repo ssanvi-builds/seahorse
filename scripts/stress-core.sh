@@ -3,7 +3,7 @@
 # stress-core.sh — load-test the Seahorse core (engine, retrieval, embeddings,
 # concurrency) against a real vault, with latency metrics.
 #
-# Scenarios (from the exhaustive-review plan, Fase 2):
+# Scenarios:
 #   S1  Ingest N episodes via `seahorse remember` (loop) — no degradation, time.
 #   S2  Recall --top-k 100 over the populated vault — p95 ≤ 250ms (INDEX budget).
 #   S3  2 parallel `remember` processes — single-writer (WAL + RLock), no corruption.
