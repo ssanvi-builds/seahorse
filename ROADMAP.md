@@ -19,8 +19,9 @@
   lazily imported inside `run_frontmatter_migrate` (ruamel-confinement guard
   preserved). `FrontmatterInvalid` message + `rebuild.py` docstring now name the
   real migration command. **2186 tests / coverage 94.4% / ruff+mypy clean.**
-  3 commits on `main` (`731dfef` feat(cli) + `cb03bee` fix(frontmatter) + docs),
-  not pushed. See vault `session-2026-08-14-frontmatter-migrate.md`.
+  3 commits on `main` (`731dfef` feat(cli) + `cb03bee` fix(frontmatter) +
+  `9e6ef05` docs), pushed to origin (ahead=0). See vault
+  `session-2026-08-14-frontmatter-migrate.md`.
 
 - **Sprint C COMPLETE (2026-08-10)**: skills L2c determinista (`seahorse/procedural/`)
   + #10 MVP-1 BFS (`graph_bfs`) + viewer TUI mínimo + `[procedural]` config.
