@@ -6,53 +6,49 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added — frontmatter migrate CLI (gap closure, 2026-08-13)
+### Added
 
-- **`seahorse frontmatter migrate`** — the frontmatter vault migrator (#3,
-  `VaultMigrator`) finally has a CLI surface. The original `migrate` slot went
-  to the schema DDL runner, so a user with a legacy Obsidian vault had no
-  migration path (`index rebuild` failed honestly on legacy notes). New
-  `frontmatter` Typer group: `--dry-run` (classify + manifest, never writes,
-  always exit 0), `--resume` (skip notes unchanged since the last manifest),
-  `--batch-size` (manifest checkpoint cadence). Works before `seahorse init`.
-- **Exit `97` `CLI_MIGRATION_DEFERRED`** (Cat C) — apply meeting incompatible
-  notes (case D) renders the manifest summary to stdout first, then fails loud so
-  scripts see the vault is not fully migrated (ADR-10 honesty, index-rebuild
-  pattern).
+- **`seahorse frontmatter migrate`** — CLI command to migrate a legacy Obsidian
+  vault (notes with no frontmatter, or legacy `tags`/`created` fields) to the
+  canonical episode format. `--dry-run` classifies every note and writes nothing
+  (always exit 0); `--resume` skips notes unchanged since the last manifest;
+  `--batch-size` sets the manifest checkpoint cadence. Works before `seahorse init`.
+- **Exit `97` `CLI_MIGRATION_DEFERRED`** — when apply meets incompatible notes
+  (case D), the manifest summary is printed first, then the command fails loudly
+  so scripts can see the vault is not fully migrated.
 
 ### Fixed
 
-- **Actionable `FrontmatterInvalid` hint** — the message now names the migration
-  command (`seahorse frontmatter migrate`) for legacy Obsidian notes, and the
-  `rebuild.py` docstring points at the real command instead of the schema DDL
-  runner.
+- **Actionable `FrontmatterInvalid` error** — the message now names the migration
+  command (`seahorse frontmatter migrate`) for legacy Obsidian notes, instead of
+  pointing at the schema DDL runner.
 
 ## [0.5.1] - 2026-08-12
 
-### Added — exhaustive review sprint (2026-08-12)
+### Added
 
-- **`scripts/e2e-matrix.sh`** — fresh-user e2e across environment combinations
-  (install method × extras × Obsidian × Ollama × online/offline × vault state ×
-  concurrency). 8 priority combos, isolated sandbox per combo, PASS/FAIL report.
-  `--ci-subset` runs the CI-safe combos (`core_min` + `uv_sync_dev`); `--list`
-  shows all combos.
+- **`scripts/e2e-matrix.sh`** — fresh-user end-to-end testing across environment
+  combinations (install method × extras × Obsidian × Ollama × online/offline ×
+  vault state × concurrency). 8 priority combos, isolated sandbox per combo,
+  PASS/FAIL report. `--ci-subset` runs the CI-safe combos (`core_min` +
+  `uv_sync_dev`); `--list` shows all combos.
 - **`scripts/stress-core.sh`** — core load-test: ingest 1000+ episodes, recall
-  `--top-k 100` p95 ≤ 250ms (in-process INDEX budget), concurrent single-writer,
-  reindex, idempotent import, improve/forget chain.
+  `--top-k 100` p95 ≤ 250ms, concurrent single-writer, reindex, idempotent
+  import, improve/forget chain.
 - **CI job `e2e-matrix`** — runs the CI-safe matrix subset on every push/PR.
 
 ### Fixed
 
-- **`scripts/e2e-fresh-user.sh`** — MCP `tools/list` assertion now checks the 7
-  memory primitives as a superset instead of an exact count of 7 (the surface
-  grew to 12 tools in Sprint C).
+- **`scripts/e2e-fresh-user.sh`** — the MCP `tools/list` assertion now checks the
+  7 memory primitives as a superset instead of an exact count of 7 (the surface
+  grew to 12 tools).
 - **Actionable `enable_load_extension` error** — a Python build without
   `SQLITE_ENABLE_LOAD_EXTENSION` (e.g. a pyenv build) used to crash every DB
   command with a cryptic `AttributeError`; it now fails with a hint to install
   with a supporting Python (`uv tool install --python 3.13`).
 - **Actionable `E_FRONTMATTER_INVALID`** — `index rebuild` on a legacy Obsidian
   note surfaced only raw pydantic validation errors; the message now says the
-  note is not valid F3.1 and names the required fields.
+  note is not in the canonical format and names the required fields.
 
 ### Docs
 
@@ -61,70 +57,67 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0] - 2026-08-10
 
-Sprint C — skills L2c determinista + #10 MVP-1 BFS + viewer TUI mínimo + [procedural] config.
+### Added
 
-### Added — Sprint C (skills L2c + #10 BFS + viewer TUI, 2026-08-10)
-
-- **procedural skills (L2c §6.1)** — `seahorse/procedural/` (stdlib-only, client
-  of #12/#8): `record_procedure` (deterministic creation, ADR-09 skip-first,
-  cost ≈ 0, canonical body `## Trigger/Steps/Validation/Rationale` validated
-  before any write) · `ProceduralShaper` (3-level progressive disclosure:
-  Discovery = INDEX summary ≤280, Activation = TIMELINE, Execution = FULL) ·
-  R5 trust gate (`trust.py`: manual HIGH / agent MEDIUM / import+distilled LOW;
-  low-trust skills delivered as citation/context, not instruction) · CLI
-  `seahorse skill add|list|search|show` (add validates canonical body, show
-  applies the trust gate) · un-reserve `procedural` (frontmatter round-trip
-  byte-identical). `ProceduralError` mapped as Cat B (CLI exit 96, MCP -32053).
-- **#10 MVP-1 BFS (`graph_bfs`)** — `materialize_timeline(axis=graph_bfs)`
-  materialized in the shaper: 1-2 hop PIT-aware via #6's signed SO-8b
-  `bfs_neighbors_state_at`, `HopsCapExceeded` for hops > 2, `cognitive_type=
-  semantic` filter, `pit=None` → `state_at(now)`. Exposed via
-  `recall-timeline --axis graph_bfs --hops` and MCP `recall_timeline` `hops`.
-- **viewer TUI** — `seahorse view`: read-only interactive stdlib TUI
-  (recent / search / timeline / skills), honest empty-vault degrade (ADR-10).
+- **Procedural skills** — `seahorse/procedural/`: `record_procedure`
+  (deterministic creation, near-zero cost, canonical body
+  `## Trigger/Steps/Validation/Rationale` validated before any write) ·
+  `ProceduralShaper` (3-level progressive disclosure: Discovery = INDEX summary
+  ≤280, Activation = TIMELINE, Execution = FULL) · trust gate (manual high /
+  agent medium / import+distilled low; low-trust skills are delivered as
+  citation/context, not instruction) · CLI `seahorse skill add|list|search|show`
+  (add validates the canonical body, show applies the trust gate).
+  `ProceduralError` maps to CLI exit 96 / MCP -32053.
+- **Graph (BFS) timeline axis** — `materialize_timeline(axis=graph_bfs)`:
+  a 1-2 hop, point-in-time-aware traversal of the supersedes graph,
+  `HopsCapExceeded` for hops > 2, `cognitive_type=semantic` filter. Exposed via
+  `recall-timeline --axis graph_bfs --hops` and the MCP `recall_timeline` `hops`.
+- **Viewer TUI** — `seahorse view`: read-only interactive stdlib TUI
+  (recent / search / timeline / skills), with an honest empty-vault degrade.
 - **`[procedural]` config** — `seahorse.toml` section (min_trust + loadout
   defaults; opt-in, missing → module defaults).
 
-### Fixed
-
 ## [0.4.0] - 2026-08-10
 
-Sprint B (todo-en-uno) + E2E fresh-user + F7 experiments (d)(b) + observer-agnostic research.
+### Added
 
-### Added — Sprint B (todo-en-uno, 2026-08-10)
-
-- **observe (#17)** — the capture layer (`seahorse/observe/`, stdlib-only, zero
-  harness imports in the core): `protocol.py` (tolerant envelope, caps ≤256) ·
-  `redact.py` (deterministic structural JSON walk, bearer/API keys/PEM/
-  userinfo/prefixes, pure) · `threshold.py` (skip_tools WebSearch/WebFetch vs
-  drop_tools Read/Bash) · `batcher.py` (deterministic turn render, H1
-  `{first line} [session_tag:prompt_number]`, byte truncation never splitting a
-  codepoint) · `queue.py` (own SQLite, ConnectionManager, single-writer WAL+ack,
-  dedup `(session_id, prompt_number, event_fingerprint)` INSERT OR IGNORE,
-  **prompt_number persisted** §15.2 redesign 2) · `worker.py` (drains by
-  session — por_sesion, skip-first ADR-09, OQ3 summary skipping the H1) ·
-  `endpoint.py` (unix socket 0600 + auth token §15.2 redesign 10, redacts
-  before enqueue, drop_tools never persisted) · `runner.py` (endpoint thread +
-  worker loop) · `adapters/claude_code.py` (4 hooks: SessionStart /
-  UserPromptSubmit / PostToolUse / Stop — the only harness binding) · CLI
-  `seahorse observe start|stop|status|run|event`.
-- **context (§6)** — `MemoryFacade.context()` (four INDEX-level blocks: recent
-  G2 sort, vigente, last session grouped by `provenance.session_id` — INDEX
-  list not abstractive summary, header + counter + pointer) +
-  `seahorse/context/assembler.py` (pure render) + CLI `seahorse context`
-  (degrades to "no context" without a DB).
-- **consolidate (§5)** — `seahorse/distill/`: `cluster.py` (clustering key
-  distinct from the stored subject §15.2 redesign 1, N≥3) · `distill.py`
-  (`distill_episodes` → `engine.remember(cognitive_type=semantic,
-  extraction_mode=consolidated, supersedes=representative,
-  supersedes_reason=merge, synthetic consolidate-* session)`, sources stay
-  vigente) · `consolidate.py` (idempotent §5.5, session-end signal OFF §15.2
-  redesign 5) + `engine.remember` additive `supersedes`/`supersedes_reason` +
-  CLI `seahorse consolidate`.
-- **setup (§4.7)** — `seahorse setup` (writes `[observe]` with a generated
-  auth token + merges the Claude Code hooks into `~/.claude/settings.json`
-  coexisting with claude-mem §15.3-4) + `--uninstall` (`observe event` marker).
+- **Session observer** — `seahorse/observe/` (stdlib-only): capture of agent
+  sessions — a tolerant event envelope with size caps, deterministic redaction
+  of sensitive values (bearer/API keys, PEM, userinfo, URL prefixes), tool
+  thresholding (skip WebSearch/WebFetch, drop Read/Bash), deterministic turn
+  batching (byte-truncation never splitting a codepoint), a dedicated SQLite
+  queue (single-writer WAL + ack, dedup by session/turn/fingerprint), a worker
+  that drains by session (skip-first, deterministic summary), a unix-socket
+  endpoint (0600 + auth token, redacts before enqueue, dropped tools never
+  persisted), and a Claude Code adapter (4 hooks: SessionStart / UserPromptSubmit
+  / PostToolUse / Stop). CLI `seahorse observe start|stop|status|run|event`.
+- **Context bootstrap** — `MemoryFacade.context()` (four INDEX-level blocks:
+  recent, current-state, last session grouped by session — a list, not an
+  abstractive summary) + `seahorse/context/assembler.py` (pure render) + CLI
+  `seahorse context` (degrades to "no context" without a DB).
+- **Consolidation** — `seahorse/distill/`: `cluster.py` (clustering key distinct
+  from the stored subject, N≥3) · `distill.py` (writes a semantic episode with
+  `cognitive_type=semantic` that supersedes the representative source; sources
+  stay current) · `consolidate.py` (idempotent) + additive
+  `engine.remember` `supersedes`/`supersedes_reason` support + CLI `seahorse
+  consolidate`.
+- **Setup** — `seahorse setup` (writes `[observe]` with a generated auth token +
+  merges the Claude Code hooks into `~/.claude/settings.json`, coexisting with
+  claude-mem) + `--uninstall`.
 - `[observe]` section in `seahorse.toml` (opt-in until `seahorse setup`).
+- **Cross-encoder reranking seam (inactive opt-in)** — a `QueryReranker`
+  contract, a stage-3 rerank step in `recall()`, and a FastEmbed cross-encoder
+  backend. The default remains pure RRF fusion; an early evaluation on the
+  benchmark corpus showed the cross-encoder degraded retrieval quality and
+  exceeded the latency budget, so it stays disabled pending re-evaluation.
+- **`--summary` on import with turn-structure preservation** — `seahorse import`
+  preserves the source tool's session/turn identifiers in episode provenance
+  (`x-claude-mem-session-id` / `x-claude-mem-prompt-number`), so the session
+  structure survives the migration.
+- **Embed-mode option** — `RetrievalIndexer(embed_mode="body" | "body+summary")`
+  and `--embed-mode` on the benchmark CLI and `seahorse index rebuild`.
+  `body+summary` embeds the summary followed by the body; reindexing under a new
+  mode re-embeds honestly (the effective text changes).
 
 ### Fixed
 
@@ -134,8 +127,8 @@ Sprint B (todo-en-uno) + E2E fresh-user + F7 experiments (d)(b) + observer-agnos
   is agent-agnostic.
 - **Observer spawn**: `observe start` placed `--vault` after `observe run`, but
   it is a global option that must precede the subcommand — the observer died
-  immediately with "No such option: --vault". Fixed in `observe/cli.py` + order
-  assertion in the test.
+  immediately with "No such option: --vault". Fixed in `observe/cli.py` + an
+  order assertion in the test.
 - **`seahorse doctor` prerequisite checks**: new `python` / `uv` / `obsidian` /
   `sqlite_vec` checks (the last detects a Python build whose `sqlite3` lacks
   `enable_load_extension`, which breaks sqlite-vec with a cryptic
@@ -143,301 +136,123 @@ Sprint B (todo-en-uno) + E2E fresh-user + F7 experiments (d)(b) + observer-agnos
 - **README Prerequisites section** (Python ≥3.11 + sqlite load_extension, uv,
   Obsidian optional).
 - **`scripts/e2e-fresh-user.sh`** — fresh-user E2E in an isolated sandbox
-  (overridden HOME, temp vault; never touches `~/.claude`, `~/.claude-mem`, or
-  `~/obsidian-vaults`). Validates install → init → core CLI → hybrid embeddings
+  (overridden HOME, temp vault; never touches the real `~/.claude` /
+  `~/.claude-mem`). Validates install → init → core CLI → hybrid embeddings
   → LLM (honest degrade) → observer → import → MCP, with no-corruption
-  post-flight checks. 47/0 green.
-
-### Added
-
-- **F7 experiment (b) rerank — cross-encoder seam + harness + run (f7 §5b)**.
-  - **ADR-10 enmienda (vault)**: "no LLM generativo en el query path; un
-    cross-encoder dedicado, pinneado por identidad de modelo y con presupuesto
-    de latencia separado, está permitido como opt-in." Distinción estructural:
-    generativo autoregresivo (prohibido) vs discriminativo rank-only on-device
-    (opt-in). El gate de benchmark y el tipo de modelo (bge-reranker-v2-m3,
-    MIT) van ANTES de tocar el ADR (cerebras-f §4.4).
-  - **Seam `QueryReranker`** (`contracts/rerank.py`, patrón frontier
-    `QueryEmbedder`): `rerank(query, docs) -> Sequence[float]`. Owned by #11.
-  - **Stage-3 en `recall()`** (`retrieval/engine.py` + `retrieval/rerank.py`):
-    fusiona con `k_rerank=20`, hidrata summary/subject vía
-    `index_repo.get_rows` (NO body_md), puntúa pares, reordena, truncate a `k`.
-    El score del cross-encoder REEMPLAZA el RRF score (`score_source:
-    "rrf_rerank"`). Degrade honesto (ADR-10): sin `index_repo` o fallo del
-    reranker → orden RRF truncado a `k`. Constantes `RERANK_OVERFETCH_K=20` /
-    `INDEX_RERANK_P95_MS=500`.
-  - **Backend cross-encoder** (`embeddings/rerank_backend.py`): `FastEmbedReranker`
-    sobre fastembed `TextCrossEncoder` (0.8.0, sin dependencia nueva). Bundle
-    `hooman650/bge-reranker-v2-m3-onnx-o4` (MIT, multilingüe, ~1.1GB) —
-    validado en arm64: 20 pares ≈ 204ms (dentro del budget 500ms). El jina
-    default es cc-by-nc-4.0 (incompatible Apache-2.0, ADR-011).
-  - **`build_facade(..., reranker)`** → `HybridRetriever` (single-point swap,
-    default None = RRF puro ADR-10). Query-time puro: cambiar el modelo nunca
-    exige reindex.
-  - **Harness F7**: variants `mvp1_rrf` vs `rrf_rerank`, `decide_rerank`
-    (ndcg@10 ≥ 2pp Y p95 ≤ 500ms; `invalid_regime` en `fallback_g2`),
-    `LatencyP95RerankMetric` (lee `latency_ms["index_rerank"]`), `rerank_model`
-    pinneado en la fingerprint (run_id distinto del baseline), `HashReranker`
-    sintético (token-overlap, puntuación normalizada), CLI `--rerank-enable`.
-  - **Run LMEB-S (submuestreado, 2026-08-08)**: **keep_rrf — F2 NO implementado**.
-    El cross-encoder degrada ambas métricas: ndcg@10 −2.8pp (0.110 → 0.082),
-    recall@10 −2.4pp (0.130 → 0.106), y p95_index_rerank_ms 1244ms > 500ms
-    (2.5× el budget). El seam `QueryReranker` + stage-3 + backend quedan como
-    opt-in inactivo (default None), listos para re-evaluar.
-- **F7 experiment (d) batch-por-turno — harness + authoritative run (f7 §5d)**.
-  - **Importer turn-structure preservation** (`seahorse/importer/claude_mem.py`):
-    the vendor `memory_session_id` and `prompt_number` now survive in provenance
-    as `x-claude-mem-session-id` / `x-claude-mem-prompt-number` (f5-15 §6.8
-    preservation convention). The run-scoped `session_id` contract (f5-15 §3.3)
-    is unchanged; the loss report documents the preservation instead of the
-    loss. The batch-por-turno experiment needs the turn structure, which the
-    importer previously dropped (measured against the real DB — ADR-10).
-  - **Batch experiment harness** `seahorse/benchmark/experiments/batch.py` — a
-    standalone measurement (no `EvaluationRunner`/`BenchmarkDataset`: (d) is a
-    retrieval-clustering measurement, not a QA benchmark): corpus builders
-    (real claude-mem via importer #15 + synthetic with `HashEmbedder` for CI),
-    `compute_turn_clusters` (groups by `x-claude-mem-session-id` +
-    `x-claude-mem-prompt-number`), leave-one-out cluster recall@k (batch-por-
-    turno) + individual recall@k (por-sesión), `decide_batch` (threshold 0.5,
-    `invalid_regime` on `fallback_g2` — ADR-10). Registered in
-    `variants.py`/`runner.py`/CLI (`seahorse benchmark experiment batch
-    --corpus claude-mem|synthetic`).
-  - **Authoritative run (2026-08-08, real claude-mem corpus)**: 281 obs → 236
-    episodes (45 subject collisions excluded), 27 turns ≥2 obs, 215 leave-one-
-    out queries, real fastembed backend (hybrid, no `fallback_g2`). **Decision
-    `por_sesion`**: cluster recall@10 = 0.336 < 0.5 threshold (individual
-    recall@10 = 1.000; robust across k=5/10/20 → 0.224/0.336/0.336). The turn
-    is NOT a recoverable unit — Sprint B degrades to per-session batching.
-    Large turns (diverse observations) are the drag; small focused turns are
-    recoverable. 1896 tests / ruff+mypy clean.
-- **F7 experiments (a) recency + (c) embed — harness + enablers (f7 §5)**.
-  - **Enabler (a)** `build_facade(..., recency: RecencyConfig | None)` →
-    `HybridRetriever` (composition root, single-point swap); default `None`
-    keeps the pure-RRF bit-comparable fingerprint (ADR-10). Benchmark CLI gains
-    `--recency-gamma` / `--recency-half-life` (pair-or-error); the recency
-    config is baked into `BenchmarkConfig.config_hash` so the run_id differs
-    from the baseline.
-  - **Enabler (c)** `RetrievalIndexer(embed_mode="body" | "body+summary")` —
-    `body+summary` embeds `summary\n\nbody` (summary leads), honest body-only
-    fallback when no summary, `content_hash` over the EFFECTIVE text (reindex
-    under a new mode re-embeds via cache miss). `EMBED_MODES` single-sourced in
-    `embeddings/types.py` (numpy-light, import-laziness preserved). Benchmark
-    CLI + `seahorse index rebuild` gain `--embed-mode`.
-  - **Correctness fixes the experiments exposed**: `improve` now indexes the
-    successor via a `MemoryFacade.on_episode_improved` hook wired to the
-    write-path indexer in the hybrid regime (G2 no-op) — `knowledge_update_accuracy`
-    (f5-16 §4.6) becomes measurable in hybrid; `SeahorseSUT` evaluates
-    temporal-reasoning questions with `pit=state_at(question_date)` (f5-16
-    §3.4) with an honest G2 degrade (active-now, no crash).
-  - **Experiment harness** `seahorse/benchmark/experiments/` — variants ((a)
-    baseline `mvp1_rrf` + 9-combo sweep γ∈{0.25,0.5,1.0} × half_life∈{7,30,90}d;
-    (c) `body` vs `body+summary`), pure decision logic (f7 §5 thresholds:
-    recency must not degrade global ndcg@10 >1pp AND improve recall@10 on
-    temporal-reasoning/knowledge-update ≥1pp; embed recall@10 ≥1pp to flip F3;
-    `invalid_regime` when the baseline ran `fallback_g2` — ADR-10 honesty),
-    deterministic synthetic corpus + `HashEmbedder` (content-hash passages keep
-    the vec0 kNN path real without a model download — mechanical CI
-    verification), and `run_experiment` (wires the `AdvancingClock`, base =
-    earliest session date, delta = 1 day → `created_at` spans the haystack;
-    runs each variant via `EvaluationRunner`, writes per-variant manifest
-    artifacts, applies the decision) + CLI `seahorse benchmark experiment
-    --experiment recency|embed --corpus synthetic|lmeb-s [--temporal]`.
-  - **1859 tests / ruff+mypy clean.**
-- **F7 LMEB-S run (a)(c) — authoritative F1/F3 decision (2026-08-07)**.
-  - **Warm-DB shared ingest**: variants that embed the same text share ONE
-    corpus ingest (recency = 10 variants over identical embeddings; fresh-DB
-    would re-embed ~49M tokens × 10 ≈ 28h, warm-DB ≈ 2 ingests). The template
-    DB is copied per variant (fast) and the SUT re-attaches the bridge
-    (`skip_ingest`); variant clocks seed from the template's post-ingest
-    position so the recency boost reads the same `now` vs `created_at` spread
-    (bit-identical metrics vs fresh-DB, verified by test).
-  - **Retrieval-only pass**: `StubReaderLLM` + `--retrieval-only` — the F1/F3
-    decision metrics (recall@10/ndcg@10) never consume the reader's answer
-    (f5-16 §4.4 honest floor), so a retrieval-only run gives identical decision
-    numbers with zero Ollama cost.
-  - **Correctness fixes the real run surfaced**: LMEB loader broken under
-    pyarrow 25 (`OverflowError` int32 on the mixed-type `/answer` column) →
-    stdlib-json prematerialization via `hf_hub_download` (no
-    `trust_remote_code`); real LMEB row shape (parallel session arrays) +
-    `parse_date` for `YYYY/MM/DD (Weekday) HH:MM`; skip-path title derivation
-    for conversational turns + empty-turn filter; clock delta derived from the
-    haystack date spread (fixed 1-day-per-write made `created_at` span 547
-    years); `SeahorseSUT.pit_queries=False` + non-temporal ingestion so the
-    recency boost (gate `pit is None`) actually fires; nDCG dedup for repeated
-    golden sessions (was >1.0); fastembed idempotent registration (warm-DB
-    variant facades silently degraded to G2); `HybridRetriever` top_k cap
-    parity with G2.
-  - **Decisions (subsampled LMEB-S, 100/500 questions balanced — full corpus
-    ingests ~2.2h/template + FTS5 hang; honest label `subsampled_lmeb_s`)**:
-    **F1 `keep_off`** — the recency boost is applied (ndcg@10 varies
-    0.390-0.398) but does not change the top-10 set (recall@10 identical 0.467;
-    slices tr=0.372/ku=0.717); F1 stays default-off. **F3 `flip_f3`** — LMEB
-    episodes DO have summaries (derived by `deterministic_extract` first
-    sentence); `body+summary` embeds `summary\n\nbody` → recall@10 +2.7%
-    (0.467→0.494) ≥1% threshold; flip F3 vectorial via `seahorse index rebuild
-    --embed-mode body+summary`.
-  - **1876 tests / ruff+mypy clean (144 src files).**
-- **F7 skeleton #16 — LMEB benchmark harness (MVP-1 scope, f5-16 §7.1)** —
-  `seahorse/benchmark/`: contracts + config (`BenchmarkConfig.validate()`
-  rejects `reader_model == judge_model`), metrics (Recall@k, nDCG@k binary,
-  MRR, Precision@k with `k_effectivo`, FAMA-gap sanity check,
-  knowledge_update_accuracy, REAL token efficiency, p95 latency per level),
-  `SeahorseSUT` (#12→SUT adapter with the `fact_id→session` bridge + honest
-  `fallback_g2` detection + F7 flags `recency_config`/`rerank_enabled`/
-  `embed_mode`), `CorpusBuilder` (skip-mode, deterministic `AdvancingClock`),
-  `KnowledgeUpdateSimulator` (OQ-16-13: derives update pairs from the
-  haystack), `EvaluationRunner` + `LevelProbeRunner` (isolated p95
-  TIMELINE/FULL without the reader LLM), reporters (bit-comparable
-  `PinningFingerprint` + separate `ExecutionMetadata`, json/markdown/ci_gate
-  exit 0/10/3), `LMEBLoader` + `AdapterRegistry`, harness (ReaderLLMClient
-  t=0 seed=42, Tokenizer tiktoken, git-tracked prompts) + `LLMJudge` (bias
-  mitigations: generator≠judge, position swap, strict+lenient), and
-  reproducibility (`ModelPin`/`pin_ollama_model`, SQLite `OutputCache`) + CLI
-  `seahorse benchmark run/list/adapters`. OQ-16-11 (bridge test
-  `WriteResult.fact_id == IndexRow.fact_id`) and OQ-16-12 (manifest
-  `embedding_batch_config=batch_size=1_forced` + `knn_completeness=1.0`)
-  closed. Delegation purity: the skeleton imports only from
-  `seahorse.facade`; `datasets`/`tiktoken`/`litellm` are lazy (the `benchmark`
-  extra). 1810 tests / coverage 96% / ruff+mypy clean.
+  post-flight checks.
 
 ### Changed
 
-- **F3 vectorial flip applied (f7-experiment-embed §decide, 2026-08-08)** — the
-  `embed_mode` default flips from `body` to `body+summary` (summary leads the
-  passage vector) in every product default: `build_facade` (composition root),
-  the benchmark CLI + `BenchmarkConfig`, `SeahorseSUT`, the `seahorse index
-  rebuild` backfill, and `RetrievalIndexer` itself. Reindexing under the new
-  default re-embeds honestly — `content_hash` is computed over the EFFECTIVE
-  text (`summary\n\nbody`), so the body-only vectors are a genuine cache miss
-  (f7 §5c). The F3 experiment A/B remains explicit and intact
-  (`embed_mode='body'` baseline in `benchmark/experiments/variants.py`); the
-  flip is a product default, not a harness change. Verified: reindex of a test
-  vault under the new default populates vec0/FTS and hybrid recall returns
-  non-zero RRF scores (no `fallback_g2`). Decision source: LMEB-S subsample
-  (100/500 questions), recall@10 +2.7% (0.467→0.494) ≥1% threshold. 1877 tests
-  / ruff+mypy clean (144 src files).
+- **Embed mode default `body+summary`** — retrieval embeddings now lead with the
+  summary (`summary\n\nbody`). This is the new default in the facade, the
+  benchmark config, `seahorse index rebuild`, and the indexer; it measurably
+  improved recall on the benchmark corpus. The `body`-only mode remains
+  available for comparison.
 
 ## [0.3.0] - 2026-08-07
 
-Sprint A — F1 recency seam (default-OFF), OQ3 summary enabler, and the
-claude-mem importer (#15).
-
 ### Added
 
-- **F1 recency as a ranking signal (seam default-OFF, ADR-10)** — a small,
-  localized post-RRF step in `seahorse.retrieval.recall`:
-  `apply_recency_boost` folds a bounded exponential decay
-  (`score' = score · (1 + γ·exp(-ln2·age_days/half_life))`, factor in `[1, 1+γ]`)
-  INTO `FusedCandidate.score` (never an external reorder). Gated on `pit is
-  None` (PIT queries reproduce state as-of-`t` with pure RRF); default-OFF
-  (`recency=None`) preserves the bit-comparable fingerprint. `created_at` is
-  batch-read via `index_repo.get_rows` (one `IN` query, no N+1). Pins
-  `RECENCY_GAMMA`/`RECENCY_HALF_LIFE_DAYS` in `retrieval/constants.py`;
-  `HybridRetriever` propagates `RecencyConfig | None`.
-- **OQ3 enabler — `remember` accepts `summary`** (f5-09 §6.2): `summary` is an
-  additive editorial field on `RememberPayload` (facade + CLI `--summary` + MCP
-  wire). When absent, the write path derives a deterministic zero-LLM fallback
-  (first sentence of the body, skipping the H1, truncated to
-  `SUMMARY_MAX_CHARS=200`) — covers 100% of episodes including the skip path.
-  `engine.remember` persists it; the frontmatter round-trip preserves it.
-- **claude-mem importer (#15)** — the migration/coexistence bridge
-  (obsiforge §15.4): a pure `import_record` (f5-15 pattern) mapping claude-mem
-  observations to F3.1 episodes + a loss report, wrapped by an `ImportRunner`
-  (dry-run/commit, manifest `seahorse.importer.manifest/1.0`, idempotency via
-  deterministic UUIDv5, collisions via `WriteResult.collisions_detected` —
-  never raised). `source_type=importer` forces the skip path (existing
-  `decide_path` guard); claude-mem is NEVER a runtime dependency. New CLI
-  command `seahorse import [--source] [--mode dry-run|commit] [--project]`.
+- **Recency as an opt-in ranking signal** — `apply_recency_boost`, a small
+  bounded exponential-decay step applied after RRF fusion in `recall()`
+  (`score' = score · (1 + γ·exp(-ln2·age_days/half_life))`, factor in
+  `[1, 1+γ]`). Gated on point-in-time queries being off (PIT reproduces state
+  as-of `t` with pure RRF); **default-off** (`recency=None`) preserves the
+  bit-comparable fingerprint. `created_at` is batch-read (one `IN` query, no
+  N+1). CLI flags `--recency-gamma` / `--recency-half-life`.
+- **`remember --summary`** — `summary` is an optional editorial field on
+  `RememberPayload` (facade + CLI `--summary` + MCP wire). When absent, the write
+  path derives a deterministic zero-LLM fallback (first sentence of the body,
+  skipping the H1, truncated to 200 chars) — covering 100% of episodes including
+  the skip path. `engine.remember` persists it; the frontmatter round-trip
+  preserves it.
+- **claude-mem importer** — `seahorse import [--source] [--mode dry-run|commit]
+  [--project]`: migrates claude-mem observations to episodes with a loss report,
+  a manifest (`seahorse.importer.manifest/1.0`), idempotency via deterministic
+  UUIDv5, and collision detection (never raised — reported). claude-mem is never
+  a runtime dependency.
 
 ## [0.2.0] - 2026-08-06
 
-MVP-1 sealed. Hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by
-Reciprocal Rank Fusion) with PIT routing, the Embedder `#7` (FastEmbed ONNX,
-mE5-small) wired, a real multi-LLM extraction path (`#4`/`#5`) with a local-first
-CI gate, and an honest G2 degrade when vectors/embedder are unavailable.
+Hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by Reciprocal Rank
+Fusion) with point-in-time routing, a FastEmbed (ONNX, mE5-small) embedder, a
+real multi-LLM extraction path with a local-first CI gate, and an honest degrade
+to a current-state listing when vectors/embedder are unavailable.
 
 ### Added
 
 - Migration 010: the `vec0` virtual table (`vec_episodes`, float[384]) + the
-  FTS5 external-content pair (`episode_content` / `episode_fts`, `unicode61
-  remove_diacritics 2`). `schema_version = 10`.
-- `SqliteVectorIndexRepository` (kNN, vigent/fact_id/cognitive pushdown, PIT
-  `state_at`/`known_at` via the shared `_pit_predicate`) and
+  FTS5 external-content pair (`episode_content` / `episode_fts`).
+  `schema_version = 10`.
+- `SqliteVectorIndexRepository` (kNN with current-state/fact_id/cognitive
+  pushdown, point-in-time `state_at`/`known_at` predicates) and
   `SqliteFullTextIndexRepository` (BM25, `exp(-bm25)` scoring, PIT, subject
   filter) — real backends over the migration-010 tables.
 - `seahorse/embeddings/`: `ModelIdentity` + async `Embedder` Protocol + L2
-  normalization; the FastEmbed ONNX backend (mE5-small fp32-O4 bundle, OQ-7-12);
-  a sync `QueryEmbedder` adapter (async→sync bridge); a query cache (SQLite
-  `embeddings_cache` + LRU); and a `RetrievalIndexer` that populates vec0/FTS
-  from the write path and `seahorse index rebuild` (best-effort, ADR-10).
+  normalization; the FastEmbed ONNX backend (mE5-small fp32-O4 bundle); a sync
+  `QueryEmbedder` adapter; a query cache (SQLite + LRU); and a `RetrievalIndexer`
+  that populates vec0/FTS from the write path and `seahorse index rebuild`
+  (best-effort).
 - `HybridRetriever`: the facade recall regime over `seahorse.retrieval.recall`
-  (RRF fusion, PIT routing), with an honest degrade to the vigente listing when
-  vectors/embedder are unavailable.
-- PIT recall support in the MVP-1 regime (the facade guard is now conditioned on
-  the retriever's `supports_pit` capability).
-- New optional `embeddings` extra (`fastembed`, `onnxruntime`) — `uv sync
-  --extra dev` stays G2/offline (no model download).
+  (RRF fusion, point-in-time routing), with an honest degrade to the
+  current-state listing when vectors/embedder are unavailable.
+- Point-in-time recall support in the hybrid regime (the facade guard is now
+  conditioned on the retriever's `supports_pit` capability).
+- New optional `embeddings` extra (`fastembed`, `onnxruntime`) — the default
+  install stays offline (no model download).
 - `seahorse/llm/`: errors taxonomy (retry/content/permanent), providers registry
-  (ollama/gemini/groq/openrouter/openai/anthropic/deepseek/vllm — local-first +
-  the free-tier palanca), extraction role routing, operative cost cap (local and
-  free-tier models price at $0; paid rows verified), plain-prompt parser + Pydantic
-  validator (`extra="forbid"` → repair loop, `<content>` injection delimiters),
-  retry/fallback chain (backoff + jitter), and the `LiteLLMBackend` (optional `llm`
-  extra, sync C8.7).
-- `run_llm_path` (write path) with a strict `EpisodeFrontmatter` (subject
-  REQUIRED); `engine.remember` gains an additive `subject` override (M4-C.3);
+  (ollama/gemini/groq/openrouter/openai/anthropic/deepseek/vllm — local-first),
+  extraction role routing, operative cost cap (local and free-tier models price
+  at $0), plain-prompt parser + Pydantic validator (`extra="forbid"` → repair
+  loop, `<content>` injection delimiters), retry/fallback chain (backoff +
+  jitter), and the `LiteLLMBackend` (optional `llm` extra).
+- `run_llm_path` (write path) with a strict episode frontmatter (subject
+  required); `engine.remember` gains an additive `subject` override;
   `build_facade` gains the `llm_client` slot.
 - CLI onboarding: `seahorse init --llm` no-TUI provider wizard (detects Ollama /
   free-tier keys; factory default local-first `ollama/qwen3:1.7b`, 0.6b low-end);
   `[llm]` block in `seahorse.toml`; `status` reports the LLM regime; `seahorse
-  doctor` (config + key NAMES + live provider probe).
-- CI gate `ci-llm-gate.yml` (f5-04 §2.2): the real extraction path is run against
-  the WEAKEST model of the family (`ollama/qwen3:0.6b`, pinned Ollama image + tag,
-  CPU) so the Pydantic validator + retry + repair must carry the load — proves the
-  path does not silently depend on native structured outputs (ADR-05) or on a
-  strong model. Gated tests in `tests/llm/test_gate_ollama.py`
-  (`SEAHORSE_RUN_LLM_TESTS=1`, `pytest -m llm_gate`); the main `ci.yml` is
-  untouched (still no litellm).
-- **Frontmatter round-trip: `extraction_mode=consolidated` un-reserved**
-  (obsiforge §5.4 — MINOR bump). The value is now schema-valid and
-  round-trippable (wire + facade Literal + frontmatter, case-C idempotent): a
+  doctor` (config + key names + live provider probe).
+- CI gate `ci-llm-gate.yml`: the real extraction path is run against the weakest
+  model of the family (`ollama/qwen3:0.6b`, pinned Ollama image, CPU) so the
+  validator + retry + repair must carry the load — proving the path does not
+  silently depend on native structured outputs or on a strong model. Gated tests
+  in `tests/llm/test_gate_ollama.py` (enabled via `SEAHORSE_RUN_LLM_TESTS=1`,
+  `pytest -m llm_gate`); the main `ci.yml` is untouched (still no litellm).
+- **Frontmatter round-trip: `extraction_mode=consolidated`** is now schema-valid
+  and round-trippable (wire + facade + frontmatter, case-C idempotent): a
   batch-distilled note with `extraction_mode=consolidated` parses, round-trips
-  byte-identically, and classifies as case C (untouched on re-run). The wire
-  enum is single-sourced from the facade `ExtractionMode` Literal (parity
-  #13/#14). `llm_partial` stays fully reserved.
+  byte-identically, and is left untouched on re-run. The wire enum is
+  single-sourced from the facade `ExtractionMode` Literal. `llm_partial` stays
+  fully reserved.
 
 ### Fixed
 
-- The extraction prompt (`build_extract_prompt`) now states two rules verbatim
-  for weak models (gate finding 2, 2026-08-05): `subject` is a short topic
-  phrase — never a bare date; `valid_at` must be a timezone-aware ISO-8601
-  datetime, so a bare date is omitted rather than emitted (I2 rejects naive
-  datetimes). A weak model (`qwen3:0.6b`) previously used a bare date as both
-  `valid_at` and `subject`, wasting repair calls; first-call validity on
-  date-bearing content went 0/3 → 3/6 in the smoke.
+- The extraction prompt now states two rules verbatim for weak models: `subject`
+  is a short topic phrase — never a bare date; `valid_at` must be a
+  timezone-aware ISO-8601 datetime, so a bare date is omitted rather than
+  emitted. A weak model previously used a bare date as both `valid_at` and
+  `subject`, wasting repair calls.
 
 ### Known Limitations
 
-- The mE5-small bundle is fp32-O4 (~235MB): OQ-7-12 verified no int8/fp16
-  artifact is portable to Apple Silicon; a portable int8 bundle is a measured
-  follow-up (Optimum quantization + per-platform benchmark).
+- The mE5-small bundle is fp32-O4 (~235MB): no int8/fp16 artifact is portable to
+  Apple Silicon; a portable int8 bundle is a measured follow-up (Optimum
+  quantization + per-platform benchmark).
 - Without the `embeddings` extra (or with no vectors populated), `recall` is the
-  honest G2 vigente listing (no ranking) and PIT recall is refused.
-- The BFS-as-INDEX retrieval axis (graph expansion into the fusion) is mediano;
-  the supersedes chain is already fused.
-- **Batch distillation is NOT built yet** (ADR-10): `consolidated` is a valid,
+  honest current-state listing (no ranking) and point-in-time recall is refused.
+- The graph-expansion retrieval axis (BFS into the fusion) is a medium-term
+  goal; the supersedes chain is already fused.
+- **Batch distillation is NOT built yet**: `consolidated` is a valid,
   round-trippable schema value, but the engine does not produce it — the
-  `distill_episodes` primitive is Sprint B (post-F7) and writes via
-  `engine.remember` directly, bypassing the single-episode write path (which
-  refuses `consolidated` loud).
+  single-episode write path refuses it loudly.
 - Reserved CLI commands (`expire`, `revalidate`, `vigentes`, `activos-ahora`,
   `index verify`) still exit `75`.
 
 ## [0.1.0] - 2026-07-29
 
-First tagged release. MVP-0 is functionally complete and runnable end-to-end from
-a clean install: the memory engine records, recalls, improves, and forgets
-episodes, and serves an agent over stdio MCP.
+First tagged release. The memory engine records, recalls, improves, and forgets
+episodes end-to-end from a clean install, and serves an agent over stdio MCP.
 
 ### Added
 
@@ -447,40 +262,34 @@ episodes, and serves an agent over stdio MCP.
   (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`):
   `remember`, `recall`, `recall_timeline`, `recall_full`, `improve`, `forget`,
   `build_pit`.
-- Progressive disclosure across three retrieval levels — INDEX (vigente listing),
-  TIMELINE (supersedes chain), FULL (hydrated episode) — plus point-in-time
-  projection via `build_pit`.
+- Progressive disclosure across three retrieval levels — INDEX (current-state
+  listing), TIMELINE (supersedes chain), FULL (hydrated episode) — plus
+  point-in-time projection via `build_pit`.
 - Supersession (`improve`) and soft-delete (`forget`), append-only; full history
   is preserved and reproducible at any past point in time.
 - Two console scripts: `seahorse` (humans/scripts) and `seahorse-mcp` (agents);
   the `seahorse mcp` subcommand delegates to the same stdio server as
   `seahorse-mcp`. `serverInfo.version` is single-sourced from package metadata.
 - Frontmatter import/export for the Obsidian vault layer (markdown as the
-  portable on-disk contract, ADR-02).
+  portable on-disk contract).
 - Honest exit codes with a structured `{"error": {...}}` envelope on stderr
   (`seahorse_code` / `cli_code` / `exception_class`) so agents and scripts branch
   deterministically.
 - Systematic functional review committed as regression tests: subprocess CLI
-  smoke (full MVP-0 matrix), real-stdio MCP smoke, and a gated install smoke
-  proving the "clone, install, run" promise.
+  smoke (full first-release matrix), real-stdio MCP smoke, and a gated install
+  smoke proving the "clone, install, run" promise.
 
 ### Known Limitations
 
-- `recall` returns the **vigente listing** clamped to `top_k`; the query is
+- `recall` returns the **current-state listing** clamped to `top_k`; the query is
   validated non-empty but does **not** filter or rank in v0.1.0. This is
   deliberate and documented, not a gap.
-- No embeddings, vector search, or FTS5 retrieval yet — that is MVP-1
-  materialization (sqlite-vec, the Embedder `#7`, hybrid retrieval wiring).
+- No embeddings, vector search, or FTS5 retrieval yet — that landed in v0.2.0.
 - No LLM extraction yet — the skip-path is first-class so an agent records at
-  near-zero cost today; LLM extraction is deferred.
+  near-zero cost today.
 - Reserved CLI commands (`expire`, `revalidate`, `vigentes`, `activos-ahora`,
-  `index verify`) are wired to return exit `75` (`CLI_NOT_IN_MVP_0`) with a
-  reason, rather than silently no-op'ing.
+  `index verify`) return exit `75` with a reason, rather than silently
+  no-op'ing.
 - The FastAPI / SQLAlchemy / LiteLLM / multilingual-e5 / ONNX stack from the
-  long-term design is **not** in v0.1.0; it lands in MVP-1 and the multi-agent
-  rung (Postgres + pgvector).
-
-### References
-
-- Design: Seahorse Obsidian vault, Fase 5 detailed-design docs `f5-01`–`f5-16`.
-- Roadmap: see the vault `Roadmap/` for the MVP-0 → MVP-1 path.
+  long-term design is **not** in v0.1.0; it lands in later releases and the
+  multi-agent rung (Postgres + pgvector).
