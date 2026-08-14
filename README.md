@@ -32,6 +32,11 @@ at any past point in time. Supersession and soft-delete are append-only: an
 `improve` invalidates the prior episode and supersedes it; a `forget` invalidates
 without destroying history.
 
+Every episode is a markdown file with a YAML frontmatter block — human-readable
+and editable (including in Obsidian), machine-parseable by agents, and diffable
+in git. The format is versioned and documented in
+[docs/f3.1-format.md](docs/f3.1-format.md).
+
 ## Prerequisites
 
 - **Python ≥ 3.11** (any recent 3.11/3.12/3.13 works). The interpreter's
