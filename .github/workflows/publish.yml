@@ -1,0 +1,70 @@
+name: Publish to PyPI
+
+# Release-on-tag: pushing a `v*` tag builds the wheel and publishes it to
+# PyPI as `seahorse-memory`. The import package stays `seahorse`; only the
+# distribution name changes. Requires the `PYPI_API_TOKEN` secret (a PyPI
+# API token scoped to the `seahorse-memory` project).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test gate (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Sync dependencies (with dev extras)
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest
+        env:
+          SEAHORSE_RUN_INSTALL_SMOKE: "0"
+
+  build-and-publish:
+    name: build + publish to PyPI
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
