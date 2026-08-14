@@ -1,7 +1,7 @@
-"""LongMemEval adapter — the reference benchmark for MVP-1 (f5-16 §4.1).
+"""LongMemEval adapter — the reference benchmark for the first release.
 
 The raw LongMemEval JSON snapshot is parsed with the STDLIB ``json`` module —
-no ``datasets`` loading script, no ``trust_remote_code`` (f5-16 §4.1 preferred
+no ``datasets`` loading script, no ``trust_remote_code`` (preferred
 pre-materialization). Rationale (verified on the real S snapshot, 2026-08-07):
 the ``datasets`` JSON pipeline breaks on this dataset under pyarrow 25 — the
 mixed-type ``/answer`` column (468 str + 32 int) drives its schema retry to
@@ -70,7 +70,7 @@ class LMEBLoader:
 
     @staticmethod
     def available_configs() -> tuple[str, ...]:
-        return ("s",)  # MVP-1: only "s"
+        return ("s",)  # the first release: only "s"
 
     @staticmethod
     def _split_name(config: str) -> str:
@@ -118,7 +118,7 @@ class LMEBLoader:
         The haystack is the triple ``(haystack_session_ids, haystack_dates,
         haystack_sessions)`` — sessions are parallel arrays of turn-lists. The
         canonical session shape the corpus consumes is ``{session_id, date,
-        turns: [{body, ...}]}`` (f5-16 §3.3).
+        turns: [{body, ...}]}``.
         """
         q_type = row["question_type"]
         is_abstention = q_type == "abstention" or str(row.get("question_id", "")).endswith(
@@ -144,7 +144,7 @@ class LMEBLoader:
     @staticmethod
     def _canonicalize_sessions(row: dict) -> tuple[dict, ...]:
         """Zip the parallel ``session_ids``/``dates``/``sessions`` arrays into
-        the canonical ``{session_id, date, turns}`` shape (f5-16 §3.3/§3.7)."""
+        the canonical ``{session_id, date, turns}`` shape."""
         ids = row.get("haystack_session_ids", [])
         dates = row.get("haystack_dates", [])
         sessions = row.get("haystack_sessions", [])
@@ -163,9 +163,8 @@ class LMEBLoader:
                             "body": content,
                             # Conversational turns have no H1; the skip path's
                             # subject derivation (title > H1 > None) needs a
-                            # title or it raises (f5-16 §3.3). A truncated
-                            # content prefix is a meaningful, mostly-distinct
-                            # subject.
+                            # title or it raises. A truncated content prefix is
+                            # a meaningful, mostly-distinct subject.
                             "title": _turn_title(content),
                         }
                         for t in turns
@@ -183,10 +182,9 @@ def _turn_title(content: str) -> str:
     """A derivable subject for a conversational turn (no H1 in LMEB content).
 
     The skip path's ``deterministic_extract`` raises ``SubjectDerivationError``
-    when neither a title nor an H1 is present (f5-16 §3.3: the corpus builder
-    must ensure a derivable subject). A whitespace-collapsed content prefix is
-    a meaningful, mostly-distinct subject; the empty fallback keeps the turn
-    ingestible.
+    when neither a title nor an H1 is present — the corpus builder must ensure a
+    derivable subject. A whitespace-collapsed content prefix is a meaningful,
+    mostly-distinct subject; the empty fallback keeps the turn ingestible.
     """
     cleaned = " ".join(content.split())
     return cleaned[:_TITLE_PREFIX_CHARS] or "untitled"
@@ -219,7 +217,7 @@ def _resolve_raw_json_path(config: BenchmarkConfig) -> Path:
 
 def _loader_code_sha256() -> str:
     """The canonicalization code hash — the trust_remote_code audit target now
-    that no remote script executes (f5-16 §4.1: prematerialization preference)."""
+    that no remote script executes (prematerialization preference)."""
     return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 

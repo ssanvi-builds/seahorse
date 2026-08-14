@@ -1,6 +1,6 @@
-"""SqliteEpisodeIndexRepository load-bearing tests (Phase 6 — the critical one).
+"""SqliteEpisodeIndexRepository load-bearing tests.
 
-Guards the 7 SO-1 accessors + bfs_neighbors_state_at (SO-8b): PIT axes never
+Guards the 7 accessors + bfs_neighbors_state_at: PIT axes never
 mixed (state_at filters valid_at/invalid_at, known_at filters created_at/expired_at,
 NULL-safe), bridge equality on find_vigent_row_by_fact_id, HopsCapExceeded at
 hops > 2, NotImplementedError for include_tags_soft, and cycle-safety in BFS.
@@ -77,7 +77,7 @@ def _row(
 
 def test_structurally_satisfies_protocol(index: SqliteEpisodeIndexRepository) -> None:
     assert isinstance(index, EpisodeIndexRepository)
-    assert not hasattr(index, "atomic")  # SO-7a.6
+    assert not hasattr(index, "atomic")
 
 
 # --- get_rows ---------------------------------------------------------------
@@ -128,7 +128,7 @@ def test_pit_axes_never_mixed_on_discrepant_row(
 def test_state_at_excludes_real_pending_and_includes_from_forever(
     index: SqliteEpisodeIndexRepository,
 ) -> None:
-    # CC-2 (C8.6): ``valid_at IS NULL`` means "from forever" (f5-02 §2 line 85) —
+    # ``valid_at IS NULL`` means "from forever" —
     # valid at ANY ``t``, so a ``state_at(t)`` PIT query MUST include it. The
     # previous predicate (``valid_at IS NOT NULL AND valid_at <= ?``) excluded
     # NULL, mis-treating "from forever" as PENDING. Real PENDING is
@@ -144,7 +144,7 @@ def test_state_at_excludes_real_pending_and_includes_from_forever(
     assert {r.ep_id for r in index.get_rows_state_at(["e_forever", "e_pending"], at)} == {
         "e_forever"
     }
-    # known_at includes both by creation time (axes are independent — ADR-03).
+    # known_at includes both by creation time (axes are independent).
     assert {r.ep_id for r in index.get_rows_known_at(["e_forever", "e_pending"], at)} == {
         "e_forever",
         "e_pending",
@@ -178,7 +178,7 @@ def test_find_vigent_row_bridge_equality(index: SqliteEpisodeIndexRepository) ->
         _row(mgr, "e1", fact_id="fact-abc")
     vigent = index.find_vigent_row_by_fact_id("fact-abc")
     assert vigent is not None
-    assert vigent.fact_id == "fact-abc"  # SO-8c bridge equality, by construction
+    assert vigent.fact_id == "fact-abc"  # bridge equality, by construction
 
 
 def test_find_vigent_row_excludes_invalidated(index: SqliteEpisodeIndexRepository) -> None:
@@ -202,8 +202,8 @@ def test_find_vigent_row_exclude_param(index: SqliteEpisodeIndexRepository) -> N
 def test_chain_rows_from_full_lineage(index: SqliteEpisodeIndexRepository) -> None:
     mgr = index._cm  # noqa: SLF001
     base = datetime(2026, 1, 1, tzinfo=UTC)
-    # a real supersession chain: e1 and e2 are invalidated, only e3 is vigente
-    # (the I11 partial unique forbids two vigente rows with the same fact_id).
+    # a real supersession chain: e1 and e2 are invalidated, only e3 is currently valid
+    # (the partial unique forbids two currently valid rows with the same fact_id).
     with mgr.atomic():
         _row(
             mgr,
@@ -231,13 +231,13 @@ def test_chain_rows_from_full_lineage(index: SqliteEpisodeIndexRepository) -> No
     assert [r.ep_id for r in chain] == ["e1", "e2", "e3"]
 
 
-# --- range_rows_* (MVP-1 axes, revisable) -----------------------------------
+# --- range_rows_* (later-release axes, revisable) -----------------------------------
 
 
 @pytest.mark.mvp1_axis
 def test_range_rows_state_at_window(index: SqliteEpisodeIndexRepository) -> None:
     mgr = index._cm  # noqa: SLF001
-    # distinct fact_ids so all three can be vigente simultaneously (I11).
+    # distinct fact_ids so all three can be currently valid simultaneously.
     with mgr.atomic():
         _row(mgr, "e1", fact_id="f1", valid_at=datetime(2026, 1, 1, tzinfo=UTC))
         _row(mgr, "e2", fact_id="f2", valid_at=datetime(2026, 1, 5, tzinfo=UTC))
@@ -253,7 +253,7 @@ def test_range_rows_known_at_subject_filter(
     index: SqliteEpisodeIndexRepository,
 ) -> None:
     mgr = index._cm  # noqa: SLF001
-    # distinct fact_ids so both can be vigente.
+    # distinct fact_ids so both can be currently valid.
     with mgr.atomic():
         _row(mgr, "e1", fact_id="fa", subject="A", created_at=datetime(2026, 1, 1, tzinfo=UTC))
         _row(mgr, "e2", fact_id="fb", subject="B", created_at=datetime(2026, 1, 2, tzinfo=UTC))
@@ -265,13 +265,13 @@ def test_range_rows_known_at_subject_filter(
     assert {r.ep_id for r in rows} == {"e1"}
 
 
-# --- bfs_neighbors_state_at (SO-8b) -----------------------------------------
+# --- bfs_neighbors_state_at -----------------------------------------
 
 
 def _seed_chain(index: SqliteEpisodeIndexRepository) -> None:
     mgr = index._cm  # noqa: SLF001
     base = datetime(2026, 1, 1, tzinfo=UTC)
-    # a supersession chain with only e3 vigente (e1, e2 invalidated). The BFS
+    # a supersession chain with only e3 currently valid (e1, e2 invalidated). The BFS
     # traversal explores the supersedes graph; the PIT filter selects returned rows.
     with mgr.atomic():
         _row(
@@ -319,7 +319,7 @@ def test_bfs_traverses_two_hops_when_pit_includes_all(
 ) -> None:
     # Guards the multi-hop traversal: a 1-hop-only impl (that still validates the
     # hops cap) would return {e1, e2} and miss e3. Distinct fact_ids so all three
-    # are vigente (I11); known_at PIT after every created_at includes them all.
+    # are currently valid; known_at PIT after every created_at includes them all.
     mgr = index._cm  # noqa: SLF001
     base = datetime(2026, 1, 1, tzinfo=UTC)
     with mgr.atomic():

@@ -1,4 +1,4 @@
-"""Tests for the ``[procedural]`` section of ``seahorse.toml`` (Sprint C).
+"""Tests for the ``[procedural]`` section of ``seahorse.toml``.
 
 The procedural config is additive to the existing ``[seahorse]`` / ``[llm]`` /
 ``[observe]`` sections. A missing ``[procedural]`` section → ``procedural=None``

@@ -1,4 +1,4 @@
-"""Migration defaults unit tests (f5-03 §3.2)."""
+"""Migration defaults unit tests."""
 
 from __future__ import annotations
 

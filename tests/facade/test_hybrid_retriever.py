@@ -1,9 +1,10 @@
-"""HybridRetriever adapter (M1-C.1, C8.1 slot materialization).
+"""HybridRetriever adapter.
 
-``HybridRetriever`` implements the facade ``_RetrieverLike`` seam over
-``seahorse.retrieval.recall`` (MVP-1 regime), with an honest G2 degrade to the
-``VigenteListingRetriever`` when there is nothing to serve (no vectors/FTS, or
-the embedder is not wired) — ADR-10: the motor keeps working without ranking.
+``HybridRetriever`` implements the facade ``_RetrieverLike`` extension point
+over ``seahorse.retrieval.recall`` (the later-release regime), with an honest
+degrade to the ``VigenteListingRetriever`` when there is nothing to serve (no
+vectors/FTS, or the embedder is not wired) — the motor keeps working without
+ranking.
 """
 
 from __future__ import annotations
@@ -115,9 +116,9 @@ def test_hybrid_recall_delegates_to_retrieval_engine(monkeypatch) -> None:
 
 
 def test_hybrid_recall_caps_k_at_config_top_k(monkeypatch) -> None:
-    """Parity with the G2 retriever: k is capped at ``config.top_k`` (the MCP
-    ``seahorse.toml`` top_k must be honored by the hybrid path too — surfaced
-    when the embeddings extra wired the hybrid regime)."""
+    """Parity with the listing-regime retriever: k is capped at ``config.top_k``
+    (the MCP ``seahorse.toml`` top_k must be honored by the hybrid path too —
+    surfaced when the embeddings extra wired the hybrid regime)."""
     import seahorse.retrieval.engine as re_mod
 
     calls: list[tuple[str, dict]] = []
@@ -136,7 +137,7 @@ def test_hybrid_degrades_to_g2_when_no_index_data() -> None:
     fallback = _Fallback()
     hybrid = _make(vec_count=0, fts_count=0, fallback=fallback)
     result = hybrid.recall("madrid", pit=None, k=5)
-    assert fallback.calls == [("madrid", 5)]  # delegated to G2
+    assert fallback.calls == [("madrid", 5)]  # delegated to the listing regime
     assert result == []
 
 
@@ -151,7 +152,7 @@ def test_hybrid_degrades_to_g2_when_embedder_not_wired() -> None:
 
 def test_hybrid_degrades_to_g2_on_embedder_runtime_failure(monkeypatch) -> None:
     # The index has data but the embedder blows up at runtime: honest degrade to
-    # G2 (ADR-10) rather than failing the recall.
+    # the listing regime rather than failing the recall.
     import seahorse.retrieval.engine as re_mod
 
     def boom(query: str, **kwargs):

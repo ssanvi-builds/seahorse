@@ -1,4 +1,4 @@
-"""``frontmatter.errors`` — the loud-rejection surface (ADR-10)."""
+"""``frontmatter.errors`` — the loud-rejection surface."""
 
 from __future__ import annotations
 
@@ -23,14 +23,14 @@ def test_frontmatter_invalid_carries_path_and_cause() -> None:
 
 
 def test_frontmatter_invalid_message_is_actionable() -> None:
-    # Matrix finding (vault_legacy combo): `index rebuild` on a legacy Obsidian
-    # note surfaced only the raw pydantic validation errors — no hint for a user
-    # who does not know the F3.1 shape. The message must say the note is not
-    # valid F3.1 and what to do about it.
+    # `index rebuild` on a legacy Obsidian note used to surface only the raw
+    # pydantic validation errors — no hint for a user who does not know the
+    # canonical format. The message must say the note is not valid and what to
+    # do about it.
     cause = ValueError("id Field required")
     err = FrontmatterInvalid(Path("/v/legacy.md"), cause)
     msg = str(err)
-    assert "not valid F3.1" in msg
+    assert "not valid frontmatter" in msg
     assert "correct" in msg
     assert "id" in msg  # names a required field so the user knows what to fix
 

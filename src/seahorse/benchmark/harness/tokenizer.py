@@ -1,4 +1,4 @@
-"""``Tokenizer`` — REAL token counting via the reader LLM tokenizer (f5-16 §4.4 F4).
+"""``Tokenizer`` — REAL token counting via the reader LLM tokenizer.
 
 Uses ``tiktoken`` (the ``benchmark`` extra) with a configurable encoding;
 falls back to a deterministic heuristic (chars/4) when tiktoken is absent so

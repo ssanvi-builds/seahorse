@@ -1,4 +1,4 @@
-"""Manifest serialization + resume integration tests (f5-03 §3.5)."""
+"""Manifest serialization + resume integration tests."""
 
 from __future__ import annotations
 

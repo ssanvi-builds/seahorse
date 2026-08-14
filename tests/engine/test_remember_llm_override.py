@@ -1,8 +1,8 @@
-"""Tests for the LLM-path ``subject``/``tags`` override on ``remember`` (M4-C.3).
+"""Tests for the LLM-path ``subject``/``tags`` override on ``remember``.
 
 ``remember`` accepts ``subject``/``tags`` additively. When the extractor
-produced a subject it WINS over the SO-2 derivation (``title > H1 > None``) in
-``apply_fact``, and the tags are stored on the episode. The skip path never
+produced a subject it WINS over the default derivation (``title > H1 > None``)
+in ``apply_fact``, and the tags are stored on the episode. The skip path never
 passes them, so its derivation is byte-identical to the pre-override behaviour
 — pinned here as a regression against the old ``fact_id_for(body, title)``.
 """
@@ -72,11 +72,11 @@ class TestRememberSubjectOverride:
 
 class TestTagsNotPersisted:
     def test_sqlite_store_reads_tags_back_as_empty(self, storage) -> None:
-        # M4-C.3 honesty: the MVP-1 SQLite episode store does NOT persist
-        # ``tags`` (the repo reads them back as ``[]``). That is why
-        # ``remember`` does not accept a tags override — an injected tag would
-        # be a silent lie. This pins the current store behaviour so nobody
-        # reintroduces the parameter before #6 adds the column.
+        # Honesty: the SQLite episode store does NOT persist ``tags`` (the repo
+        # reads them back as ``[]``). That is why ``remember`` does not accept a
+        # tags override — an injected tag would be a silent lie. This pins the
+        # current store behaviour so nobody reintroduces the parameter before
+        # the persistence layer adds the column.
         repo, audit = storage
         engine = BiTemporalEngine(repo=repo, audit=audit)
         res = engine.remember(

@@ -1,9 +1,9 @@
-"""``seahorse view`` — read-only interactive viewer (ADR-012 l.74).
+"""``seahorse view`` — read-only interactive viewer.
 
 Closes the daily-utility gap vs claude-mem: a minimal TUI over the existing
 facade. READ-ONLY — it never writes, never edits, never calls a write primitive.
-It is a client of #12 (MemoryFacade) and reuses the existing render helpers
-(delegation purity).
+It is a client of the facade (``MemoryFacade``) and reuses the existing render
+helpers (delegation purity).
 
 Views (progressive disclosure INDEX → TIMELINE → FULL):
 1. Recent episodes (recall INDEX).
@@ -11,13 +11,9 @@ Views (progressive disclosure INDEX → TIMELINE → FULL):
 3. Timeline of an episode (recall_timeline).
 4. Skills (procedural filter).
 
-The interaction loop is stdlib ``input()`` (no curses, no rich) — honest
-"mínimo", fully testable via an injected input stream. Without a DB / empty
-vault it degrades honestly (ADR-10): a clear message, never a crash.
-
-References:
-- adr-012-identity-product-standard.md l.74 (viewer TUI in the free tier)
-- obsiforge-evolution-architecture.md l.97/486/579 (daily-utility degradation)
+The interaction loop is stdlib ``input()`` (no curses, no rich) — minimal,
+fully testable via an injected input stream. Without a DB / empty vault it
+degrades honestly: a clear message, never a crash.
 """
 
 from __future__ import annotations
@@ -47,12 +43,13 @@ def run_view(
     """Interactive read-only viewer loop.
 
     ``input_stream`` is injectable for tests (a callable that returns the next
-    line). The viewer is a client of #12 — it only calls the read primitives
-    (``recall`` / ``recall_timeline`` / ``get_vigente``) and never writes.
+    line). The viewer is a client of the facade — it only calls the read
+    primitives (``recall`` / ``recall_timeline`` / ``get_vigente``) and never
+    writes.
     """
     read = input_stream if input_stream is not None else input
     if _vault_empty(facade):
-        out.write("vault vacío / no inicializado — use `seahorse remember` or `seahorse import`\n")
+        out.write("vault empty / not initialized — use `seahorse remember` or `seahorse import`\n")
         return
     while True:
         out.write(_MENU)

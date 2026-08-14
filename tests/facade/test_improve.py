@@ -1,14 +1,15 @@
-"""Tests for ``MemoryFacade.improve`` — manual supersede edit via #2.
+"""Tests for ``MemoryFacade.improve`` — manual supersede edit via the engine.
 
-``improve`` delegates to #2 ``engine.improve`` directly (NOT #5 — #5 owns the
-first-ingestion write-path, not the supersede edit). The effective provenance
-marks the edit as a skip-path extraction (``extraction_mode='skip'``,
+``improve`` delegates to ``engine.improve`` directly (NOT the write path — the
+write path owns first ingestion, not the supersede edit). The effective
+provenance marks the edit as a skip-path extraction (``extraction_mode='skip'``,
 ``model_used=None``, ``prompt_hash=None``, ``confidence=1.0``) while preserving
-the caller's ``source_type``. #12 does NOT call ``write_path.ingest`` and does
-NOT open ``repo.atomic()`` (#2 owns the I8 atomic invalidate-then-append).
+the caller's ``source_type``. The primitives facade does NOT call
+``write_path.ingest`` and does NOT open ``repo.atomic()`` (the engine owns the
+atomic invalidate-then-append).
 
-``EngineError(E_COLLISION_EXISTS)`` is propagated verbatim — the gap from
-f5-12 §5.5 is resolved in the engine (atomic rollback).
+``EngineError(E_COLLISION_EXISTS)`` is propagated verbatim — the gap is
+resolved in the engine (atomic rollback).
 """
 
 from __future__ import annotations
@@ -104,8 +105,8 @@ class TestImproveEffectiveProvenance:
 
 class TestImproveCollisionPropagation:
     def test_collision_exists_propagated_verbatim(self, facade, engine) -> None:
-        # f5-12 §5.5 gap is resolved in the engine: E_COLLISION_EXISTS + rollback.
-        # #12 does NOT catch it.
+        # The collision gap is resolved in the engine: E_COLLISION_EXISTS +
+        # rollback. The primitives facade does NOT catch it.
         engine.improve_raise = EngineError(E_COLLISION_EXISTS, collisions=["c1"])
         with pytest.raises(EngineError) as exc:
             facade.improve("e1", "new body", by=_by())
@@ -132,9 +133,9 @@ class TestImproveLog:
 
 
 class TestImproveIndexesSuccessor:
-    """F7 experiment enabler — improve must make the successor retrievable.
+    """Experiment enabler — improve must make the successor retrievable.
 
-    f5-16 §4.6: ``knowledge_update_accuracy`` = fraction where the new version
+    ``knowledge_update_accuracy`` = fraction where the new version
     post-``improve`` is in top-k. In the hybrid regime the new version is only
     retrievable if the composition root indexes it — a pure ``engine.improve``
     write leaves it in the ``episodes`` table but not in vec0/FTS. The facade
@@ -195,8 +196,9 @@ class TestImproveBoundaryValidation:
 
 class TestImproveDoesNotValidateValidAt:
     def test_far_future_valid_at_passed_through(self, facade, engine) -> None:
-        # The valid_at guard is #2-owned. #12 must NOT reject a far-future
-        # value at the border — it forwards it untouched to engine.improve.
+        # The valid_at guard is engine-owned. The primitives facade must NOT
+        # reject a far-future value at the border — it forwards it untouched to
+        # engine.improve.
         engine.improve_result = make_episode("e2")
         t = datetime(9999, 1, 1, tzinfo=UTC)
         facade.improve("e1", "new body", by=_by(), valid_at=t)

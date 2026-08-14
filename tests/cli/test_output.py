@@ -1,6 +1,7 @@
-"""``seahorse.cli.output`` — renderers + serialization (mirrors #13's wire codec).
+"""``seahorse.cli.output`` — renderers + serialization (mirrors the MCP server's
+wire codec).
 
-Owned by #14 (sister-projection independence): the CLI does NOT import
+Owned by the CLI (sister-projection independence): it does NOT import
 ``seahorse.mcp.serialize``, so its serializer is tested here in its own right.
 """
 
@@ -29,7 +30,7 @@ from tests.cli.builders import (
 )
 
 # ---------------------------------------------------------------------------
-# to_jsonable — type conversions (mirror of #13's to_wire).
+# to_jsonable — type conversions (mirror of the MCP server's to_wire).
 # ---------------------------------------------------------------------------
 
 
@@ -57,7 +58,7 @@ def test_jsonable_path():
 
 
 def test_jsonable_uuid():
-    """Defensive parity with #13: a UUID serializes canonically."""
+    """Defensive parity with the MCP server: a UUID serializes canonically."""
     from uuid import UUID
 
     assert to_jsonable(UUID("00000000-0000-7000-0000-000000000000")) == (
@@ -86,21 +87,21 @@ def test_jsonable_dataclass():
 
 
 def test_jsonable_episode_exclude_fields_travel_wire():
-    # Regression guard for the Pydantic migration (commit 1): body/subject/
-    # fact_id are Field(exclude=True) — model_dump omits them, but the CLI
-    # walker reads via getattr so they STILL travel the JSON output (sister
-    # parity with #13's to_wire). Locks the invariant; fails if the walker
-    # ever switches to model_dump.
+    # Regression guard for the Pydantic migration: body/subject/fact_id are
+    # Field(exclude=True) — model_dump omits them, but the CLI walker reads via
+    # getattr so they STILL travel the JSON output (sister parity with the MCP
+    # server's to_wire). Locks the invariant; fails if the walker ever switches
+    # to model_dump.
     ep = make_episode("ep-1", body="Sergio lives in Madrid", subject="Sergio")
     out = to_jsonable(ep)
     assert out["body"] == "Sergio lives in Madrid"
     assert out["subject"] == "Sergio"
     assert out["fact_id"] == "fact-1"  # hardcoded by the builder
-    assert out["supersedes_reason"] is None  # NEW additive wire key (commit 1)
+    assert out["supersedes_reason"] is None  # NEW additive wire key
 
 
 def test_to_json_is_compact_and_nulls_explicit():
-    """exclude_none=False: nulls present (shape stable MVP-0 → MVP-1)."""
+    """exclude_none=False: nulls present (shape stable across releases)."""
     ep = make_episode("ep-1")  # subject="Sergio", title=None
     s = to_json(ep)
     assert '"title": null' in s
@@ -110,7 +111,7 @@ def test_to_json_is_compact_and_nulls_explicit():
 
 
 # ---------------------------------------------------------------------------
-# render_write_result — remember (no Episode in MVP-0, honest gap).
+# render_write_result — remember (no Episode in the first release, honest gap).
 # ---------------------------------------------------------------------------
 
 
@@ -203,7 +204,7 @@ def test_render_timeline_human():
 
 
 def test_render_timeline_human_hints_recall_full():
-    """Progressive disclosure (ADR-06): the middle rung hints at the next."""
+    """Progressive disclosure: the middle rung hints at the next."""
     out = []
     render_timeline(make_timeline_window(), fmt="human", out=_Sink(out))
     text = "".join(out)

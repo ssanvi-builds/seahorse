@@ -1,10 +1,10 @@
-"""BFS-as-INDEX mediano extension tests (f5-11 §4.1/§7.6; SO-8b).
+"""BFS-as-INDEX extension tests (a medium-term goal).
 
 BFS is TIMELINE-only by default (``bfs_as_index_enabled=False``); using it as an
-INDEX fusion source is a mediano extension pending #8/#10 sign-off. ``known_at``
-BFS raises ``BfsKnownAtUnsupported`` (no silent ``state_at`` fallback — ADR-03)
-unless ``bfs_known_at_supported=True`` (TD-2 sign-off). Hops are capped to
-``MAX_HOPS_MVP1`` before the call (no dead try/except retry).
+INDEX fusion source is a medium-term extension pending sign-off. ``known_at``
+BFS raises ``BfsKnownAtUnsupported`` (no silent ``state_at`` fallback) unless
+``bfs_known_at_supported=True``. Hops are capped to ``MAX_HOPS_MVP1`` before the
+call (no dead try/except retry).
 
 Signals:
 - ``bfs_as_index_enabled=False`` (default) -> BFS axis NOT invoked.
@@ -141,7 +141,7 @@ class TestKnownAtBfsSignoff:
         self, embedder, vector_repo, fts_repo, episode_repo, bfs_repo
     ):
         # Seed the known_at kNN hits so stage 1 has an anchor (pit=known_at routes
-        # to knn_known_at, not the vigent knn).
+        # to knn_known_at, not the current-state knn).
         vector_repo.knn_known_at_hits = [VectorHit("e1", 0.1, 0.9)]
         result = recall(
             "q",

@@ -1,18 +1,19 @@
-"""``SeahorseSUT`` — adapter #12 ``MemoryFacade`` → the benchmark SUT interface.
+"""``SeahorseSUT`` — wraps the ``MemoryFacade`` behind the benchmark SUT interface.
 
-Delegation purity (f5-16 §2.4): the SUT knows ONLY #12 (``MemoryFacade``) and
-its return types (``WriteResult``, ``list[IndexRow]``, ``TimelineWindow``,
-``list[FullDetail]``, ``Episode``). It never imports #2/#6/#11 internals.
+Delegation purity: the SUT knows ONLY ``MemoryFacade`` and its return types
+(``WriteResult``, ``list[IndexRow]``, ``TimelineWindow``, ``list[FullDetail]``,
+``Episode``). It never imports engine, persistence, or hybrid-retrieval
+internals.
 
-The SUT owns the retrieval bridge (f5-16 §3.7): ``fact_id_to_session`` is
-populated from each ``WriteResult.fact_id`` after ``remember``; the accurate
-``ep_id_to_session`` map (which also covers the new versions created by
-``improve``) resolves ``retrieved_session_ids`` for the metrics. ``fact_key_to_ep_id``
-lets the ``KnowledgeUpdateSimulator`` resolve the old version of a fact.
+The SUT owns the retrieval bridge: ``fact_id_to_session`` is populated from each
+``WriteResult.fact_id`` after ``remember``; the accurate ``ep_id_to_session``
+map (which also covers the new versions created by ``improve``) resolves
+``retrieved_session_ids`` for the metrics. ``fact_key_to_ep_id`` lets the
+``KnowledgeUpdateSimulator`` resolve the old version of a fact.
 
-``score_source`` is the experiment variant (f7 §3); the SUT detects the honest
-regime at runtime — if every recall score is 0.0, the hybrid retrieval is not
-wired and the manifest reports ``fallback_g2`` (ADR-10 honesty).
+``score_source`` is the experiment variant; the SUT detects the honest regime at
+runtime — if every recall score is 0.0, the hybrid retrieval is not wired and
+the manifest reports ``fallback_g2`` (fail-loud honesty).
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ _MIN_DT = datetime.min.replace(tzinfo=UTC)
 
 
 class SeahorseSUT:
-    """Adapts #12 ``MemoryFacade`` to the benchmark SUT interface."""
+    """Adapts ``MemoryFacade`` to the benchmark SUT interface."""
 
     def __init__(
         self,
@@ -67,11 +68,11 @@ class SeahorseSUT:
         self._recency_config = recency_config
         self._rerank_enabled = rerank_enabled
         self._embed_mode = embed_mode
-        # Retrieval bridge (f5-16 §3.7): fact_id→session (spec contract) +
-        # ep_id→session (accurate, covers improve-created versions) +
-        # fact_key→ep_id (for the KnowledgeUpdateSimulator). The warm-DB path
-        # (f7 §5a) pre-populates the bridge from a shared corpus template so a
-        # variant SUT over a copied DB skips re-ingestion.
+        # Retrieval bridge: fact_id→session (spec contract) + ep_id→session
+        # (accurate, covers improve-created versions) + fact_key→ep_id (for the
+        # KnowledgeUpdateSimulator). The warm-DB path pre-populates the bridge
+        # from a shared corpus template so a variant SUT over a copied DB skips
+        # re-ingestion.
         self.fact_id_to_session = fact_id_to_session
         self._ep_id_to_session: dict[str, str] = dict(ep_id_to_session or {})
         self.fact_key_to_ep_id: dict[str, str] = dict(fact_key_to_ep_id or {})
@@ -80,12 +81,13 @@ class SeahorseSUT:
     # ------------------------------------------------------------------ ingest
 
     def ingest(self, sessions: Sequence[dict]) -> list[str]:
-        """Ingest haystack sessions via #12.remember with extraction_mode=skip.
+        """Ingest haystack sessions via ``MemoryFacade.remember`` with
+        ``extraction_mode=skip``.
 
-        ``source_type='human'`` + ``valid_at=session_date`` in temporal mode
-        (I2 permits arbitrary valid_at for human; the guard forces skip — f5-16
-        §3.4). Sessions are ordered by date (oldest first) so the first version
-        of a fact is ingested before its successor. Returns the ep_ids created.
+        ``source_type='human'`` + ``valid_at=session_date`` in temporal mode (a
+        human source permits an arbitrary valid_at; the guard forces skip).
+        Sessions are ordered by date (oldest first) so the first version of a
+        fact is ingested before its successor. Returns the ep_ids created.
         """
         ep_ids: list[str] = []
         ordered = sorted(
@@ -120,7 +122,7 @@ class SeahorseSUT:
     # ------------------------------------------------- knowledge updates
 
     def apply_knowledge_updates(self, updates: Sequence[dict]) -> list[str]:
-        """Create supersedes chains via #12.improve (f5-16 §4.6).
+        """Create supersedes chains via ``MemoryFacade.improve``.
 
         Each update carries a resolved ``old_ep_id``; ``improve`` invalidates it
         and appends the new version. Returns the new ep_ids (tracked for
@@ -145,10 +147,10 @@ class SeahorseSUT:
     # ------------------------------------------------------------------ query
 
     def query(self, question: str, *, question_date: datetime | None = None) -> SUTResponse:
-        """Answer via #12.recall (INDEX) + the harness reader LLM.
+        """Answer via ``MemoryFacade.recall`` (INDEX) + the harness reader LLM.
 
-        Token count is REAL via the reader tokenizer (f5-16 §4.4 F4), never
-        ``len*50``. ``retrieved_session_ids`` is resolved via the ep_id bridge.
+        Token count is REAL via the reader tokenizer, never ``len*50``.
+        ``retrieved_session_ids`` is resolved via the ep_id bridge.
         """
         t0 = time.perf_counter()
         index_rows = self._recall(question, question_date)
@@ -165,9 +167,9 @@ class SeahorseSUT:
         reader_latency = (time.perf_counter() - t0_reader) * 1000
         latency_ms = {"index": latency_index}
         if self._rerank_enabled:
-            # F2 (f7 §5b): the rerank-path INDEX latency — the stage-3 budget
+            # The rerank-path INDEX latency — its own budget
             # (p95_index_rerank_ms <= 500ms). The base path keeps its 250ms
-            # promise; the rerank path has its OWN budget (cerebras-f §4.3).
+            # promise; the rerank path has its OWN budget.
             latency_ms["index_rerank"] = latency_index
         return SUTResponse(
             answer=answer,
@@ -185,7 +187,8 @@ class SeahorseSUT:
         )
 
     def _detect_score_source(self, rows) -> str:
-        """Honest regime detection: all-zero scores ⇒ G2 fallback (ADR-10)."""
+        """Honest regime detection: all-zero scores ⇒ the listing-regime fallback
+        (fail-loud honesty)."""
         if self._detected_score_source is None:
             if rows and all(r.score == 0.0 for r in rows):
                 self._detected_score_source = "fallback_g2"
@@ -194,16 +197,16 @@ class SeahorseSUT:
         return self._detected_score_source
 
     def _recall(self, question: str, question_date: datetime | None) -> Any:
-        """#12.recall with the temporal PIT when the question anchors a date.
+        """``MemoryFacade.recall`` with the temporal PIT when the question
+        anchors a date.
 
-        f5-16 §3.4: temporal-reasoning questions evaluate with
-        ``pit=state_at(question_date)`` in temporal mode, so the state as-of-the-
-        question is what gets ranked (the old version, pre-update). Honest
-        degrade (ADR-10): a regime without a PIT axis (G2, ADR-03) raises
-        ``PitRecallNotSupportedMVP0`` from #12 → fall back to active-now, never
-        crash the run.
+        Temporal-reasoning questions evaluate with ``pit=state_at(question_date)``
+        in temporal mode, so the state as-of-the-question is what gets ranked
+        (the old version, pre-update). Honest degrade: a regime without a PIT
+        axis raises ``PitRecallNotSupportedMVP0`` from the facade → fall back to
+        active-now, never crash the run.
 
-        ``pit_queries=False`` (F7 §5a recency): the recency boost's gate is
+        ``pit_queries=False`` (recency variant): the recency boost's gate is
         ``pit is None`` — the recency experiment queries the active-now regime
         even in temporal mode, so the boost is actually testable (all LMEB
         questions carry a question_date, which would otherwise PIT every query).
@@ -214,7 +217,7 @@ class SeahorseSUT:
                     question, k=self._top_k, pit=PITPoint(kind="state_at", t=question_date)
                 )
             except PitRecallNotSupportedMVP0:
-                pass  # honest G2 degrade → active-now below
+                pass  # honest listing-regime degrade → active-now below
         return self._facade.recall(question, k=self._top_k)
 
     @staticmethod
@@ -230,8 +233,8 @@ class SeahorseSUT:
     def probe_level(self, question: str, level: str) -> dict:
         """Isolated level probe — latency/count WITHOUT the reader LLM.
 
-        Called by the ``LevelProbeRunner`` for p95 TIMELINE/FULL in MVP-1 flat
-        mode (f5-16 §3.6 F2).
+        Called by the ``LevelProbeRunner`` for p95 TIMELINE/FULL in the current
+        release's flat mode.
         """
         if level == "index":
             t0 = time.perf_counter()

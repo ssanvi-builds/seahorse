@@ -1,4 +1,4 @@
-"""Install smoke (C2, optional + slow) — validates the "clone, install, run"
+"""Install smoke (optional + slow) — validates the "clone, install, run"
 promise for a real user: build the wheel, install it in a FRESH venv, and
 confirm both console scripts (``seahorse`` + ``seahorse-mcp``) resolve and run.
 

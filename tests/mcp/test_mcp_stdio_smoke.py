@@ -1,5 +1,5 @@
 """Real-stdio MCP smoke — the systematic functional review for the agent
-surface (C2), committed as regression tests.
+surface, committed as regression tests.
 
 Spawns ``python -m seahorse.mcp --vault <tmp>`` as a real subprocess with
 stdin/stdout pipes and drives the newline-delimited JSON-RPC 2.0 protocol:
@@ -7,7 +7,7 @@ initialize → tools/list (7) → remember → recall → improve → forget →
 build_pit → notification (no reply) → deferred tool (-32601) → malformed
 (-32700) → EOF (clean exit 0).
 
-This catches what the in-process ``serve(io.StringIO)`` tests cannot: the C1
+This catches what the in-process ``serve(io.StringIO)`` tests cannot: the
 ``main()`` launch path (argparse, vault resolution via ``seahorse.cli.config``,
 ``build_facade`` honoring ``seahorse.toml``, the Storage ``finally`` close),
 the real process boundary, and real pipe I/O (incl. the ``serverInfo.version``
@@ -88,14 +88,14 @@ def test_stdio_full_session(vault: Path) -> None:
         init = _recv(proc)
         assert init["result"]["protocolVersion"] == "2025-11-25"
         assert init["result"]["serverInfo"]["name"] == "seahorse-memory"
-        # version is single-sourced from package metadata (C1)
+        # version is single-sourced from package metadata
         try:
             expected_version = importlib.metadata.version("seahorse")
         except importlib.metadata.PackageNotFoundError:
             expected_version = "0.0.0"
         assert init["result"]["serverInfo"]["version"] == expected_version
 
-        # tools/list → exactly 12 (Sprint C debt closure)
+        # tools/list → exactly 12
         _send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         listing = _recv(proc)
         names = {t["name"] for t in listing["result"]["tools"]}

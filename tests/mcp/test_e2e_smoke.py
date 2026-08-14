@@ -1,4 +1,5 @@
-"""End-to-end stdio smoke for #13 against the REAL #2 + #8 + #6 + #5 stack.
+"""End-to-end stdio smoke for the MCP server against the REAL engine +
+disclosure shaper + persistence + write path stack.
 
 Drives the stdio JSON-RPC loop in-process (``io.StringIO`` for stdin/stdout)
 against a real ``MemoryFacade`` built by the conftest ``real_facade`` fixture.
@@ -129,7 +130,7 @@ class TestFullLifecycle:
         rows_after = self._content(resps2[1])
         ids_after = [r["ep_id"] for r in rows_after]
         assert new_ep["id"] in ids_after
-        assert old_id not in ids_after  # old no longer vigente
+        assert old_id not in ids_after  # old no longer the current version
 
         # forget the new episode → invalidated
         forget_args = {
@@ -166,7 +167,8 @@ class TestFullLifecycle:
 
     def test_remember_with_tags_rejected_by_facade(self, real_facade) -> None:
         # tags are wire-accepted (maxItems 32) but the facade rejects non-empty
-        # tags in MVP-0 (E_NOT_IN_MVP_0_1) — honest, #13 delegates.
+        # tags in the first release (E_NOT_IN_MVP_0_1) — honest, the MCP server
+        # delegates.
         resps = self._run(
             real_facade,
             [
@@ -218,8 +220,8 @@ class TestFullLifecycle:
         assert self._content(resps[4]) is None  # build_pit all-None → null
 
     def test_recall_timeline_and_full_real_stack(self, real_facade) -> None:
-        # recall_timeline + recall_full against the REAL #8 shaper (the two
-        # tools the original e2e smoke did not exercise). Asserts the
+        # recall_timeline + recall_full against the REAL disclosure shaper (the
+        # two tools the original e2e smoke did not exercise). Asserts the
         # TimelineWindow and FullDetail wire shapes come back canonicalized.
         remember_args = {
             "body": "Sergio lives in Madrid",

@@ -1,11 +1,12 @@
-"""HybridRetriever — the MVP-1 recall regime over ``seahorse.retrieval.recall``.
+"""HybridRetriever — the later-release recall regime over ``seahorse.retrieval.recall``.
 
-Materializes the C8.1 ``_RetrieverLike`` seam (the recall policy slot) with the
-real #11 hybrid engine. It serves the hybrid path when there is something to
-serve (vec0/FTS data + a real embedder) and honestly degrades to the injected
-G2 ``VigenteListingRetriever`` otherwise (ADR-10: the motor keeps working
-without ranking). ``supports_pit`` is True — PIT routing is #11's job; if the
-degrade path receives a pit it refuses (G2 has no PIT axis, ADR-03).
+Materializes the ``_RetrieverLike`` extension point (the recall policy slot)
+with the real hybrid engine. It serves the hybrid path when there is something
+to serve (vec0/FTS data + a real embedder) and honestly degrades to the
+injected listing ``VigenteListingRetriever`` otherwise (the motor keeps working
+without ranking). ``supports_pit`` is True — PIT routing is hybrid retrieval's
+job; if the degrade path receives a pit it refuses (the listing regime has no
+PIT axis).
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ _logger = logging.getLogger("seahorse.facade.hybrid_retriever")
 
 
 class HybridRetriever:
-    """MVP-1 ``_RetrieverLike`` over ``seahorse.retrieval.recall`` (M1-C.1)."""
+    """Later-release ``_RetrieverLike`` over ``seahorse.retrieval.recall``."""
 
     supports_pit = True
 
@@ -59,9 +60,9 @@ class HybridRetriever:
         self._clock = clock
         self._config = config
         self._fallback = fallback
-        # F1 recency (default-OFF, ADR-10): None keeps the pure-RRF fingerprint.
+        # Recency (default-OFF): None keeps the pure-RRF fingerprint.
         self._recency = recency
-        # F2 rerank (default-OFF, ADR-10): None keeps the pure-RRF fingerprint.
+        # Rerank (default-OFF): None keeps the pure-RRF fingerprint.
         # The composition root wires the cross-encoder here (single-point swap).
         self._reranker = reranker
 
@@ -74,9 +75,10 @@ class HybridRetriever:
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
     ) -> Sequence[FusedCandidate]:
-        # Parity with the G2 retriever (``k_eff = min(k, config.top_k)``): the
-        # config's ``top_k`` (e.g. the MCP ``seahorse.toml``) caps the hybrid
-        # path too — surfaced when the embeddings extra wired the hybrid regime.
+        # Parity with the listing retriever (``k_eff = min(k, config.top_k)``):
+        # the config's ``top_k`` (e.g. the MCP ``seahorse.toml``) caps the
+        # hybrid path too — surfaced when the embeddings extra wired the hybrid
+        # regime.
         k_eff = min(k, self._config.top_k)
         if self._can_serve():
             try:
@@ -84,10 +86,12 @@ class HybridRetriever:
             except PitRecallNotSupportedMVP0:
                 raise
             except Exception:
-                # Honest degrade (ADR-10): the hybrid path could not serve
-                # (embedder/runtime error); fall back to the vigente listing.
+                # Honest degrade: the hybrid path could not serve
+                # (embedder/runtime error); fall back to the current-state listing.
                 _logger.warning(
-                    "hybrid recall degraded to G2 (query=%r)", query, exc_info=True
+                    "hybrid recall degraded to the current-state listing (query=%r)",
+                    query,
+                    exc_info=True,
                 )
                 return self._g2(query, pit, k_eff, cognitive_type, subject_filter)
         return self._g2(query, pit, k_eff, cognitive_type, subject_filter)
@@ -142,7 +146,7 @@ class HybridRetriever:
         subject_filter: str | None,
     ) -> Sequence[FusedCandidate]:
         if pit is not None:
-            raise PitRecallNotSupportedMVP0()  # G2 has no PIT axis (ADR-03)
+            raise PitRecallNotSupportedMVP0()  # the listing regime has no PIT axis
         return self._fallback.recall(
             query, pit=None, k=k, cognitive_type=cognitive_type, subject_filter=subject_filter
         )

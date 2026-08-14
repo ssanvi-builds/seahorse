@@ -1,4 +1,4 @@
-"""``OutputCache`` — SQLite cache keyed by content-hash (f5-16 §5.5).
+"""``OutputCache`` — SQLite cache keyed by content-hash.
 
 The cache key is ``sha256(fingerprint.run_id : prompt_hash : params_hash)``:
 a prompt bump or a config change invalidates the cache automatically.

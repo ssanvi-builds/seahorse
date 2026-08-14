@@ -1,7 +1,7 @@
-"""End-to-end smoke test for the MVP-0 engine surface (Phase 11, owned #2).
+"""End-to-end smoke test for the current-release engine surface.
 
-Exercises the full lifecycle of one fact through every MVP-0 primitive that
-an agent/MCP caller would chain, against the real #6 persistence stack (no
+Exercises the full lifecycle of one fact through every engine primitive that
+an agent/MCP caller would chain, against the real persistence stack (no
 mocks): ``remember`` -> ``get_vigente`` -> ``improve`` -> ``forget`` ->
 ``audit_log`` -> ``follow_supersedes_chain``. This is a smoke test, not a
 behavior matrix: each primitive's branches are covered by its own module.
@@ -40,11 +40,11 @@ def test_full_lifecycle_smoke(engine):
     ep_id = wr.ep_id
     assert repo.get(ep_id) is not None
 
-    # 2. get_vigente sees it (activo ahora).
+    # 2. get_vigente sees it (currently valid).
     vigent = eng.get_vigente()
     assert [e.id for e in vigent] == [ep_id]
 
-    # 3. improve: human correction -> new episode, old invalidated (I8 atomic).
+    # 3. improve: human correction -> new episode, old invalidated (atomic).
     new_ep = eng.improve(
         ep_id,
         "# Madrid is the capital of Spain (corrected)\n",
@@ -54,7 +54,7 @@ def test_full_lifecycle_smoke(engine):
     )
     assert new_ep.supersedes == ep_id
     assert repo.get(ep_id).invalid_at == LATER
-    # exactly one vigente now (the successor), old excluded.
+    # exactly one current-state now (the successor), old excluded.
     assert {e.id for e in eng.get_vigente()} == {new_ep.id}
 
     # 4. forget the successor (soft-delete).

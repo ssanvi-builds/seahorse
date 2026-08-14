@@ -1,8 +1,8 @@
 """Shared fixtures + helpers for engine tests.
 
-Reuses the #6 Storage stack (ConnectionManager + apply_migrations +
+Reuses the persistence stack (ConnectionManager + apply_migrations +
 SqliteEpisodeRepository / SqliteAuditEventRepository) so the engine is tested
-against the real persistence layer, not a mock. ``_episode`` mirrors the #6
+against the real persistence layer, not a mock. ``_episode`` mirrors the storage
 test helper so engine tests build episodes the same way storage expects.
 """
 
@@ -71,11 +71,12 @@ def _episode(
     schema_version: str = "3.1",
     provenance: dict | None = None,
 ) -> Episode:
-    # ``created_at`` is required (non-None) on the Pydantic model (F3.1
-    # non-nullable, DDL NOT NULL). Tests that exercise guard I1 / the skip-path
-    # validator on a missing created_at pass ``created_at=None``; build with a
-    # valid datetime then null it via ``model_copy`` (skips validation) so the
-    # guard — not the model — is the enforcement point under test.
+    # ``created_at`` is required (non-None) on the Pydantic model (the on-disk
+    # format makes it non-nullable, DDL NOT NULL). Tests that exercise the
+    # created_at guard / the skip-path validator on a missing created_at pass
+    # ``created_at=None``; build with a valid datetime then null it via
+    # ``model_copy`` (skips validation) so the guard — not the model — is the
+    # enforcement point under test.
     requested = datetime(2026, 1, 1, tzinfo=UTC) if created_at is _UNSET else created_at
     effective = requested if requested is not None else datetime(2026, 1, 1, tzinfo=UTC)
     ep = Episode(

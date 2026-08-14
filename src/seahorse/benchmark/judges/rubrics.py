@@ -1,6 +1,6 @@
 """``RubricRegistry`` — git-tracked judge rubrics, hashed into the fingerprint.
 
-The rubrics live in ``harness/prompts/judge/`` (git-tracked, f5-16 §5.3 F7):
+The rubrics live in ``harness/prompts/judge/`` (git-tracked):
 "lenient" = the canonical LongMemEval rubric, "strict" = atomic-claims variant.
 A rubric bump changes its SHA-256 and invalidates the cache automatically.
 """

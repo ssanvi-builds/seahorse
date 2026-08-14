@@ -140,11 +140,12 @@ def test_reserved_unknown_command_still_raises():
 
 
 def test_reserved_commands_covers_remaining_stubs():
-    """Commit 5 un-stubbed migrate/inspect/index-rebuild (now real).
+    """migrate/inspect/index-rebuild are now real commands.
 
     The reserved surface is the remaining honest-stub set: index-verify
-    (needs #7 vec0), vigentes (MVP-1), activos-ahora (mediano, needs expire).
-    migrate/inspect/index-rebuild are NO LONGER reserved.
+    (needs vec0 from the embedder), vigentes (a later release), activos-ahora
+    (a medium-term goal, needs expire). migrate/inspect/index-rebuild are NO
+    LONGER reserved.
     """
     expected = {"index-verify", "vigentes", "activos-ahora"}
     assert set(RESERVED_COMMANDS) == expected

@@ -1,19 +1,15 @@
-"""Observer event envelope — the internal capture contract (obsiforge §4.2).
+"""Observer event envelope — the internal capture contract.
 
 The envelope is an internal contract of one module with one consumer (the
 batcher). Parsing is TOLERANT (``.get()`` + defaults) so a harness field
 change is a one-line fix, never a crash. There is deliberately NO
-``HarnessAdapter`` interface and no ``cursor.py`` (YAGNI — obsiforge §4.2):
-``harness_id`` is a free string from day 1; multi-harness is phase 2.
+``HarnessAdapter`` interface and no ``cursor.py`` (YAGNI): ``harness_id`` is a
+free string from day 1; multi-harness is a later phase.
 
 Envelope shape: ``{schema_version, harness_id, session_id, agent_id,
 prompt_number, event_type, ts, payload}``. ``session_id`` / ``agent_id`` are
 opaque, capped at ``MAX_ID_CHARS`` (256). The engine never sees an envelope —
-only ``RememberPayload`` (delegation purity, obsiforge §4.2).
-
-References:
-- obsiforge-evolution-architecture.md §4.2 (event contract, tolerant parsing)
-- obsiforge-evolution-architecture.md §15.2 (prompt_number persisted in DB)
+only ``RememberPayload`` (delegation purity).
 """
 
 from __future__ import annotations
@@ -27,7 +23,7 @@ DEFAULT_HARNESS_ID = "unknown"
 DEFAULT_AGENT_ID = "unknown"
 MAX_ID_CHARS = 256
 
-# The four Claude Code hooks (obsiforge §4.2). ``event_type`` is a free string
+# The four Claude Code hooks. ``event_type`` is a free string
 # at the protocol level (tolerant parsing); the adapter uses these constants.
 EVENT_SESSION_START = "session_start"
 EVENT_USER_PROMPT_SUBMIT = "user_prompt_submit"
@@ -39,8 +35,8 @@ class EnvelopeError(ValueError):
     """Raised for a malformed envelope at the edge (never swallowed).
 
     The adapter's job is to never enqueue garbage; a malformed envelope is a
-    harness-contract drift and must surface loud (ADR-10), not be silently
-    dropped or defaulted into a wrong episode.
+    harness-contract drift and must surface loudly, not be silently dropped or
+    defaulted into a wrong episode.
     """
 
 
@@ -49,9 +45,9 @@ class Envelope:
     """A single capture event from a harness hook (immutable).
 
     ``ts`` is the ISO-8601 capture timestamp (informational only — the batcher
-    render EXCLUDES it so a reprocess after crash produces the same hash,
-    obsiforge §4.3). ``payload`` is the already-redacted event content; nothing
-    raw is ever persisted (obsiforge §4.4).
+    render EXCLUDES it so a reprocess after crash produces the same hash).
+    ``payload`` is the already-redacted event content; nothing raw is ever
+    persisted.
     """
 
     session_id: str
@@ -70,7 +66,7 @@ def parse_envelope(raw: object) -> Envelope:
     Optional fields default (``schema_version`` / ``harness_id`` / ``agent_id``
     / ``prompt_number`` / ``ts``); ``session_id`` and ``event_type`` are
     required. ``session_id`` / ``agent_id`` are capped at ``MAX_ID_CHARS`` —
-    over-cap raises ``EnvelopeError`` (edge validation, obsiforge §4.4).
+    over-cap raises ``EnvelopeError`` (edge validation).
     """
     if not isinstance(raw, dict):
         raise EnvelopeError(f"envelope must be a dict, got {type(raw).__name__}")
@@ -135,8 +131,8 @@ def envelope_to_dict(env: Envelope) -> dict[str, Any]:
 def envelope_to_json(env: Envelope) -> str:
     """Canonical JSON serialization (sort_keys + compact separators).
 
-    Deterministic across runs (ADR-10): the same envelope always serializes to
-    the same bytes, which the queue uses for the event fingerprint.
+    Deterministic across runs: the same envelope always serializes to the same
+    bytes, which the queue uses for the event fingerprint.
     """
     return json.dumps(
         envelope_to_dict(env), sort_keys=True, separators=(",", ":"), ensure_ascii=False

@@ -1,19 +1,19 @@
-"""Validate the #5 skip-path border contract (Phase 11, owned #2).
+"""Validate the skip-path border contract.
 
-``is_valid_skip_path`` is the pure border validator between the Engine (#2)
-and the Extractor (#5): a payload whose ``provenance.extraction_mode == "skip"``
-is routable down the deterministic skip-path ONLY if it satisfies the
-contract (4 timestamps in the right shape + ``valid_at <= created_at`` + a
-semver ``schema_version``).
+``is_valid_skip_path`` is the pure border validator between the Engine and the
+Extractor: a payload whose ``provenance.extraction_mode == "skip"`` is routable
+down the deterministic skip-path ONLY if it satisfies the contract (4
+timestamps in the right shape + ``valid_at <= created_at`` + a semver
+``schema_version``).
 
-Reconciliation with the ``-> bool`` signature (f5-02 §6.4, l.745-758):
+Reconciliation with the ``-> bool`` signature:
 
-- ``extraction_mode != "skip"`` -> ``False`` (not a skip-path payload; #5 uses
-  another path — not an error).
+- ``extraction_mode != "skip"`` -> ``False`` (not a skip-path payload; the
+  extractor uses another path — not an error).
 - ``extraction_mode == "skip"`` + contract holds -> ``True``.
 - ``extraction_mode == "skip"`` + contract BROKEN -> raise
   ``EngineError("E_SKIP_CONTRACT_VIOLATED")`` (claims skip but cannot be
-  deterministically skipped -> #5 re-routes to ``llm``).
+  deterministically skipped -> the extractor re-routes to ``llm``).
 
 The validator is pure: it reads no repo/audit state, only the episode.
 """

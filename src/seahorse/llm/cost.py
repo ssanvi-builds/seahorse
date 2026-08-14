@@ -1,25 +1,20 @@
-"""#4 cost cap (f5-04 §4.1) — the operational ≤ $0.002/episodio gate (ADR-09).
+"""Cost cap — the operational ≤ $0.002/episode gate.
 
 The target applies to the LLM path with an episode ≤5KB; the skip path is zero
-LLM and ~$0. The cap is OPERATIVE, not declarative: #4 is stateless between
-episodes, but inside one episode the caller (#5) injects a ``BudgetContext``
-that accumulates spend. ``check_budget`` runs pre-flight (estimate based on
-price × max_tokens, worst-case cache-miss); the real cost is known post-call
-and accumulated via ``record_actual_cost``.
+LLM and ~$0. The cap is OPERATIVE, not declarative: the LLM layer is stateless
+between episodes, but inside one episode the caller (the write path) injects a
+``BudgetContext`` that accumulates spend. ``check_budget`` runs pre-flight
+(estimate based on price × max_tokens, worst-case cache-miss); the real cost
+is known post-call and accumulated via ``record_actual_cost``.
 
-Known MVP limitation (f5-04 §4.1): the cap is pre-flight best-effort — a long
-output can exceed the remaining cap without abort mid-stream. The excess is
-recorded post-call and the NEXT call of the same episode is blocked. Streaming
-abort is mediano.
+Known limitation of the first release: the cap is pre-flight best-effort — a
+long output can exceed the remaining cap without abort mid-stream. The excess
+is recorded post-call and the NEXT call of the same episode is blocked.
+Streaming abort is a medium-term goal.
 
 Local and free-tier cloud models price at ``$0`` (the 2026-08-04 free-tier
-palanca decision): ``estimate_cost`` returns ``0.0`` and the cap never fires.
-The paid cloud rows are the f5-04 §3.3 verified-Jul-2026 cache-miss prices.
-
-References:
-- f5-04-multi-llm.md §4.1 (PricePerMTok, PRICING, estimate/record/check)
-- f5-04-multi-llm.md §3.2/§3.3 (model matrix + verified prices)
-- ADR-09 (§ cost target), ADR-10 (skip first-class, honest degradation)
+decision): ``estimate_cost`` returns ``0.0`` and the cap never fires. The paid
+cloud rows are the cache-miss prices verified in July 2026.
 """
 
 from __future__ import annotations
@@ -48,11 +43,11 @@ PRICING: dict[str, PricePerMTok] = {
     "ollama/qwen3:1.7b": PricePerMTok(0.0, 0.0),
     "ollama/qwen3:4b": PricePerMTok(0.0, 0.0),
     "ollama/qwen3:8b": PricePerMTok(0.0, 0.0),
-    # Free-tier cloud palanca (2026-08-04) — $0 on their free tiers.
+    # Free-tier cloud providers (2026-08-04) — $0 on their free tiers.
     "gemini/gemini-2.5-flash": PricePerMTok(0.0, 0.0),
     "groq/llama-3.3-70b-versatile": PricePerMTok(0.0, 0.0),
     "openrouter/deepseek/deepseek-r1:free": PricePerMTok(0.0, 0.0),
-    # Paid cloud (f5-04 §3.3, verified Jul 2026, cache-miss).
+    # Paid cloud (verified Jul 2026, cache-miss).
     "anthropic/claude-haiku-4-5": PricePerMTok(1.00, 5.00),
     "anthropic/claude-sonnet-4-6": PricePerMTok(3.00, 15.00),
     "openai/gpt-5-mini": PricePerMTok(0.25, 2.00),
@@ -86,7 +81,7 @@ def estimate_cost(model_id: str, tokens_in: int, max_tokens_out: int) -> float:
     """Pre-flight worst-case estimate (cache-miss) for one call.
 
     Raises ``LLMError`` when a NON-local model has no pricing row — a config
-    typo surfaces here (fail loud, f5-04 §4.1), not as a silent $0 budget.
+    typo surfaces here (fail loud), not as a silent $0 budget.
     """
     p = _price_for(model_id)
     return (tokens_in * p.input_usd + max_tokens_out * p.output_usd) / 1_000_000
@@ -113,7 +108,7 @@ def check_budget(
     ctx: BudgetContext,
 ) -> None:
     """Pre-flight gate. Raises ``BudgetExceeded`` when the estimate exceeds the
-    remaining cap, so the caller can degrade to skip (ADR-09/ADR-10).
+    remaining cap, so the caller can degrade to skip (fail-loud honesty).
     """
     remaining = ctx.cap_usd - ctx.spent_usd
     est = estimate_cost(model_id, estimated_tokens_in, max_tokens_out)

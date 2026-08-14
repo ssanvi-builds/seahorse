@@ -1,11 +1,11 @@
-"""Validate BiTemporalEngine.improve (Phase 8, owned #2).
+"""Validate BiTemporalEngine.improve — the human-edit path.
 
-Op 3 — human edit = invalidate-then-append atomically (I8). The old episode is
-invalidated and a new one with ``supersedes=old`` is appended inside
-``repo.atomic()``; if the new body's subject collides with a THIRD vigente
-episode (not the target, which is already invalidated), the whole transaction
-rolls back (TD #8 fail-loud: ``E_COLLISION_EXISTS``). ``improve`` preserves the
-signed ``-> Episode`` return type.
+Human edit = invalidate-then-append atomically. The old episode is invalidated
+and a new one with ``supersedes=old`` is appended inside ``repo.atomic()``; if
+the new body's subject collides with a THIRD current-state episode (not the
+target, which is already invalidated), the whole transaction rolls back
+fail-loud with ``E_COLLISION_EXISTS``. ``improve`` preserves the signed
+``-> Episode`` return type.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def test_improve_invalidates_old_appends_new_with_supersedes(engine):
     assert new_ep.supersedes == "e1"
     assert new_ep.invalid_at is None
     assert new_ep.valid_at == LATER  # valid_at or now
-    # old is invalidated; new is vigente.
+    # old is invalidated; new is current-state.
     assert repo.get("e1").invalid_at == LATER
     assert repo.get(new_ep.id).invalid_at is None
 
@@ -75,18 +75,18 @@ def test_improve_audit_has_successor_id(engine):
     assert ev.transaction_time == LATER
 
 
-# --- CC-3 (C8.9): improve successor carries the portable correction enum -------
+# --- improve successor carries the portable correction enum -------------------
 #
-# Spec memory_architecture §2.8: the successor of an improve carries
-# ``supersedes_reason: "correction"`` (the portable enum, surviving export/import),
-# NOT the free-text ``reason`` (which is observability-only and lives in the
-# AuditEvent). Mixing the two would be type-confusion (free text -> enum). This
-# pins both: the enum lands on the successor and round-trips through storage;
-# the free-text reason stays in the audit and never leaks into supersedes_reason.
+# The successor of an improve carries ``supersedes_reason: "correction"`` (the
+# portable enum, surviving export/import), NOT the free-text ``reason`` (which
+# is observability-only and lives in the AuditEvent). Mixing the two would be
+# type-confusion (free text -> enum). This pins both: the enum lands on the
+# successor and round-trips through storage; the free-text reason stays in the
+# audit and never leaks into supersedes_reason.
 
 
 def test_improve_successor_carries_correction_supersedes_reason(engine):
-    # CC-3: the successor of an improve is a CORRECTION — it carries the portable
+    # The successor of an improve is a CORRECTION — it carries the portable
     # ``SupersedesReason.CORRECTION`` enum, which round-trips through storage
     # (migration 009) so it survives export/import. The default-``reason`` path
     # (no explicit reason) still stamps the enum.
@@ -99,8 +99,8 @@ def test_improve_successor_carries_correction_supersedes_reason(engine):
 
 
 def test_improve_free_text_reason_does_not_leak_into_supersedes_reason(engine):
-    # CC-3 type-confusion guard: the free-text ``reason`` (observability) must NOT
-    # be copied into ``supersedes_reason`` (the portable enum). Even with a custom
+    # Type-confusion guard: the free-text ``reason`` (observability) must NOT be
+    # copied into ``supersedes_reason`` (the portable enum). Even with a custom
     # human reason, the successor carries the enum "correction", not the free text.
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\n")
@@ -146,18 +146,18 @@ def test_improve_pending_target_cannot_be_edited(engine):
     assert repo.get("e1").invalid_at is None
 
 
-# --- TD #8: collision with a third vigente -> raise + rollback ----------------
+# --- collision with a third current-state episode -> raise + rollback ----------
 
 
 def test_improve_collision_with_third_raises_and_rolls_back(engine):
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\n")     # fact_id X (subject "madrid")
-    _apply(eng, "e3", "# Python\n")     # fact_id Y (subject "python"), unrelated vigente
+    _apply(eng, "e3", "# Python\n")     # fact_id Y (subject "python"), unrelated current-state
     with pytest.raises(errors.EngineError) as exc:
         # new body's subject "python" collides with e3 (fact_id Y), not the chain of e1.
         eng.improve("e1", "# Python\nedited\n", by={"source_type": "human"}, now=LATER)
     assert exc.value.code == errors.E_COLLISION_EXISTS
-    # I8 rollback: e1 NOT invalidated, e3 untouched, no new episode appended.
+    # Rollback: e1 NOT invalidated, e3 untouched, no new episode appended.
     assert repo.get("e1").invalid_at is None
     assert repo.get("e3").invalid_at is None
     assert {e.id for e in repo.query_vigent()} == {"e1", "e3"}
@@ -171,7 +171,7 @@ def test_improve_same_subject_no_collision(engine):
     new_ep = eng.improve("e1", "# Madrid\nv2\n", by={"source_type": "human"}, now=LATER)
     assert repo.get("e1").invalid_at == LATER
     assert repo.get(new_ep.id).invalid_at is None
-    # exactly one vigente now (the successor).
+    # exactly one current-state now (the successor).
     assert {e.id for e in repo.query_vigent()} == {new_ep.id}
 
 
@@ -190,8 +190,8 @@ def test_improve_new_body_without_heading_stores_fact_id_none(engine):
 
 
 def test_improve_collision_rollback_emits_no_audit(engine):
-    # TD #8: a rolled-back improve emits NO improve AuditEvent (audit is
-    # written only after the atomic block succeeds).
+    # A rolled-back improve emits NO improve AuditEvent (audit is written only
+    # after the atomic block succeeds).
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\n")
     _apply(eng, "e3", "# Python\n")

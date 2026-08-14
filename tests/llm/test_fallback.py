@@ -1,4 +1,4 @@
-"""Tests for #4 retry + fallback chain (f5-04 §4.3/§4.4).
+"""Tests for the LLM retry + fallback chain.
 
 Transient errors retry with backoff + jitter; content/permanent errors
 propagate immediately; the fallback chain moves primary→secondary→tertiary

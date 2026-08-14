@@ -1,11 +1,10 @@
 """Canonical body hash for importer idempotency.
 
-OWNED BY #15 (Importers), materialized here by #2 per SO-4 4d. Body-only SHA-256
-hex 64. Frontmatter is EXCLUDED — the caller passes the body only — because
-frontmatter carries Engine-owned timestamps (``created_at``, ``expired_at``)
-that change between runs; including them would break re-import idempotency.
-
-Reference: f5-15 §3.4 (canonical_body_hash, OQ-7 resolved).
+Owned by the claude-mem importer, materialized here by the engine. Body-only
+SHA-256 hex 64. Frontmatter is EXCLUDED — the caller passes the body only —
+because frontmatter carries Engine-owned timestamps (``created_at``,
+``expired_at``) that change between runs; including them would break re-import
+idempotency.
 """
 
 from __future__ import annotations

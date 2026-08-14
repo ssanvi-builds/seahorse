@@ -1,4 +1,4 @@
-"""Resume skip predicate contract tests (f5-03 §3.5).
+"""Resume skip predicate contract tests.
 
 The hash is truth; the mtime is only a cheap hint. ``should_skip`` returns True
 iff the content is unchanged since the manifest was written.

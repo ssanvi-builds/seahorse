@@ -1,9 +1,9 @@
-"""Validate WriteGuards (I1-I11) (Phase 3, owned #2).
+"""Validate WriteGuards — the write-time invariant checks.
 
 The guard chain runs at write-time before ``repo.append`` / ``repo.set_invalid_at``
-and raises a typed error on the first violated invariant. SO-4a amends I2: the
-allowed set for an arbitrary ``valid_at`` is ``{human, importer, system}``;
-``agent`` / ``project_doc`` are restricted to ``null`` or ``now``.
+and raises a typed error on the first violated invariant. The allowed set for an
+arbitrary ``valid_at`` is ``{human, importer, system}``; ``agent`` /
+``project_doc`` are restricted to ``null`` or ``now``.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ class _FakeRepo:
         yield
 
 
-# --- I1 created_at engine-owned ------------------------------------------------
+# --- created_at engine-owned --------------------------------------------------
 
 
 def test_i1_passes_when_created_at_set():
@@ -53,12 +53,12 @@ def test_i1_raises_when_created_at_none():
     assert exc.value.code == errors.E_CREATED_AT_ENGINE_OWNED
 
 
-# --- I2 valid_at by source (SO-4a) ---------------------------------------------
+# --- valid_at by source --------------------------------------------------------
 
 
 @pytest.mark.parametrize("source_type", ["human", "importer", "system"])
 def test_i2_allows_arbitrary_valid_at_for_allowed_set(source_type):
-    # Past, future, and null all OK for the SO-4a allowed set.
+    # Past, future, and null all OK for the allowed set.
     for va in (PAST, FUTURE, None):
         ep = _episode(source_type=source_type, valid_at=va, created_at=NOW)
         WriteGuards().validate(ep, repo=_FakeRepo(), op="apply_fact", now=NOW)
@@ -81,7 +81,7 @@ def test_i2_restricted_sources_reject_custom_valid_at(source_type, va):
     assert exc.value.code == errors.E_VALID_AT_HUMAN_ONLY
 
 
-# --- I5 monotonic (null-safe) -------------------------------------------------
+# --- monotonic (null-safe) ----------------------------------------------------
 
 
 def test_i5_monotonic_ok_when_both_none():
@@ -90,7 +90,7 @@ def test_i5_monotonic_ok_when_both_none():
 
 
 def test_i5_monotonic_ok_when_valid_le_invalid():
-    # human source so I2 permits the arbitrary valid_at; I5 then checks the pair.
+    # human source permits the arbitrary valid_at; the monotonicity check then validates the pair.
     ep = _episode(source_type="human", created_at=NOW, valid_at=PAST, invalid_at=NOW)
     WriteGuards().validate(ep, repo=_FakeRepo(), op="apply_fact", now=NOW)
 
@@ -109,7 +109,7 @@ def test_i5_monotonic_violation_created_gt_expired():
     assert exc.value.code == errors.E_MONOTONICITY_VIOLATED
 
 
-# --- I4 expired_at null MVP-0 -------------------------------------------------
+# --- expired_at null in the current release -----------------------------------
 
 
 def test_i4_rejects_expired_at_non_null():
@@ -140,7 +140,7 @@ def test_supersedes_dangling_raises():
     assert exc.value.code == errors.E_DANGLING_SUPERSEDES
 
 
-# --- forget chain (I3 / I5 valid_le_now / I6 / I7) ----------------------------
+# --- forget chain -------------------------------------------------------------
 
 
 def test_forget_chain_ok_on_vigente_active():
@@ -168,12 +168,12 @@ def test_forget_i6_rejects_decayed_episode():
 
 
 def test_forget_i7_expired_at_untouched_no_raise():
-    # _i7 is a documented structural guard; calling it must not raise.
+    # The expired_at structural guard is documented; calling it must not raise.
     ep = _episode(invalid_at=None, expired_at=None)
     WriteGuards().validate(ep, repo=_FakeRepo(), op="forget", now=NOW)
 
 
-# --- unknown / mediano ops ----------------------------------------------------
+# --- unknown / medium-term ops ------------------------------------------------
 
 
 def test_validate_unknown_op_raises():
@@ -192,6 +192,6 @@ def test_validate_revalidate_is_mvp1_stub():
 def test_validate_improve_runs_atomicity_marker():
     # op="improve" routes through the apply_fact guards on the NEW episode
     # inside repo.atomic(); the validate(op="improve") branch is the atomicity
-    # marker documented by I8. It must not raise for a well-formed episode.
+    # marker. It must not raise for a well-formed episode.
     ep = _episode(created_at=NOW, supersedes="old")
     WriteGuards().validate(ep, repo=_FakeRepo({"old": _episode("old")}), op="improve", now=NOW)

@@ -1,13 +1,13 @@
-"""SqliteEmbeddingsCacheRepository — content-hash embedding cache (SO-7a).
+"""SqliteEmbeddingsCacheRepository — content-hash embedding cache.
 
 Implements ``seahorse.contracts.persistence.EmbeddingsCacheRepository`` over
-``embeddings_cache`` (f5-07 §3.5). Keyed by ``(content_hash, model_identity, role)``;
+``embeddings_cache``. Keyed by ``(content_hash, model_identity, role)``;
 ``batch_insert`` is ``INSERT OR REPLACE`` (a content-hash collision with a new
 vector for the same key replaces the old — model identity change implies a new
 key, so a REPLACE on the same key means re-embedding the same text with a new
 vector, which is the intended backfill behavior). ``dim`` is derived from the
 blob length (float32 = 4 bytes/vector element). ``trim`` keeps the newest
-``max_rows`` rows by ``created_at`` (LRU). No own ``atomic()`` (SO-7a.6).
+``max_rows`` rows by ``created_at`` (LRU). No own ``atomic()``.
 """
 
 from __future__ import annotations

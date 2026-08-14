@@ -1,4 +1,5 @@
-"""Tests for JSON-RPC error translation (#13) — Cat A, Cat B, wire, fallback."""
+"""Tests for JSON-RPC error translation (the MCP server) — Cat A, Cat B, wire,
+fallback."""
 
 from __future__ import annotations
 
@@ -67,7 +68,7 @@ class TestCatAFacade:
 
 
 class TestCatAEngine:
-    """EngineError(code) propagates with seahorse_code, component #2."""
+    """EngineError(code) propagates with seahorse_code and the engine component."""
 
     def test_collision_exists(self) -> None:
         resp = _err(EngineError("E_COLLISION_EXISTS", subject="s"))
@@ -86,11 +87,11 @@ class TestCatAEngine:
 
 
 class TestCatAFrontmatter:
-    """The 4 frontmatter codes (#3, commit 5) mirror the CLI table (parity).
+    """The 4 frontmatter codes mirror the CLI table (parity).
 
-    ``#13`` does not currently surface frontmatter errors (the MCP tools do not
-    call the frontmatter codec), but the codes are mirrored here so the two
-    sister projections share a single point of change — a future MCP surface
+    The MCP server does not currently surface frontmatter errors (the MCP tools
+    do not call the frontmatter codec), but the codes are mirrored here so the
+    two sister projections share a single point of change — a future MCP surface
     that surfaces a frontmatter error already has a stable ``-32xxx`` code.
     """
 
@@ -169,7 +170,7 @@ class TestCatB:
         assert resp["error"]["code"] != -32603
 
     def test_integrity_error_sqlite3(self) -> None:
-        # stdlib sqlite3.IntegrityError is what #6 actually raises
+        # stdlib sqlite3.IntegrityError is what persistence actually raises
         resp = _err(sqlite3.IntegrityError("uq_one_active_per_subject"))
         assert resp["error"]["code"] == CAT_B["IntegrityError"]
         assert resp["error"]["data"]["exception_class"] == "IntegrityError"
@@ -240,7 +241,7 @@ class TestCatADriftGuard:
     ``translate`` to the generic -32603 fallback (losing the stable
     ``seahorse_code``). The guard fails loud until CAT_A is updated.
 
-    C8.5: the check is INTROSPECTIVE — it iterates ``vars(module)`` filtered to
+    The check is INTROSPECTIVE — it iterates ``vars(module)`` filtered to
     ``E_*``-prefixed ``str`` constants, so a newly added code cannot slip past
     the hand-enumerated list the old guard maintained (the previous guard was a
     hand-typed set that had to be remembered on every code add). ``E_NOT_IN_MVP_0``

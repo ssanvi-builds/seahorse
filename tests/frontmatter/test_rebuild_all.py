@@ -1,10 +1,10 @@
-"""Vault → sidecar rebuild orchestrator e2e (f5-06 §7a.5, B3=(i) austere).
+"""Vault → sidecar rebuild orchestrator e2e.
 
 Guards the ruamel-touching half of the ``.md`` → SQLite index bridge:
 ``rebuild_from_vault`` scans a fixture vault, parses each ``.md`` via
 ``adapter.parse_file`` (ruamel), builds ruamel-free ``ParsedNote`` payloads, and
 delegates to ``SidecarIndexRepository.rebuild_all``. The sidecar stays
-ruamel-free (dependency injection); the orchestrator lives in #3.
+ruamel-free (dependency injection); the orchestrator lives in the frontmatter module.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def test_rebuild_from_vault_populates_sidecar(tmp_path: Path, sidecar) -> None:
     assert rows[_uuid7("02")]["file_path"] == "sub/paris.md"
     assert rows[_uuid7("01")]["title"] == "madrid"
     assert rows[_uuid7("01")]["summary"] == "summary madrid"
-    # fact_id derived from the stored subject (SO-2): fact_id_of("madrid").
+    # fact_id derived from the stored subject: fact_id_of("madrid").
     from seahorse.frontmatter.subject import fact_id_of
     assert rows[_uuid7("01")]["fact_id"] == fact_id_of("madrid")
     assert rows[_uuid7("02")]["fact_id"] == fact_id_of("paris")
@@ -111,7 +111,7 @@ def test_rebuild_from_vault_populates_sidecar(tmp_path: Path, sidecar) -> None:
 
 
 def test_rebuild_from_vault_forwards_secondary_index_wipes(tmp_path: Path, sidecar) -> None:
-    # M1-A.6: the orchestrator forwards secondary_index_wipes to rebuild_all so
+    # The orchestrator forwards secondary_index_wipes to rebuild_all so
     # the CLI can clear vec0/FTS in the same atomic as the episode_index clear.
     vault = tmp_path / "vault"
     vault.mkdir()
@@ -145,8 +145,8 @@ def test_rebuild_from_vault_clear_then_rebuild(tmp_path: Path, sidecar) -> None:
 def test_rebuild_from_vault_reports_duplicate_vigent_fact_id(
     tmp_path: Path, sidecar
 ) -> None:
-    # two vigent notes with the SAME title -> same derived subject -> same
-    # fact_id -> I11 conflict group. Both skipped + reported (no auto-pick).
+    # two currently valid notes with the SAME title -> same derived subject -> same
+    # fact_id -> conflict group. Both skipped + reported (no auto-pick).
     vault = tmp_path / "vault"
     vault.mkdir()
     _write_note(vault, "c1", ep_id=_uuid7("01"), title="same-subject")
@@ -161,7 +161,8 @@ def test_rebuild_from_vault_vigent_and_invalidated_same_fact_id(
     tmp_path: Path, sidecar
 ) -> None:
     # a supersession pair sharing a title (same subject, same fact_id), one
-    # invalidated, is NOT a conflict — I11 only fires when both are vigent.
+    # invalidated, is NOT a conflict — the unique constraint only fires when
+    # both are currently valid.
     vault = tmp_path / "vault"
     vault.mkdir()
     _write_note(
@@ -198,7 +199,7 @@ def test_rebuild_from_vault_no_title_no_h1_note_gets_null_fact_id(
     # a note with NO title and NO H1 derives subject=None -> fact_id=None under
     # the engine-equivalent derivation (NO filename-stem fallback). It still
     # lands in the index (not indexed by fact_id). Two such notes coexist (no
-    # phantom conflict from filename-stem collision). This pins the SO-8c bridge
+    # phantom conflict from filename-stem collision). This pins the bridge
     # equality: the vault-rebuilt index matches what the engine would store.
     vault = tmp_path / "vault"
     vault.mkdir()
@@ -225,13 +226,13 @@ def test_rebuild_from_vault_no_title_no_h1_note_gets_null_fact_id(
     assert rows[_uuid7("02")] is None
 
 
-# --- ADR-10 honesty: parse failure surfaces ----------------------------------
+# --- fail-loud honesty: parse failure surfaces ----------------------------------
 
 
 def test_rebuild_from_vault_raises_on_unparseable_note(tmp_path: Path, sidecar) -> None:
     # a non-migrated note (no frontmatter) raises FrontmatterInvalid — the
     # operator must run `seahorse frontmatter migrate` first. NOT silently
-    # skipped (ADR-10).
+    # skipped (fail-loud).
     vault = tmp_path / "vault"
     vault.mkdir()
     (vault / "raw.md").write_text("# no frontmatter here\njust body.\n", encoding="utf-8")

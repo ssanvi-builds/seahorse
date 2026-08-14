@@ -1,10 +1,10 @@
-"""F7 experiment runner — the variant matrices over the #16 harness (f7 §5).
+"""Experiment runner — the variant matrices over the benchmark harness.
 
-An experiment IS the skeleton run once per ``ExperimentVariant`` (the manifest
-``score_source`` is the variant, f7 §3), with the decision thresholds applied
-to the resulting retrieval metrics. ``run_experiment`` is the entry point; the
-report carries the honest per-variant regime detection (``fallback_g2`` →
-invalid decision, ADR-10) plus the F1/F3 verdict.
+An experiment runs the harness once per ``ExperimentVariant`` (the manifest
+``score_source`` is the variant), with the decision thresholds applied to the
+resulting retrieval metrics. ``run_experiment`` is the entry point; the report
+carries the honest per-variant regime detection (``fallback_g2`` → invalid
+decision, fail-loud honesty) plus the feature verdicts.
 
 Corpora:
 - ``synthetic`` (default, CI): the deterministic canonical corpus + a
@@ -16,7 +16,7 @@ Corpora:
 
 The clock is wired per variant: ``AdvancingClock(base=earliest_session_date,
 delta=1 day)`` so ``created_at`` spans the haystack — the recency boost reads
-that spread (f5-16 §3.5). Deterministic and temporally ordered.
+that spread. Deterministic and temporally ordered.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def _clock_delta_seconds(dataset: BenchmarkDataset) -> float:
     turns — so the recency boost's ``age = now - created_at`` would be
     meaningless (every episode ancient → factor ≈ 1). Deriving the delta from
     the deduped session-date spread keeps the boost's age in the corpus's
-    actual time range (f5-16 §3.5 U5: "la diferencia real entre sesiones").
+    actual time range (the real time difference between sessions).
     """
     seen: set[str] = set()
     dates: list[datetime] = []
@@ -113,9 +113,9 @@ def _clock_delta_seconds(dataset: BenchmarkDataset) -> float:
 class ExperimentReport:
     """The full experiment artifact: per-variant results + the verdict.
 
-    ``batch_result`` is set only for the batch-por-turno experiment (f7 §5d),
-    which is a standalone measurement (no per-variant ``EvaluationRunner``
-    results) — the turn-cluster recall@k + the decision.
+    ``batch_result`` is set only for the per-turn batching experiment, which is
+    a standalone measurement (no per-variant ``EvaluationRunner`` results) —
+    the turn-cluster recall@k + the decision.
     """
 
     experiment: str
@@ -130,7 +130,7 @@ class ExperimentReport:
 class CorpusTemplate:
     """A corpus ingested ONCE, shared across variants that embed the same text.
 
-    Warm-DB (f7 §5a): the recency variants (and the embed ``body`` variant)
+    Warm-DB: the recency variants (and the embed ``body`` variant)
     embed IDENTICAL passage text — the recency boost is a query-time post-RRF
     step reading ``created_at``/``now``, so one ingest serves all of them. Each
     variant copies the template DB (fast) and re-attaches the bridge
@@ -146,7 +146,7 @@ class CorpusTemplate:
 
 
 def make_metric_registry(tokenizer: Tokenizer) -> MetricRegistry:
-    """The standard #16 metric set (the LLM-free honest floor, f5-16 §4.4)."""
+    """The standard benchmark metric set (the LLM-free honest floor)."""
     reg = MetricRegistry()
     reg.register(RecallAtK())
     reg.register(NDCGAtK())
@@ -156,7 +156,7 @@ def make_metric_registry(tokenizer: Tokenizer) -> MetricRegistry:
     reg.register(KnowledgeUpdateAccuracyMetric())
     reg.register(TokenEfficiencyMetric(tokenizer))
     reg.register(LatencyP95Metric())
-    # F2 (f7 §5b): the rerank-path INDEX p95 (0.0 for baseline variants — the
+    # Rerank: the rerank-path INDEX p95 (0.0 for baseline variants — the
     # SUT records latency_ms["index_rerank"] only when rerank_enabled).
     reg.register(LatencyP95RerankMetric())
     return reg
@@ -208,7 +208,7 @@ def _reranker_for(corpus: str):
 
 
 def _rerank_model_name(corpus: str) -> str:
-    """The pinned cross-encoder identity for the fingerprint (cerebras-f §4.4)."""
+    """The pinned cross-encoder identity for the fingerprint."""
     if corpus == "synthetic":
         return "hash"
     from seahorse.embeddings.rerank_backend import MODEL_NAME  # lazy
@@ -219,7 +219,7 @@ def _rerank_model_name(corpus: str) -> str:
 def _facade_factory(
     corpus: str, clock: Callable[[], Any], variant: ExperimentVariant
 ) -> Callable[[Path], tuple[Any, Any]]:
-    """Composition-root wiring per variant + corpus (f7 enablers a/b/c, §3)."""
+    """Composition-root wiring per variant + corpus."""
 
     def _build(db_path: Path):
         kwargs: dict = {
@@ -233,9 +233,9 @@ def _facade_factory(
             kwargs["retrieval_available"] = True
             kwargs["passage_embedder"] = HashEmbedder()
         if variant.rerank_enabled:
-            # F2 (f7 §5b): the composition-root swap is the ONLY wiring — the
+            # Rerank: the composition-root swap is the ONLY wiring — the
             # SUT knows nothing about the cross-encoder internals (delegation
-            # purity, f5-16 §2.4).
+            # purity).
             kwargs["reranker"] = _reranker_for(corpus)
         return build_facade(db_path, **kwargs)
 
@@ -262,7 +262,7 @@ def _build_template(
     embed_mode: str,
     temporal: bool,
 ) -> CorpusTemplate:
-    """Ingest the corpus ONCE into a template DB + capture the bridge (f7 §5a).
+    """Ingest the corpus ONCE into a template DB + capture the bridge.
 
     The expensive step is the embedding; variants that embed the same text share
     this template. The template DB is copied per variant (fast filesystem copy)
@@ -322,7 +322,7 @@ def render_experiment_report(report: ExperimentReport) -> str:
             cast(BatchExperimentResult, report.batch_result), report.decision
         )
     lines = [
-        f"# F7 experiment: {report.experiment}  (corpus={report.corpus}, "
+        f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
         "",
         f"{'variant':<28} {'detected':<20} {'recall@10':>9} {'ndcg@10':>8}",
@@ -370,19 +370,19 @@ def run_experiment(
     template_cache: dict | None = None,
     pit_queries: bool = True,
 ) -> ExperimentReport:
-    """Run an F7 experiment and return the report with the decision verdict.
+    """Run a benchmark experiment and return the report with the decision verdict.
 
     ``reader_llm`` defaults to a real ``ReaderLLMClient`` (LMEB runs); the
     synthetic/CI verification injects a deterministic double.
 
-    Warm-DB (f7 §5a): variants that embed the same text share ONE corpus ingest
+    Warm-DB: variants that embed the same text share ONE corpus ingest
     (the recency sweep is 10 variants over identical embeddings — a fresh-DB
     run would re-embed ~49M tokens per variant). ``warm_db=True`` (default)
     builds a shared ``CorpusTemplate`` per ``(corpus, embed_mode, temporal,
     dataset_hash)``; ``template_cache`` reuses an external cache across
     ``run_experiment`` calls (the embed experiment's ``body`` variant reuses
     the recency experiment's body template). ``warm_db=False`` runs each
-    variant on a fresh DB (the pre-warm-DB behavior, used to verify equivalence).
+    variant on a fresh DB (the previous fresh-DB behavior, used to verify equivalence).
     """
     if experiment not in EXPERIMENTS:
         raise ValueError(f"unknown experiment: {experiment!r} (expected {EXPERIMENTS!r})")
@@ -390,7 +390,7 @@ def run_experiment(
         raise ValueError(f"unknown corpus: {corpus!r} (expected {CORPORA!r})")
 
     if experiment == "batch":
-        # (d) batch-por-turno is a standalone measurement (f7 §5d): no
+        # (d) per-turn batching is a standalone measurement: no
         # EvaluationRunner, no BenchmarkDataset — the corpus is the real
         # claude-mem episodes (or the synthetic mechanical verification) and the
         # metric is the turn-cluster recall@k. Delegates to the batch module.
@@ -482,7 +482,7 @@ def _run_variant(
 ) -> ExperimentResult:
     """Run one variant through the ``EvaluationRunner`` and collect the metrics.
 
-    Warm-DB (f7 §5a): when ``template_cache`` is provided, variants that embed
+    Warm-DB: when ``template_cache`` is provided, variants that embed
     the same text share one ingested corpus — the template DB is copied into the
     variant's dir (fast) and the SUT re-attaches the template bridge, so the
     runner skips re-ingestion (``skip_ingest=True``). The variant clock seeds
@@ -493,8 +493,8 @@ def _run_variant(
 
     variant_config = replace(base_config, **variant.as_config_kwargs())
     if variant.rerank_enabled:
-        # F2 (f7 §5b): pin the cross-encoder identity in the fingerprint — the
-        # run_id differs from the baseline (cerebras-f §4.4).
+        # Rerank: pin the cross-encoder identity in the fingerprint — the
+        # run_id differs from the baseline.
         variant_config = replace(variant_config, rerank_model=_rerank_model_name(corpus))
     variant_config.validate()
 

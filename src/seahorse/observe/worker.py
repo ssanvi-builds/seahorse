@@ -1,24 +1,18 @@
 """Observer worker — drains the queue, batches by session, writes episodes.
 
-The worker is a client of #12 (``MemoryFacade``) — the engine never sees a
-hook, only ``RememberPayload`` (delegation purity, obsiforge §4.2). It drains
-the observer queue, groups events by SESSION (F7 decision (d) — por_sesion:
-the turn is NOT a recoverable unit, f7-experiment-batch), renders each turn via
-the deterministic batcher, and writes one episode per turn via
-``facade.remember`` (skip-first, ADR-09).
+The worker is a client of the facade (``MemoryFacade``) — the engine never sees
+a hook, only ``RememberPayload`` (delegation purity). It drains the observer
+queue, groups events by SESSION (grouping by session: the turn is NOT a
+recoverable unit), renders each turn via the deterministic batcher, and writes
+one episode per turn via ``facade.remember`` (skip-first, the skip path).
 
-Thresholding (§4.3): a turn without a user prompt → no episode; body < 40 chars
-→ no episode; ``skip_tools`` discard the event; ``drop_tools`` discard the
-event entirely. The OQ3 summary skips the H1 (§15.2 redesign 4).
+Thresholding: a turn without a user prompt → no episode; body < 40 chars → no
+episode; ``skip_tools`` discard the event; ``drop_tools`` discard the event
+entirely. The generated summary skips the H1 title.
 
 Ack semantics: events are acked after a turn is consumed (written, collided, or
 skipped). A write FAILURE leaves the events unacked → retried on the next drain
 (the queue dedup makes the retry a no-op for already-written events).
-
-References:
-- obsiforge-evolution-architecture.md §4.3 (batcher, thresholding)
-- obsiforge-evolution-architecture.md §4.6 (skip-first, summary OQ3)
-- f7-experiment-batch.md (por_sesion decision)
 """
 
 from __future__ import annotations
@@ -49,7 +43,7 @@ from seahorse.observe.threshold import (
 )
 from seahorse.write_path.extract import derive_summary
 
-# §4.3: body < 40 chars → no episode.
+# Below this body length, no episode is written.
 MIN_BODY_CHARS = 40
 # Short, stable session tag for the H1 (first N chars of the session_id).
 SESSION_TAG_CHARS = 8
@@ -63,7 +57,7 @@ class ObserverConfig:
 
     skip_tools: frozenset[str] = DEFAULT_SKIP_TOOLS
     drop_tools: frozenset[str] = DEFAULT_DROP_TOOLS
-    extraction_mode: str = "skip"  # skip | llm (skip-first default, ADR-09)
+    extraction_mode: str = "skip"  # skip | llm (skip-first default, the skip path)
     body_max_chars: int = BODY_MAX_CHARS
     min_body_chars: int = MIN_BODY_CHARS
     summary_max_chars: int = SUMMARY_MAX_CHARS
@@ -157,7 +151,7 @@ class ObserverWorker:
                 tool_events.append(env.payload)
 
         if not prompt:
-            # §4.3: a turn without a user prompt is not an episode.
+            # Threshold: a turn without a user prompt is not an episode.
             report.turns_skipped += 1
             self._ack_all(turn_events)
             return
@@ -171,7 +165,7 @@ class ObserverWorker:
             max_chars=self._config.body_max_chars,
         )
         if len(body) < self._config.min_body_chars:
-            # §4.3: body < 40 chars → no episode.
+            # Threshold: body < 40 chars → no episode.
             report.turns_skipped += 1
             self._ack_all(turn_events)
             return

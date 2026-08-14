@@ -1,14 +1,14 @@
-"""Sync QueryEmbedder adapter (#7 → #11 seam, C8.4 materialization).
+"""Sync ``QueryEmbedder`` adapter over the async ``Embedder`` Protocol.
 
-Bridges the async ``Embedder`` Protocol (#7) to the sync ``QueryEmbedder`` seam
-that #11 calls once per recall. Uses a dedicated event loop in a daemon thread
-(singleton) + ``asyncio.run_coroutine_threadsafe`` — NOT ``asyncio.run`` per
-call, which would re-create a loop each time and fail when invoked from inside
-an existing loop.
+Bridges the async ``Embedder`` Protocol to the sync ``QueryEmbedder`` extension
+point that the retrieval engine calls once per recall. Uses a dedicated event
+loop in a daemon thread (singleton) + ``asyncio.run_coroutine_threadsafe`` —
+NOT ``asyncio.run`` per call, which would re-create a loop each time and fail
+when invoked from inside an existing loop.
 
 Returns vectors as float32 BLOBs (``np.float32.tobytes()``) — the shape vec0
 ``knn(query: Any)`` expects, so numpy stays out of the core retrieval path
-(the seam output is opaque ``Any``). numpy is a core dep since M1-B.1.
+(the extension-point output is opaque ``Any``).
 """
 
 from __future__ import annotations
@@ -41,14 +41,14 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 def run_coroutine(coro: Any) -> Any:
     """Run an async coroutine to completion from sync code (shared bridge loop).
 
-    Used by the RetrievalIndexer (M1-B.5) to embed passages with the async
-    ``Embedder`` Protocol from the sync write path.
+    Used by the RetrievalIndexer to embed passages with the async ``Embedder``
+    Protocol from the sync write path.
     """
     return asyncio.run_coroutine_threadsafe(coro, _get_loop()).result()
 
 
 class AsyncToSyncQueryEmbedder:
-    """Sync ``QueryEmbedder`` over an async #7 ``Embedder`` (M1-B.3)."""
+    """Sync ``QueryEmbedder`` over an async ``Embedder``."""
 
     def __init__(self, embedder: Embedder) -> None:
         self._embedder = embedder

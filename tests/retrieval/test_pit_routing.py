@@ -1,17 +1,18 @@
-"""PIT routing + axis-isolation tests (R13, ADR-03).
+"""PIT routing + axis-isolation tests.
 
 The two bi-temporal axes NEVER mix within one recall. ``pit.kind`` is validated
 ONCE at the entrypoint and the SAME kind fans to ALL sources. ``pit=None``
-resolves to the vigent path (kNN ``vigent_only=True``; BM25 ``vigent_only=True``;
-BFS ``state_at`` at the injected ``now``).
+resolves to the current-state path (kNN ``vigent_only=True``; BM25
+``vigent_only=True``; BFS ``state_at`` at the injected ``now``).
 
-Signals (f5-11 §7, §16):
-- ``pit=None`` → vigent knn + vigent search (no ``_state_at``/``_known_at`` call).
+Signals:
+- ``pit=None`` → current-state knn + current-state search (no ``_state_at``/
+  ``_known_at`` call).
 - ``pit=state_at`` → ``knn_state_at`` + ``search_state_at`` ONLY.
 - ``pit=known_at`` → ``knn_known_at`` + ``search_known_at`` ONLY.
 - Invalid ``pit.kind`` raises ``RetrievalInvalidPITKind`` BEFORE the embedder runs.
-- ``subject_filter`` reaches ONLY the vigent BM25 search (PIT variants don't
-  accept it — mediano, f5-06 §7a.3).
+- ``subject_filter`` reaches ONLY the current-state BM25 search (PIT variants
+  don't accept it — a medium-term goal).
 - ``pit=None`` BFS (when enabled) gets ``pit_kind="state_at"`` + ``t=clock_now``.
 """
 
@@ -77,7 +78,7 @@ class TestPitStateAtRoutes:
         assert "search_state_at" in fts_repo.calls
         assert vector_repo.calls["knn_state_at"][0]["t"] == t
         assert fts_repo.calls["search_state_at"][0]["t"] == t
-        # vigent + known_at never called (axis isolation R13).
+        # current-state + known_at never called (axis isolation).
         assert "knn" not in vector_repo.calls
         assert "knn_known_at" not in vector_repo.calls
         assert "search" not in fts_repo.calls
@@ -145,8 +146,8 @@ class TestSubjectFilterRouting:
     def test_subject_filter_not_forwarded_to_state_at_search(
         self, embedder, vector_repo, fts_repo, episode_repo, clock_now
     ):
-        # PIT search variants do NOT accept subject_filter (mediano); the engine
-        # simply does not forward it.
+        # PIT search variants do NOT accept subject_filter (a medium-term goal);
+        # the engine simply does not forward it.
         recall(
             "q",
             pit=_pit("state_at", clock_now),
@@ -189,7 +190,7 @@ class TestKnownAtBfsDropped:
         # known_at + bfs enabled + not signed off -> BfsKnownAtUnsupported raised
         # by _bfs and caught by the engine; the BFS axis is dropped (rows=[]).
         # Seed known_at kNN hits so stage 1 has an anchor (pit=known_at routes to
-        # knn_known_at, not the vigent knn).
+        # knn_known_at, not the current-state knn).
         vector_repo.knn_known_at_hits = [_v("e1")]
         result = recall(
             "q",
@@ -229,16 +230,18 @@ class TestKnownAtBfsDropped:
 
 
 class TestRetrievalInvalidPITKindAttribution:
-    """C8.6 [24] — the retrieval entrypoint error attributes to #11, not #12.
+    """The retrieval entrypoint error attributes to the engine, not the facade.
 
-    Before C8.6, ``retrieval.errors.InvalidPITKind`` (a plain ``Exception`` raised
-    by #11's recall) shared its ``__name__`` with ``facade.errors.InvalidPITKind``
-    (a ``SeahorseError`` carrying ``.code = E_INVALID_PIT_KIND``, owned by #12).
-    Both ``mcp.errors._ORIGIN_BY_CLASS`` and ``cli.exit_codes._ORIGIN_BY_CLASS``
-    match on ``type(exc).__name__``, so both mapped to ``#12`` — mis-attributing
-    #11's error to the facade. The rename to ``RetrievalInvalidPITKind`` gives the
-    two classes distinct ``__name__`` so each table attributes to its real owner.
-    These tests pin the #11 attribution through BOTH projections (MCP + CLI).
+    Before the rename, ``retrieval.errors.InvalidPITKind`` (a plain ``Exception``
+    raised by the engine's recall) shared its ``__name__`` with
+    ``facade.errors.InvalidPITKind`` (a ``SeahorseError`` carrying
+    ``.code = E_INVALID_PIT_KIND``, owned by the facade). Both
+    ``mcp.errors._ORIGIN_BY_CLASS`` and ``cli.exit_codes._ORIGIN_BY_CLASS`` match
+    on ``type(exc).__name__``, so both mapped to the facade — mis-attributing the
+    engine's error to the facade. The rename to ``RetrievalInvalidPITKind`` gives
+    the two classes distinct ``__name__`` so each table attributes to its real
+    owner. These tests pin the engine attribution through BOTH projections
+    (MCP + CLI).
     """
 
     def test_mcp_translate_attributes_to_component_11(self) -> None:
@@ -246,7 +249,7 @@ class TestRetrievalInvalidPITKindAttribution:
 
         exc = RetrievalInvalidPITKind("bogus")
         resp = translate(exc, request_id=1)
-        # Plain Exception (no .code) → generic -32603, exception_class set, #11.
+        # Plain Exception (no .code) → generic -32603, exception_class set, engine.
         assert resp["error"]["code"] == -32603
         assert resp["error"]["data"]["exception_class"] == "RetrievalInvalidPITKind"
         assert resp["error"]["data"]["component"] == "#11"
@@ -256,7 +259,7 @@ class TestRetrievalInvalidPITKindAttribution:
 
         exc = RetrievalInvalidPITKind("bogus")
         exit_code, info = translate(exc)
-        # Plain Exception (no .code, not in CAT_B) → generic fallback, #11.
+        # Plain Exception (no .code, not in CAT_B) → generic fallback, engine.
         from seahorse.cli.exit_codes import EXIT_GENERAL
 
         assert exit_code == EXIT_GENERAL
@@ -265,7 +268,7 @@ class TestRetrievalInvalidPITKindAttribution:
 
     def test_facade_invalid_pit_kind_still_attributes_to_12(self) -> None:
         # Regression guard: the facade's InvalidPITKind (SeahorseError, .code) MUST
-        # keep attributing to #12 — the rename must not bleed into the facade path.
+        # keep attributing to the facade — the rename must not bleed into the facade path.
         from seahorse.facade.errors import E_INVALID_PIT_KIND, InvalidPITKind
         from seahorse.mcp.errors import CAT_A, translate
 

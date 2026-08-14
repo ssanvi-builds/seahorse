@@ -1,16 +1,17 @@
-"""G1 ``cognitive_type`` client-side filtering tests (f5-11 §7.4, §16).
+"""``cognitive_type`` client-side filtering tests.
 
-``cognitive_type`` is a pushdown ONLY for vigent ``knn`` (the single method that
-exposes ``cognitive_types``). For the PIT knn variants AND for ALL BM25 methods
-(vigent + PIT) it is a CLIENT-SIDE filter via ``episode_repo.get(ep_id)``.
+``cognitive_type`` is a pushdown ONLY for current-state ``knn`` (the single
+method that exposes ``cognitive_types``). For the PIT knn variants AND for ALL
+BM25 methods (current-state + PIT) it is a CLIENT-SIDE filter via
+``episode_repo.get(ep_id)``.
 
 Signals:
-- vigent knn + ``cognitive_type`` → ``cognitive_types=[ct]`` pushdown; NO
+- current-state knn + ``cognitive_type`` → ``cognitive_types=[ct]`` pushdown; NO
   ``episode_repo.get`` for the vector hits (the repo pre-filtered).
 - PIT knn + ``cognitive_type`` → pushdown NOT available; client-side filter via
   ``episode_repo.get``; hits whose episode is missing or mismatches are dropped.
 - BM25 + ``cognitive_type`` (any pit) → ALWAYS client-side (no BM25 pushdown).
-- Robust to ``< k`` after filtering: returns what matches, NO padding (ADR-10).
+- Robust to ``< k`` after filtering: returns what matches, NO padding.
 """
 
 from __future__ import annotations

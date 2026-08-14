@@ -1,13 +1,12 @@
-"""Tests for #5 ``_deterministic_extract`` — the skip-path fallback (f5-05 sec 3.2).
+"""Tests for the write path's ``_deterministic_extract`` — the skip-path fallback.
 
 ``_deterministic_extract`` is the zero-LLM editorial fallback of the skip path:
 it derives a subject deterministically (``title > first H1`` — no filename
 fallback, ``RememberPayload`` carries no path) and raises ``SubjectDerivationError``
-loud when neither is present (ADR-10: never silently produce a subject-less
-episode). It returns an ``ExtractedCandidate`` carrying ONLY editorial fields;
-provenance is built separately by ``run_skip_path`` (no field duplication).
-Engine-owned fields (``created_at`` / ``invalid_at`` / ``expired_at`` / ``id``)
-are never set here.
+loud when neither is present (never silently produce a subject-less episode). It
+returns an ``ExtractedCandidate`` carrying ONLY editorial fields; provenance is
+built separately by ``run_skip_path`` (no field duplication). Engine-owned fields
+(``created_at`` / ``invalid_at`` / ``expired_at`` / ``id``) are never set here.
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ class TestExtractedCandidateShape:
 
     def test_has_no_provenance_fields(self) -> None:
         # Provenance (extraction_mode/model_used/prompt_hash/confidence) is
-        # built by run_skip_path, NOT here — no field duplication (f5-05 sec 3.2).
+        # built by run_skip_path, NOT here — no field duplication.
         c = ExtractedCandidate(
             subject="s", body="b", valid_at=None,
             cognitive_type=None, schema_version="1.1",
@@ -91,7 +90,7 @@ class TestSubjectDerivation:
         assert c.subject == "real h1"
 
     def test_whitespace_only_title_no_h1_raises(self) -> None:
-        # A whitespace-only title with no H1 must raise (pins ADR-10 loud failure).
+        # A whitespace-only title with no H1 must raise (pins fail-loud behavior).
         with pytest.raises(SubjectDerivationError):
             deterministic_extract(_payload(title="   ", body="just prose"))
 
@@ -129,7 +128,7 @@ class TestPassthroughFields:
         assert c.body == "the body"
 
     def test_valid_at_passthrough_unsanitized(self) -> None:
-        # I2: valid_at is passed through unsanitized; the engine enforces it.
+        # valid_at is passed through unsanitized; the engine enforces it.
         vt = datetime(2024, 1, 1, tzinfo=UTC)
         c = deterministic_extract(_payload(title="t", valid_at=vt))
         assert c.valid_at == vt
@@ -152,7 +151,7 @@ class TestPassthroughFields:
 
 
 class TestDeriveSummary:
-    """OQ3 enabler (f5-09 §6.2): deterministic zero-LLM summary fallback."""
+    """Deterministic zero-LLM summary fallback."""
 
     def test_first_sentence_of_body(self) -> None:
         assert derive_summary("This is the first sentence. And the second.") == (
@@ -160,8 +159,8 @@ class TestDeriveSummary:
         )
 
     def test_skips_h1(self) -> None:
-        # The H1 is the subject (SO-2); the summary is the first sentence of the
-        # CONTENT, never the tagged subject line (obsiforge §15.2 redesign 4).
+        # The H1 is the subject; the summary is the first sentence of the
+        # CONTENT, never the tagged subject line.
         body = "# [session_tag:prompt_number]\n\nThis is the real content. More."
         assert derive_summary(body) == "This is the real content."
 

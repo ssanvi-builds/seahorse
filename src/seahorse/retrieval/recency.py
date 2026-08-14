@@ -1,9 +1,9 @@
-"""F1 — Recency as a ranking signal (seam default-OFF, ADR-10).
+"""Recency as a ranking signal (an opt-in extension, default-OFF).
 
-A small, localized post-RRF step in #11 ``recall`` (cerebras-f-feasibility §3).
-The boost is folded INTO ``FusedCandidate.score`` — never an external reorder —
-so #8's ``IndexRow.score`` passthrough stays truthful (f5-11 §2.1: #11 owns the
-ranking; #8 projects without re-ranking).
+A small, localized post-RRF step in the retrieval engine's ``recall``. The boost
+is folded INTO ``FusedCandidate.score`` — never an external reorder — so the
+disclosure layer's ``IndexRow.score`` passthrough stays truthful (the retrieval
+engine owns the ranking; the disclosure layer projects without re-ranking).
 
 Formula (bounded exponential decay, multiplicative):
 
@@ -13,7 +13,7 @@ Formula (bounded exponential decay, multiplicative):
   ``[1, 1+γ]``, so a fresh-but-irrelevant candidate cannot outrank a relevant
   one by more than ``1+γ``.
 - ``half_life_days`` is the exponential half-life of the signal.
-- Deterministic given ``now`` — #11's injectable clock (ADR-10 reproducibility).
+- Deterministic given ``now`` — the engine's injectable clock.
 
 Gate: the boost applies ONLY when ``pit is None``. Recency is a signal of the
 "now" regime; PIT queries reproduce state as-of-``t`` with pure RRF (never
@@ -24,11 +24,6 @@ Gate: the boost applies ONLY when ``pit is None``. Recency is a signal of the
 query for ≤k candidates, no N+1) by the caller; this module is a pure function
 over the already-fetched map. A candidate missing from the map is left unboosted
 (honest — never invent a boost for a row the index does not expose).
-
-References:
-- cerebras-f-feasibility.md §3 (F1 — veredicto ALTO, decay acotado, gate pit is None)
-- f5-11 §2.1 (delegation purity: #11 owns ranking, #8 projects)
-- ADR-10 (reproducibility: default-off preserves the bit-comparable fingerprint)
 """
 
 from __future__ import annotations
@@ -47,12 +42,12 @@ _SECONDS_PER_DAY = 86_400.0
 
 @dataclass(frozen=True)
 class RecencyConfig:
-    """Recency boost parameters (F1, cerebras-f-feasibility §3).
+    """Recency boost parameters.
 
     ``gamma`` is the max multiplicative boost at age 0 (factor in ``[1, 1+γ]``);
     ``half_life_days`` is the exponential half-life of the signal. Both are
-    pinned in ``retrieval/constants.py`` (ADR-10: fixed up front, not tuned on a
-    batch); the F7 recency experiment (LMEB) decides the real calibration.
+    pinned in ``retrieval/constants.py`` (fixed up front, not tuned on a batch);
+    a future calibration pass decides the real values.
     """
 
     gamma: float = RECENCY_GAMMA
@@ -75,13 +70,13 @@ def apply_recency_boost(
     *,
     k: int,
 ) -> list[FusedCandidate]:
-    """Fold the recency boost into ``FusedCandidate.score`` (O(k), ADR-10).
+    """Fold the recency boost into ``FusedCandidate.score`` (O(k)).
 
     Rebuilds each candidate with ``score·factor`` (factor in ``[1, 1+γ]``), then
     re-sorts by the boosted score (desc, ``ep_id`` asc tie-break) and re-truncates
     to ``k``. The boost is folded INTO the score — never an external reorder — so
-    #8's ``IndexRow.score`` passthrough stays truthful. Deterministic given
-    ``now`` (the injectable clock of #11).
+    the disclosure layer's ``IndexRow.score`` passthrough stays truthful.
+    Deterministic given ``now`` (the engine's injectable clock).
 
     A candidate with no ``created_at`` in the map is left unboosted (honest — the
     index row is missing; never invent a boost).

@@ -1,20 +1,14 @@
-"""``seahorse setup`` / ``seahorse setup --uninstall`` (Sprint B, obsiforge §4.7).
+"""``seahorse setup`` / ``seahorse setup --uninstall``.
 
 ``setup`` installs the observer:
 1. Writes the ``[observe]`` section to ``seahorse.toml`` (with a generated auth
-   token, §15.2 redesign 10).
+   token).
 2. MERGES the Claude Code hooks into ``~/.claude/settings.json`` — coexisting
-   with claude-mem's hooks (obsiforge §15.3-4: coexistence = migration, not
-   convivencia). The observer hooks are identified by the ``seahorse observe
-   event`` marker so ``--uninstall`` can remove exactly them.
+   with claude-mem's hooks. The observer hooks are identified by the ``seahorse
+   observe event`` marker so ``--uninstall`` can remove exactly them.
 
 ``--uninstall`` removes the observer hooks and the ``[observe]`` section,
 preserving other hooks and config.
-
-References:
-- obsiforge-evolution-architecture.md §4.7 (instala-y-funciona)
-- obsiforge-evolution-architecture.md §15.2 redesign 10 (auth token)
-- obsiforge-evolution-architecture.md §15.3-4 (coexistence = migration)
 """
 
 from __future__ import annotations
@@ -39,7 +33,7 @@ from seahorse.cli.output import OutputFormat
 # the hook command ``{python} -m seahorse.cli.app observe event``.
 HOOK_MARKER = "observe event"
 
-# Hook event → matcher (obsiforge §4.2).
+# Hook event → matcher.
 _OBSERVER_HOOKS: dict[str, str] = {
     "SessionStart": "startup",
     "UserPromptSubmit": "*",
@@ -63,7 +57,7 @@ def write_observe_config(vault: Path) -> Path:
     """Write the ``[observe]`` section to ``seahorse.toml`` (idempotent).
 
     A present section is preserved (the user's config wins); a missing one is
-    appended with the defaults + a generated auth token (§15.2 redesign 10).
+    appended with the defaults + a generated auth token.
     """
     cfg_path = config_path_for(vault)
     content = cfg_path.read_text(encoding="utf-8")

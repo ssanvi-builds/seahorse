@@ -1,7 +1,8 @@
-"""FastEmbed ONNX cross-encoder backend (F2, f7 §5b).
+"""FastEmbed ONNX cross-encoder backend.
 
 The backend wraps fastembed's sync ``TextCrossEncoder`` behind the
-``QueryReranker`` seam. These tests use a duck-typed fake model (``rerank``
+``QueryReranker`` extension point. These tests use a duck-typed fake model
+(``rerank``
 generator) so the adapter routing is pinned WITHOUT the real model / onnxruntime.
 The real factory is gated on ``SEAHORSE_RUN_MODEL_TESTS=1`` + network (bundle:
 bge-reranker-v2-m3 ONNX o4, ~1.1GB — validated on arm64 2026-08-08).
@@ -47,7 +48,7 @@ def test_rerank_empty_docs_returns_empty() -> None:
 
 
 def test_bundle_pin_constants() -> None:
-    # The MIT multilingual bundle (cerebras-f §4.2): the coherent Apache-2.0
+    # The MIT multilingual bundle: the coherent Apache-2.0
     # choice over the cc-by-nc jina default.
     assert "bge-reranker-v2-m3" in MODEL_NAME
     assert MODEL_FILE == "model.onnx"
@@ -76,7 +77,7 @@ def test_build_fastembed_reranker_real(gate_model_tests) -> None:
 
 
 def test_build_fastembed_reranker_idempotent(gate_model_tests) -> None:
-    # F7 warm-DB: a facade is built per variant, each calling this — the second
+    # Warm-DB: a facade is built per variant, each calling this — the second
     # call must reuse the registered model, not raise "already registered".
     from seahorse.embeddings.rerank_backend import build_fastembed_reranker
 

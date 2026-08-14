@@ -1,4 +1,4 @@
-"""Tests for the efficiency metrics (f5-16 §4.4 F4 — REAL tokens)."""
+"""Tests for the efficiency metrics (REAL tokens)."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def test_latency_p95_merges_probe_results():
 
 
 def test_latency_p95_rerank_reads_index_rerank_key():
-    """F2 (f7 §5b): the rerank-path INDEX p95 comes from latency_ms["index_rerank"]
+    """The rerank-path INDEX p95 comes from latency_ms["index_rerank"]
     (set by the SUT only when rerank_enabled)."""
     inst = _inst_with_haystack("x")
     responses = [

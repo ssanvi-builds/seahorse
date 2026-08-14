@@ -1,16 +1,14 @@
-"""Write-time invariant guards I1-I11 (owned by #2).
+"""Write-time invariant guards (owned by the engine).
 
 The guard chain runs before ``repo.append`` (apply_fact / improve) and before
 ``repo.set_invalid_at`` (forget). Each guard raises a typed ``EngineError`` (or
-``InvalidationConflictError`` for the I3/I6 storage-idempotency cases) on the
-first violated invariant. Guards are pure validators over the ``Episode`` +
-repo; they never mutate.
+``InvalidationConflictError`` for the storage-idempotency cases) on the first
+violated invariant. Guards are pure validators over the ``Episode`` + repo;
+they never mutate.
 
-SO-4a amends I2: the allowed set for an arbitrary ``valid_at`` is
-``{human, importer, system}``; ``agent`` / ``project_doc`` (and unknown/None)
-are restricted to ``null`` or ``now``.
-
-Reference: f5-02 §3 (I1-I11), §6 (guard chain), SO-4 4a (I2 amendment).
+The allowed set for an arbitrary ``valid_at`` is ``{human, importer, system}``;
+``agent`` / ``project_doc`` (and unknown/None) are restricted to ``null`` or
+``now``.
 """
 
 from __future__ import annotations
@@ -21,7 +19,7 @@ from seahorse.contracts.engine import EpisodeRepository, InvalidationConflictErr
 from seahorse.contracts.episode import Episode
 from seahorse.engine import errors
 
-# SO-4a: sources permitted to set an arbitrary valid_at (past/future/null).
+# Sources permitted to set an arbitrary valid_at (past/future/null).
 _VALID_AT_ARBITRARY_SOURCES = frozenset({"human", "importer", "system"})
 
 
@@ -37,8 +35,8 @@ class WriteGuards:
     ) -> None:
         if op in ("apply_fact", "improve"):
             # op="improve" validates the NEW episode with the append-guard set;
-            # atomicity (I8) is enforced by the ``with repo.atomic():`` block in
-            # the engine, not by a guard.
+            # atomicity is enforced by the ``with repo.atomic():`` block in the
+            # engine, not by a guard.
             self._i1_created_at_engine_owned(ep)
             self._i2_valid_at_by_source(ep, now)
             self._i5_monotonic(ep)
@@ -57,14 +55,14 @@ class WriteGuards:
     # --- apply_fact / improve guards -----------------------------------------
 
     def _i1_created_at_engine_owned(self, ep: Episode) -> None:
-        # I1: created_at is Engine-owned and set once at ingest. apply_fact
+        # created_at is Engine-owned and set once at ingest. apply_fact
         # force-sets it before validate; reaching None here is an engine bug.
         if ep.created_at is None:
             raise errors.EngineError(errors.E_CREATED_AT_ENGINE_OWNED, ep_id=ep.id)
 
     def _i2_valid_at_by_source(self, ep: Episode, now: datetime) -> None:
-        # I2 (SO-4a): arbitrary valid_at is human/importer/system only. Every
-        # other source (agent, project_doc, unknown) is restricted to null or now.
+        # Arbitrary valid_at is human/importer/system only. Every other source
+        # (agent, project_doc, unknown) is restricted to null or now.
         if ep.source_type in _VALID_AT_ARBITRARY_SOURCES:
             return
         if ep.valid_at is not None and ep.valid_at != now:
@@ -75,7 +73,7 @@ class WriteGuards:
             )
 
     def _i5_monotonic(self, ep: Episode) -> None:
-        # I5 null-safe: the ordering constraint applies ONLY when both operands
+        # Null-safe: the ordering constraint applies ONLY when both operands
         # of a bi-temporal pair are non-null.
         if (
             ep.valid_at is not None
@@ -101,14 +99,15 @@ class WriteGuards:
             )
 
     def _i4_expired_at_null_mvp(self, ep: Episode) -> None:
-        # I4 MVP-0: the decay feature (expired_at non-null) is not available;
-        # a non-null value is rejected with the named I4 code (f5-02 §8.2),
-        # not the generic MVP-1-stub code. MVP-1 accepts it opaque, core ignores it.
+        # The decay feature (expired_at non-null) is not available in the first
+        # release; a non-null value is rejected with the named decay code, not
+        # the generic not-yet-released stub code. A later release accepts it
+        # opaque; the core ignores it.
         if ep.expired_at is not None:
             raise errors.EngineError(
                 errors.E_EXPIRED_AT_NON_NULL,
                 field="expired_at",
-                reason="decay is mediano; expired_at must be null in MVP-0",
+                reason="decay is a medium-term goal; expired_at must be null in the first release",
             )
 
     def _supersedes_exists(self, ep: Episode, repo: EpisodeRepository) -> None:
@@ -122,16 +121,16 @@ class WriteGuards:
     # --- forget guards -------------------------------------------------------
 
     def _i3_invalid_at_null_before(self, ep: Episode) -> None:
-        # I3: invalid_at is set once null->now. Re-invalidating an already
+        # invalid_at is set once null->now. Re-invalidating an already
         # invalidated episode is a storage-idempotency conflict (the repo's
         # WHERE invalid_at IS NULL would affect 0 rows).
         if ep.invalid_at is not None:
             raise InvalidationConflictError(
-                f"invalid_at already set on {ep.id}; use revalidate() (I9)"
+                f"invalid_at already set on {ep.id}; use revalidate()"
             )
 
     def _i5_valid_le_now(self, ep: Episode, now: datetime) -> None:
-        # I5: invalidating a PENDING_INGEST (valid_at > now) would yield
+        # Invalidating a PENDING_INGEST (valid_at > now) would yield
         # valid_at > invalid_at=now — ALWAYS forbidden, not policy-admitted.
         if ep.valid_at is not None and ep.valid_at > now:
             raise errors.EngineError(
@@ -140,15 +139,15 @@ class WriteGuards:
             )
 
     def _i6_no_overwrite(self, ep: Episode) -> None:
-        # I6: forget operates only on a vigente episode. A decayed episode
-        # (expired_at non-null) is not vigente and cannot be invalidated.
+        # Forget operates only on a currently valid episode. A decayed episode
+        # (expired_at non-null) is not currently valid and cannot be invalidated.
         if ep.expired_at is not None:
             raise InvalidationConflictError(
                 f"episode {ep.id} is decayed (expired_at set); cannot invalidate"
             )
 
     def _i7_keep_expired_at_untouched(self, ep: Episode) -> None:
-        # I7: forget touches invalid_at only; expired_at is never written by the
+        # Forget touches invalid_at only; expired_at is never written by the
         # invalidation path. This is a structural guarantee (set_invalid_at
         # updates one column), restated here as the documented invariant marker.
         return

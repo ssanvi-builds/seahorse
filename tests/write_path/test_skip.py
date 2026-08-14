@@ -1,7 +1,7 @@
-"""Tests for #5 ``run_skip_path`` — the first-class skip path (f5-05 sec 3.1/3.2).
+"""Tests for the write path's ``run_skip_path`` — the first-class skip path.
 
-First-class #5 (commit 3) wires the engine's ``is_valid_skip_path`` formal
-gate and the ``deterministic_extract`` fallback into ``run_skip_path``:
+The write path wires the engine's ``is_valid_skip_path`` formal gate and the
+``deterministic_extract`` fallback into ``run_skip_path``:
 
 - **Gate valid** -> use-as-is: ``confidence=1.0`` in the effective provenance,
   the engine ``WriteResult`` is returned verbatim.
@@ -9,9 +9,9 @@ gate and the ``deterministic_extract`` fallback into ``run_skip_path``:
   and fall back to ``deterministic_extract`` (zero-LLM editorial pass);
   ``confidence=None``.
 - **Gate raises AND no subject derivable** -> ``SubjectDerivationError``
-  propagates loud (ADR-10); the engine is NOT called.
+  propagates loud; the engine is NOT called.
 
-``#5`` owns ``confidence`` (f5-05 sec 11.5): it OVERWRITES the caller's value
+The write path owns ``confidence``: it OVERWRITES the caller's value
 (``1.0`` gate-valid, ``None`` fallback) — it does not pass it through.
 """
 
@@ -57,7 +57,7 @@ class TestRunSkipPathGateValid:
         t = datetime(2026, 7, 16, tzinfo=UTC)
         p = _payload()
         run_skip_path(p, decide_path(p, "skip"), engine, now=t)
-        # I1: created_at is engine-owned; #5 injects it ONLY for gate validation.
+        # created_at is engine-owned; the write path injects it ONLY for gate validation.
         assert engine.last_gate_call.episode.created_at == t
 
     def test_candidate_extraction_mode_skip_injected(self, engine) -> None:
@@ -86,7 +86,7 @@ class TestRunSkipPathGateValid:
         assert by["agent_id"] == "a1"
 
     def test_overwrites_caller_confidence_with_1_when_gate_valid(self, engine) -> None:
-        # spec 11.5: #5 owns confidence and OVERWRITES the caller's value.
+        # the write path owns confidence and OVERWRITES the caller's value.
         p = _payload({"confidence": 0.42})
         run_skip_path(p, decide_path(p, "skip"), engine)
         assert engine.last_call.by["confidence"] == 1.0
@@ -149,7 +149,7 @@ class TestRunSkipPathGateInvalidFallback:
     def test_non_skip_engine_error_propagates_verbatim(self) -> None:
         # A gate error with a code OTHER than E_SKIP_CONTRACT_VIOLATED is not a
         # skip-contract rejection — run_skip_path must re-raise it verbatim
-        # (no fallback, no swallow). ADR-10: never silently mask an engine error.
+        # (no fallback, no swallow). Never silently mask an engine error.
         from seahorse.engine.errors import E_NOT_IN_MVP_0, EngineError
         from tests.write_path.conftest import RecordingEngine
         eng = RecordingEngine(gate_error_code=E_NOT_IN_MVP_0)

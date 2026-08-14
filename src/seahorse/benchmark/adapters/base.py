@@ -1,11 +1,11 @@
-"""``BaseAdapter`` — shared utilities for dataset adapters (f5-16 §4)."""
+"""``BaseAdapter`` — shared utilities for dataset adapters."""
 
 from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
 
-# LongMemEval dates are ``YYYY/MM/DD (Weekday) HH:MM`` (f5-16 §4.1), where the
+# LongMemEval dates are ``YYYY/MM/DD (Weekday) HH:MM``, where the
 # English weekday is redundant with the calendar date. ``%a`` is locale-
 # dependent, so the weekday token is stripped before parsing — the date fields
 # are deterministic from the numeric part alone.

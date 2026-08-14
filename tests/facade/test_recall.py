@@ -1,10 +1,12 @@
-"""Tests for ``MemoryFacade.recall`` — MVP-0 G2 vigente listing via #8.
+"""Tests for ``MemoryFacade.recall`` — the first-release current-state listing
+via the disclosure shaper.
 
-Canonical MVP-0 recall: ``engine.get_vigente`` → client-side ``cognitive_type``
-filter → deterministic sort (``created_at`` desc, ``ep_id`` asc tie-break) →
-truncate ``k`` → synthetic ``FusedCandidate(ep_id, score=0.0, sources=())`` →
-#8 ``materialize_index``. #12 NEVER constructs ``IndexRow``. PIT recall is
-MVP-1 (#11) and is refused before any read (ADR-03 axes never mixed).
+Canonical first-release recall: ``engine.get_vigente`` → client-side
+``cognitive_type`` filter → deterministic sort (``created_at`` desc, ``ep_id``
+asc tie-break) → truncate ``k`` → synthetic ``FusedCandidate(ep_id, score=0.0,
+sources=())`` → the disclosure shaper's ``materialize_index``. The primitives
+facade NEVER constructs ``IndexRow``. PIT recall is a later-release feature (the
+hybrid retrieval path) and is refused before any read (axes never mixed).
 """
 
 from __future__ import annotations
@@ -69,7 +71,8 @@ class TestRecallDelegation:
         shaper.index_result = [row]
         result = facade.recall("sergio")
         assert result == [row]
-        # #12 did NOT construct the IndexRow itself — it came from #8.
+        # The primitives facade did NOT construct the IndexRow itself — it came
+        # from the disclosure shaper.
         assert result[0] is row
 
 
@@ -83,7 +86,8 @@ class TestRecallSyntheticCandidates:
         assert cands[0].sources == ()
 
     def test_pit_forwarded_as_none(self, facade, shaper) -> None:
-        # #12 forwards pit=None to #8 even though the caller gave no pit.
+        # The primitives facade forwards pit=None to the disclosure shaper even
+        # though the caller gave no pit.
         facade.recall("sergio")
         assert shaper.index_calls[0]["pit"] is None
 
@@ -160,7 +164,7 @@ class TestRecallPitRefused:
         pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
         with pytest.raises(PitRecallNotSupportedMVP0):
             facade.recall("sergio", pit=pit)
-        # ADR-03: no read happened.
+        # No read happened.
         assert engine.get_vigente_calls == []
         assert shaper.index_calls == []
 

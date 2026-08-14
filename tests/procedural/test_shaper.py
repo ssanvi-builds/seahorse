@@ -1,9 +1,9 @@
-"""Tests for ``ProceduralShaper`` — skill progressive disclosure (L2c §6.1).
+"""Tests for ``ProceduralShaper`` — skill progressive disclosure.
 
 The three levels map to the disclosure levels:
 - Discovery (INDEX): summary ≤ 280 chars (the skill's Discovery level).
 - Activation (TIMELINE): passthrough to the inner shaper.
-- Execution (FULL): the gated body (R5) — low-trust skills are delivered as
+- Execution (FULL): the gated body — low-trust skills are delivered as
   citation/context (``as_instruction=False``), never as instructions.
 """
 

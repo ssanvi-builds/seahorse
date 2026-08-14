@@ -1,4 +1,4 @@
-"""Tests for `seahorse doctor` (M4-C.3, onboarding backlog).
+"""Tests for `seahorse doctor`.
 
 Reports the extraction regime, the installed ``llm`` extra, missing API key
 NAMES, a live provider probe (only when LiteLLM is installed), and the

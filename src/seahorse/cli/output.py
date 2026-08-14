@@ -1,25 +1,25 @@
-"""Output formatting for the CLI (#14) — human / json / jsonl.
+"""Output formatting for the CLI — human / json / jsonl.
 
-Three output formats (f5-14 §3.4):
+Three output formats:
 - **human** (default): plain-text tables/tree, no ANSI — deterministic for
   tests and piping. (Rich tables are a future enhancement; plain text keeps
   output stable and grep-able.)
-- **json**: canonical JSON over the F3.1 shape, ``exclude_none=False`` (nulls
-  explicit, shape stable MVP-0 → MVP-1, parity with #13's wire serializer).
+- **json**: canonical JSON over the episode shape, ``exclude_none=False``
+  (nulls explicit, shape stable across releases, parity with the MCP server's
+  wire serializer).
 - **jsonl**: one JSON object per line, for streams (``recall``/``recall-full``).
 
-Serialization policy mirrors #13's ``seahorse.mcp.serialize`` (datetime →
-ISO-8601 UTC with ``Z``, ``exclude_none=False``, dataclass → field dict,
-tuple/set → array) but is OWNED by #14 — the sister projections are
-independently disposable (f5-14 §1.1: if MCP fragments, #14 stays operational),
-so the CLI does not import the MCP serializer.
+Serialization policy mirrors the MCP server's ``seahorse.mcp.serialize``
+(datetime → ISO-8601 UTC with ``Z``, ``exclude_none=False``, dataclass → field
+dict, tuple/set → array) but is OWNED by the CLI — the two surfaces are
+independently disposable (if the MCP server fragments, the CLI stays
+operational), so the CLI does not import the MCP serializer.
 
-Honest MVP-0 gap (f5-14 §2.2 vs real facade): ``facade.remember`` returns
-``WriteResult`` (``ep_id``/``fact_id``/``status``/``collisions_detected``), NOT
-the full ``Episode``. The f5-14 ``--json`` example showed the episode embedded;
-#14 cannot fetch it without bypassing the facade (the only domain seam), so
-``remember`` outputs the ``WriteResult`` honestly. ``improve``/``forget`` return
-``Episode`` and render it in full.
+Honest gap vs the real facade: ``facade.remember`` returns ``WriteResult``
+(``ep_id``/``fact_id``/``status``/``collisions_detected``), NOT the full
+``Episode``. The CLI cannot fetch it without bypassing the facade (the only
+domain seam), so ``remember`` outputs the ``WriteResult`` honestly.
+``improve``/``forget`` return ``Episode`` and render it in full.
 """
 
 from __future__ import annotations
@@ -41,13 +41,13 @@ OutputFormat = Literal["human", "json", "jsonl"]
 
 
 def _iso_z(dt: datetime) -> str:
-    """Canonicalize a datetime to UTC ISO-8601 with a ``Z`` suffix (F3.1 §4)."""
+    """Canonicalize a datetime to UTC ISO-8601 with a ``Z`` suffix."""
     dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
     return dt.isoformat().replace("+00:00", "Z")
 
 
 def to_jsonable(obj: Any) -> Any:
-    """Recursively convert a Python object to a JSON-able value (mirrors #13)."""
+    """Recursively convert a Python object to a JSON-able value (mirrors the MCP server)."""
     if obj is None:
         return None
     if isinstance(obj, (str, bool)):
@@ -59,12 +59,13 @@ def to_jsonable(obj: Any) -> Any:
     if isinstance(obj, Path):
         return str(obj)
     if isinstance(obj, UUID):
-        # Defensive parity with #13's to_wire: id fields are str today, but a
-        # UUID slipping through serializes canonically rather than falling to
-        # the default ``str(obj)`` tail (which yields the same, but explicit).
+        # Defensive parity with the MCP server's to_wire: id fields are str
+        # today, but a UUID slipping through serializes canonically rather than
+        # falling to the default ``str(obj)`` tail (which yields the same, but
+        # explicit).
         return str(obj)
     if isinstance(obj, BaseModel) and not isinstance(obj, type):
-        # Pydantic Episode (F3.1 canonical, sister-parity with #13's to_wire):
+        # Pydantic Episode (canonical, parity with the MCP server's to_wire):
         # getattr reads exclude=True fields (body/subject/fact_id) so they
         # travel the JSON output; __pydantic_extra__ carries x-* frontmatter.
         out = {name: to_jsonable(getattr(obj, name)) for name in type(obj).model_fields}
@@ -106,7 +107,7 @@ def _truncate(text: str, limit: int = 48) -> str:
 
 
 def render_write_result(result: WriteResult, fmt: OutputFormat, out: TextIO) -> None:
-    """``remember`` output: ``WriteResult`` (no Episode in MVP-0)."""
+    """``remember`` output: ``WriteResult`` (no Episode in the current release)."""
     if fmt == "json":
         out.write(to_json(result) + "\n")
         return
@@ -132,7 +133,7 @@ def render_episode(
     out.write(f"  ep_id:        {result.id}\n")
     out.write(f"  fact_id:      {result.fact_id or '-'}\n")
     out.write(f"  subject:      {_truncate(result.subject or '-')}\n")
-    out.write(f"  status:       {'invalidated' if result.invalid_at else 'vigente'}\n")
+    out.write(f"  status:       {'invalidated' if result.invalid_at else 'current'}\n")
     out.write(f"  valid_at:     {_fmt_dt(result.valid_at)}\n")
     out.write(f"  invalid_at:   {_fmt_dt(result.invalid_at)}\n")
     out.write(f"  created_at:   {_fmt_dt(result.created_at)}\n")
@@ -191,7 +192,7 @@ def render_timeline(
             f"  {marker}{entry.ep_id[:36]:<36} {_truncate(entry.subject, 28):<28} "
             f"valid={_fmt_dt(entry.valid_at)} invalid={_fmt_dt(entry.invalid_at)}\n"
         )
-    # Progressive disclosure (ADR-06): the middle rung hints at the next.
+    # Progressive disclosure: the middle rung hints at the next.
     out.write("\n  Use `seahorse recall-full <ep_id> ...` to hydrate body.\n")
 
 

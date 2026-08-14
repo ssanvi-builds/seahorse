@@ -1,11 +1,11 @@
-"""MVP-1 axis stubs (Phase 10, owned #2).
+"""Stubs for primitives deferred to a later release.
 
 These primitives are SIGNED in the timeline (the accessors are part of the
-``BiTemporalEngine`` surface) but revisable until MVP-1. In MVP-0 they fail
-loud with ``EngineError("E_NOT_IN_MVP_0")`` rather than over-claiming a
-behavior that depends on a deeper conflict policy (ADR-10 honesty). The
-``mvp1_axis`` marker (SO-1 safeguard 2) keeps them visible to the runner
-without gating the MVP-0 green suite.
+``BiTemporalEngine`` surface) but revisable until a later release. In the
+current release they fail loud with ``EngineError("E_NOT_IN_MVP_0")`` rather
+than over-claiming a behavior that depends on a deeper conflict policy
+(fail-loud honesty). The ``mvp1_axis`` marker keeps them visible to the runner
+without gating the current-release green suite.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def engine(storage):
     return BiTemporalEngine(repo, audit)
 
 
-# --- MVP-1 primitive stubs -------------------------------------------------
+# --- deferred primitive stubs ----------------------------------------------
 
 
 def test_state_at_raises_not_in_mvp_0(engine):
@@ -70,7 +70,7 @@ def test_expire_raises_not_in_mvp_0(engine):
     assert exc.value.code == errors.E_NOT_IN_MVP_0
 
 
-# --- ConflictPolicy MVP-1 -------------------------------------------------
+# --- deferred conflict policy --------------------------------------------
 
 
 def test_default_conflict_policy_mvp1_resolve_raises_not_in_mvp_0():

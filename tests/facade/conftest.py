@@ -1,11 +1,11 @@
-"""Shared fixtures + recording doubles for #12 MemoryFacade tests.
+"""Shared fixtures + recording doubles for the primitives facade tests.
 
 The recording doubles (``RecordingEngine`` / ``RecordingWritePath`` /
-``RecordingShaper``) structurally enforce #12's delegation invariants that
-outcome-only tests cannot catch (the #8 adversarial-review lesson): assert
-WHAT downstream method was called, with WHICH args, in WHICH order — not just
-the return value. They also prove guards fire BEFORE any read (call counts
-stay zero on the error path).
+``RecordingShaper``) structurally enforce the primitives facade's delegation
+invariants that outcome-only tests cannot catch (the structural-review
+lesson): assert WHAT downstream method was called, with WHICH args, in WHICH
+order — not just the return value. They also prove guards fire BEFORE any read
+(call counts stay zero on the error path).
 """
 
 from __future__ import annotations
@@ -74,12 +74,12 @@ def make_episode(
 
 
 # ---------------------------------------------------------------------------
-# RecordingEngine — records every method the facade calls on #2.
+# RecordingEngine — records every method the facade calls on the engine.
 # ---------------------------------------------------------------------------
 
 
 class RecordingEngine:
-    """Engine double that records #2 calls and returns configurable results."""
+    """Engine double that records engine calls and returns configurable results."""
 
     def __init__(self) -> None:
         self.get_vigente_calls: list[dict[str, Any]] = []
@@ -156,7 +156,7 @@ class RecordingEngine:
 
 
 # ---------------------------------------------------------------------------
-# RecordingWritePath — records #5 ingest calls.
+# RecordingWritePath — records write-path ingest calls.
 # ---------------------------------------------------------------------------
 
 
@@ -181,7 +181,7 @@ class RecordingWritePath:
 
 
 # ---------------------------------------------------------------------------
-# RecordingShaper — records #8 materialize_* calls.
+# RecordingShaper — records the disclosure shaper's materialize_* calls.
 # ---------------------------------------------------------------------------
 
 
@@ -262,9 +262,10 @@ def make_facade(
     eng = engine or RecordingEngine()
     clk = clock or (lambda: datetime(2026, 7, 16, tzinfo=UTC))
     config = FacadeConfig()
-    # C8.1: recall policy is delegated to an injected Retriever. When none is
-    # provided, the MVP-0 vigente-listing impl wraps the recording engine so the
-    # pre-C8.1 behavior (engine.get_vigente driven by recall) is preserved.
+    # Recall policy is delegated to an injected Retriever. When none is
+    # provided, the first-release current-state-listing impl wraps the recording
+    # engine so the original behavior (engine.get_vigente driven by recall) is
+    # preserved.
     ret = retriever if retriever is not None else VigenteListingRetriever(
         engine=eng, clock=clk, config=config
     )

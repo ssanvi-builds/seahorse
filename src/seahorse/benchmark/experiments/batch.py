@@ -1,4 +1,4 @@
-"""F7 experiment (d) — batch-por-turno (f7 §5d).
+"""Batch experiment (per-turn batching).
 
 Measures whether the turn ``(session_id, prompt_number)`` is a recoverable
 unit: given a query about one observation's topic, does the hybrid retrieval
@@ -7,22 +7,22 @@ individual observation?
 
 Corpus: real claude-mem observations imported as episodes with turn structure
 preserved in provenance (``x-claude-mem-session-id`` +
-``x-claude-mem-prompt-number``, importer #15). The synthetic corpus verifies
-the harness MECHANICS in CI (``HashEmbedder``, no model download) — NOT the
-science (ADR-10).
+``x-claude-mem-prompt-number``, via the claude-mem importer). The synthetic
+corpus verifies the harness MECHANICS in CI (``HashEmbedder``, no model
+download) — NOT the science (fail-loud honesty).
 
-Metrics (f7 §5d):
-- **cluster recall@k** (batch-por-turno): leave-one-out — for each observation
+Metrics:
+- **cluster recall@k** (per-turn): leave-one-out — for each observation
   in a turn with >= 2 observations, recall@k of the OTHER observations of the
   turn given the observation's subject query. Averages across all observations.
-- **individual recall@k** (por-sesion): for each observation, recall@k of that
+- **individual recall@k** (per-session): for each observation, recall@k of that
   observation given its own subject query.
 
-Decision (``decide_batch``): batch-por-turno if cluster recall@k >=
-``BATCH_RECALL_THRESHOLD``, else por-sesion. Honest regime detection: all-zero
-scores => ``fallback_g2`` => invalid decision (ADR-10).
+Decision (``decide_batch``): per-turn batching if cluster recall@k >=
+``BATCH_RECALL_THRESHOLD``, else per-session batching. Honest regime detection:
+all-zero scores => ``fallback_g2`` => invalid decision (fail-loud honesty).
 
-The threshold is a design choice (f7 §5d does not pin one): a turn is a
+The threshold is a design choice (the spec does not pin one): a turn is a
 recoverable unit when, on average, at least half the turn cluster is retrieved
 by a query about one observation's topic. The turn-size distribution is
 reported so the reader can weigh the recall@k cap (a turn of size N has a
@@ -43,10 +43,10 @@ from seahorse.facade import build_facade
 from seahorse.facade.types import Provenance, RememberPayload
 from seahorse.importer.claude_mem import ClaudeMemReader, import_record
 
-# The k for the cluster recall@k measurement (harness default, f5-16 §4.4).
+# The k for the cluster recall@k measurement (harness default).
 BATCH_TOP_K = 10
 
-# Decision threshold (f7 §5d — design choice, documented): the turn is a
+# Decision threshold (design choice, documented): the turn is a
 # recoverable unit when, on average, >= half the turn cluster is retrieved by a
 # query about one observation's topic.
 BATCH_RECALL_THRESHOLD = 0.5
@@ -67,7 +67,7 @@ class TurnCluster:
 
 @dataclass(frozen=True)
 class BatchExperimentResult:
-    """The batch-por-turno measurement (f7 §5d)."""
+    """The per-turn batching measurement."""
 
     cluster_recall_at_k: float
     individual_recall_at_k: float
@@ -93,7 +93,7 @@ def _subject_of(ep: Episode) -> str:
 def compute_turn_clusters(episodes: list[Episode]) -> list[TurnCluster]:
     """Group episodes by turn ``(x-claude-mem-session-id, x-claude-mem-prompt-number)``.
 
-    Only turns with >= 2 observations are clusters (the batch-por-turno unit).
+    Only turns with >= 2 observations are clusters (the per-turn batching unit).
     Episodes without the preservation fields are skipped (they carry no turn).
     """
     groups: dict[tuple[str, int], list[Episode]] = {}
@@ -119,10 +119,10 @@ def compute_turn_clusters(episodes: list[Episode]) -> list[TurnCluster]:
 
 
 def _ingest_episodes(facade: Any, episodes: list[Episode]) -> list[Episode]:
-    """Ingest episodes via ``#12.remember`` (ADR-09 single write path, skip mode).
+    """Ingest episodes via the facade's ``remember`` (the single write path, skip mode).
 
     Returns the episodes with their STORED ``ep_id`` (the engine derives the id
-    — deterministic UUIDv5 for importer source, SO-4b — which may differ from
+    — a deterministic UUIDv5 for importer source, which may differ from
     ``Episode.id``). Episodes rejected by a collision (``WriteResult.ep_id`` is
     None) are NOT stored and are excluded from the corpus.
     """
@@ -154,7 +154,7 @@ def _make_synthetic_episodes() -> list[Episode]:
     coherent turn's observations are retrieved together and a diverse turn's are
     not. The background episodes (no turn structure) make the top-k selective
     (more episodes than ``BATCH_TOP_K``). The exact numbers are NOT the science
-    (ADR-10).
+    (fail-loud honesty).
     """
     now = datetime(2026, 1, 1, tzinfo=UTC)
     episodes: list[Episode] = []
@@ -327,7 +327,7 @@ def run_batch_experiment(
     project: str = "seahorse",
     reader: ClaudeMemReader | None = None,
 ) -> BatchExperimentResult:
-    """Run the batch-por-turno measurement and return the result.
+    """Run the per-turn batching measurement and return the result.
 
     ``corpus`` is ``"synthetic"`` (mechanical CI verification) or
     ``"claude-mem"`` (the real corpus, authoritative). ``db_path`` defaults to
@@ -368,19 +368,19 @@ def run_batch_experiment(
 
 
 def decide_batch(result: BatchExperimentResult) -> dict:
-    """Apply the f7 §5d decision: batch-por-turno vs por-sesion.
+    """Apply the decision: per-turn batching vs per-session batching.
 
     Returns a decision dict (``decision``, ``flip``, ``reason``,
     ``cluster_recall_at_k``, ``individual_recall_at_k``). Invalid (no decision)
-    when the run degraded to ``fallback_g2`` (ADR-10 honesty).
+    when the run degraded to ``fallback_g2`` (fail-loud honesty).
     """
     if result.regime == _FALLBACK_G2:
         return {
             "decision": "invalid_regime",
             "flip": False,
             "reason": (
-                "the run degraded to the G2 fallback (hybrid retrieval not wired); "
-                "the batch A/B is not meaningful — re-run with the embeddings extra"
+                "the run degraded to the listing regime (hybrid retrieval not wired); "
+                "the batch comparison is not meaningful — re-run with the embeddings extra"
             ),
             "cluster_recall_at_k": result.cluster_recall_at_k,
             "individual_recall_at_k": result.individual_recall_at_k,
@@ -392,7 +392,7 @@ def decide_batch(result: BatchExperimentResult) -> dict:
             "reason": (
                 f"cluster recall@{BATCH_TOP_K} {result.cluster_recall_at_k:.3f} >= "
                 f"threshold {BATCH_RECALL_THRESHOLD:.1f} — the turn is a recoverable "
-                f"unit; Sprint B batches by turn"
+                f"unit; batching groups by turn"
             ),
             "cluster_recall_at_k": result.cluster_recall_at_k,
             "individual_recall_at_k": result.individual_recall_at_k,
@@ -403,7 +403,7 @@ def decide_batch(result: BatchExperimentResult) -> dict:
         "reason": (
             f"cluster recall@{BATCH_TOP_K} {result.cluster_recall_at_k:.3f} < "
             f"threshold {BATCH_RECALL_THRESHOLD:.1f} — the turn is NOT a recoverable "
-            f"unit; Sprint B degrades to per-session batching"
+            f"unit; batching degrades to per-session"
         ),
         "cluster_recall_at_k": result.cluster_recall_at_k,
         "individual_recall_at_k": result.individual_recall_at_k,
@@ -413,15 +413,15 @@ def decide_batch(result: BatchExperimentResult) -> dict:
 def render_batch_report(result: BatchExperimentResult, decision: dict) -> str:
     """Human-readable report for the CLI (metrics + decision)."""
     lines = [
-        "# F7 experiment: batch-por-turno",
+        "# Batch experiment: per-turn batching",
         "",
         f"regime: {result.regime}",
         f"turns (>=2 obs): {result.n_turns}",
         f"observations: {result.n_observations}",
         f"cluster queries (leave-one-out): {result.n_cluster_queries}",
         f"turn sizes: {sorted(result.turn_sizes)}",
-        f"cluster recall@{BATCH_TOP_K} (batch-por-turno): {result.cluster_recall_at_k:.3f}",
-        f"individual recall@{BATCH_TOP_K} (por-sesion): {result.individual_recall_at_k:.3f}",
+        f"cluster recall@{BATCH_TOP_K} (per-turn): {result.cluster_recall_at_k:.3f}",
+        f"individual recall@{BATCH_TOP_K} (per-session): {result.individual_recall_at_k:.3f}",
         f"recoverable turns (cluster recall >= {BATCH_RECALL_THRESHOLD:.1f}): "
         f"{result.recoverable_turns:.3f}",
         "",

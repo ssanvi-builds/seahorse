@@ -1,4 +1,4 @@
-"""#16 benchmark reproducibility — model pinning + output cache (f5-16 §5)."""
+"""Benchmark reproducibility — model pinning + output cache."""
 
 from __future__ import annotations
 

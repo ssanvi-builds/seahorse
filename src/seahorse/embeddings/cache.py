@@ -1,8 +1,8 @@
-"""Query cache (M1-B.4, f5-07 §3.5).
+"""Query cache.
 
 ``CachedQueryEmbedder`` wraps a sync ``QueryEmbedder`` with a two-level cache:
 an in-memory LRU (cap ``_LRU_CAP``) and the SQLite ``EmbeddingsCacheRepository``
-(migration 007, owned by #6). The cache key is
+(migration 007, owned by the persistence layer). The cache key is
 ``(model_identity.cache_key(), role, content_hash)`` where ``content_hash`` is
 the SHA-256 of the normalized text + role — repeated recall queries re-embed
 once, and cached vectors survive process restarts.
@@ -23,7 +23,7 @@ _LRU_CAP = 4096
 
 
 def _content_hash(text: str, role: str) -> str:
-    """SHA-256 of the normalized text + role (f5-07 §3.5)."""
+    """SHA-256 of the normalized text + role."""
     return hashlib.sha256(
         (" ".join(text.strip().split()) + "|" + role).encode("utf-8")
     ).hexdigest()

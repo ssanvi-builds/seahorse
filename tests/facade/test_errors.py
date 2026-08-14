@@ -1,9 +1,10 @@
-"""Tests for the #12 facade error vocabulary.
+"""Tests for the primitives facade error vocabulary.
 
-#12 raises ``SeahorseError`` (with a stable ``code`` + ``detail``) at the
-boundary for shape/validation failures and for MVP-1 primitives refused in
-MVP-0. Engine errors (``EngineError``) are propagated verbatim — the caller
-matches on ``err.code`` either way.
+The primitives facade raises ``SeahorseError`` (with a stable ``code`` +
+``detail``) at the boundary for shape/validation failures and for primitives
+that are refused in the first release but planned for a later release. Engine
+errors (``EngineError``) are propagated verbatim — the caller matches on
+``err.code`` either way.
 """
 
 from __future__ import annotations

@@ -1,39 +1,34 @@
-"""#15 claude-mem importer — pure mapping + vendor reader (f5-15 §2).
+"""claude-mem importer — pure mapping + vendor reader.
 
-The claude-mem importer is the **migration/coexistence bridge** (obsiforge
-§15.4): it reads claude-mem's local data (``~/.claude-mem/claude-mem.db``,
-worker ``127.0.0.1:37701``) and maps each observation to an F3.1 episode.
-claude-mem is NEVER a runtime dependency — the importer reads its SQLite as a
-one-time migration source.
+The claude-mem importer is the **migration/coexistence bridge**: it reads
+claude-mem's local data (``~/.claude-mem/claude-mem.db``, worker
+``127.0.0.1:37701``) and maps each observation to an F3.1 episode. claude-mem
+is NEVER a runtime dependency — the importer reads its SQLite as a one-time
+migration source.
 
-``import_record`` is the f5-15 pure function: vendor record -> F3.1 notes +
-loss report. It never fires an LLM (ingestion, not extraction), sets
+``import_record`` is a pure function: vendor record -> F3.1 notes + loss
+report. It never fires an LLM (ingestion, not extraction), sets
 ``provenance.source_type=importer`` + ``importer_vendor=claude-mem`` +
-``extraction_mode=skip`` (the #5 ``decide_path`` guard forces skip), and records
-ALL loss in ``loss_report`` (auditable). The id is a deterministic UUIDv5
-(SO-4b) so re-import is idempotent at the storage layer.
+``extraction_mode=skip`` (the write path's ``decide_path`` guard forces skip),
+and records ALL loss in ``loss_report`` (auditable). The id is a deterministic
+UUIDv5 so re-import is idempotent at the storage layer.
 
 Mapping (claude-mem ``observations`` table -> F3.1):
 - ``body`` = ``# {title}\n\n{narrative}`` (H1 = title so the engine derives
-  ``subject``, SO-2). The importer guarantees a body with H1 (f5-15 §8.2).
-- ``valid_at`` = the observation's ``created_at`` (importer is editorial
-  authority; I2/SO-4a allows arbitrary ``valid_at`` for ``source_type=importer``).
-- ``cognitive_type`` = conservative heuristic from the observation ``type``
-  (f5-15 §6.5): decision/feature/bugfix/refactor -> ``semantic``;
-  discovery/change -> ``episodic``; unknown -> ``semantic``.
+  ``subject``). The importer guarantees a body with H1.
+- ``valid_at`` = the observation's ``created_at`` (the importer is the
+  editorial authority and may set an arbitrary ``valid_at`` for
+  ``source_type=importer``).
+- ``cognitive_type`` = conservative heuristic from the observation ``type``:
+  decision/feature/bugfix/refactor -> ``semantic``; discovery/change ->
+  ``episodic``; unknown -> ``semantic``.
 - ``provenance`` carries the importer contract + the vendor id as
   ``source_record_id`` (the engine's deterministic-UUIDv5 input) and
-  ``x-claude-mem-source-id`` (f5-15 §6.8 preservation convention).
-- ``provenance`` also preserves the vendor **turn structure** (f7 §5d): the
+  ``x-claude-mem-source-id`` (preservation convention).
+- ``provenance`` also preserves the vendor **turn structure**: the
   ``memory_session_id`` and ``prompt_number`` survive as
-  ``x-claude-mem-session-id`` / ``x-claude-mem-prompt-number`` so the
-  batch-por-turno experiment can group episodes by turn. The provenance
-  ``session_id`` itself stays run-scoped (f5-15 §3.3).
-
-References:
-- f5-15-importers.md §2.1 (import_record contract), §2.2 (mapping table),
-  §6.5 (cognitive_type heuristic), §6.8 (vendor id preservation)
-- obsiforge-evolution-architecture.md §15.4 (importer = migration bridge)
+  ``x-claude-mem-session-id`` / ``x-claude-mem-prompt-number`` so episodes can
+  be grouped by turn. The provenance ``session_id`` itself stays run-scoped.
 """
 
 from __future__ import annotations
@@ -48,11 +43,11 @@ from seahorse.engine.canonical import canonical_body_hash
 from seahorse.engine.ids import deterministic_id
 from seahorse.importer.types import IMPORTER_VERSION, ImporterResult, LossReport
 
-# claude-mem observation types -> F3.1 cognitive_type (conservative, f5-15 §6.5).
+# claude-mem observation types -> cognitive_type (conservative heuristic).
 _SEMANTIC_TYPES = frozenset({"decision", "feature", "bugfix", "refactor"})
 _EPISODIC_TYPES = frozenset({"discovery", "change"})
 
-# Structured claude-mem fields with no F3.1 mapping (documented as lost).
+# Structured claude-mem fields with no mapping (documented as lost).
 _UNMAPPED_FIELDS = (
     "facts",
     "concepts",
@@ -65,7 +60,7 @@ _UNMAPPED_FIELDS = (
 
 
 def _infer_cognitive_type(obs_type: str) -> str:
-    """Conservative heuristic (f5-15 §6.5): semantic default, episodic for
+    """Conservative heuristic: semantic default, episodic for
     session-event types."""
     if obs_type in _EPISODIC_TYPES:
         return "episodic"
@@ -86,11 +81,11 @@ def _parse_created_at(raw: Any) -> datetime | None:
 
 
 def import_record(vendor_record: dict, vendor: str) -> ImporterResult:
-    """Pure function: vendor record -> F3.1 notes + loss report (f5-15 §2.1).
+    """Pure function: vendor record -> F3.1 notes + loss report.
 
     Never fires an LLM, never writes to the store, never resolves collisions.
     ``vendor`` must be ``"claude-mem"`` (the only materialized importer; the
-    contract is extensible to Mem0/Zep per f5-15 §1.1).
+    contract is extensible to Mem0/Zep).
     """
     if vendor != "claude-mem":
         raise ValueError(
@@ -108,8 +103,8 @@ def _map_claude_mem(record: dict) -> ImporterResult:
     created_at = _parse_created_at(record.get("created_at"))
     agent_id = (record.get("agent_id") or "claude-mem-import").strip()
 
-    # Body with H1 = title (engine derives subject from H1, SO-2). The importer
-    # guarantees a body with H1 (f5-15 §8.2) so the skip path never falls to
+    # Body with H1 = title (the engine derives subject from H1). The importer
+    # guarantees a body with H1 so the skip path never falls to
     # deterministic_extract's loud SubjectDerivationError.
     subject = title or obs_type or "claude-mem observation"
     body = f"# {subject}\n\n{narrative}" if narrative else f"# {subject}"
@@ -130,10 +125,9 @@ def _map_claude_mem(record: dict) -> ImporterResult:
         "source_record_id": source_id,
         "importer_loss": loss,
         "x-claude-mem-source-id": source_id,
-        # Turn structure (f7 §5d): the vendor session + prompt_number survive so
-        # the batch-por-turno experiment can group episodes by turn. The
-        # provenance ``session_id`` stays run-scoped (f5-15 §3.3); these
-        # preservation fields carry the vendor's own grouping (f5-15 §6.8).
+        # Turn structure: the vendor session + prompt_number survive so episodes
+        # can be grouped by turn. The provenance ``session_id`` stays
+        # run-scoped; these preservation fields carry the vendor's own grouping.
         "x-claude-mem-session-id": record.get("memory_session_id"),
         "x-claude-mem-prompt-number": record.get("prompt_number"),
     }
@@ -155,7 +149,7 @@ def _map_claude_mem(record: dict) -> ImporterResult:
 def _build_loss_report(
     record: dict, source_id: str, obs_type: str, created_at: datetime | None, agent_id: str
 ) -> LossReport:
-    """Document every loss/synthesis for the record (f5-15 §2.5, auditable)."""
+    """Document every loss/synthesis for the record (auditable)."""
     fields_lost: list[str] = []
     fields_synthesized: list[str] = []
     structural_loss: list[str] = []
@@ -180,7 +174,7 @@ def _build_loss_report(
         fields_synthesized.append("agent_id:defaulted_no_vendor_agent_id")
 
     notes = (
-        f"ADD: 1 vigent episode (type={obs_type or 'unknown'}, "
+        f"ADD: 1 current-state episode (type={obs_type or 'unknown'}, "
         f"cognitive_type={_infer_cognitive_type(obs_type)})"
     )
     return LossReport(

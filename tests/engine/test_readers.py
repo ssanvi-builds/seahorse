@@ -1,13 +1,13 @@
-"""Validate the Bi-temporal Engine readers (Phase 9, owned #2).
+"""Validate the Bi-temporal Engine readers.
 
-Readers never mutate storage and never move frontier symbols. They project the
-#6 repo Protocol into the read surfaces callers consume:
+Readers never mutate storage. They project the persistence repo Protocol into
+the read surfaces callers consume:
 
-- ``get_vigente(subject=None)`` — *activo ahora*: vigente rows with
+- ``get_vigente(subject=None)`` — currently valid: current-state rows with
   ``valid_at IS NULL OR valid_at <= now``. Excludes ``PENDING_INGEST``.
 - ``follow_supersedes_chain(ep_id)`` — bidirectional supersedes closure.
 - ``is_valid_at(ep_id, t)`` / ``is_known_at(ep_id, t)`` — NULL-safe PIT
-  predicates (F3.1 §15.1, l.880-892). ``None`` episode -> ``False``.
+  predicates. ``None`` episode -> ``False``.
 - ``audit_log(ep_id)`` — audit events whose ``target_id`` is ``ep_id``.
 - ``freshness_view(ep_id)`` — pure ``FreshnessView`` derivation.
 """
@@ -41,7 +41,7 @@ def _apply(eng, ep_id, body, *, valid_at=None, source_type="human"):
     )
 
 
-# --- get_vigente (activo ahora: excludes PENDING_INGEST) --------------------
+# --- get_vigente (currently valid: excludes PENDING_INGEST) -----------------
 
 
 def test_get_vigente_excludes_pending_ingest(engine):
@@ -50,7 +50,7 @@ def test_get_vigente_excludes_pending_ingest(engine):
     _apply(eng, "e2", "# Python\n", valid_at=FUTURE)  # PENDING_INGEST
     # Pass ``now=NOW`` explicitly: the engine's default clock is the wall clock,
     # so once the real date passes FUTURE the "pending" episode would correctly
-    # become vigente and rot this assertion. The writes already pin ``now=NOW``.
+    # become current-state and rot this assertion. The writes already pin ``now=NOW``.
     vigent = {e.id for e in eng.get_vigente(now=NOW)}
     assert vigent == {"e1"}
 
@@ -94,7 +94,7 @@ def test_follow_chain_unknown_returns_empty(engine):
     assert eng.follow_supersedes_chain("ghost") == []
 
 
-# --- is_valid_at (NULL-safe, F3.1 l.880-885) --------------------------------
+# --- is_valid_at (NULL-safe) ------------------------------------------------
 
 
 def test_is_valid_at_active_episode_now(engine):
@@ -131,7 +131,7 @@ def test_is_valid_at_unknown_episode_is_false(engine):
     assert eng.is_valid_at("ghost", NOW) is False
 
 
-# --- is_known_at (NULL-safe, F3.1 l.887-892) -------------------------------
+# --- is_known_at (NULL-safe) ------------------------------------------------
 
 
 def test_is_known_at_after_creation(engine):
@@ -222,7 +222,7 @@ def test_freshness_view_fact_id_none_when_no_subject(engine):
 
 
 def test_is_valid_at_boundary_pit_equals_invalid_at_is_false(engine):
-    # F3.1 uses pit < invalid_at (strict) -> pit == invalid_at is NOT valid.
+    # The spec uses pit < invalid_at (strict) -> pit == invalid_at is NOT valid.
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\n", valid_at=PAST)
     eng.forget("e1", reason="r", by={"agent_id": "a"}, now=LATER)
@@ -232,7 +232,7 @@ def test_is_valid_at_boundary_pit_equals_invalid_at_is_false(engine):
 
 
 def test_is_known_at_boundary_pit_equals_created_at_is_true(engine):
-    # F3.1 uses created_at <= pit (inclusive) -> pit == created_at is known.
+    # The spec uses created_at <= pit (inclusive) -> pit == created_at is known.
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\n")  # created_at == NOW
     assert eng.is_known_at("e1", NOW) is True

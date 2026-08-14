@@ -1,14 +1,13 @@
-"""Composition root for the real MVP-0 stack (``build_facade``).
+"""Composition root for the real current-release stack (``build_facade``).
 
-#12 ships the facade + primitives but leaves wiring to the caller. #13 (MCP
-server startup) and #14 (CLI bootstrap) both need a single, testable seam that
+The facade ships the primitives but leaves wiring to the caller. The MCP server
+startup and the CLI bootstrap both need a single, testable extension point that
 builds a real ``MemoryFacade`` over real ``Storage`` (SQLite) + real
 ``BiTemporalEngine`` + real ``DisclosureShaperImpl`` + real ``StubWritePath``
-with an injectable clock (ADR-10 reproducibility — one shared seam, the same
-clock drives the engine and the facade).
+with an injectable clock (reproducibility — one shared seam, the same clock
+drives the engine and the facade).
 
-This is additive: it does not change #12's surface. It is the function
-f5-13/f5-14 reference as ``build_facade`` of #12.
+This is additive: it does not change the facade's surface.
 
 The caller owns the ``Storage`` lifecycle (it must ``close()`` it to release
 the SQLite connection pool); ``build_facade`` does not close on the caller's
@@ -57,57 +56,54 @@ def build_facade(
     passage_embedder: Any | None = None,
     reranker: QueryReranker | None = None,
 ) -> tuple[MemoryFacade, Storage]:
-    """Build a real ``MemoryFacade`` over SQLite + #2 + #8 + #5-stub.
+    """Build a real ``MemoryFacade`` over SQLite + the engine + the shaper + the write-path stub.
 
     Returns ``(facade, storage)`` so the caller can ``storage.close()`` when
     done (the server keeps the storage open for the process lifetime; tests
     close it in a fixture teardown). Pass an existing ``storage`` to reuse a
     connection pool — otherwise one is created from ``db_path``.
 
-    The recall regime is wired at this composition root (C8.1 seam). The MVP-1
-    hybrid regime (``HybridRetriever`` over ``seahorse.retrieval.recall`` +
-    the write-path indexer) is wired when ``retrieval_available`` resolves True:
-    an injected ``embedder``, or the ``embeddings`` extra importable. Otherwise
-    the honest G2 regime (``VigenteListingRetriever``, no ranking/PIT, and the
+    The recall regime is wired at this composition root. The hybrid regime
+    (``HybridRetriever`` over ``seahorse.retrieval.recall`` + the write-path
+    indexer) is wired when ``retrieval_available`` resolves True: an injected
+    ``embedder``, or the ``embeddings`` extra importable. Otherwise the honest
+    listing regime (``VigenteListingRetriever``, no ranking/PIT, and the
     vector/FTS repos are NEVER touched) is the default — ``uv sync --extra dev``
-    stays G2/offline. ``retrieval_available`` overrides the auto-resolution
-    (False forces G2; True forces the hybrid wiring, used by tests). The same
-    ``clock`` drives the engine, retriever, and facade (ADR-10).
+    stays offline. ``retrieval_available`` overrides the auto-resolution (False
+    forces the listing; True forces the hybrid wiring, used by tests). The same
+    ``clock`` drives the engine, retriever, and facade.
 
-    The ``embedder`` slot (C8.4 seam) defaults to ``StubQueryEmbedder`` in the
-    G2 regime (inert, ``E_NOT_IN_MVP_0`` on invocation); in the hybrid regime it
-    is the sync query adapter the retriever calls.
+    The ``embedder`` slot defaults to ``StubQueryEmbedder`` in the listing
+    regime (inert, ``E_NOT_IN_MVP_0`` on invocation); in the hybrid regime it is
+    the sync query adapter the retriever calls.
 
-    The ``llm_client`` slot (M4-C.3 seam) is the write-path LLM extractor. When
-    None (the default) the write path keeps its MVP-0 honest llm→skip degrade;
-    the CLI builds a real ``LiteLLMBackend`` from the ``[llm]`` config
-    (``seahorse init --llm``) and passes it here. ``MemoryFacade`` does not
-    change — the client is a write-path concern.
+    The ``llm_client`` slot is the write-path LLM extractor. When None (the
+    default) the write path keeps its honest llm→skip degrade; the CLI builds a
+    real ``LiteLLMBackend`` from the ``[llm]`` config (``seahorse init --llm``)
+    and passes it here. ``MemoryFacade`` does not change — the client is a
+    write-path concern.
 
-    The ``recency`` slot (F7 enabler (a)) is the F1 recency configuration passed
-    through to the ``HybridRetriever`` (composition root, single-point swap). The
-    default ``None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10); the
-    benchmark SUT and CLI wire it to run the recency A/B + sweep experiment
-    (f7-experimental-design §5(a)).
+    The ``recency`` slot is the recency configuration passed through to the
+    ``HybridRetriever`` (composition root, single-point swap). The default
+    ``None`` keeps the pure-RRF bit-comparable fingerprint; the benchmark SUT
+    and CLI wire it to run the recency A/B + sweep experiment.
 
-    The ``embed_mode`` slot (F7 enabler (c)) selects the passage text the write-
-    path indexer embeds. Default ``body+summary`` (F3 flip, f7-experiment-embed
-    §decide — summary leads the vector, +2.7% recall@10); ``body`` remains
-    selectable for the F3 A/B. Validated at the boundary (fail-fast);
-    propagated to the ``RetrievalIndexer`` (single-point swap for the F3 reindex
-    experiment, f7-experimental-design §5(c)).
+    The ``embed_mode`` slot selects the passage text the write-path indexer
+    embeds. Default ``body+summary`` (summary leads the vector, +2.7%
+    recall@10); ``body`` remains selectable for the A/B. Validated at the
+    boundary (fail-fast); propagated to the ``RetrievalIndexer`` (single-point
+    swap for the reindex experiment).
 
-    The ``passage_embedder`` slot (F7 experiment seam) overrides the auto-
-    resolved fastembed backend with a deterministic embedder (the synthetic
-    mechanical verification in CI). When None, ``_build_passage_embedder``
-    resolves the real backend exactly as before.
+    The ``passage_embedder`` slot overrides the auto-resolved fastembed backend
+    with a deterministic embedder (the synthetic mechanical verification in CI).
+    When None, ``_build_passage_embedder`` resolves the real backend exactly as
+    before.
 
-    The ``reranker`` slot (F7 enabler (b)) is the F2 cross-encoder passed
-    through to the ``HybridRetriever`` (composition root, single-point swap).
-    The default ``None`` keeps the pure-RRF bit-comparable fingerprint (ADR-10);
-    the benchmark SUT and CLI wire it to run the rerank A/B experiment
-    (f7-experimental-design §5(b)). Query-time pure: wiring a reranker never
-    requires a reindex (cerebras-f §4.2).
+    The ``reranker`` slot is the cross-encoder passed through to the
+    ``HybridRetriever`` (composition root, single-point swap). The default
+    ``None`` keeps the pure-RRF bit-comparable fingerprint; the benchmark SUT
+    and CLI wire it to run the rerank A/B experiment. Query-time pure: wiring a
+    reranker never requires a reindex.
     """
     if embed_mode not in EMBED_MODES:
         raise ValueError(
@@ -120,7 +116,7 @@ def build_facade(
     )
     clk = clock or _default_clock
     cfg = config or FacadeConfig()
-    retriever: Any  # HybridRetriever (retrieval) or VigenteListingRetriever (G2)
+    retriever: Any  # HybridRetriever (retrieval) or VigenteListingRetriever (listing)
     retrieval = _resolve_retrieval(embedder, retrieval_available, passage_embedder)
     if retrieval is not None:
         query_embedder, passage_embedder = retrieval
@@ -156,9 +152,9 @@ def build_facade(
         retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
         write_path = StubWritePath(engine=engine, llm_client=llm_client)
         facade_embedder = embedder
-    # F7 enabler: the hybrid composition root indexes the improve successor
-    # (f5-16 §4.6 knowledge_update_accuracy). improve bypasses #5, so without
-    # this hook the new version never reaches vec0/FTS. G2 wires nothing.
+    # The hybrid composition root indexes the improve successor. improve
+    # bypasses the write path, so without this hook the new version never
+    # reaches vec0/FTS. The listing regime wires nothing.
     on_improve: Callable[[str], None] | None = None
     if retrieval is not None:
         on_improve = indexer.index_episode
@@ -180,13 +176,13 @@ def _resolve_retrieval(
     retrieval_available: bool | None,
     passage_embedder: Any | None = None,
 ) -> tuple[Any, Any] | None:
-    """Resolve the hybrid regime wiring, or None (honest G2).
+    """Resolve the hybrid regime wiring, or None (honest listing).
 
     Returns ``(query_embedder, passage_embedder)``: the sync query seam the
-    retriever calls (the injected one, or an adapter over the async #7
-    embedder) plus the async passage embedder for the write-path indexer. An
-    explicit ``passage_embedder`` override (F7 experiment seam — deterministic
-    synthetic embedder) replaces the auto-resolved fastembed backend.
+    retriever calls (the injected one, or an adapter over the async embedder)
+    plus the async passage embedder for the write-path indexer. An explicit
+    ``passage_embedder`` override (deterministic synthetic embedder) replaces
+    the auto-resolved fastembed backend.
     """
     if retrieval_available is False:
         return None
@@ -194,7 +190,7 @@ def _resolve_retrieval(
         return None
     passage = passage_embedder if passage_embedder is not None else _build_passage_embedder()
     if passage is None:
-        return None  # the 'embeddings' extra is not installed -> G2
+        return None  # the 'embeddings' extra is not installed -> listing
     from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder  # lazy
 
     query = embedder if embedder is not None else AsyncToSyncQueryEmbedder(passage)
@@ -202,12 +198,12 @@ def _resolve_retrieval(
 
 
 def _build_passage_embedder() -> Any | None:
-    """Build the async #7 embedder if the ``embeddings`` extra is present."""
+    """Build the async embedder if the ``embeddings`` extra is present."""
     try:
         from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
 
         return build_fastembed_embedder()
-    except Exception:  # noqa: BLE001 — embedder absence is an honest G2
+    except Exception:  # noqa: BLE001 — embedder absence is an honest listing
         return None
 
 

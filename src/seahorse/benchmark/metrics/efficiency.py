@@ -1,4 +1,4 @@
-"""Efficiency metrics — REAL tokens + latency p95 per level (f5-16 §4.4 F4).
+"""Efficiency metrics — REAL tokens + latency p95 per level.
 
 - ``TokenEfficiencyMetric`` — ``savings_vs_full_only_baseline_pct`` with REAL
   measured tokens (via the reader tokenizer), never ``len*50``. The baseline is
@@ -22,7 +22,7 @@ from seahorse.benchmark.metrics import _p95
 
 
 class TokenEfficiencyMetric:
-    """Token savings vs the full-context baseline (REAL tokens, f5-16 §4.4 F4)."""
+    """Token savings vs the full-context baseline (REAL tokens)."""
 
     def __init__(self, tokenizer) -> None:
         self._tokenizer = tokenizer
@@ -71,7 +71,7 @@ class TokenEfficiencyMetric:
 
 
 class LatencyP95Metric:
-    """p95 latency per disclosure level (f5-16 §3.6).
+    """p95 latency per disclosure level.
 
     INDEX comes from the QA responses (``latency_ms["index"]``); TIMELINE/FULL
     come from the ``LevelProbeRunner``'s isolated probes (passed in the
@@ -114,12 +114,12 @@ class LatencyP95Metric:
 
 
 class LatencyP95RerankMetric:
-    """p95 of the INDEX call latency when rerank is enabled (f7 §5b).
+    """p95 of the INDEX call latency when rerank is enabled.
 
-    ``p95_index_rerank_ms`` is the stage-3 rerank budget (NFR: <= 500ms,
-    cerebras-f §4.3). The SUT records ``latency_ms["index_rerank"]`` ONLY when
-    ``rerank_enabled`` (the rerank-path INDEX latency); the metric reports 0.0
-    when absent (baseline variants — the base path keeps its 250ms promise).
+    ``p95_index_rerank_ms`` is the stage-3 rerank budget (NFR: <= 500ms).
+    The SUT records ``latency_ms["index_rerank"]`` ONLY when ``rerank_enabled``
+    (the rerank-path INDEX latency); the metric reports 0.0 when absent
+    (baseline variants — the base path keeps its 250ms promise).
     """
 
     def name(self) -> str:

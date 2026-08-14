@@ -1,4 +1,4 @@
-"""Tests for the adapters + registry (f5-16 §2.3/§4.1)."""
+"""Tests for the adapters + registry."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def test_lmeb_from_row_maps_fields():
     assert inst.question_date == datetime(2023, 5, 30, 23, 40, tzinfo=UTC)
     assert inst.abstention is False
     # Canonical haystack: {session_id, date, turns:[{body,...}]} — the shape
-    # CorpusBuilder/SeahorseSUT.ingest consume (f5-16 §3.3/§3.7).
+    # CorpusBuilder/SeahorseSUT.ingest consume.
     assert len(inst.haystack) == 2
     s1, s2 = inst.haystack
     assert s1["session_id"] == "s1"
@@ -102,7 +102,7 @@ def test_lmeb_from_row_numeric_answer_normalized():
 
 def test_lmeb_turns_get_derivable_title():
     """Conversational LMEB turns (no H1) need a title for the skip path's
-    subject derivation (f5-16 §3.3) — ``deterministic_extract`` raises
+    subject derivation — ``deterministic_extract`` raises
     ``SubjectDerivationError`` otherwise (verified on the real S snapshot)."""
     row = {
         "question_id": "q1",
@@ -173,7 +173,7 @@ def test_parse_date_variants():
 
 
 def test_parse_date_longmemeval_format():
-    """LongMemEval dates are ``YYYY/MM/DD (Weekday) HH:MM`` (f5-16 §4.1)."""
+    """LongMemEval dates are ``YYYY/MM/DD (Weekday) HH:MM``."""
     assert parse_date("2023/05/30 (Tue) 23:40") == datetime(2023, 5, 30, 23, 40, tzinfo=UTC)
     assert parse_date("2023/05/20 (Sat) 02:21") == datetime(2023, 5, 20, 2, 21, tzinfo=UTC)
 
@@ -181,7 +181,7 @@ def test_parse_date_longmemeval_format():
 def test_lmeb_load_from_local_raw_json(tmp_path, monkeypatch):
     """load() parses a raw LongMemEval JSON snapshot with stdlib json — no
     ``trust_remote_code``, no datasets JSON pipeline (pyarrow block_size /
-    mixed-type incompatibilities, f5-16 §4.1 prematerialization preference)."""
+    mixed-type incompatibilities — the raw JSON is prematerialized)."""
     raw = [
         {
             "question_id": "q1",

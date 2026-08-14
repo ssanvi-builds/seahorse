@@ -1,4 +1,4 @@
-"""Tests for the #16 benchmark contracts (f5-16 §2.2)."""
+"""Tests for the benchmark harness contracts."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def test_benchmark_instance_is_frozen():
 
 def test_benchmark_instance_metadata_is_mutable():
     """metadata is a mutable dict inside the frozen dataclass (runner attaches
-    new_ep_ids_after_improve for knowledge_update_accuracy, f5-16 §4.5)."""
+    new_ep_ids_after_improve for knowledge_update_accuracy)."""
     inst = BenchmarkInstance(
         instance_id="q1",
         question="Q?",
@@ -55,7 +55,7 @@ def test_benchmark_instance_metadata_is_mutable():
 
 
 def test_sut_response_carries_retrieval_bridge():
-    """SUTResponse exposes ep_ids + fact_ids + session_ids (f5-16 §3.7)."""
+    """SUTResponse exposes ep_ids + fact_ids + session_ids."""
     resp = SUTResponse(
         answer="A",
         retrieved_ep_ids=("e1",),

@@ -1,22 +1,18 @@
-"""#15 Importer runner — the operational ingestion driver (f5-15 §3).
+"""Importer runner — the operational ingestion driver.
 
-Two layers (f5-15 §3.1): the pure mapping (``import_record``) and this driver.
-The runner iterates the vendor records, maps each to F3.1 notes, and delegates
-to the write-path via ``#12.remember`` (ADR-09 single entry). It owns the
+Two layers: the pure mapping (``import_record``) and this driver. The runner
+iterates the vendor records, maps each to F3.1 notes, and delegates to the
+write-path via ``facade.remember`` (the single entry point). It owns the
 manifest, dry-run/commit modes, idempotency (deterministic UUIDv5 -> NOOP on
 re-import), and collision handling (``WriteResult.collisions_detected`` is
-RETURNED, never raised — f5-15 §3.5).
+RETURNED, never raised).
 
-Modes (f5-15 §3.2): ``dry-run`` maps without writing (manifest + projected
-notes only); ``commit`` writes via the facade. Both always emit the manifest.
+Modes: ``dry-run`` maps without writing (manifest + projected notes only);
+``commit`` writes via the facade. Both always emit the manifest.
 
-Collision policy (f5-15 §3.5): default ``skip`` preserves the existing episode
+Collision policy: default ``skip`` preserves the existing episode
 (``status=skipped_collision``). The importer NEVER auto-resolves a collision
 against a non-imported fact (authority).
-
-References:
-- f5-15-importers.md §3 (modes, manifest, idempotency, collisions)
-- obsiforge-evolution-architecture.md §15.4 (importer = migration bridge)
 """
 
 from __future__ import annotations
@@ -34,7 +30,7 @@ from seahorse.importer.types import ImportItem, ImportManifest
 
 _logger = logging.getLogger("seahorse.importer.runner")
 
-# WriteResult statuses -> manifest item status (f5-15 §3.5).
+# WriteResult statuses -> manifest item status.
 _STATUS_COMMITTED = "committed"
 _STATUS_IDEMPOTENT = "skipped_idempotent"
 _STATUS_COLLISION = "skipped_collision"
@@ -47,13 +43,13 @@ def _now_iso() -> str:
 
 
 def _make_run_id(vendor: str) -> str:
-    """Deterministic-ish run id: ``imp_{ts}_{vendor}_{short}`` (f5-15 §3.3)."""
+    """Deterministic-ish run id: ``imp_{ts}_{vendor}_{short}``."""
     ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return f"imp_{ts}_{vendor}"
 
 
 class ImportRunner:
-    """Ingestion driver over ``#12.remember`` (ADR-09 single entry).
+    """Ingestion driver over ``facade.remember`` (the single entry point).
 
     ``facade`` is the ``MemoryFacade`` (or a recording double in tests).
     ``output_dir`` is where the manifest lives (default
@@ -217,11 +213,11 @@ class ImportRunner:
         )
 
     def _ingest(self, ep: Any, aggregate: Counter[str]) -> tuple[str, str | None]:
-        """Delegate one note to ``#12.remember`` (ADR-09) and classify the result.
+        """Delegate one note to ``facade.remember`` and classify the result.
 
         Returns ``(status, error)`` where ``status`` is the manifest item status
         and ``error`` is non-None only on a hard failure. Collisions are
-        RETURNED (``WriteResult.collisions_detected``), never raised (f5-15 §3.5).
+        RETURNED (``WriteResult.collisions_detected``), never raised.
         """
         by = cast(Provenance, dict(ep.provenance))
         by["session_id"] = f"claude-mem-import-{self._run_id}"

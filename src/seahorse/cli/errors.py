@@ -1,25 +1,22 @@
-"""CLI-owned errors (#14) — Cat C exit codes from the CLI surface itself.
+"""CLI-owned errors — Cat C exit codes from the CLI surface itself.
 
-These are NOT from the ``SeahorseError`` catalog of #12 (which #14 only
-translates, never invents — f5-14 §3.3). They are bootstrap / config /
-reserved-feature failures of the CLI layer, prefixed ``CLI_`` to distinguish
-them from ``E_`` domain codes.
+These are NOT from the ``SeahorseError`` catalog of the facade (which the CLI
+only translates, never invents). They are bootstrap / config / reserved-feature
+failures of the CLI layer, prefixed ``CLI_`` to distinguish them from ``E_``
+domain codes.
 
 ``CliError`` is the base: it carries its own ``exit_code`` (Cat C) and an
 ``info()`` payload for stderr. ``translate()`` in ``exit_codes`` short-circuits
 on ``CliError`` so the CLI-owned code wins over any incidental domain shape.
 
-Cat C codes (owned by #14):
-- ``CLI_NOT_IN_MVP_0`` (75) — SO-14-05: ``expire``/``revalidate`` refused at the
-  CLI layer, plus management commands whose dependencies are not built in
-  MVP-0 (migrator #3, F3.1 parser #1, vec0 #7). Fail-loud: the command exists
-  on the surface and is reserved, it does not silently disappear.
+Cat C codes (owned by the CLI):
+- ``CLI_NOT_IN_MVP_0`` (75) — ``expire``/``revalidate`` refused at the CLI
+  layer, plus management commands whose dependencies are not built in the
+  current release (the frontmatter migrator, the canonical-format parser, the
+  embedder). Fail-loud: the command exists on the surface and is reserved, it
+  does not silently disappear.
 - ``CLI_VAULT_NOT_FOUND`` (82) — vault resolution failed.
 - ``CLI_CONFIG_INVALID`` (83) — ``seahorse.toml`` failed to parse/load.
-
-References:
-- f5-14 §3.3 (Cat C), §6.2 (vault discovery → CLI_VAULT_NOT_FOUND)
-- SO-14-05 (expire/revalidate CLI-intercept, 2026-07-20)
 """
 
 from __future__ import annotations
@@ -59,20 +56,21 @@ class CliError(Exception):
 
 
 class CliNotInMVP0(CliError):
-    """A reserved-in-MVP-0 CLI command was invoked (SO-14-05).
+    """A command reserved in the current release was invoked.
 
     ``expire`` / ``revalidate`` are intercepted at the CLI layer (never reaching
     ``facade.expire``/``revalidate``, which raise ``E_NOT_IN_MVP_0_1``). The
     same Cat C code covers management commands whose dependencies are not built
-    in MVP-0 (migrator #3, F3.1 parser #1, vec0 #7) — fail-loud on the surface
-    so the user sees the command is reserved, not absent.
+    in the current release (the frontmatter migrator, the canonical-format
+    parser, the embedder) — fail-loud on the surface so the user sees the
+    command is reserved, not absent.
     """
 
     def __init__(self, command: str, *, reason: str) -> None:
         super().__init__(
             exit_code=CLI_NOT_IN_MVP_0,
             name="CLI_NOT_IN_MVP_0",
-            detail=f"`seahorse {command}` is reserved in MVP-0: {reason}",
+            detail=f"`seahorse {command}` is reserved in the current release: {reason}",
         )
         self.command = command
 
@@ -104,11 +102,11 @@ class CliUsageError(CliError):
 
     Raised for: argument size caps exceeded (body/query/reason too long),
     vocabulary membership violations the facade does NOT enforce
-    (``--source-type`` / ``--cognitive-type`` value not in the F3.1 set), and
-    unparseable ISO-8601 timestamps. These are CLI-border guards — the facade's
-    own ``SeahorseError`` checks (empty body, missing source_type, invalid
-    extraction_mode, PIT) are left to surface as Cat A exit codes (64+), so #14
-    does not invent ``SeahorseError`` codes (f5-14 §3.3: #14 only translates).
+    (``--source-type`` / ``--cognitive-type`` value not in the canonical set),
+    and unparseable ISO-8601 timestamps. These are CLI-border guards — the
+    facade's own ``SeahorseError`` checks (empty body, missing source_type,
+    invalid extraction_mode, PIT) are left to surface as Cat A exit codes (64+),
+    so the CLI does not invent ``SeahorseError`` codes (it only translates).
     """
 
     def __init__(self, detail: str) -> None:
@@ -122,9 +120,9 @@ class CliUsageError(CliError):
 class CliObserverRunning(CliError):
     """``seahorse observe start`` when the observer is already running.
 
-    The observer is a single-writer process (obsiforge §4.5); a second ``start``
-    would spawn a competing writer. Fail loud at exit 95 (ADR-10) — the
-    operator must ``seahorse observe stop`` first.
+    The observer is a single-writer process; a second ``start`` would spawn a
+    competing writer. Fail loud at exit 95 — the operator must ``seahorse
+    observe stop`` first.
     """
 
     def __init__(self, pid: int) -> None:
@@ -137,7 +135,7 @@ class CliObserverRunning(CliError):
 
 
 class CliMigrationDeferred(CliError):
-    """``seahorse frontmatter migrate`` met incompatible notes — ADR-10 honesty.
+    """``seahorse frontmatter migrate`` met incompatible notes — fail-loud.
 
     The migrator classifies every note (A/B/C/D): A/B are migrated, C is
     idempotent, D is REFUSED (logged, never overwritten). When apply meets one
@@ -169,12 +167,12 @@ class CliMigrationDeferred(CliError):
 
 
 class CliRebuildConflicts(CliError):
-    """``seahorse index rebuild`` found conflicts — ADR-10 honesty (commit 5).
+    """``seahorse index rebuild`` found conflicts — fail-loud honesty.
 
-    The rebuild pre-pass detects conflicting facts (duplicate vigent ``fact_id``
-    or duplicate ``ep_id``) and refuses to auto-pick a winner. Instead it reports
-    the conflict list (via ``info()["conflicts"]``) and fails loud at exit 94 so a
-    human decides. No silent no-op, no silent drop (ADR-10).
+    The rebuild pre-pass detects conflicting facts (duplicate current-state
+    ``fact_id`` or duplicate ``ep_id``) and refuses to auto-pick a winner.
+    Instead it reports the conflict list (via ``info()["conflicts"]``) and fails
+    loud at exit 94 so a human decides. No silent no-op, no silent drop.
 
     ``count`` is the number of skipped/conflicting facts; the structured payload
     carries the human-readable conflict summary so ``--json`` consumers can list

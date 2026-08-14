@@ -1,40 +1,43 @@
-"""Real vault-management commands for the CLI (#14, commit 5 of F3.3 #3).
+"""Real vault-management commands for the CLI.
 
-The four management commands whose dependencies ARE built in MVP-0:
+The four management commands whose dependencies ARE built in the current
+release:
 
 - ``run_migrate``      — apply SCHEMA migrations (DDL 001–009) to the sidecar DB.
   This is the SCHEMA migrations runner, NOT the frontmatter vault migrator: it
-  reuses the ``apply_migrations(up_to=)`` seam added in commit 4. ``--up-to`` is
-  a CAP (not a requirement): a value beyond ``latest_available`` applies all
-  available migrations rather than erroring, and ``latest_available`` is reported
-  so the operator sees the ceiling. Exit 0 on success; ``--up-to < 0`` →
+  reuses the ``apply_migrations(up_to=)`` seam. ``--up-to`` is a CAP (not a
+  requirement): a value beyond ``latest_available`` applies all available
+  migrations rather than erroring, and ``latest_available`` is reported so the
+  operator sees the ceiling. Exit 0 on success; ``--up-to < 0`` →
   ``CliUsageError`` (Cat C, exit 2).
 - ``run_inspect``      — read-only sidecar snapshot (schema_version + episode /
-  episode_index counts + the two bi-temporal predicates vigente vs activo-ahora
-  + last file mtime). Opens the DB ``mode=ro`` only when it exists; a missing DB
-  is reported honestly (``db_exists=False``, all zeros) and NO file is created
-  (read-only). The SQL is owned by #6 (``persistence.sidecar_status``) so this
-  module stays free of raw persistence SQL.
+  episode_index counts + the two bi-temporal predicates current-state vs
+  active-now + last file mtime). Opens the DB ``mode=ro`` only when it exists;
+  a missing DB is reported honestly (``db_exists=False``, all zeros) and NO file
+  is created (read-only). The SQL is owned by persistence
+  (``persistence.sidecar_status``) so this module stays free of raw persistence
+  SQL.
 - ``run_index_rebuild`` — regenerate the sidecar from the vault's ``.md`` notes
-  via ``frontmatter.rebuild.rebuild_from_vault`` (commit 4). ADR-10 honesty: the
-  rebuild pre-pass detects conflicting facts (duplicate vigent ``fact_id`` /
-  duplicate ``ep_id``) and refuses to auto-pick a winner. The report is rendered
-  to stdout FIRST, then ``CliRebuildConflicts`` is raised (exit 94) so the
-  operator sees the conflict list AND the error. A parse failure surfaces as
-  ``FrontmatterInvalid`` (Cat A exit 90) — never a silent skip.
-- ``run_frontmatter_migrate`` — the FRONTMATTER vault migrator (gap closure,
-  2026-08-13): converts legacy Obsidian notes to F3.1 frontmatter (cases
-  A/B/C/D) via ``frontmatter.migrator.VaultMigrator``. This is the command the
-  original commit-5 plan intended for ``migrate`` before that slot was taken by
-  the schema runner. ADR-10 honesty: apply meeting case-D notes renders the
-  manifest summary to stdout FIRST, then raises ``CliMigrationDeferred``
-  (exit 97) — the vault is not fully migrated and scripts must see it. Dry-run
-  is always exit 0 (preview). Works before ``seahorse init`` (no config needed).
+  via ``frontmatter.rebuild.rebuild_from_vault``. Fail-loud honesty: the
+  rebuild pre-pass detects conflicting facts (duplicate current-state
+  ``fact_id`` / duplicate ``ep_id``) and refuses to auto-pick a winner. The
+  report is rendered to stdout FIRST, then ``CliRebuildConflicts`` is raised
+  (exit 94) so the operator sees the conflict list AND the error. A parse
+  failure surfaces as ``FrontmatterInvalid`` (Cat A exit 90) — never a silent
+  skip.
+- ``run_frontmatter_migrate`` — the FRONTMATTER vault migrator: converts legacy
+  Obsidian notes to canonical frontmatter (cases A/B/C/D) via
+  ``frontmatter.migrator.VaultMigrator``. This is the command the original plan
+  intended for ``migrate`` before that slot was taken by the schema runner.
+  Fail-loud honesty: apply meeting case-D notes renders the manifest summary to
+  stdout FIRST, then raises ``CliMigrationDeferred`` (exit 97) — the vault is
+  not fully migrated and scripts must see it. Dry-run is always exit 0
+  (preview). Works before ``seahorse init`` (no config needed).
 
 Ruamel-confinement invariant: only ``run_index_rebuild`` and
 ``run_frontmatter_migrate`` transitively import ruamel (via ``frontmatter.rebuild``
-/ ``frontmatter.migrator``); ``run_migrate`` / ``run_inspect`` are stdlib + #6
-only.
+/ ``frontmatter.migrator``); ``run_migrate`` / ``run_inspect`` are stdlib +
+persistence only.
 """
 
 from __future__ import annotations
@@ -77,7 +80,7 @@ def run_migrate(
     if up_to is not None and up_to < 0:
         raise CliUsageError(f"--up-to must be a non-negative integer, got {up_to}")
     config.db_path.parent.mkdir(parents=True, exist_ok=True)
-    # M1-A.1: run_migrate opts into vec0 so migration 010 (``USING vec0``) can be
+    # run_migrate opts into vec0 so migration 010 (``USING vec0``) can be
     # applied on a legacy DB without going through Storage. sqlite-vec is core.
     mgr = ConnectionManager(config.db_path, pool_size=0, extensions=("vec0",))
     mgr.open()
@@ -157,9 +160,9 @@ def run_inspect(
 def _try_build_passage_embedder() -> Embedder | None:
     """Build the FastEmbed passage embedder if the ``embeddings`` extra is present.
 
-    Returns ``None`` (honest G2) when fastembed is unavailable or construction
-    fails — the backfill is skipped, not failed. Lazy import keeps the CLI
-    command free of the heavy stack unless it can actually serve.
+    Returns ``None`` (honest listing regime) when fastembed is unavailable or
+    construction fails — the backfill is skipped, not failed. Lazy import keeps
+    the CLI command free of the heavy stack unless it can actually serve.
     """
     try:
         from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
@@ -170,14 +173,13 @@ def _try_build_passage_embedder() -> Embedder | None:
 
 
 def _run_backfill(vault: Path, storage: Storage, *, embed_mode: str = "body+summary") -> str:
-    """M1-B.5: best-effort vec0/FTS backfill over the rebuilt index.
+    """Best-effort vec0/FTS backfill over the rebuilt index.
 
-    ``embed_mode`` (F7 enabler (c)) selects the passage text. Default
-    ``body+summary`` is the F3 flip (f7-experiment-embed §decide); re-running
-    under a new mode re-embeds honestly (new content hash → cache miss, f5-16
-    §5.4). Returns an honest report line; never raises (the episode_index
-    rebuild is the primary op — the index backfill is derived/best-effort,
-    ADR-10).
+    ``embed_mode`` selects the passage text. Default ``body+summary`` is the
+    flip default; re-running under a new mode re-embeds honestly (new content
+    hash → cache miss). Returns an honest report line; never raises (the
+    episode_index rebuild is the primary op — the index backfill is
+    derived/best-effort, fail-loud honesty).
     """
     from seahorse.embeddings.indexer import RetrievalIndexer
     from seahorse.frontmatter.adapter import parse_file
@@ -208,24 +210,25 @@ def run_index_rebuild(
 ) -> None:
     """``seahorse index rebuild`` — regenerate the sidecar from the vault.
 
-    Delegates to ``frontmatter.rebuild.rebuild_from_vault`` (commit 4) over the
-    real ``Storage`` sidecar, with the vec0/FTS secondary-index wipes (M1-A.6)
-    so a rebuild leaves no ghost vector/BM25 hits. The report is rendered to
-    stdout BEFORE any error is raised so the operator sees the conflict list.
-    ADR-10: a non-empty ``skipped`` raises ``CliRebuildConflicts`` (exit 94) —
-    NO auto-pick. A parse failure surfaces as ``FrontmatterInvalid`` (Cat A exit
+    Delegates to ``frontmatter.rebuild.rebuild_from_vault`` over the real
+    ``Storage`` sidecar, with the vec0/FTS secondary-index wipes so a rebuild
+    leaves no ghost vector/BM25 hits. The report is rendered to stdout BEFORE
+    any error is raised so the operator sees the conflict list. Fail-loud: a
+    non-empty ``skipped`` raises ``CliRebuildConflicts`` (exit 94) — NO
+    auto-pick. A parse failure surfaces as ``FrontmatterInvalid`` (Cat A exit
     90) — NO silent skip.
 
-    ``embed_mode`` (F7 enabler (c)) drives the vec0/FTS backfill — the F3 flip
-    makes ``body+summary`` the default (f7-experiment-embed §decide). The
-    ``episode_index`` rebuild itself is embed-mode-independent.
+    ``embed_mode`` drives the vec0/FTS backfill — the flip makes
+    ``body+summary`` the default. The ``episode_index`` rebuild itself is
+    embed-mode-independent.
     """
     # Lazy import: frontmatter.rebuild transitively pulls ruamel (via
     # frontmatter.adapter). Importing it at module top would leak ruamel into
     # every CLI command (app.py imports vault_ops eagerly). Keeping it lazy
     # confines ruamel to the rebuild entry point ONLY — run_migrate / run_inspect
-    # stay stdlib + #6 (ruamel-confinement invariant, vault_ops docstring). The
-    # wipe hooks live in the lazy vector/fts modules (M1-A.6) — same pattern.
+    # stay stdlib + persistence (ruamel-confinement invariant, vault_ops
+    # docstring). The wipe hooks live in the lazy vector/fts modules — same
+    # pattern.
     from seahorse.frontmatter.rebuild import rebuild_from_vault
     from seahorse.persistence.fts_index import fts_wipe
     from seahorse.persistence.vector_index import vec_wipe
@@ -238,7 +241,7 @@ def run_index_rebuild(
             storage.sidecar,
             secondary_index_wipes=(vec_wipe, fts_wipe),
         )
-        # M1-B.5: best-effort vec0/FTS backfill over the rebuilt index.
+        # Best-effort vec0/FTS backfill over the rebuilt index.
         backfill = _run_backfill(config.vault, storage, embed_mode=embed_mode)
     finally:
         storage.close()
@@ -258,7 +261,7 @@ def run_index_rebuild(
         f"  backfill:  {backfill}",
     ]
     if conflicts:
-        human_lines.append("  conflicts (ADR-10: no auto-pick, human resolution required):")
+        human_lines.append("  conflicts (no auto-pick, human resolution required):")
         for c in conflicts:
             human_lines.append(f"    - {c['file_path']} ({c['reason']})")
     human = "\n".join(human_lines) + "\n"
@@ -276,19 +279,20 @@ def run_frontmatter_migrate(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse frontmatter migrate`` — convert legacy notes to F3.1 (A/B/C/D).
+    """``seahorse frontmatter migrate`` — convert legacy notes to canonical (A/B/C/D).
 
-    Delegates to ``frontmatter.migrator.VaultMigrator`` (gap closure: the
-    migrator had no CLI surface — the ``migrate`` slot went to the schema DDL
-    runner). ``dry_run`` classifies + builds the manifest but never writes;
-    ``resume`` skips notes unchanged since the last manifest (mtime hint, hash
-    truth). ``batch_size`` checkpoints the manifest every N notes (default 500).
+    Delegates to ``frontmatter.migrator.VaultMigrator`` (the migrator had no CLI
+    surface — the ``migrate`` slot went to the schema DDL runner). ``dry_run``
+    classifies + builds the manifest but never writes; ``resume`` skips notes
+    unchanged since the last manifest (mtime hint, hash truth). ``batch_size``
+    checkpoints the manifest every N notes (default 500).
 
-    ADR-10 honesty (index-rebuild pattern): the manifest summary is rendered to
-    stdout FIRST, then apply meeting case-D notes raises ``CliMigrationDeferred``
-    (exit 97) — the vault is not fully migrated and scripts must see it. Dry-run
-    is always exit 0 (preview). Works before ``seahorse init`` (no config
-    needed — the migrator only touches ``.md`` files + the manifest).
+    Fail-loud honesty (index-rebuild pattern): the manifest summary is rendered
+    to stdout FIRST, then apply meeting case-D notes raises
+    ``CliMigrationDeferred`` (exit 97) — the vault is not fully migrated and
+    scripts must see it. Dry-run is always exit 0 (preview). Works before
+    ``seahorse init`` (no config needed — the migrator only touches ``.md``
+    files + the manifest).
 
     Ruamel-confinement: ``VaultMigrator`` transitively imports ruamel (via
     ``frontmatter.adapter``), so the import is lazy inside this function — the
@@ -335,7 +339,7 @@ def _render_migration_payload(
 
     The deferred list (case-D notes) is always included so the operator sees
     which notes were refused and why — the error is raised by the caller AFTER
-    this render (ADR-10: report first, then fail loud).
+    this render (report first, then fail loud).
 
     ``manifest`` is typed ``Any`` to keep the ``frontmatter.manifest`` import
     lazy (it is ruamel-free, but the module is part of the frontmatter package

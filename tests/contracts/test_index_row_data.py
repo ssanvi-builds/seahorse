@@ -1,7 +1,8 @@
-"""Validate IndexRowData matches the signed SO-2 2e contract (f5-08 §3.1).
+"""Validate IndexRowData matches the signed row contract.
 
-The frozen 14-field shape is the stable frontier #8 owns and #6/#11/#16 consume.
-This test guards the freeze: a silent field add/remove here fails the build.
+The frozen 14-field shape is the stable contract surface the indexer owns and
+the persistence layer, hybrid retrieval, and the benchmark harness consume. This
+test guards the freeze: a silent field add/remove here fails the build.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ def _make_row(**overrides) -> IndexRowData:
 
 
 def test_index_row_data_has_exactly_14_fields():
-    # SO-2 2e freeze: 14 fields.
+    # Row-contract freeze: 14 fields.
     assert len(dataclasses.fields(IndexRowData)) == 14
 
 
@@ -81,7 +82,7 @@ def test_index_row_data_is_frozen():
 
 
 def test_index_row_data_required_and_nullable_fields():
-    # created_at is NOT NULL (F3.1); the rest of the bi-temporal fields are nullable.
+    # created_at is NOT NULL (the on-disk format); the rest of the bi-temporal fields are nullable.
     row = _make_row()
     assert row.created_at is not None
     assert row.valid_at is None  # PENDING_INGEST legitimate
@@ -91,7 +92,7 @@ def test_index_row_data_required_and_nullable_fields():
 
 
 def test_pitkind_is_state_at_or_known_at():
-    # ADR-03: two PIT axes, never mixed.
+    # Two PIT axes, never mixed.
     import typing
 
     args = typing.get_args(PITKind)

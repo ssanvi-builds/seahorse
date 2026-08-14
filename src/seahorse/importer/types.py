@@ -1,17 +1,13 @@
-"""#15 Importer — shared types (f5-15 §2.1/§3.3).
+"""Importer — shared types.
 
-The importer is the **migration/coexistence bridge** (obsiforge §15.4): a pure
-``import_record`` mapping a vendor record to F3.1 notes + a loss report, wrapped
-by an operational runner (dry-run/commit, manifest, idempotency, collisions).
+The importer is the **migration/coexistence bridge**: a pure ``import_record``
+mapping a vendor record to F3.1 notes + a loss report, wrapped by an
+operational runner (dry-run/commit, manifest, idempotency, collisions).
 claude-mem is NEVER a runtime dependency — the importer reads its data
 (``~/.claude-mem/claude-mem.db``) as a one-time migration source.
 
-The manifest schema ``seahorse.importer.manifest/1.0`` is an importer artifact
-(f5-15 §3.3), NOT part of the F3.1 core contract nor the #6 store.
-
-References:
-- f5-15-importers.md §2.1 (ImporterResult/LossReport contract), §3.3 (manifest)
-- obsiforge-evolution-architecture.md §15.4 (importer = migration bridge)
+The manifest schema ``seahorse.importer.manifest/1.0`` is an importer artifact,
+NOT part of the core on-disk contract nor the persistence store.
 """
 
 from __future__ import annotations
@@ -26,7 +22,7 @@ IMPORTER_VERSION = "importer@claude-mem@1.0.0"
 
 
 class LossReport(TypedDict):
-    """Per-record loss report (f5-15 §2.1). ALWAYS present, even if empty."""
+    """Per-record loss report. ALWAYS present, even if empty."""
 
     vendor: str
     source_record_id: str
@@ -45,7 +41,7 @@ class ImporterResult(TypedDict):
 
 @dataclass(frozen=True)
 class ImportItem:
-    """Per-record manifest item (f5-15 §3.3 item level)."""
+    """Per-record manifest item."""
 
     seq: int
     source_record_id: str
@@ -58,7 +54,7 @@ class ImportItem:
 
 @dataclass(frozen=True)
 class ImportManifest:
-    """Batch manifest (f5-15 §3.3 batch level). Schema ``seahorse.importer.manifest/1.0``."""
+    """Batch manifest. Schema ``seahorse.importer.manifest/1.0``."""
 
     manifest_schema: str = MANIFEST_SCHEMA
     run_id: str = ""
@@ -74,7 +70,7 @@ class ImportManifest:
     integrity_ok: bool = True
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON-serializable manifest dict (f5-15 §3.3 batch shape)."""
+        """JSON-serializable manifest dict."""
         return {
             "manifest_schema": self.manifest_schema,
             "run_id": self.run_id,

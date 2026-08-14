@@ -1,9 +1,9 @@
-"""Migration manifest + resume (f5-03 §3.5).
+"""Migration manifest + resume.
 
-Owned by #3, stdlib-only (json + hashlib + dataclasses). The manifest is the
-vault-level idempotency record: one entry per processed note with pre/post
-SHA-256, mtimes, case, and collisions. ``--resume`` re-runs only notes whose
-content changed since the last manifest (hash truth, mtime hint) — f5-03 §3.5.
+Part of the frontmatter migrator, stdlib-only (json + hashlib + dataclasses).
+The manifest is the vault-level idempotency record: one entry per processed note
+with pre/post SHA-256, mtimes, case, and collisions. ``--resume`` re-runs only
+notes whose content changed since the last manifest (hash truth, mtime hint).
 
 Why SHA-256 AND mtime: mtime is manipulable and Obsidian rewrites it via the
 Property UI; the hash is content truth, the mtime is a cheap hint to avoid
@@ -20,16 +20,16 @@ from typing import Any
 
 from seahorse.frontmatter.defaults import MANIFEST_VERSION, MIGRATOR_VERSION, SCHEMA_VERSION_MVP0
 
-# Case labels written to the manifest (f5-03 §3.1).
+# Case labels written to the manifest.
 CASE_A = "A"  # no frontmatter -> added
-CASE_B = "B"  # non-F3.1 frontmatter -> preserved + added
-CASE_C = "C"  # F3.1 already present -> no-op (idempotent)
+CASE_B = "B"  # non-on-disk frontmatter -> preserved + added
+CASE_C = "C"  # on-disk already present -> no-op (idempotent)
 CASE_D = "D"  # incompatible -> refused, logged
 
 
 @dataclass(frozen=True)
 class ManifestEntry:
-    """One note's migration record (f5-03 §3.5)."""
+    """One note's migration record."""
 
     path: str
     case: str
@@ -44,7 +44,7 @@ class ManifestEntry:
 
 @dataclass
 class MigrationStats:
-    """Aggregate counts for the manifest ``stats`` block (f5-03 §3.5)."""
+    """Aggregate counts for the manifest ``stats`` block."""
 
     total_notes: int = 0
     migrated: int = 0  # A + B
@@ -55,7 +55,7 @@ class MigrationStats:
 
 @dataclass
 class MigrationManifest:
-    """The vault-level manifest (f5-03 §3.5)."""
+    """The vault-level manifest."""
 
     manifest_version: str = MANIFEST_VERSION
     vault_path: str = ""
@@ -140,7 +140,7 @@ class MigrationManifest:
 
 
 def sha256_of(path: Path) -> str:
-    """Return ``"sha256:<hex>"`` of the file's bytes (f5-03 §3.5)."""
+    """Return ``"sha256:<hex>"`` of the file's bytes."""
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
@@ -149,7 +149,7 @@ def sha256_of(path: Path) -> str:
 
 
 def should_skip(entry: ManifestEntry, current_hash: str, current_mtime: float) -> bool:
-    """Resume predicate (f5-03 §3.5).
+    """Resume predicate.
 
     Skip when the note's content is unchanged since the manifest was written
     (``current_hash == post_hash``). A changed mtime alone does NOT force a

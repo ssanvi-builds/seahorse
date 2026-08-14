@@ -1,15 +1,8 @@
-"""The nine repository Protocols owned by #6 (Persistence Layer).
+"""The nine repository Protocols owned by the persistence layer.
 
-These are the storage frontier #6 owns and the other components (#7, #8, #10,
-#11) consume. Signatures are signed contracts; do NOT deviate.
-
-References:
-- f6-signoffs.md SO-1 (EpisodeIndexRepository, 7 accessors + title/summary)
-- f6-signoffs.md SO-7 7a (EmbeddingsCacheRepository, ReindexJobRepository, lateral DDLs)
-- f6-signoffs.md SO-7 7b (VectorIndexRepository fold-into-upsert + distinct_model_identities)
-- f6-signoffs.md SO-8b (bfs_neighbors_state_at extension on EpisodeIndexRepository)
-- f5-06 §7a.3 (FullTextIndexRepository), §7a.4 (AuditEventRepository),
-  §7a.5 (SidecarIndexRepository)
+These are the storage frontier the persistence layer owns and the other
+components (the embedder, progressive disclosure, the BFS axis, hybrid
+retrieval) consume. Signatures are signed contracts; do NOT deviate.
 """
 
 from __future__ import annotations
@@ -32,7 +25,7 @@ from seahorse.contracts.index import IndexRowData, PITKind
 
 @dataclass(frozen=True)
 class VectorHit:
-    """kNN hit. ``score = 1/(1+distance)`` is computed by the impl (ADR-10)."""
+    """kNN hit. ``score = 1/(1+distance)`` is computed by the implementation."""
 
     ep_id: str
     distance: float
@@ -41,7 +34,7 @@ class VectorHit:
 
 @dataclass(frozen=True)
 class FtsDoc:
-    """Insert payload for FullTextIndexRepository.upsert (f5-06 §7a.3)."""
+    """Insert payload for FullTextIndexRepository.upsert."""
 
     ep_id: str
     body_md: str
@@ -53,7 +46,7 @@ class FtsDoc:
 
 @dataclass(frozen=True)
 class FullTextHit:
-    """BM25 hit. ``score = exp(-bm25_score)`` (reproducible, ADR-10)."""
+    """BM25 hit. ``score = exp(-bm25_score)`` (reproducible)."""
 
     ep_id: str
     bm25_score: float
@@ -61,27 +54,29 @@ class FullTextHit:
 
 
 # ---------------------------------------------------------------------------
-# EpisodeIndexRepository — SO-1 (7 accessors) + SO-8b (bfs_neighbors_state_at)
-# Owned by #6; consumed by #8 (#10 delegates BFS to bfs_neighbors_state_at).
+# EpisodeIndexRepository — 7 accessors + bfs_neighbors_state_at
+# Owned by the persistence layer; consumed by progressive disclosure (the BFS
+# axis delegates BFS to bfs_neighbors_state_at).
 # ---------------------------------------------------------------------------
 
 
 @runtime_checkable
 class EpisodeIndexRepository(Protocol):
-    """Typed accessor over ``episode_index`` (NO body). Owned by #6; consumed by #8."""
+    """Typed accessor over ``episode_index`` (no body). Owned by the persistence
+    layer; consumed by progressive disclosure."""
 
-    # INDEX level (1st call, within #11's 250ms budget)
+    # INDEX level (1st call, within the hybrid retrieval latency budget)
     def get_rows(self, ep_ids: Sequence[str]) -> list[IndexRowData]: ...
     def get_rows_state_at(self, ep_ids: Sequence[str], t: datetime) -> list[IndexRowData]: ...
     def get_rows_known_at(self, ep_ids: Sequence[str], t: datetime) -> list[IndexRowData]: ...
 
-    # TIMELINE level (MVP-0 axes)
+    # TIMELINE level (current-release axes)
     def chain_rows_from(self, ep_id: str) -> list[IndexRowData]: ...
     def find_vigent_row_by_fact_id(
         self, fact_id: str, exclude: str | None = None
     ) -> IndexRowData | None: ...
 
-    # TIMELINE level (MVP-1 axes — revisable until MVP-1, SO-1 safeguard 2)
+    # TIMELINE level (later-release axes — revisable until then)
     def range_rows_state_at(
         self, t_start: datetime, t_end: datetime, *, subject: str | None = None
     ) -> list[IndexRowData]: ...
@@ -89,9 +84,10 @@ class EpisodeIndexRepository(Protocol):
         self, t_start: datetime, t_end: datetime, *, subject: str | None = None
     ) -> list[IndexRowData]: ...
 
-    # SO-8b extension: recursive-CTE BFS, owned by #6; #10 owns the GraphRepository
-    # contract and delegates here. hops <= MAX_HOPS_MVP1; include_tags_soft is
-    # mediano (raises NotImplementedError in MVP-0 when True).
+    # Recursive-CTE BFS, owned by the persistence layer; the BFS axis owns the
+    # GraphRepository contract and delegates here. hops <= MAX_HOPS_MVP1;
+    # include_tags_soft is a medium-term goal (raises NotImplementedError in the
+    # current release when True).
     def bfs_neighbors_state_at(
         self,
         ep_id: str,
@@ -104,9 +100,10 @@ class EpisodeIndexRepository(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# VectorIndexRepository — SO-7b (fold-into-upsert + distinct_model_identities)
-# Owned by #6; operated by #7 via this Protocol (no own connection, ADR-04).
-# MVP-0: Protocol materialized; SQLite impl deferred to MVP-1 (no sqlite-vec dep).
+# VectorIndexRepository — fold-into-upsert + distinct_model_identities
+# Owned by the persistence layer; operated by the embedder via this Protocol
+# (no own connection). Current release: Protocol materialized; SQLite impl
+# deferred to a later release (no sqlite-vec dep).
 # ---------------------------------------------------------------------------
 
 
@@ -140,8 +137,9 @@ class VectorIndexRepository(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# FullTextIndexRepository — f5-06 §7a.3
-# MVP-0: Protocol materialized; SQLite impl deferred to MVP-1 (no FTS5 dep).
+# FullTextIndexRepository
+# Current release: Protocol materialized; SQLite impl deferred to a later
+# release (no FTS5 dep).
 # ---------------------------------------------------------------------------
 
 
@@ -159,7 +157,8 @@ class FullTextIndexRepository(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# AuditEventRepository — f5-06 §7a.4. AuditEvent type defined by #2 (#6 stores).
+# AuditEventRepository. AuditEvent type defined by the engine (the persistence
+# layer stores).
 # ---------------------------------------------------------------------------
 
 
@@ -176,27 +175,27 @@ class AuditEventRepository(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# SidecarIndexRepository — f5-06 §7a.5. episode_paths + episode_index maintenance.
-# Consumed by #3; #6 owns and maintains it. Typed methods, no raw SQL.
+# SidecarIndexRepository. episode_paths + episode_index maintenance.
+# Consumed by the frontmatter adapter; the persistence layer owns and maintains
+# it. Typed methods, no raw SQL.
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ParsedNote:
-    """Ruamel-free payload for ``SidecarIndexRepository.rebuild_all`` (§7a.5).
+    """Ruamel-free payload for ``SidecarIndexRepository.rebuild_all``.
 
-    Built by the frontmatter orchestrator (#3) from ``adapter.parse_file`` and
-    handed to the sidecar so #6 repopulates ``episode_index`` + ``episode_paths``
-    WITHOUT importing ruamel (ruamel-confinement invariant: the codec is
-    confined to ``frontmatter.handler``/``frontmatter.adapter``; the sidecar is
-    core and stays ruamel-free). Carries the parsed ``Episode`` (a core contract,
-    ruamel-free) plus the file metadata the sidecar owns.
+    Built by the frontmatter orchestrator from ``adapter.parse_file`` and handed
+    to the sidecar so the persistence layer repopulates ``episode_index`` +
+    ``episode_paths`` WITHOUT importing ruamel (ruamel-confinement invariant:
+    the codec is confined to ``frontmatter.handler``/``frontmatter.adapter``;
+    the sidecar is core and stays ruamel-free). Carries the parsed ``Episode``
+    (a core contract, ruamel-free) plus the file metadata the sidecar owns.
 
     ``skip_extraction`` is derived by the sidecar from
-    ``episode.provenance["extraction_mode"] == "skip"`` (ADR-09), matching the
-    disclosure shaper (#16) — so a migrated note (migrator default
-    ``extraction_mode=skip``) lands with ``skip_extraction=1`` (excluded from the
-    MVP-1 FTS5 + embedding queue).
+    ``episode.provenance["extraction_mode"] == "skip"``, matching the disclosure
+    shaper — so a migrated note (migrator default ``extraction_mode=skip``)
+    lands with ``skip_extraction=1`` (excluded from the FTS5 + embedding queue).
     """
 
     episode: Episode
@@ -209,12 +208,11 @@ class ParsedNote:
 class RebuildConflict:
     """A note skipped during rebuild because it would violate an invariant.
 
-    f5-06 §7a.5 + ADR-10: rebuild is NOT silent and does NOT auto-resolve. A
-    duplicate vigent ``fact_id`` (the I11 partial unique
-    ``uq_episode_index_active_per_subject``) is reported, not picked — the
-    operator decides which note wins. ALL members of a conflict group are
-    skipped (no auto-pick of a winner), so the index never carries an arbitrary
-    choice the vault did not make.
+    Rebuild is NOT silent and does NOT auto-resolve. A duplicate currently valid
+    ``fact_id`` (the partial unique ``uq_episode_index_active_per_subject``) is
+    reported, not picked — the operator decides which note wins. ALL members of a
+    conflict group are skipped (no auto-pick of a winner), so the index never
+    carries an arbitrary choice the vault did not make.
     """
 
     ep_id: str
@@ -231,12 +229,12 @@ class RebuildReport:
     SQLite index a derived cache: ``episode_index`` + ``episode_paths`` are
     wiped and repopulated from the parsed notes each rebuild, so deletions and
     edits in the vault propagate without a diff. ``rebuild_all`` does NOT touch
-    ``episodes`` (B3=(i) austere: ``episodes`` is the engine hot-path cache,
-    populated by ``remember``; the index is the vault-backed surface).
+    ``episodes`` (``episodes`` is the engine hot-path cache, populated by
+    ``remember``; the index is the vault-backed surface).
 
     ``indexed`` counts the notes that landed in the index; ``skipped`` lists
     the conflict group members left out. A non-empty ``skipped`` is a signal to
-    the operator, never a silent no-op (ADR-10).
+    the operator, never a silent no-op.
     """
 
     indexed: int
@@ -258,15 +256,16 @@ class SidecarIndexRepository(Protocol):
         secondary_index_wipes: Sequence[Callable[[sqlite3.Connection], None]] = (),
     ) -> RebuildReport: ...
         # Clear episode_index + episode_paths and repopulate from notes (ruamel-free;
-        # the caller #3 builds ParsedNote from parsed .md files). See RebuildReport
-        # + RebuildConflict for the honesty contract (ADR-10: never silent).
-        # M1-A.6: secondary_index_wipes (C8.8 seam) runs caller-supplied wipe hooks
-        # in the clear phase so vec0/FTS do not leave ghost hits on a vault rebuild.
+        # the caller builds ParsedNote from parsed .md files). See RebuildReport
+        # + RebuildConflict for the honesty contract (never silent).
+        # secondary_index_wipes runs caller-supplied wipe hooks in the clear phase
+        # so vec0/FTS do not leave ghost hits on a vault rebuild.
 
 
 # ---------------------------------------------------------------------------
-# EmbeddingsCacheRepository — SO-7a. Key: (content_hash, model_identity, role).
-# Owned by #6; operated by #7 via this Protocol (no own connection, OQ-7-01 closed).
+# EmbeddingsCacheRepository. Key: (content_hash, model_identity, role).
+# Owned by the persistence layer; operated by the embedder via this Protocol
+# (no own connection).
 # ---------------------------------------------------------------------------
 
 
@@ -287,8 +286,9 @@ class EmbeddingsCacheRepository(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# ReindexJobRepository — SO-7a. reindex_jobs DDL. Owned by #6, operated by #7.
-# Methods are setters in MVP-0 (no state-transition guards).
+# ReindexJobRepository. reindex_jobs DDL. Owned by the persistence layer,
+# operated by the embedder. Methods are setters in the current release (no
+# state-transition guards).
 # ---------------------------------------------------------------------------
 
 

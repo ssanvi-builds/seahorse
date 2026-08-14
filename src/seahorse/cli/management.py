@@ -1,25 +1,25 @@
-"""Management commands for the CLI (#14) — init / status / uuid7 + reserved stubs.
+"""Management commands for the CLI — init / status / uuid7 + reserved stubs.
 
-These are the vault-lifecycle and operational commands (f5-14 §2.3). Five are
-REAL in MVP-0 (their dependencies are built):
+These are the vault-lifecycle and operational commands. Five are REAL in the
+current release (their dependencies are built):
 
 - ``init <vault>``   — write ``.seahorse/seahorse.toml`` (config.write_default_config).
 - ``status``         — render resolved vault / db_path / config / init flag.
 - ``uuid7``          — emit a fresh UUIDv7 (``seahorse.facade.new_uuid7`` — the
-  facade re-exports it so #14 never reaches into #2 engine directly).
-- ``migrate``        — apply SCHEMA migrations to the sidecar DB (commit 5; lives
-  in ``cli/vault_ops.py`` so this module stays free of #6 SQL).
-- ``inspect``        — read-only sidecar snapshot (commit 5; ``vault_ops``).
-- ``index rebuild``  — regenerate the sidecar from the vault (commit 5;
-  ``vault_ops``; ADR-10: reports conflicts, does not auto-pick).
+  facade re-exports it so the CLI never reaches into the engine directly).
+- ``migrate``        — apply SCHEMA migrations to the sidecar DB (lives in
+  ``cli/vault_ops.py`` so this module stays free of persistence SQL).
+- ``inspect``        — read-only sidecar snapshot (``vault_ops``).
+- ``index rebuild``  — regenerate the sidecar from the vault (``vault_ops``;
+  fail-loud: reports conflicts, does not auto-pick).
 
 The REMAINING commands are RESERVED STUBS (Cat C ``CLI_NOT_IN_MVP_0`` = 75):
-their dependencies are not built in MVP-0 and the surface must fail-loud rather
-than silently disappear (ADR-10 honesty):
+their dependencies are not built in the current release and the surface must
+fail-loud rather than silently disappear:
 
-- ``index verify``   — needs #3 + #7 (vec0 integrity).
-- ``vigentes``       — MVP-1 full vigente set with freshness (decay-aware).
-- ``activos-ahora``  — mediano decay-aware active set (needs ``expire``).
+- ``index verify``   — needs the frontmatter migrator + the embedder (vec0 integrity).
+- ``vigentes``       — full current-state set with freshness (decay-aware) in a later release.
+- ``activos-ahora``  — decay-aware active set, a medium-term goal (needs ``expire``).
 """
 
 from __future__ import annotations
@@ -34,12 +34,10 @@ from seahorse.facade import new_uuid7
 
 # Reserved management commands → Cat C CLI_NOT_IN_MVP_0 (75), with the reason
 # each is deferred. Single source so app.py and tests agree on the surface.
-# Commit 5 promoted migrate/inspect/index-rebuild to real commands (vault_ops),
-# so the reserved surface is the remaining honest-stub set.
 RESERVED_COMMANDS: dict[str, str] = {
-    "index-verify": "index integrity check needs #3 + vec0 (#7)",
-    "vigentes": "full vigente set with freshness is MVP-1",
-    "activos-ahora": "decay-aware active set is mediano (needs expire)",
+    "index-verify": "index integrity check needs the frontmatter migrator + the embedder",
+    "vigentes": "full current-state set with freshness is a later release",
+    "activos-ahora": "decay-aware active set is a medium-term goal (needs expire)",
 }
 
 
@@ -70,7 +68,7 @@ def run_init(
 
 
 def _llm_regime(config: SeahorseConfig) -> str:
-    """Human-readable LLM regime from the ``[llm]`` config (M4-C.3).
+    """Human-readable LLM regime from the ``[llm]`` config.
 
     ``skip (no [llm] config; run `seahorse init --llm`)`` when no provider is
     configured; otherwise ``llm:<provider>:<model>`` from the effective primary
@@ -121,12 +119,12 @@ def run_uuid7(*, fmt: OutputFormat = "human", out: TextIO) -> None:
 
 
 def run_reserved(command: str) -> None:
-    """Refuse a reserved-in-MVP-0 management command (Cat C, exit 75).
+    """Refuse a management command reserved in the current release (Cat C, exit 75).
 
     ``command`` is the canonical form (``index-rebuild`` not ``index rebuild``)
     so the reason lookup is deterministic.
     """
-    reason = RESERVED_COMMANDS.get(command, "not implemented in MVP-0")
+    reason = RESERVED_COMMANDS.get(command, "not implemented in the current release")
     # Display form: hyphens → spaces for the user-facing command name.
     display = command.replace("-", " ")
     raise CliNotInMVP0(display, reason=reason)

@@ -1,23 +1,18 @@
-"""F2 — cross-encoder rerank as a stage-3 post-RRF step (opt-in, ADR-10).
+"""Cross-encoder rerank as a stage-3 post-RRF step (opt-in).
 
-A small, localized post-RRF step in #11 ``recall`` (cerebras-f-feasibility §4).
-The cross-encoder reorders the RRF-fused candidates by relevance to the query,
+A small, localized post-RRF step in the retrieval engine's ``recall``. The
+cross-encoder reorders the RRF-fused candidates by relevance to the query,
 REPLACING the RRF score with the cross-encoder score (the manifest records
-``score_source: "rrf_rerank"`` — the score is the variant, f7 §3). Default-OFF:
-``recall`` applies it only when a ``QueryReranker`` is explicitly passed.
+``score_source: "rrf_rerank"`` for this variant). Default-OFF: ``recall``
+applies it only when a ``QueryReranker`` is explicitly passed.
 
 The text to score is hydrated by the caller (``index_repo.get_rows`` →
-summary/subject, ~20×200 chars — NOT ``body_md``, f7 §5b). This module is a
-pure function over the already-fetched scores.
+summary/subject, ~20×200 chars — NOT ``body_md``). This module is a pure
+function over the already-fetched scores.
 
-Honesty (ADR-10): a candidate with no score (the scores list is shorter than
-candidates) is kept with its RRF score at the end — never invent a score. The
-deterministic ``(-score, ep_id)`` tie-break preserves reproducibility.
-
-References:
-- cerebras-f-feasibility.md §4 (F2 — cross-encoder ONNX on-device, opt-in)
-- f7-experimental-design.md §5b (rerank 4ª llamada — decide F2)
-- f5-11 §6.2 (cross-encoder mediano, opt-in, fuera del budget 250ms)
+Honesty: a candidate with no score (the scores list is shorter than candidates)
+is kept with its RRF score at the end — never invent a score. The deterministic
+``(-score, ep_id)`` tie-break preserves reproducibility.
 """
 
 from __future__ import annotations
@@ -33,7 +28,7 @@ def apply_rerank(
     *,
     k: int,
 ) -> list[FusedCandidate]:
-    """Reorder candidates by cross-encoder scores, truncate to ``k`` (ADR-10).
+    """Reorder candidates by cross-encoder scores, truncate to ``k``.
 
     Rebuilds each candidate with ``score = rerank_score`` (the cross-encoder
     relevance — the manifest records ``score_source: "rrf_rerank"``), sorts

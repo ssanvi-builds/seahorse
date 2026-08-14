@@ -1,11 +1,11 @@
-"""Sync QueryEmbedder adapter (M1-B.3, C8.4 seam materialization).
+"""Sync QueryEmbedder adapter (extension point materialization).
 
-``AsyncToSyncQueryEmbedder`` satisfies the sync ``QueryEmbedder`` seam
-(contracts/embeddings) that #11 calls in its hot path, bridging the async #7
-``Embedder`` Protocol via a dedicated event loop in a daemon thread
-(``asyncio.run_coroutine_threadsafe``). It returns the vector as a float32
-BLOB (the shape vec0 ``knn(query: Any)`` expects), keeping numpy out of the
-core path.
+``AsyncToSyncQueryEmbedder`` satisfies the sync ``QueryEmbedder`` extension
+point (contracts/embeddings) that hybrid retrieval calls in its hot path,
+bridging the async ``Embedder`` Protocol via a dedicated event loop in a daemon
+thread (``asyncio.run_coroutine_threadsafe``). It returns the vector as a
+float32 BLOB (the shape vec0 ``knn(query: Any)`` expects), keeping numpy out of
+the core path.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""7 MCP tool handlers + dispatch (#13, MVP-0).
+"""MCP tool handlers + dispatch.
 
 Each handler is the same three-step pipeline, with NO domain logic:
 1. ``validate(args, schema_for(tool))`` — wire-shape only (raises
@@ -6,15 +6,16 @@ Each handler is the same three-step pipeline, with NO domain logic:
    wire-shape failure, so guards fire before any read).
 2. ``deserialize`` — wire JSON → Python kwargs/payload + resolve PIT via
    ``facade.build_pit`` (the ONE facade call that owns PIT precedence + kind
-   validation; #13 never replicates it).
+   validation; the MCP server never replicates it).
 3. ``facade.<method>(**kwargs)`` — delegate; ``serialize`` the result.
 
-Delegation purity (R2 f5-13): #13 does not fuse, project, extract, derive
+Delegation purity: the MCP server does not fuse, project, extract, derive
 subject/fact_id, build supersedes, synthesize effective provenance in
 ``improve`` (the facade does), override ``now`` in ``forget`` (always
 ``now=None`` — the wire has no ``now``), or replicate ``MAX_FULL_BATCH`` (the
-wire schema enforces it; #8 owns the runtime guard). Exceptions from the
-facade are translated by ``errors.translate`` (Cat A / Cat B / generic).
+wire schema enforces it; progressive disclosure owns the runtime guard).
+Exceptions from the facade are translated by ``errors.translate`` (Cat A /
+Cat B / generic).
 """
 
 from __future__ import annotations
@@ -42,7 +43,8 @@ def _resolve_pit(facade: MemoryFacade, args: dict[str, Any], *, t_field: str) ->
 
     ``extract_pit`` is a pure codec (no facade); ``facade.build_pit`` owns the
     precedence (``pit`` wins over ``pit_kind``+``t``) and the kind validation
-    (``InvalidPITKind`` / ``E_PIT_REQUIRES_T``). #13 never replicates either.
+    (``InvalidPITKind`` / ``E_PIT_REQUIRES_T``). The MCP server never
+    replicates either.
     """
     pit, pit_kind, t = extract_pit(args, t_field=t_field)
     return facade.build_pit(pit, pit_kind=pit_kind, t=t)
@@ -118,7 +120,7 @@ def handle_improve(facade: MemoryFacade, args: dict[str, Any], request_id: _Requ
 def handle_forget(facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId) -> dict:
     validate(args, schema_for("forget"))
     by = build_provenance(args["by"])
-    # OQ #13 DECIDIDA: the wire has NO `now`; #13 never overrides the clock.
+    # The wire has NO `now`; the MCP server never overrides the clock.
     # Passing now=None explicitly documents the decision and keeps the
     # delegation-purity invariant testable (recording asserts now is None,
     # never a caller-provided value).
@@ -135,7 +137,7 @@ def handle_build_pit(facade: MemoryFacade, args: dict[str, Any], request_id: _Re
 
 
 # ---------------------------------------------------------------------------
-# Sprint C debt closure — procedural skills + deferred read-only facade tools.
+# Procedural skills + deferred read-only facade tools.
 # ---------------------------------------------------------------------------
 
 
@@ -143,8 +145,8 @@ def handle_skill_add(
     facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
 ) -> dict:
     validate(args, schema_for("skill_add"))
-    # Delegation purity: the wire projects onto the procedural client of #12
-    # (record_procedure), never onto the engine directly.
+    # Delegation purity: the wire projects onto the procedural client of the
+    # facade (record_procedure), never onto the engine directly.
     from seahorse.procedural.operations import record_procedure
 
     result = record_procedure(
@@ -163,8 +165,9 @@ def handle_skill_show(
     facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
 ) -> dict:
     validate(args, schema_for("skill_show"))
-    # The R5 trust gate lives in the procedural layer (a client of #12); #13
-    # projects onto it, applying the gate to the FULL-level episode.
+    # The trust gate lives in the procedural layer (a client of the facade);
+    # the MCP server projects onto it, applying the gate to the FULL-level
+    # episode.
     from seahorse.procedural.trust import TrustLevel, gate_skill
 
     min_trust_raw = args.get("min_trust") or "medium"
@@ -231,25 +234,25 @@ TOOL_LIST: list[dict[str, Any]] = [
     {
         "name": "remember",
         "description": "Persist a fact (episodic memory write). Delegates to the "
-        "write-path; MVP-0 uses the deterministic skip extraction path.",
+        "write-path; the first release uses the deterministic skip extraction path.",
         "inputSchema": schema_for("remember"),
     },
     {
         "name": "recall",
-        "description": "Recall the INDEX level (vigente listing, no body). MVP-0: "
-        "no ranking, no PIT (PIT recall is refused before any read).",
+        "description": "Recall the INDEX level (current-state listing, no body). "
+        "No ranking, no PIT (PIT recall is refused before any read).",
         "inputSchema": schema_for("recall"),
     },
     {
         "name": "recall_timeline",
         "description": "Recall the TIMELINE level for an anchor episode (no body). "
-        "MVP-0 axes: supersedes_chain, fact_id_scope.",
+        "Axes: supersedes_chain, fact_id_scope.",
         "inputSchema": schema_for("recall_timeline"),
     },
     {
         "name": "recall_full",
         "description": "Recall the FULL level (hydrates body). Batch capped at "
-        "MAX_FULL_BATCH; PIT in FULL is not supported in MVP-0.",
+        "MAX_FULL_BATCH; PIT in FULL is not supported in the first release.",
         "inputSchema": schema_for("recall_full"),
     },
     {
@@ -272,13 +275,13 @@ TOOL_LIST: list[dict[str, Any]] = [
     },
     {
         "name": "skill_add",
-        "description": "Create a procedural skill (deterministic, ADR-09 skip). "
+        "description": "Create a procedural skill (deterministic skip path). "
         "Validates the canonical body (## Trigger/Steps/Validation/Rationale).",
         "inputSchema": schema_for("skill_add"),
     },
     {
         "name": "skill_show",
-        "description": "Show a skill's gated body (R5 trust gate): low-trust skills "
+        "description": "Show a skill's gated body (trust gate): low-trust skills "
         "are delivered as citation/context (as_instruction=false), not instruction.",
         "inputSchema": schema_for("skill_show"),
     },

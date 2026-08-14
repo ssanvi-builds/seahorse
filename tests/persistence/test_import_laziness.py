@@ -1,27 +1,27 @@
-"""C8.2 import-laziness guard — importing the facade/MCP must NOT cascade into
-the MVP-1 concrete repos (``vector_index`` / ``fts_index``), and therefore
+"""Import-laziness guard — importing the facade/MCP must NOT cascade into
+the later-release concrete repos (``vector_index`` / ``fts_index``), and therefore
 must not load ``numpy`` / ``sqlite_vec``.
 
-When #6 lands the real sqlite-vec + FTS5 impls, those modules will import
+When persistence lands the real sqlite-vec + FTS5 impls, those modules will import
 ``sqlite_vec`` (and possibly ``numpy``) at module top. If ``storage.py`` kept
 importing them top-level, every ``import seahorse.facade`` (and
-``import seahorse.mcp``) would eagerly load the heavy MVP-1 deps — breaking the
-"clone-and-run, zero runtime deps in MVP-0" promise at *import* time, before
-any tool is even called. C8.2 makes the ``storage.py`` import of the two MVP-1
-repos lazy (inside the ``vector`` / ``fts`` property accessors), so the cascade
+``import seahorse.mcp``) would eagerly load the heavy later-release deps — breaking the
+"clone-and-run, zero runtime deps in the first release" promise at *import* time, before
+any tool is even called. The ``storage.py`` import of the two later-release
+repos is lazy (inside the ``vector`` / ``fts`` property accessors), so the cascade
 is broken: importing the facade/MCP never touches ``vector_index`` /
 ``fts_index`` until someone actually accesses ``Storage.vector`` /
 ``Storage.fts``.
 
-C8.5 extends the same subprocess pattern to the CORE confinement invariants:
+The same subprocess pattern extends to the CORE confinement invariants:
 importing ``seahorse.engine`` / ``seahorse.facade`` / ``seahorse.contracts``
 must NOT load the confined / out-of-layer deps — ``ruamel`` /
 ``python-frontmatter`` (confined to ``seahorse/frontmatter/``), ``typer``
-(CLI-only), and ``numpy`` / ``sqlite_vec`` (MVP-1). Pydantic is a declared core
+(CLI-only), and ``numpy`` / ``sqlite_vec`` (later-release). Pydantic is a declared core
 dependency (the canonical ``Episode`` model) and is intentionally NOT in the
 forbidden set. These guards pin the layer boundaries so a future import that
 crosses them fails loud rather than silently coupling the core to a
-frontmatter/CLI/MVP-1 dep.
+frontmatter/CLI/later-release dep.
 
 These guards run in a fresh subprocess so the assertion sees a clean
 ``sys.modules`` (the test process itself has the persistence layer loaded by
@@ -35,18 +35,18 @@ import subprocess
 import sys
 
 # Modules that MUST NOT be imported as a side effect of `import seahorse.facade`
-# or `import seahorse.mcp`. The two MVP-1 concrete repos are the laziness
-# boundary; numpy and sqlite_vec are the heavy deps they will pull in MVP-1.
+# or `import seahorse.mcp`. The two later-release concrete repos are the laziness
+# boundary; numpy and sqlite_vec are the heavy deps they will pull in a later release.
 _LAZY_MODULES = (
     "seahorse.persistence.vector_index",
     "seahorse.persistence.fts_index",
 )
-# M1-C.3: fastembed + onnxruntime (the 'embeddings' extra) join the heavy set —
+# fastembed + onnxruntime (the 'embeddings' extra) join the heavy set —
 # importing seahorse.facade must never pull them (build_fastembed_embedder is
 # lazy inside the retrieval regime).
 _HEAVY_DEPS = ("numpy", "sqlite_vec", "fastembed", "onnxruntime")
 
-# C8.5: deps confined to a specific layer that the CORE (engine/facade/
+# Deps confined to a specific layer that the CORE (engine/facade/
 # contracts) must never pull at import. ``frontmatter`` is the top-level
 # ``python-frontmatter`` package (distinct from ``seahorse.frontmatter``).
 _CORE_FORBIDDEN = (
@@ -82,7 +82,7 @@ def _not_loaded_script(import_target: str, label: str) -> str:
         f"import {import_target}, sys; "
         f"leaked_lazy = sorted(m for m in ('{lazy_repr}',) if m in sys.modules); "
         f"leaked_heavy = sorted(d for d in ('{heavy_repr}',) if d in sys.modules); "
-        f"assert not leaked_lazy, f'{label} loaded lazy MVP-1 repos: {{leaked_lazy}}'; "
+        f"assert not leaked_lazy, f'{label} loaded lazy later-release repos: {{leaked_lazy}}'; "
         f"assert not leaked_heavy, f'{label} loaded heavy deps: {{leaked_heavy}}'; "
         "print('ok')"
     )
@@ -107,7 +107,7 @@ def test_import_facade_does_not_load_mvp1_repos() -> None:
 
 def test_import_mcp_does_not_load_mvp1_repos() -> None:
     # mcp re-exports build_facade (imports the facade package), so it must
-    # inherit the laziness — no MVP-1 repo loaded at import time.
+    # inherit the laziness — no later-release repo loaded at import time.
     _assert_ok(
         _run(_not_loaded_script("seahorse.mcp", "mcp import")),
         "import seahorse.mcp",
@@ -117,7 +117,7 @@ def test_import_mcp_does_not_load_mvp1_repos() -> None:
 def test_storage_vector_access_loads_mvp1_repo() -> None:
     # The lazy import must STILL resolve when the repo is actually needed:
     # accessing Storage.vector triggers the import + construction. This pins
-    # that the seam is lazy, not absent (the repo is reachable on demand).
+    # that the mechanism is lazy, not absent (the repo is reachable on demand).
     script = (
         "import tempfile, pathlib, sys; "
         "from seahorse.persistence.storage import Storage; "
@@ -138,7 +138,7 @@ def test_storage_vector_access_loads_mvp1_repo() -> None:
 
 
 # ---------------------------------------------------------------------------
-# C8.5 — CORE layer-confinement guards (engine / facade / contracts).
+# CORE layer-confinement guards (engine / facade / contracts).
 # ---------------------------------------------------------------------------
 
 

@@ -1,4 +1,4 @@
-"""Tests for model pinning (f5-16 §5.2 F3)."""
+"""Tests for model pinning."""
 
 from __future__ import annotations
 

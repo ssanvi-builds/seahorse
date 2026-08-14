@@ -1,6 +1,7 @@
 """Shared fixtures for procedural tests.
 
-The procedural layer is a client of #12 (MemoryFacade) — tests use the facade
+The procedural layer is a client of the primitives facade (MemoryFacade) —
+tests use the facade
 recording doubles (mirror of the facade conftest) so delegation invariants are
 structurally enforced. ``make_episode`` builds a minimal ``Episode`` for the
 trust/shaper tests.

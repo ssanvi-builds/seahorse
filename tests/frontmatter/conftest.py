@@ -1,4 +1,4 @@
-"""Shared fixtures for the frontmatter adapter/migrator tests (#3)."""
+"""Shared fixtures for the frontmatter adapter/migrator tests."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def make_episode(
     provenance: dict | None = None,
     valid_at: datetime | None = None,
 ) -> Episode:
-    """A valid F3.1 episode for frontmatter round-trip tests."""
+    """A valid episode in the canonical format for frontmatter round-trip tests."""
     return Episode(
         id=id,
         created_at=created_at,

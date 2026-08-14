@@ -1,6 +1,6 @@
-"""Storage composition root + E2E smoke (Phase 8).
+"""Storage composition root + E2E smoke.
 
-Verifies the single shared ``atomic()`` (SO-7a.6) wraps multi-repo writes, that
+Verifies the single shared ``atomic()`` wraps multi-repo writes, that
 no repository but ``episodes`` exposes ``atomic()``, and a full happy-path +
 stub smoke across the whole storage layer.
 """
@@ -68,7 +68,7 @@ def test_storage_exposes_all_repos(storage: Storage) -> None:
 
 
 def test_only_episodes_repo_has_atomic(storage: Storage) -> None:
-    # SO-7a.6: the single shared atomic lives on Storage (and the episodes repo,
+    # The single shared atomic lives on Storage (and the episodes repo,
     # which delegates). Every other repo MUST NOT expose its own atomic().
     repos_without_atomic = (
         storage.episode_index,
@@ -161,7 +161,7 @@ def test_e2e_smoke_full_flow(storage: Storage) -> None:
     assert rows[0].summary == "Sum"
     assert not hasattr(rows[0], "body") and not hasattr(rows[0], "body_md")
 
-    # 4. find_vigent_by_fact_id bridge equality (SO-8c): the index row's fact_id
+    # 4. find_vigent_by_fact_id bridge equality: the index row's fact_id
     #    matches the stored episode's fact_id.
     vigent_ep = storage.episodes.find_vigent_by_fact_id("fact-abc")
     vigent_row = storage.episode_index.find_vigent_row_by_fact_id("fact-abc")
@@ -211,14 +211,14 @@ def test_e2e_smoke_full_flow(storage: Storage) -> None:
     storage.embeddings_cache.trim(1)
     assert storage.embeddings_cache.count() == 1
 
-    # 10. reindex_jobs lifecycle (setters, no transition guards in MVP-0).
+    # 10. reindex_jobs lifecycle (setters, no transition guards in the first release).
     job_id = storage.reindex_jobs.create(model_from="model-x", model_to="model-y", total=100)
     storage.reindex_jobs.pause(job_id)
     storage.reindex_jobs.start(job_id)
     storage.reindex_jobs.finish(job_id)
     assert storage.reindex_jobs.list(status="done")[0].job_id == job_id
 
-    # 11. M1-A.3/M1-A.4: vector + fts are real backends (empty -> count 0).
+    # 11. vector + fts are real backends (empty -> count 0).
     assert storage.vector.count() == 0
     assert storage.fts.count() == 0
 
@@ -248,7 +248,7 @@ def test_storage_context_manager(tmp_path) -> None:
 
 
 def test_errors_reexport_path_matches_contracts() -> None:
-    # f5-06 documents `from seahorse.persistence.errors import ...`; verify it.
+    # `from seahorse.persistence.errors import ...` must re-export the contracts; verify it.
     from seahorse.contracts.engine import (
         InvalidationConflictError as I,
     )

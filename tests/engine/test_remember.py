@@ -1,7 +1,7 @@
-"""Validate BiTemporalEngine.remember (Phase 6, owned #2).
+"""Validate BiTemporalEngine.remember.
 
-SO-4b: the importer path (``source_type == "importer"`` with ``importer_vendor``
-set) generates a deterministic UUIDv5 from (vendor, source_record_id,
+The importer path (``source_type == "importer"`` with ``importer_vendor`` set)
+generates a deterministic UUIDv5 from (vendor, source_record_id,
 canonical_body_hash) so re-import is idempotent at the storage layer; every other
 source generates a UUIDv7. Idempotency is check-then-skip: if the derived id
 already exists with the same canonical body hash, ``remember`` is a NOOP.
@@ -35,7 +35,7 @@ def engine(storage):
     return BiTemporalEngine(repo, audit), repo, audit
 
 
-# --- id generation by source (SO-4b) ----------------------------------------
+# --- id generation by source ------------------------------------------------
 
 
 def test_remember_default_generates_uuidv7(engine):
@@ -127,7 +127,7 @@ def test_remember_pending_when_valid_at_future(engine):
 
 
 def test_remember_persists_summary(engine):
-    # OQ3 enabler: engine.remember persists the editorial summary verbatim.
+    # engine.remember persists the editorial summary verbatim.
     eng, repo, _audit = engine
     result = eng.remember(
         body="# Title\n\nContent.",
@@ -159,13 +159,13 @@ def test_remember_agent_custom_valid_at_rejected_by_guard(engine):
         )
     assert exc.value.code == errors.E_VALID_AT_HUMAN_ONLY
 
-# --- supersedes / supersedes_reason (Sprint B distill enabler) ---------------
+# --- supersedes / supersedes_reason -----------------------------------------
 
 
 def test_remember_accepts_supersedes_and_reason(engine):
     """The distill primitive writes a consolidated episode that references its
-    representative source via ``supersedes`` (obsiforge §5.2) WITHOUT
-    invalidating it — the sources stay vigente (they are the evidence)."""
+    representative source via ``supersedes`` WITHOUT invalidating it — the
+    sources stay current-state (they are the evidence)."""
     eng, repo, audit = engine
     source = eng.remember(body=_BODY, by={"source_type": "agent", "agent_id": "a1"}, now=NOW)
     wr = eng.remember(
@@ -181,7 +181,7 @@ def test_remember_accepts_supersedes_and_reason(engine):
     ep = repo.get(wr.ep_id)
     assert ep.supersedes == source.ep_id
     assert ep.supersedes_reason == "merge"
-    # The source stays vigente (not invalidated by the consolidation).
+    # The source stays current-state (not invalidated by the consolidation).
     src = repo.get(source.ep_id)
     assert src.invalid_at is None
 

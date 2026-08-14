@@ -1,4 +1,4 @@
-"""Collision detection unit tests (f5-03 §3.1/§3.3/§3.6)."""
+"""Collision detection unit tests."""
 
 from __future__ import annotations
 

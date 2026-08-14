@@ -1,6 +1,6 @@
-"""ConnectionManager load-bearing tests (Phase 3).
+"""ConnectionManager load-bearing tests.
 
-Guards the signed threading model (f5-06 §3.5): PRAGMAs on every connection,
+Guards the signed threading model: PRAGMAs on every connection,
 reentrant RLock that does not deadlock under nested atomic(), the depth counter
 1→2→1→0, a single BEGIN IMMEDIATE / COMMIT per outermost atomic(), and a WAL
 reader pool that is read-only and round-robins.
@@ -20,7 +20,7 @@ from seahorse.persistence.migrations.migrator import apply_migrations
 @pytest.fixture()
 def manager(tmp_path) -> ConnectionManager:
     db = tmp_path / "seahorse.db"
-    # M1-A.2: migration 010 (USING vec0) requires the extension on the connection.
+    # Migration 010 (USING vec0) requires the extension on the connection.
     mgr = ConnectionManager(db, pool_size=4, extensions=("vec0",))
     mgr.open()
     apply_migrations(mgr.writer)
@@ -206,26 +206,26 @@ def test_close_is_idempotent_and_clears_pool(manager: ConnectionManager) -> None
     manager.close()
 
 
-# --- C8.2 extension-loading seam (MVP-1 forward-compat) ---------------------
+# --- extension-loading extension point (forward-compat) ---------------------
 
 
 def test_extensions_param_defaults_empty(tmp_path) -> None:
-    # MVP-0 default: no extensions requested. The seam is opt-in via the
-    # `extensions` ctor arg so MVP-0 never depends on a vec0 / sqlite-vec binary.
+    # The first release default: no extensions requested. The extension point is opt-in via the
+    # `extensions` ctor arg so the first release never depends on a vec0 / sqlite-vec binary.
     mgr = ConnectionManager(tmp_path / "seahorse.db")
     assert mgr._extensions == ()  # noqa: SLF001 — pin the default
 
 
 def test_extensions_param_accepted(tmp_path) -> None:
     mgr = ConnectionManager(tmp_path / "seahorse.db", extensions=("vec0",))
-    assert mgr._extensions == ("vec0",)  # noqa: SLF001 — seam carries the name
+    assert mgr._extensions == ("vec0",)  # noqa: SLF001 — extension point carries the name
 
 
 def test_open_without_extensions_never_calls_load_extension(tmp_path, monkeypatch) -> None:
-    # MVP-0 invariant: with extensions=() (the default), open() must NOT touch
-    # the extension-loading seam at all. Guards that MVP-0 never depends on the
-    # Python build having extension loading compiled in, and that the seam stays
-    # dormant until MVP-1 flips the flag. Spy on the instance method (sqlite3
+    # The first release invariant: with extensions=() (the default), open() must NOT touch
+    # the extension-loading path at all. Guards that the first release never depends on the
+    # Python build having extension loading compiled in, and that the path stays
+    # dormant until a later release flips the flag. Spy on the instance method (sqlite3
     # connection types are C-builtins and cannot be monkeypatched at the class
     # level); a tripwire on `_load_extensions` pins the gate where it lives.
     calls: list[tuple] = []
@@ -248,7 +248,7 @@ def test_open_retries_pragmas_on_database_locked(tmp_path, monkeypatch) -> None:
     # open() must retry the pragma application a bounded number of times.
     mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=2)
     calls = {"n": 0}
-    orig = ConnectionManager._apply_pragmas  # noqa: SLF001 — spy on the seam
+    orig = ConnectionManager._apply_pragmas  # noqa: SLF001 — spy on the method
 
     def flaky(self, conn) -> None:
         calls["n"] += 1
@@ -280,7 +280,7 @@ def test_open_gives_up_after_retries_on_database_locked(tmp_path, monkeypatch) -
 
 def test_load_extensions_raises_actionable_error_when_unsupported(tmp_path) -> None:
     # Matrix finding (uv sync dev on a pyenv Python without
-    # SQLITE_ENABLE_LOAD_EXTENSION): the seam used to crash with a cryptic
+    # SQLITE_ENABLE_LOAD_EXTENSION): the extension-loading path used to crash with a cryptic
     # `AttributeError: 'sqlite3.Connection' object has no attribute
     # 'enable_load_extension'`. It must fail with an actionable message instead
     # (doctor already reports this as a FAIL; the DB commands must not lie).
@@ -293,9 +293,9 @@ def test_load_extensions_raises_actionable_error_when_unsupported(tmp_path) -> N
 
 
 def test_extensions_vec0_loads_sqlite_vec_and_creates_virtual_table(tmp_path) -> None:
-    # M1-A.1: with extensions=("vec0",), open() must load sqlite-vec so a vec0
+    # With extensions=("vec0",), open() must load sqlite-vec so a vec0
     # virtual table can be created (the migration 010 path). Requires the
-    # sqlite-vec package (core dep landing in M1-A.1) — RED until the dep + the
+    # sqlite-vec package (a core dependency) — RED until the dep + the
     # "vec0" special-case in _load_extensions are in.
     mgr = ConnectionManager(tmp_path / "seahorse.db", pool_size=2, extensions=("vec0",))
     mgr.open()
@@ -310,14 +310,14 @@ def test_extensions_vec0_loads_sqlite_vec_and_creates_virtual_table(tmp_path) ->
 
 
 def test_storage_passes_vec0_to_connection_manager(tmp_path) -> None:
-    # M1-A.1: the composition root (Storage) must propagate the vec0 extension to
+    # The composition root (Storage) must propagate the vec0 extension to
     # the ConnectionManager so migration 010 (USING vec0) runs on open(). Storage
-    # always requests vec0 (sqlite-vec is a core dep from M1-A.1); the CM default
+    # always requests vec0 (sqlite-vec is a core dependency); the ConnectionManager default
     # stays () — only Storage opts in.
     from seahorse.persistence.storage import Storage
 
     storage = Storage(tmp_path / "seahorse.db")
     try:
-        assert storage._cm._extensions == ("vec0",)  # noqa: SLF001 — seam pin
+        assert storage._cm._extensions == ("vec0",)  # noqa: SLF001 — pin the extension point
     finally:
         storage.close()

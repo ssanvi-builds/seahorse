@@ -1,8 +1,8 @@
-"""``seahorse benchmark`` — run/list/adapters entrypoints (f5-16 §2.1).
+"""``seahorse benchmark`` — run/list/adapters entrypoints.
 
 The CLI builds a fresh temp SQLite DB per run (reproducible), wires the
-``SeahorseSUT`` over #12, runs the ``EvaluationRunner``, and returns the CI
-exit code (0=Pass / 10=Fail / 3=Tampered).
+``SeahorseSUT`` over the ``MemoryFacade``, runs the ``EvaluationRunner``, and
+returns the CI exit code (0=Pass / 10=Fail / 3=Tampered).
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ def _recency_config(gamma: float | None, half_life_days: float | None) -> dict |
     """Translate the ``--recency-*`` CLI flags to a ``RecencyConfig`` dict.
 
     Both flags are required together (fail-loud, no silent half-configuration):
-    the F1 recency experiment sweeps γ × half_life as pairs (f7-experimental-design
-    §5(a)). Returns None (pure RRF) when neither flag is set.
+    the recency experiment sweeps γ × half_life as pairs. Returns None (pure
+    RRF) when neither flag is set.
     """
     if gamma is None and half_life_days is None:
         return None
@@ -80,16 +80,15 @@ def run_benchmark(
     tmp = tempfile.mkdtemp(prefix="seahorse-bench-")
 
     def _reranker():
-        # F2 (f7 §5b): the cross-encoder is query-time pure — wiring it never
-        # requires a reindex. Lazy import keeps the default run model-free.
+        # The cross-encoder is query-time pure — wiring it never requires a
+        # reindex. Lazy import keeps the default run model-free.
         from seahorse.embeddings.rerank_backend import build_fastembed_reranker
 
         return build_fastembed_reranker()
 
     def sut_factory() -> SeahorseSUT:
-        # F7 enablers (a)/(b)/(c): the composition-root swap is the ONLY wiring —
-        # the SUT knows nothing about RecencyConfig/reranker/embed_mode internals
-        # (delegation purity, f5-16 §2.4).
+        # The composition-root swap is the ONLY wiring — the SUT knows nothing
+        # about RecencyConfig/reranker/embed_mode internals (delegation purity).
         recency = (
             RecencyConfig(**config.recency_config)
             if config.recency_config is not None
@@ -147,7 +146,7 @@ def list_benchmarks() -> list[str]:
 
 
 def list_adapters() -> list[str]:
-    """Available SUT adapters (MVP-1: seahorse only)."""
+    """Available SUT adapters (the first release: seahorse only)."""
     return ["seahorse"]
 
 

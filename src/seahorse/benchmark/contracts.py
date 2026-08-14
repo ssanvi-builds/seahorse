@@ -1,17 +1,13 @@
-"""#16 benchmark contracts — the four stable interfaces of the skeleton.
+"""Benchmark contracts — the four stable interfaces of the harness.
 
 Loader / Runner / Metrics / Reporter are each a ``@runtime_checkable``
 ``Protocol``. The dataclasses are the canonical payload shapes the harness
-passes between them (f5-16 §2.2).
+passes between them.
 
 Delegation purity: these contracts reference NO internal Seahorse component.
 ``SUTResponse`` carries the retrieval bridge (``retrieved_fact_ids`` +
 ``retrieved_session_ids``) so Recall@k/nDCG@k are computable over the
-``fact_id → session_id`` map populated by the ``CorpusBuilder`` (f5-16 §3.7).
-
-References:
-- f5-16 §2.2 (the four interfaces + payload shapes)
-- f5-16 §3.7 (fact_id → session_id bridge)
+``fact_id → session_id`` map populated by the ``CorpusBuilder``.
 """
 
 from __future__ import annotations
@@ -33,7 +29,7 @@ class BenchmarkInstance:
     (``[{session_id, date, turns: [...]}]``). ``knowledge_updates`` carries the
     explicit ``(fact_key, old_ep_id, old_body, new_body, session_id, date)``
     pairs for knowledge-update questions; when empty, the
-    ``KnowledgeUpdateSimulator`` derives them from the haystack (OQ-16-13).
+    ``KnowledgeUpdateSimulator`` derives them from the haystack.
     ``metadata`` is a mutable dict the runner uses to attach runtime state
     (e.g. ``new_ep_ids_after_improve`` for ``knowledge_update_accuracy``).
     """
@@ -86,9 +82,9 @@ class SUTResponse:
     """A single query's answer + retrieval trace + efficiency measurements.
 
     ``retrieved_fact_ids`` and ``retrieved_session_ids`` are the retrieval
-    bridge (f5-16 §3.7): the SUT resolves each ``IndexRow.fact_id`` to its
-    session via the ``fact_id → session_id`` map. ``tokens_consumed_measured``
-    is REAL (via the reader tokenizer), never ``len*50`` (f5-16 §4.4 F4).
+    bridge: the SUT resolves each ``IndexRow.fact_id`` to its session via the
+    ``fact_id → session_id`` map. ``tokens_consumed_measured`` is REAL (via the
+    reader tokenizer), never ``len*50``.
     """
 
     answer: str
@@ -108,11 +104,11 @@ class SUTResponse:
 
 @runtime_checkable
 class MemorySystemSUT(Protocol):
-    """Shared SUT interface for Seahorse AND external baselines (mediano).
+    """Shared SUT interface for Seahorse AND external baselines (a medium-term goal).
 
     ``ingest`` / ``apply_knowledge_updates`` return the ep_ids they created so
     the ``KnowledgeUpdateSimulator`` can track ``new_ep_ids`` for
-    ``knowledge_update_accuracy`` (f5-16 §4.5).
+    ``knowledge_update_accuracy``.
     """
 
     def ingest(self, sessions: Sequence[dict]) -> list[str]: ...
@@ -130,7 +126,7 @@ class MemorySystemSUT(Protocol):
 
 @dataclass(frozen=True)
 class MetricReport:
-    """Nested metric structure — global + by_slice + stats (f5-16 §2.2 F6)."""
+    """Nested metric structure — global + by_slice + stats."""
 
     metric_name: str
     global_value: float
@@ -178,7 +174,7 @@ class Reporter(Protocol):
         dataset: BenchmarkDataset,
         responses: Sequence[SUTResponse],
         metric_results: Sequence[MetricResult],
-        manifest: Any,  # RunManifest (reporters/manifest.py — commit 5)
+        manifest: Any,  # RunManifest (reporters/manifest.py)
         config: BenchmarkConfig,
     ) -> str: ...
 

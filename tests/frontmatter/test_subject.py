@@ -1,4 +1,4 @@
-"""``frontmatter.subject`` — syntactic subject derivation (f5-03 §5.6)."""
+"""``frontmatter.subject`` — syntactic subject derivation."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class TestDeriveSubject:
         assert derive_subject(None, "# First Heading\n", Path("note.md")) == "first heading"
 
     def test_filename_stem_fallback(self) -> None:
-        # The F3.3 addition over the engine view: no title/H1 → filename stem.
+        # No title/H1 → filename stem fallback.
         assert derive_subject(None, "plain text no heading", Path("My Note.md")) == "my note"
 
     def test_nfc_normalization(self) -> None:
@@ -67,7 +67,7 @@ class TestDeriveSubject:
     def test_dotfile_stem_uses_the_dotfile_name(self) -> None:
         # Python's Path treats ".md" as a dotfile (stem == ".md"), not an empty
         # stem — so it yields a non-empty subject, not case D. Documented so the
-        # migrator's degenerate-detection (commit 3) keys on stem emptiness.
+        # migrator's degenerate-detection keys on stem emptiness.
         assert derive_subject(None, "no heading", Path(".md")) == ".md"
 
 
@@ -84,7 +84,7 @@ class TestFactIdOf:
         assert fact_id_of("madrid") != fact_id_of("barcelona")
 
     def test_empty_subject_is_constant(self) -> None:
-        # The collision risk the migrator guards against (f5-03 §5.6).
+        # The collision risk the migrator guards against.
         assert fact_id_of("") == fact_id_of("")
         assert len(fact_id_of("")) == 32
 

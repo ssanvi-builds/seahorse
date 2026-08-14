@@ -1,8 +1,8 @@
-"""Shared SUT interface — re-exported from contracts (f5-16 §2.2).
+"""Shared SUT interface — re-exported from contracts.
 
 ``MemorySystemSUT`` is the interface BOTH Seahorse and external baselines
-(Mem0/Zep/Letta, mediano) implement. The skeleton never calls internal
-components — only this interface + the #12 facade.
+(Mem0/Zep/Letta, a medium-term goal) implement. The harness never calls
+internal components — only this interface + the ``MemoryFacade``.
 """
 
 from __future__ import annotations

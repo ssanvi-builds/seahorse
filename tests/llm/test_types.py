@@ -1,15 +1,16 @@
-"""Tests for the #4 LLM client contract freeze (SO-5a).
+"""Tests for the LLM client contract freeze.
 
-The contract is frozen from MVP-0 so #5 (write-path) can import it without
-drift. The MVP-0 materialization uses stdlib ``@dataclass`` (NOT Pydantic
-``BaseModel``) to keep the project runtime-dep-free — same field set as the
-signed contract, mirroring the ``contracts/episode.py`` precedent (#1 signs
-Pydantic, #6 materializes as dataclass). When #4 ships the real client it may
-use Pydantic; the frontier shape (fields) is what is signed.
+The contract is frozen from the first release so the write path can import it
+without drift. The first-release materialization uses stdlib ``@dataclass``
+(NOT Pydantic ``BaseModel``) to keep the project runtime-dep-free — same field
+set as the signed contract, mirroring the ``contracts/episode.py`` precedent
+(the engine signs Pydantic, persistence materializes as dataclass). When the
+real client ships it may use Pydantic; the interface shape (fields) is what is
+signed.
 
-``StubLLMClient`` raises ``NotImplementedError`` — MVP-0 never calls the LLM
-path (#5 degrades ``llm``→``skip``). ``BudgetContext`` is the documented
-immutability exception: a mutable execution accumulator.
+``StubLLMClient`` raises ``NotImplementedError`` — the first release never calls
+the LLM path (the write path degrades ``llm``→``skip``). ``BudgetContext`` is
+the documented immutability exception: a mutable execution accumulator.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from seahorse.llm.types import (
 
 class _FakeSchema(BaseModel):
     """A Pydantic ``schema_hint`` for the extract signature (reconciled to
-    ``type[BaseModel]`` — f5-04 §2.3)."""
+    ``type[BaseModel]``)."""
     subject: str
 
 
@@ -125,9 +126,9 @@ class TestStubLLMClient:
         with pytest.raises(NotImplementedError):
             client.complete([], budget=BudgetContext())
 
-    def test_mentions_mvp0_in_message(self) -> None:
+    def test_mentions_current_release_in_message(self) -> None:
         client = StubLLMClient()
-        with pytest.raises(NotImplementedError, match="MVP-0"):
+        with pytest.raises(NotImplementedError, match="not implemented in the current release"):
             client.extract("c", _FakeSchema)
 
 

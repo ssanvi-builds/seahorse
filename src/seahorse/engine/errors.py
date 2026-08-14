@@ -1,10 +1,11 @@
-"""Engine error vocabulary (owned by #2).
+"""Engine error vocabulary (owned by the engine).
 
 A single ``EngineError`` carries a stable ``code`` string plus optional
-``context`` dict so callers (and #12/#13 facades) can ``match`` on the code
-without parsing the message. Codes are the fail-loud contract: SO-3b
-collision, I5 PENDING invalidation, supersedes dangling, I2 valid_at guard,
-the #5 skip-path border, and the MVP-1 stub marker.
+``context`` dict so callers (and the facade and MCP-server layers) can ``match``
+on the code without parsing the message. Codes are the fail-loud contract:
+concurrent-subject collision, PENDING invalidation, dangling supersedes, the
+valid_at guard, the write-path skip border, and the not-yet-released stub
+marker.
 """
 
 from __future__ import annotations
@@ -28,10 +29,10 @@ E_DANGLING_SUPERSEDES = "E_DANGLING_SUPERSEDES"
 E_VALID_AT_HUMAN_ONLY = "E_VALID_AT_HUMAN_ONLY"
 E_SKIP_CONTRACT_VIOLATED = "E_SKIP_CONTRACT_VIOLATED"
 E_NOT_IN_MVP_0 = "E_NOT_IN_MVP_0"
-# I4: the decay feature (expired_at non-null) is not available in MVP-0. Named
-# per f5-02 §8.2 (ExpiredAtNotSupportedError -> code E_EXPIRED_AT_NON_NULL).
+# The decay feature (expired_at non-null) is not available in the first release.
 E_EXPIRED_AT_NON_NULL = "E_EXPIRED_AT_NON_NULL"
-# Defensive/backstop codes — unreachable in correct MVP-0 flow; fire on engine
-# contract violation or on a non-null bi-temporal pair that violates I5.
+# Defensive/backstop codes — unreachable in a correct current-release flow; fire
+# on an engine contract violation or on a non-null bi-temporal pair that violates
+# the monotonic ordering.
 E_CREATED_AT_ENGINE_OWNED = "E_CREATED_AT_ENGINE_OWNED"
 E_MONOTONICITY_VIOLATED = "E_MONOTONICITY_VIOLATED"

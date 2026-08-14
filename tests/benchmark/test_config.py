@@ -1,4 +1,4 @@
-"""Tests for ``BenchmarkConfig`` (f5-16 §6.3 R6 — judge self-preference gate)."""
+"""Tests for ``BenchmarkConfig`` (judge self-preference gate)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def test_default_config_validates():
 
 
 def test_validate_rejects_reader_equals_judge():
-    """The load-bearing gate: generator != judge (f5-16 §6.3 R6)."""
+    """The load-bearing gate: generator != judge."""
     cfg = BenchmarkConfig(reader_model="ollama/qwen3:1.7b", judge_model="ollama/qwen3:1.7b")
     with pytest.raises(ValueError, match="different families"):
         cfg.validate()
@@ -56,7 +56,7 @@ def test_config_hash_changes_with_parameters():
 
 
 def test_experiment_variants_are_configurable():
-    """The harness must support the F7 experiment variants (f7 §3)."""
+    """The harness must support the experiment variants."""
     for score_source in ("mvp1_rrf", "mvp1_rrf_recency", "rrf_rerank"):
         cfg = BenchmarkConfig(score_source=score_source)  # type: ignore[arg-type]
         cfg.validate()
@@ -71,15 +71,15 @@ def test_experiment_variants_are_configurable():
 
 
 def test_rerank_enabled_requires_pinned_model():
-    """F2 (f7 §5b): rerank_enabled without a pinned rerank_model is rejected —
-    the cross-encoder identity goes in the fingerprint (cerebras-f §4.4)."""
+    """rerank_enabled without a pinned rerank_model is rejected — the
+    cross-encoder identity goes in the fingerprint."""
     with pytest.raises(ValueError, match="rerank_model"):
         BenchmarkConfig(rerank_enabled=True).validate()
 
 
 def test_rerank_model_changes_config_hash():
     """The reranker identity is part of the fingerprint — the rerank run_id
-    differs from the baseline (cerebras-f §4.4)."""
+    differs from the baseline."""
     base = BenchmarkConfig().config_hash()
     rerank = BenchmarkConfig(
         rerank_enabled=True, rerank_model="hooman650/bge-reranker-v2-m3-onnx-o4"

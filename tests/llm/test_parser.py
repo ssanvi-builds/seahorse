@@ -1,7 +1,7 @@
-"""Tests for #4 plain-prompt parsing + validation (f5-04 §6.2/§6.4).
+"""Tests for plain-prompt parsing + validation.
 
-The ADR-05 base path: the model's free text is parsed for a JSON object and
-validated against a ``schema_hint`` with ``extra="forbid"`` (hallucinated
+The plain-prompt base path: the model's free text is parsed for a JSON object
+and validated against a ``schema_hint`` with ``extra="forbid"`` (hallucinated
 fields are rejected, triggering the repair loop). The extraction prompt wraps
 the episode content in ``<content>`` delimiters with an explicit treat-as-data
 rule (prompt-injection defense-in-depth).
@@ -112,11 +112,11 @@ class TestBuildExtractPrompt:
         assert '"subject"' in msgs[1]["content"]
 
     def test_prompt_rules_out_naive_dates_and_date_subjects(self) -> None:
-        # Gate finding 2 (2026-08-05): the weak model eagerly uses a bare date
-        # as the subject and/or emits a naive ``valid_at`` that the I2 validator
-        # rejects. The prompt must carry the rules EXPLICITLY — the weak model
-        # does not infer them from the schema format alone.
+        # The weak model eagerly uses a bare date as the subject and/or emits a
+        # naive ``valid_at`` that the validator rejects. The prompt must carry
+        # the rules EXPLICITLY — the weak model does not infer them from the
+        # schema format alone.
         system = build_extract_prompt("body", _Frontmatter)[0]["content"]
         assert "never a bare date" in system  # subject is a topic phrase, not a date
-        assert "timezone-aware ISO-8601" in system  # valid_at must be aware (I2)
+        assert "timezone-aware ISO-8601" in system  # valid_at must be timezone-aware
         assert "omit valid_at" in system  # a bare date has no timezone → omit it

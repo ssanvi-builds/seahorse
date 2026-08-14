@@ -1,23 +1,22 @@
--- 009_supersedes_reason.sql — portable supersedes_reason column lands in storage
--- (f5-03 §12.3, plan 5.3=(a)).
+-- 009_supersedes_reason.sql — adds the portable supersedes_reason column to
+-- storage.
 --
--- Adds supersedes_reason TEXT to episodes + episode_index. The Episode model has
--- carried this field since commit 1 (model+wire only, not yet persisted); commit 4
--- persists it and wires it into _EPISODES_INSERT/_INDEX_INSERT/_row_to_episode +
--- the sidecar rebuild_all episode_index upsert.
+-- Adds supersedes_reason TEXT to episodes + episode_index. The Episode model
+-- carried this field as model+wire only; this migration persists it and wires
+-- it into the insert/read paths and the sidecar rebuild_all episode_index upsert.
 --
 -- Idempotency: SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS and cannot be
--- made conditional in raw SQL (executescript is non-procedural). The PRIMARY
+-- made conditional in raw SQL (executescript is non-procedural). The primary
 -- idempotency mechanism is the migration runner's schema_version row (each NNN
 -- runs at most once per DB). (001-008 use CREATE TABLE/INDEX IF NOT EXISTS as
 -- defense-in-depth; ALTER cannot, so the runner is the sole guard here —
 -- consistent with how 001-008 idempotency truly works, since CREATE...IF NOT
 -- EXISTS alone does not insert the version row.)
 --
--- Atomicity (C8.3 #8): the runner wraps EACH migration (DDL + the schema_version
--- INSERT) in a single BEGIN/COMMIT transaction. This file therefore no longer
--- carries its own BEGIN/COMMIT (which would nest-fail inside the runner's
--- transaction): the two ALTERs are atomic WITH EACH OTHER AND with the version
+-- Atomicity: the runner wraps each migration (DDL + the schema_version INSERT)
+-- in a single BEGIN/COMMIT transaction. This file therefore carries no
+-- BEGIN/COMMIT of its own (which would nest-fail inside the runner's
+-- transaction): the two ALTERs are atomic with each other and with the version
 -- row — if either ALTER or the INSERT fails, nothing commits and re-running
 -- retries the whole migration. This closes the residual gap this header used
 -- to document (DDL commits but the version INSERT fails -> re-run raises

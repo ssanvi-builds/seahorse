@@ -1,4 +1,4 @@
-"""Tests for the shared constants module (pre-work for #13/#14)."""
+"""Tests for the shared constants module (pre-work for the MCP server and the CLI)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,8 @@ class TestCognitiveTypes:
         assert len(COGNITIVE_TYPES) == 6
 
     def test_does_not_contain_preference(self) -> None:
-        # f5-05 §5.6 had a divergent `preference` value that does not exist in F3.1.
+        # An earlier design draft had a divergent `preference` value that does not
+        # exist in the canonical episode format.
         assert "preference" not in COGNITIVE_TYPES
 
     def test_is_frozenset(self) -> None:

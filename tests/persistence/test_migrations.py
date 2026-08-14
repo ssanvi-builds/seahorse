@@ -1,7 +1,7 @@
-"""Migration load-bearing tests (Phase 2, RED-first).
+"""Migration load-bearing tests (RED-first).
 
-These guard the signed DDL: json_valid enforcement, I5 null-safe bi-temporal
-ordering, I11 unique-vigente per fact_id, the SO-1 title/summary columns on
+These guard the signed DDL: json_valid enforcement, null-safe bi-temporal
+ordering, unique currently-valid per fact_id, the title/summary columns on
 episode_index, the episode_paths %.md CHECK, idempotency, and schema_version
 tracking. They run against a fresh in-memory SQLite db with migrations applied.
 """
@@ -92,7 +92,7 @@ def test_episodes_accepts_valid_provenance(conn: sqlite3.Connection) -> None:
     assert conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0] == 1
 
 
-# --- I5 null-safe bi-temporal ordering --------------------------------------
+# --- null-safe bi-temporal ordering --------------------------------------
 
 
 def test_i5_rejects_valid_at_after_invalid_at(conn: sqlite3.Connection) -> None:
@@ -123,7 +123,7 @@ def test_i5_rejects_expired_at_before_created_at(conn: sqlite3.Connection) -> No
         )
 
 
-# --- I11 unique-vigente per fact_id -----------------------------------------
+# --- unique currently-valid per fact_id -----------------------------------------
 
 
 def _insert_episode(conn: sqlite3.Connection, ep_id: str, fact_id: str = "fact-1") -> None:
@@ -146,7 +146,7 @@ def test_i11_second_after_invalidation_accepted(conn: sqlite3.Connection) -> Non
     _insert_episode(conn, "e1", "fact-1")
     conn.execute("UPDATE episodes SET invalid_at = '2026-01-03T00:00:00Z' WHERE id = 'e1'")
     conn.commit()
-    # now a new vigente row for the same fact_id is legitimate (supersession)
+    # now a new currently valid row for the same fact_id is legitimate (supersession)
     _insert_episode(conn, "e2", "fact-1")
     assert conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0] == 2
 
@@ -164,7 +164,7 @@ def test_i11_episode_index_mirrors_unique_vigente(conn: sqlite3.Connection) -> N
         )
 
 
-# --- SO-1: title/summary columns on episode_index ---------------------------
+# --- title/summary columns on episode_index ---------------------------
 
 
 def test_episode_index_has_title_and_summary_columns(conn: sqlite3.Connection) -> None:
@@ -211,7 +211,7 @@ def test_current_version_tracks_migrations() -> None:
     assert current_version(c) == 0  # before schema_version table exists
     _load_vec0(c)
     apply_migrations(c)
-    # 010_vec_fts.sql is the highest-numbered migration after MVP-1 materialization.
+    # 010_vec_fts.sql is the highest-numbered migration.
     assert current_version(c) == 10
     c.close()
 
@@ -223,12 +223,12 @@ def test_all_migrations_recorded(conn: sqlite3.Connection) -> None:
     assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
-# --- M1-A.2 boundary: vec0 / FTS5 CREATED by migration 010 -------------------
+# --- vec0 / FTS5 CREATED by migration 010 -------------------
 
 
 def test_010_creates_vec0_virtual_table(conn: sqlite3.Connection) -> None:
-    # M1-A.2: migration 010 creates the vec0 virtual table alongside the lateral
-    # vec_episodes_meta (SO-7) that MVP-0 already shipped.
+    # Migration 010 creates the vec0 virtual table alongside the lateral
+    # vec_episodes_meta that the first release already shipped.
     names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "vec_episodes" in names
     assert "vec_episodes_meta" in names
@@ -259,11 +259,11 @@ def test_010_fts5_external_content(conn: sqlite3.Connection) -> None:
     assert "unicode61" in sql
 
 
-# --- C8.3 #8: each migration is a single transaction (DDL + version row) -----
+# --- each migration is a single transaction (DDL + version row) -----
 
 
 def test_migration_ddl_and_version_row_are_atomic_on_failure(tmp_path, monkeypatch) -> None:
-    # #8: the migration DDL and the schema_version INSERT must commit together. If
+    # The migration DDL and the schema_version INSERT must commit together. If
     # a migration fails mid-script, the whole migration rolls back — no version
     # row, no partial DDL (closes the half-applied gap 009's header documented).
     # Build a temp migrations dir with a marker migration that creates a table

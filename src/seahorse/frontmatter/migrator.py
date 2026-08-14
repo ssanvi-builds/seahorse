@@ -1,23 +1,24 @@
-"""Vault migrator — legacy notes -> F3.1 frontmatter (f5-03 §3).
+"""Vault migrator — legacy notes -> on-disk format frontmatter.
 
-Owned by #3. Operacionaliza F3.1 sec 5.3 (autoridad) sobre un vault Obsidian:
-clasifica cada ``.md`` (caso A/B/C/D), añade frontmatter bi-temporal aditivo a
-las notas legacy (A/B) preservando campos Obsidian, deja intactas las notas
-F3.1 (C, idempotente), y rechaza las incompatibles (D, log sin sobreescribir).
+Part of the frontmatter migrator. Implements the migration authority over an
+Obsidian vault: classifies each ``.md`` (case A/B/C/D), adds additive
+bi-temporal frontmatter to legacy notes (A/B) while preserving Obsidian fields,
+leaves already-migrated notes intact (C, idempotent), and rejects incompatible
+ones (D, logs without overwriting).
 
-**Delegation (plan 5.1=(a)):** el migrador NO llama ``engine.remember``. Escribe
-el ``.md`` directamente via ``write_file`` (``.md`` = source of truth; ``index
-rebuild`` es el puente a SQLite en commit 4). Es bulk-import aditivo, no una
-operación bi-temporal del Engine — ``engine.remember`` generaría un UUIDv7 nuevo
-que sobreescribiría el id del migrador.
+**Delegation:** the migrator does NOT call ``engine.remember``. It writes the
+``.md`` directly via ``write_file`` (``.md`` = source of truth; ``index
+rebuild`` is the bridge to SQLite). This is additive bulk import, not a
+bi-temporal engine operation — ``engine.remember`` would generate a new UUIDv7
+that overwrites the migrator's id.
 
-**Co-escritor humano (§3.7):** MVP-0 corre con ``workers=1`` (escritura
-serializada); el paralelizado es MVP-1. El migrador asume Obsidian pausado
-(documentado en CLI help, commit 5).
+**Human co-writer:** the current release runs with ``workers=1`` (serialized
+writes); the parallel variant is a later release. The migrator assumes Obsidian
+is paused (documented in CLI help).
 
-Confined to ``seahorse/frontmatter/``: importa ``adapter``/``handler`` (ruamel).
-El migrator NO es re-exportado por ``frontmatter/__init__`` (cargaría ruamel); the
-CLI imports it directly (commit 5).
+Confined to ``seahorse/frontmatter/``: imports ``adapter``/``handler`` (ruamel).
+The migrator is NOT re-exported by ``frontmatter/__init__`` (that would load
+ruamel); the CLI imports it directly.
 """
 
 from __future__ import annotations
@@ -49,8 +50,8 @@ from seahorse.frontmatter.manifest import (
 )
 from seahorse.frontmatter.subject import derive_subject
 
-# Batch size default: checkpoint the manifest every N notes (resumability,
-# f5-03 §6.3). Tuned for a smooth crash-recovery trade-off on a 10k vault.
+# Batch size default: checkpoint the manifest every N notes (resumability).
+# Tuned for a smooth crash-recovery trade-off on a large vault.
 DEFAULT_BATCH_SIZE = 500
 
 
@@ -60,11 +61,11 @@ def _iso_z(dt: datetime) -> str:
 
 
 class VaultMigrator:
-    """Migrate a vault's ``.md`` notes to F3.1 frontmatter (f5-03 §3).
+    """Migrate a vault's ``.md`` notes to the on-disk format.
 
     Stateless across notes (the manifest carries per-note state). Construct
-    with the vault root and a run ``session_id`` (UUIDv7 per run, f5-03 §3.2);
-    call ``run`` to process.
+    with the vault root and a run ``session_id`` (UUIDv7 per run); call ``run``
+    to process.
     """
 
     def __init__(self, vault_root: Path, session_id: str, *, now: datetime | None = None) -> None:
@@ -76,11 +77,11 @@ class VaultMigrator:
     # ------------------------------------------------------------------ classify
 
     def classify(self, path: Path) -> tuple[str, CommentedMap, str]:
-        """Return ``(case, baseline_cm, body)`` for a note (f5-03 §3.1).
+        """Return ``(case, baseline_cm, body)`` for a note.
 
         - ``case``: one of A/B/C/D.
         - ``baseline_cm``: the parsed legacy frontmatter (empty for A; the
-          legacy CommentedMap for B; the F3.1 CommentedMap for C/D).
+          legacy CommentedMap for B; the on-disk CommentedMap for C/D).
         - ``body``: the markdown body (byte-a-byte from the file).
 
         Classify maps syntax/invalid frontmatter into case D (returns, never
@@ -103,17 +104,17 @@ class VaultMigrator:
             # x-* reserved collision: case D (validator would reject the merge).
             return CASE_D, cm, body
         if "schema_version" in keys:
-            # Has the F3.1 marker. Validate as F3.1: OK+valid_at -> C; otherwise D.
+            # Has the on-disk marker. Validate as on-disk: OK+valid_at -> C; otherwise D.
             return self._validate_or_d(path), cm, body
         # No schema_version marker -> legacy frontmatter (case B).
         return CASE_B, cm, body
 
     def _validate_or_d(self, path: Path) -> str:
-        """``schema_version`` is present: C if it validates as F3.1 with valid_at, else D."""
+        """``schema_version`` is present: C if it validates as on-disk with valid_at, else D."""
         try:
             _cm, _body, ep = parse_file(path)
         except Exception:
-            return CASE_D  # F3.1 marker present but invalid -> incompatible
+            return CASE_D  # on-disk marker present but invalid -> incompatible
         if ep.valid_at is not None and ep.schema_version:
             return CASE_C
         return CASE_D  # marker present but incomplete after validation
@@ -121,7 +122,7 @@ class VaultMigrator:
     # -------------------------------------------------------------- migrate_note
 
     def migrate_note(self, path: Path, *, dry_run: bool = False) -> ManifestEntry:
-        """Process one note; return its manifest entry (f5-03 §3.1/§3.4).
+        """Process one note; return its manifest entry.
 
         ``dry_run`` classifies and builds the episode but does NOT write — the
         entry's ``post_hash`` equals ``pre_hash`` and ``migrated_at`` is None.
@@ -155,14 +156,15 @@ class VaultMigrator:
                 error=self._case_d_reason(path, baseline_cm),
             )
 
-        # Case A or B: build the safe MVP-0 episode from defaults.
+        # Case A or B: build the safe first-release episode from defaults.
         file_mtime = datetime.fromtimestamp(mtime_pre, tz=UTC)
         reference_now = self._now if self._now is not None else datetime.now(UTC)
         ep, ts_collisions = migration_defaults(file_mtime, self.session_id, now=reference_now)
 
-        # Subject guard (f5-03 §5.6): refuse to migrate a note whose derived
-        # subject is empty (degenerate filename + no title + no H1) — it would
-        # collapse to the constant sha256("") fact_id and false query_vigent.
+        # Subject guard: refuse to migrate a note whose derived subject is empty
+        # (degenerate filename + no title + no H1) — it would collapse to the
+        # constant sha256("") fact_id and cause false positives in the
+        # current-state query (``query_vigent``).
         subject = derive_subject(ep.title, body, path)
         if subject == "":
             return ManifestEntry(
@@ -193,9 +195,9 @@ class VaultMigrator:
                 collisions=collisions,
             )
 
-        # Write additively: write_file merges the F3.1 dump onto the legacy
+        # Write additively: write_file merges the on-disk dump onto the legacy
         # baseline_cm (preserving x-*/comments/quote-style for case B, empty for
-        # case A), then atomic-writes. mvp="0" -> MVP-0 read path (no expired_at).
+        # case A), then atomic-writes. mvp="0" -> first-release read path (no expired_at).
         write_file(
             path,
             ep,
@@ -224,13 +226,13 @@ class VaultMigrator:
         if x_offender is not None:
             return (
                 f"E_X_RESERVED_COLLISION: legacy key '{x_offender}' "
-                "claims a reserved F3.1 x-* name"
+                "claims a reserved x-* name"
             )
         try:
             parse_file(path)
         except Exception as e:
             return f"E_FRONTMATTER_INVALID: {e}"
-        return "E_FRONTMATTER_INVALID: schema_version present but F3.1 validation incomplete"
+        return "E_FRONTMATTER_INVALID: schema_version present but on-disk validation incomplete"
 
     # --------------------------------------------------------------------- run
 
@@ -242,13 +244,13 @@ class VaultMigrator:
         batch_size: int = DEFAULT_BATCH_SIZE,
         manifest_path: Path | None = None,
     ) -> MigrationManifest:
-        """Migrate the vault (f5-03 §3). Returns the manifest.
+        """Migrate the vault. Returns the manifest.
 
         - ``dry_run``: classify + build, no writes (manifest still produced).
         - ``resume``: load the existing manifest at ``manifest_path`` and skip
           notes whose content is unchanged. The mtime is a cheap pre-filter
           (unchanged mtime -> unchanged content -> skip WITHOUT hashing); the
-          hash is the truth, applied only when the mtime changed (f5-03 §3.5).
+          hash is the truth, applied only when the mtime changed.
         - ``batch_size``: checkpoint the manifest every N processed notes.
         - ``manifest_path``: where to read/write the manifest. Defaults to
           ``<vault_root>/.seahorse/migration_manifest.json`` (created on demand).
@@ -293,7 +295,7 @@ class VaultMigrator:
                 entry = self.migrate_note(path, dry_run=dry_run)
             except OSError as e:
                 # I/O failure mid-read/write: record as case D and keep going —
-                # never abort the whole vault run on one note (f5-03 §3.4).
+                # never abort the whole vault run on one note.
                 entry = ManifestEntry(
                     path=str(path),
                     case=CASE_D,

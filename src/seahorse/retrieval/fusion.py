@@ -1,34 +1,30 @@
-"""RRF fusion — the heart of #11 Hybrid Retrieval (pure Python, no I/O, ADR-10).
+"""RRF fusion — the heart of Hybrid Retrieval (pure Python, no I/O).
 
 Owns the fusion + the final ranking + the ``FusedCandidate`` construction.
-``FusedCandidate`` itself is OWNED by #11 and lives in
-``seahorse.contracts.retrieval`` (materialized by #8 as the first consumer to
-ship); #11 IMPORTS it — it does not redefine it.
+``FusedCandidate`` itself is owned here and lives in
+``seahorse.contracts.retrieval``; this module imports it — it does not redefine
+it.
 
-What RRF is (f5-11 §5): rank-based, score-scale-agnostic, deterministic fusion.
-The ``score`` magnitudes that #6 produces (``1/(1+distance)``, ``exp(-bm25)``)
-are DISCARDED by RRF — they only drove #6's internal over-fetch ``ORDER BY`` /
-``LIMIT``. RRF inputs the per-source 1-based RANK (position in the ordered list).
-``FusedCandidate.score = Σ over sources where c appears of 1/(RRF_K + rank)``.
+What RRF is: rank-based, score-scale-agnostic, deterministic fusion. The ``score``
+magnitudes that the source repositories produce (``1/(1+distance)``,
+``exp(-bm25)``) are DISCARDED by RRF — they only drove the sources' internal
+over-fetch ``ORDER BY`` / ``LIMIT``. RRF inputs the per-source 1-based RANK
+(position in the ordered list). ``FusedCandidate.score = Σ over sources where c
+appears of 1/(RRF_K + rank)``.
 
-Spec-inconsistency notes (resolved here, documented for review):
-- f5-11 §5.3/§5.4 use the field name ``source`` (singular); the SIGNED contract
+Implementation notes:
+- The design draft used the field name ``source`` (singular); the signed contract
   ``contracts.retrieval.FusedCandidate`` uses ``sources`` (plural). The signed
-  contract is authoritative — this module builds ``sources``. The pseudocode
-  ``source`` is illustrative only.
-- f5-11 §5.3 pseudocode uses 4 named params (``vector_hits``/``bm25_hits``/
+  contract is authoritative — this module builds ``sources``.
+- The design draft used 4 named params (``vector_hits``/``bm25_hits``/
   ``chain_eps``/``bfs_rows``). The 4 source types carry DIFFERENT id fields
   (``VectorHit``/``FullTextHit``/``IndexRowData`` expose ``.ep_id``; ``Episode``
   exposes ``.id``). Per-source key callables are therefore required, so the
   signature is generalized to ``Sequence[SourceList]`` with an explicit ``key``
-  extractor per source. This preserves ALL RRF semantics from §5.3 (dedup-before-
-  fuse, first-occurrence-wins within a source, ``sources = sorted(union)``,
+  extractor per source. This preserves ALL RRF semantics (dedup-before-fuse,
+  first-occurrence-wins within a source, ``sources = sorted(union)``,
   ``(-score, ep_id)`` ranking, truncate to ``k``, no padding) while being
   type-safe and extensible (a 5th source does not change the signature).
-
-References:
-- f5-11 §5 (RRF strategy), §5.3 (pseudocode), §16 (test signals)
-- f6-signoffs.md SO-6 (RRF in Python puro en #11; #6 returns raw lists per source)
 """
 
 from __future__ import annotations
@@ -48,8 +44,9 @@ class SourceList:
 
     ``name`` is the provenance tag (``"vector"``/``"bm25"``/``"chain"``/``"bfs"``).
     ``items`` is ordered best-first (rank 1 = ``items[0]``); the order is the
-    reproducible ``ORDER BY`` of the owning component (#6 for vector/bm25,
-    #2 for chain by ``created_at`` asc, #10 for bfs by hop order).
+    reproducible ``ORDER BY`` of the owning component (the source repositories
+    for vector/bm25, the engine for chain by ``created_at`` asc, the BFS axis
+    for bfs by hop order).
     ``key`` extracts the episode id (``VectorHit``/``FullTextHit``/``IndexRowData``
     -> ``.ep_id``; ``Episode`` -> ``.id``).
 
@@ -64,26 +61,27 @@ class SourceList:
 
 
 def rrf_fuse(sources: Sequence[SourceList], *, k: int) -> list[FusedCandidate]:
-    """Pure-Python Reciprocal Rank Fusion over 1-based ranks (ADR-10).
+    """Pure-Python Reciprocal Rank Fusion over 1-based ranks.
 
-    Steps (f5-11 §5.3, semantics preserved):
+    Steps (semantics preserved):
       1. Dedup by ``ep_id`` BEFORE fusing. Within ONE source, the FIRST occurrence
          wins (best rank); subsequent duplicates in the same source are ignored
-         (defensive — #6 should not return duplicates, but if it does, the best
-         rank counts, never the worst).
+         (defensive — the source repositories should not return duplicates, but
+         if they do, the best rank counts, never the worst).
       2. Accumulate ``score[ep] += 1/(RRF_K + rank)`` and ``provenance[ep].add(name)``
          for every (source, rank) where ``ep`` appears.
       3. Build ``FusedCandidate(ep, score, sources=tuple(sorted(provenance)))`` —
          ``sources`` is the sorted-union provenance, a read-only audit field
-         (NOT a rerank signal, R11).
+         (NOT a rerank signal).
       4. Rank: descending ``score`` with deterministic tie-break by ``ep_id`` asc
-         (UUIDv7 is time-ordenable; two runs with the same state yield the same
-         order — reproducibility ADR-10).
+         (UUIDv7 is time-orderable; two runs with the same state yield the same
+         order — reproducibility).
       5. Truncate to ``k``. Robust to ``< k`` and empty sources: returns fewer than
-         ``k`` (or ``[]``); NEVER pads with invented scores (ADR-10).
+         ``k`` (or ``[]``); NEVER pads with invented scores.
 
     ``k <= 0`` returns ``[]`` (truncate-to-0). No validation of ``k`` — the
-    caller owns wire-shape validation (#13/#14); #11 is robust to whatever it gets.
+    caller owns wire-shape validation (the MCP server and the CLI); this module
+    is robust to whatever it gets.
     """
     scores: dict[str, float] = defaultdict(float)
     provenance: dict[str, set[str]] = defaultdict(set)
@@ -106,7 +104,7 @@ def rrf_fuse(sources: Sequence[SourceList], *, k: int) -> list[FusedCandidate]:
         )
         for ep_id, score in scores.items()
     ]
-    # Deterministic ranking: descending score, tie-break by ep_id asc (ADR-10).
+    # Deterministic ranking: descending score, tie-break by ep_id asc.
     candidates.sort(key=lambda c: (-c.score, c.ep_id))
     return candidates[:k]
 

@@ -1,18 +1,15 @@
-"""``record_procedure`` — deterministic skill creation (L2c §6.1, ADR-09).
+"""``record_procedure`` — deterministic skill creation.
 
-A skill is an ``Episode`` F3.1 with ``cognitive_type=procedural``. The agent or
-human writes the skill with ``extraction_mode=skip`` — zero LLM in the write
-path, cost ≈ 0. The canonical body (``## Trigger`` / ``## Steps`` /
-``## Validation`` / ``## Rationale``) is validated BEFORE the facade call so a
-malformed skill never reaches storage (fail-loud, ADR-10).
+A skill is an ``Episode`` in the canonical format with
+``cognitive_type=procedural``. The agent or human writes the skill with
+``extraction_mode=skip`` — zero LLM in the write path, cost ≈ 0. The canonical
+body (``## Trigger`` / ``## Steps`` / ``## Validation`` / ``## Rationale``) is
+validated BEFORE the facade call so a malformed skill never reaches storage
+(fail-loud).
 
-The procedural layer is a client of #12 (MemoryFacade): it delegates to
-``facade.remember`` and never reaches the engine directly (delegation purity —
-the engine only ever sees a ``RememberPayload``).
-
-References:
-- incorporation-design.md §6.1 (skills / memoria procedural L2c)
-- f5-09-episodic-memory-l2a.md (``record_episode`` mirror)
+The procedural layer is a client of the primitives facade (MemoryFacade): it
+delegates to ``facade.remember`` and never reaches the engine directly
+(delegation purity — the engine only ever sees a ``RememberPayload``).
 """
 
 from __future__ import annotations
@@ -30,12 +27,11 @@ class ProceduralError(Exception):
 
 
 def _validate_canonical_body(body: str) -> None:
-    """Validate the canonical SKILL.md body (L2c §6.1).
+    """Validate the canonical SKILL.md body.
 
     All four sections must be present. The canonical body is load-bearing: a
-    skill whose body is not canonical cannot be reliably gated (R5) or
-    versioned (supersession), so ``record_procedure`` refuses it before any
-    write.
+    skill whose body is not canonical cannot be reliably gated or versioned
+    (supersession), so ``record_procedure`` refuses it before any write.
     """
     if not body or not body.strip():
         raise ProceduralError("skill body must be non-empty")
@@ -59,13 +55,13 @@ def record_procedure(
     version: str | None = None,
     now: datetime | None = None,
 ) -> Any:
-    """Create a procedural skill deterministically (ADR-09 skip-first).
+    """Create a procedural skill deterministically (skip-first, near-zero cost).
 
     Validates the canonical body, then delegates to ``facade.remember`` with
     ``cognitive_type=procedural`` and ``extraction_mode=skip`` (cost ≈ 0). The
     ``x-*`` metadata (``x-seahorse-skill-trigger`` / ``-scope`` / ``-version``)
     is stored in provenance when provided — advisory; the versioning truth is
-    ``supersedes`` (supersession pura F3.1), not the version field.
+    ``supersedes`` (supersession), not the version field.
 
     Returns the facade ``WriteResult`` verbatim.
     """

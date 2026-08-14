@@ -1,4 +1,4 @@
-"""Synthetic corpus for the F7 experiments — mechanical verification in CI.
+"""Synthetic corpus for the benchmark experiments — mechanical verification in CI.
 
 The experiments must be runnable WITHOUT the heavy stack (no HuggingFace, no
 Ollama, no model download): ``make_synthetic_dataset`` is the deterministic
@@ -7,8 +7,8 @@ slice on), and ``HashEmbedder`` is a deterministic content-hash passage
 embedder that keeps the vec0 kNN path REAL without any model (semantically
 overlapping texts share buckets, so the hybrid regime behaves plausibly).
 
-Honesty (ADR-10): synthetic results verify the harness MECHANICS, not the
-science — the authoritative F1/F3 decision comes from an LMEB-S run
+Fail-loud honesty: synthetic results verify the harness MECHANICS, not the
+science — the authoritative feature decisions come from an LMEB-S run
 (``--corpus lmeb-s``).
 """
 
@@ -28,7 +28,7 @@ def _session(session_id: str, date: datetime, turns: list[dict]) -> dict:
 
 
 def make_synthetic_dataset() -> BenchmarkDataset:
-    """The deterministic canonical test corpus (5 LMEB capabilities, f5-16 §4.1).
+    """The deterministic canonical test corpus (5 LMEB capabilities).
 
     Same shape as ``longmemeval-cleaned`` rows after ``_from_row``: one
     single-session-user, one knowledge-update, one multi-session, one
@@ -192,7 +192,7 @@ def make_synthetic_dataset() -> BenchmarkDataset:
 
 
 class HashEmbedder:
-    """Deterministic content-hash passage embedder (synthetic experiment, f7 §5).
+    """Deterministic content-hash passage embedder (synthetic experiment).
 
     Maps each text to a sparse token-hash vector (lower-cased tokens → SHA-256
     bucket), L2-normalized. Semantically overlapping texts share buckets so the
@@ -229,7 +229,7 @@ class HashEmbedder:
 
 
 class HashReranker:
-    """Deterministic content-overlap reranker (synthetic experiment, f7 §5b).
+    """Deterministic content-overlap reranker (synthetic experiment).
 
     Scores each doc by the number of query tokens it shares (higher = more
     relevant), so the stage-3 reorder behaves plausibly without any model
@@ -237,7 +237,7 @@ class HashReranker:
     "france?" matches "france" — the real cross-encoder's tokenizer handles
     this; the stub must too or the synthetic verification would score 0.0.
     Determinism is bit-stable across runs/processes (pure stdlib). Verifies the
-    harness MECHANICS — NOT the science (ADR-10).
+    harness MECHANICS — NOT the science (fail-loud honesty).
     """
 
     def rerank(self, query: str, docs: Sequence[str]) -> Sequence[float]:

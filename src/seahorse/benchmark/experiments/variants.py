@@ -1,15 +1,14 @@
-"""F7 experiment variants — the config matrices for (a) recency, (b) rerank, (c) embed.
+"""Experiment variants — the config matrices for (a) recency, (b) rerank, (c) embed.
 
 Each variant is a ``(score_source, recency_config, embed_mode, rerank_enabled)``
 tuple that the experiment runner folds into a ``BenchmarkConfig``
-(f7-experimental-design §3: ``score_source`` is the manifest variant). The
-matrices are fixed by the spec:
+(``score_source`` is the manifest variant). The matrices are fixed by the spec:
 
 - (a) recency: baseline ``mvp1_rrf`` (recency OFF) + 9-combo sweep of
-  γ ∈ {0.25, 0.5, 1.0} × half_life ∈ {7, 30, 90} days (f7 §5(a)).
+  γ ∈ {0.25, 0.5, 1.0} × half_life ∈ {7, 30, 90} days.
 - (b) rerank: baseline ``mvp1_rrf`` (rerank OFF) vs ``rrf_rerank`` (ON,
-  k_rerank≈20, text = summary/subject) (f7 §5(b)).
-- (c) embed: baseline ``embed_mode=body`` vs ``body+summary`` (f7 §5(c)).
+  k_rerank≈20, text = summary/subject).
+- (c) embed: baseline ``embed_mode=body`` vs ``body+summary``.
 
 Pure data — no imports beyond the config types (keeps the module stdlib-light).
 """
@@ -20,11 +19,11 @@ from dataclasses import dataclass
 
 from seahorse.benchmark.config import ScoreSource
 
-# The F1 sweep grid (f7 §5(a)): γ × half_life, all 9 combos.
+# The recency sweep grid: γ × half_life, all 9 combos.
 RECENCY_SWEEP_GAMMAS = (0.25, 0.5, 1.0)
 RECENCY_SWEEP_HALF_LIVES_DAYS = (7, 30, 90)
 
-# The F2 rerank over-fetch (f7 §5(b)): the RRF fusion runs with k_rerank so the
+# The rerank over-fetch: the RRF fusion runs with k_rerank so the
 # cross-encoder has ~20 candidates to reorder before truncating to k.
 RERANK_OVERFETCH_K = 20
 
@@ -32,7 +31,7 @@ RERANK_OVERFETCH_K = 20
 EXPERIMENTS = ("recency", "rerank", "embed", "batch")
 
 # Corpora: synthetic (mechanical CI verification), the real LMEB-S haystack,
-# or the real claude-mem corpus (batch-por-turno, f7 §5d).
+# or the real claude-mem corpus (per-turn batching).
 CORPORA = ("synthetic", "lmeb-s", "claude-mem")
 
 
@@ -43,12 +42,12 @@ class ExperimentVariant:
     name: str
     score_source: ScoreSource
     recency_config: dict | None = None
-    embed_mode: str = "body+summary"  # F3 flip default (f7-experiment-embed)
+    embed_mode: str = "body+summary"  # embedding flip default
     rerank_enabled: bool = False
     description: str = ""
 
     def as_config_kwargs(self) -> dict:
-        """The ``BenchmarkConfig`` overrides this variant carries (f7 §3)."""
+        """The ``BenchmarkConfig`` overrides this variant carries."""
         return {
             "score_source": self.score_source,
             "recency_config": self.recency_config,
@@ -62,7 +61,7 @@ def recency_variants() -> tuple[ExperimentVariant, ...]:
     baseline = ExperimentVariant(
         name="mvp1_rrf",
         score_source="mvp1_rrf",
-        description="baseline — recency OFF, pure RRF (ADR-10 fingerprint)",
+        description="baseline — recency OFF, pure RRF (honest fingerprint)",
     )
     sweep = tuple(
         ExperimentVariant(
@@ -78,7 +77,7 @@ def recency_variants() -> tuple[ExperimentVariant, ...]:
 
 
 def embed_variants() -> tuple[ExperimentVariant, ...]:
-    """Baseline (``embed_mode=body``) vs the F3 candidate (``body+summary``)."""
+    """Baseline (``embed_mode=body``) vs the embedding candidate (``body+summary``)."""
     return (
         ExperimentVariant(
             name="embed_body",
@@ -90,29 +89,29 @@ def embed_variants() -> tuple[ExperimentVariant, ...]:
             name="embed_body_summary",
             score_source="mvp1_rrf",
             embed_mode="body+summary",
-            description="F3 candidate — embed body+summary",
+            description="embedding candidate — embed body+summary",
         ),
     )
 
 
 def rerank_variants() -> tuple[ExperimentVariant, ...]:
-    """Baseline (rerank OFF, ``mvp1_rrf``) vs the F2 candidate (``rrf_rerank``).
+    """Baseline (rerank OFF, ``mvp1_rrf``) vs the rerank candidate (``rrf_rerank``).
 
     The rerank variant over-fetches to ``k_rerank`` and scores summary/subject
-    (NOT body) — the cross-encoder reorders within the top-k (f7 §5(b)).
+    (NOT body) — the cross-encoder reorders within the top-k.
     """
     return (
         ExperimentVariant(
             name="mvp1_rrf",
             score_source="mvp1_rrf",
-            description="baseline — RRF only (ADR-10 fingerprint)",
+            description="baseline — RRF only (honest fingerprint)",
         ),
         ExperimentVariant(
             name="rrf_rerank",
             score_source="rrf_rerank",
             rerank_enabled=True,
             description=(
-                f"F2 candidate — RRF + cross-encoder rerank (k_rerank={RERANK_OVERFETCH_K}, "
+                f"rerank candidate — RRF + cross-encoder rerank (k_rerank={RERANK_OVERFETCH_K}, "
                 "text=summary/subject)"
             ),
         ),
@@ -120,7 +119,7 @@ def rerank_variants() -> tuple[ExperimentVariant, ...]:
 
 
 def variants_for(experiment: str) -> tuple[ExperimentVariant, ...]:
-    """The variant matrix for an experiment kind (f7 §5)."""
+    """The variant matrix for an experiment kind."""
     if experiment == "recency":
         return recency_variants()
     if experiment == "rerank":

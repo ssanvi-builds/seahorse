@@ -1,11 +1,11 @@
 """Tests for ``seahorse.observe.adapters.claude_code`` — the Claude Code adapter.
 
-The adapter is the ONLY piece that touches a harness (obsiforge §4.2: "Claude
-Code primero es un adapter, no un binding"). It builds envelopes from hook
-payloads, REDACTS before enqueue (nothing raw is ever persisted, §4.4), and
-applies ``drop_tools`` (Read/Bash) BEFORE enqueue — their content is entirely
-secret and redaction cannot guarantee it is clean (§15.2 redesign 3). The
-worker owns ``skip_tools`` (discard from the turn body) + the drop backstop.
+The adapter is the ONLY piece that touches a harness ("Claude Code is first an
+adapter, not a binding"). It builds envelopes from hook payloads, REDACTS before
+enqueue (nothing raw is ever persisted), and applies ``drop_tools`` (Read/Bash)
+BEFORE enqueue — their content is entirely secret and redaction cannot guarantee
+it is clean. The worker owns ``skip_tools`` (discard from the turn body) + the
+drop backstop.
 
 The engine never sees a hook — only ``RememberPayload`` (delegation purity).
 """

@@ -1,10 +1,10 @@
-"""SqliteAuditEventRepository — append-only audit log (f5-06 §7a.4, SO-3c).
+"""SqliteAuditEventRepository — append-only audit log.
 
 Implements ``seahorse.contracts.persistence.AuditEventRepository``. The
-``AuditEvent`` type is defined by #2 (#6 only serializes it to a row). The
-``id`` autoincrement PK of ``audit_events`` is storage-generated and is NOT part
-of the ``AuditEvent`` type. There is NO own ``atomic()`` (SO-7a.6): writes wrap
-``ConnectionManager.atomic()``.
+``AuditEvent`` type is defined by the engine (the persistence layer only
+serializes it to a row). The ``id`` autoincrement PK of ``audit_events`` is
+storage-generated and is NOT part of the ``AuditEvent`` type. There is NO own
+``atomic()``: writes wrap ``ConnectionManager.atomic()``.
 """
 
 from __future__ import annotations

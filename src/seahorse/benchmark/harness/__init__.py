@@ -1,4 +1,4 @@
-"""#16 benchmark harness — reader LLM + tokenizer + git-tracked prompts."""
+"""Benchmark harness — reader LLM + tokenizer + git-tracked prompts."""
 
 from __future__ import annotations
 

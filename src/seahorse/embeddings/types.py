@@ -1,13 +1,13 @@
-"""Embeddings core types (#7, f5-07 §3.1).
+"""Embeddings core types.
 
 ``ModelIdentity`` stamps every vector (cache keys, drift detection, audit);
-``Embedder`` is the async backend Protocol (#4 owns the async contract — the
-sync ``QueryEmbedder`` adapter bridges it in M1-B.3); ``_l2_normalize`` is the
-defensive L2 normalizer every backend applies (zero-vector safe, f5-07 §3.5).
+``Embedder`` is the async backend Protocol (the sync ``QueryEmbedder`` adapter
+bridges it for sync callers); ``_l2_normalize`` is the defensive L2 normalizer
+every backend applies (zero-vector safe).
 
 Import-laziness: ``numpy`` is imported ONLY inside ``_l2_normalize`` (and via
 ``TYPE_CHECKING`` for annotations) so importing this module never pulls the
-heavy numpy runtime into the core import path (C8.2 guard).
+heavy numpy runtime into the core import path.
 """
 
 from __future__ import annotations
@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 if TYPE_CHECKING:
     import numpy as np
 
-# F3 vectorial experiment (f7-experimental-design §5c): what text the passage
-# embedder receives. ``body`` is the baseline; ``body+summary`` folds the
-# editorial summary in front of the body. Single source for the facade factory
-# and the indexer (this module stays numpy-light — import-laziness, C8.2).
+# Embedding-mode experiment: what text the passage embedder receives. ``body``
+# is the baseline; ``body+summary`` folds the editorial summary in front of the
+# body. Single source for the facade factory and the indexer (this module stays
+# numpy-light — import-laziness).
 EMBED_MODES = ("body", "body+summary")
 
 Role = Literal["query", "passage"]
@@ -30,7 +30,7 @@ Role = Literal["query", "passage"]
 
 @dataclass(frozen=True)
 class ModelIdentity:
-    """Immutable identity of an embedding model (f5-07 §3.1)."""
+    """Immutable identity of an embedding model."""
 
     backend: str  # 'sentence-transformers' | 'fastembed' | 'ollama' | ...
     model_name: str  # e.g. 'intfloat/multilingual-e5-small'
@@ -40,7 +40,7 @@ class ModelIdentity:
     normalized: bool  # True if the backend already L2-normalizes
 
     def cache_key(self) -> str:
-        """Stable cache key: ``backend:model:rev12:dim:quant`` (f5-07 §3.1)."""
+        """Stable cache key: ``backend:model:rev12:dim:quant``."""
         return (
             f"{self.backend}:{self.model_name}:{self.revision[:12]}:"
             f"{self.dim}:{self.quantization}"
@@ -53,7 +53,7 @@ class ModelIdentity:
 
 @runtime_checkable
 class Embedder(Protocol):
-    """Async embedding backend (#7, f5-07 §3.1).
+    """Async embedding backend.
 
     ``embed`` returns a new ``(N, dim)`` float32 array, L2-unit-normalized, and
     never mutates state. Backends with ``normalized=True`` already L2-normalize;
@@ -71,7 +71,7 @@ class Embedder(Protocol):
 
 
 def _l2_normalize(vecs: np.ndarray) -> np.ndarray:
-    """L2-unit-normalize along the last axis (zero-vector safe, f5-07 §3.5).
+    """L2-unit-normalize along the last axis (zero-vector safe).
 
     ``norms == 0`` maps to 1.0 so a zero vector stays a zero vector (no NaN).
     numpy is imported lazily here — this module imports without numpy.

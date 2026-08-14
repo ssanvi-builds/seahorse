@@ -1,30 +1,28 @@
-"""JSON-RPC error translation for the MCP profile (#13).
+"""JSON-RPC error translation for the MCP profile.
 
-Two categories per f5-13 §5.3 (R8: #13 only translates, it never invents
-``SeahorseError`` codes):
+Two categories:
 
 - **Cat A — exceptions with a stable ``.code``** (``SeahorseError`` and its
-  subclasses from #12, plus ``EngineError`` from #2): the ``code`` string is
-  surfaced as ``data.seahorse_code`` and mapped to a JSON-RPC ``-32xxx`` code.
-  The caller matches on ``seahorse_code``.
+  subclasses from the facade, plus ``EngineError`` from the engine): the
+  ``code`` string is surfaced as ``data.seahorse_code`` and mapped to a
+  JSON-RPC ``-32xxx`` code. The caller matches on ``seahorse_code``.
 - **Cat B — propagated exceptions WITHOUT a stable code** (``FullBatchTooLarge``,
-  ``PitFullNotSupported``, ``NotInMVP0`` from #8; ``InvalidationConflictError``,
-  ``NotFound`` from #2; ``IntegrityError`` from #6): surfaced as
-  ``data.exception_class`` (no synthetic ``seahorse_code`` — that would lie
-  about a code the lower component does not own).
-- **Wire-shape errors** (detected by #13 before the facade is touched):
-  ``-32602`` with ``data.wire_shape_error`` and no ``seahorse_code`` — the
-  request never reached #12, so a seahorse code would be wrong.
+  ``PitFullNotSupported``, ``NotInMVP0`` from progressive disclosure;
+  ``InvalidationConflictError``, ``NotFound`` from the engine; ``IntegrityError``
+  from persistence): surfaced as ``data.exception_class`` (no synthetic
+  ``seahorse_code`` — that would lie about a code the lower component does not
+  own).
+- **Wire-shape errors** (detected by the MCP server before the facade is
+  touched): ``-32602`` with ``data.wire_shape_error`` and no ``seahorse_code``
+  — the request never reached the facade, so a seahorse code would be wrong.
 - **Generic fallback**: any uncatalogued ``Exception`` → ``-32603`` with
   ``exception_class`` (fail-loud, no swallow).
 
-Drift reconciled vs f5-13 (which cites an idealized catalog): #13 maps the codes
-#12 actually raises. ``E_INVALID_SOURCE_TYPE`` (f5-13) → ``E_MISSING_SOURCE_TYPE``
-(real). ``E_INVALID_COGNITIVE_TYPE`` / ``E_VALID_AT_HUMAN_ONLY`` are NOT raised
-by #12 in MVP-0 (the facade does not validate ``cognitive_type`` — that is
-#13's wire-shape job — and does not guard agent ``valid_at``); they are kept
-here only because the engine owns ``E_VALID_AT_HUMAN_ONLY`` and it can
-propagate.
+The catalog maps the codes the facade actually raises. Some codes (an invalid
+``cognitive_type``, an agent-supplied ``valid_at``) are not raised by the
+facade in the current release — the MCP server validates ``cognitive_type`` at
+the wire shape, and the engine owns the ``valid_at`` guard — but the entries
+are kept so the engine's own codes can propagate.
 """
 
 from __future__ import annotations
@@ -42,7 +40,7 @@ class WireShapeError(Exception):
 
     Carries ``field`` (dotted path, optional) and ``detail``. Translated to
     JSON-RPC ``-32602`` with ``data.wire_shape_error`` — NO ``seahorse_code``
-    because the request never reached #12.
+    because the request never reached the facade.
     """
 
     __slots__ = ("detail", "field")
@@ -57,7 +55,7 @@ class WireShapeError(Exception):
 # Cat A — code → JSON-RPC code (server-defined -32000..-32099).
 # ---------------------------------------------------------------------------
 
-# Facade codes (8) — the codes #12 actually raises in MVP-0.
+# Facade codes (8) — the codes the facade actually raises in the current release.
 _CAT_A_FACADE = {
     "E_EMPTY_BODY": -32001,
     "E_MISSING_SOURCE_TYPE": -32002,
@@ -82,12 +80,12 @@ _CAT_A_ENGINE = {
     "E_MONOTONICITY_VIOLATED": -32017,
 }
 
-# Frontmatter codes (4) — owned by #3 (commit 5), mirrored in the CLI sister
-# projection (cli/exit_codes.py) as exit codes 90–93. ``#13`` does not currently
-# surface frontmatter errors (the MCP tools do not call the frontmatter codec),
-# but the codes are mirrored here so the two sister projections share a single
-# point of change — a future MCP surface that surfaces a frontmatter error
-# already has a stable ``-32xxx`` code.
+# Frontmatter codes (4) — owned by the frontmatter migrator, mirrored in the
+# CLI projection (cli/exit_codes.py) as exit codes 90–93. The MCP server does
+# not currently surface frontmatter errors (the MCP tools do not call the
+# frontmatter codec), but the codes are mirrored here so the two sister
+# projections share a single point of change — a future MCP surface that
+# surfaces a frontmatter error already has a stable ``-32xxx`` code.
 _CAT_A_FRONTMATTER = {
     "E_FRONTMATTER_INVALID": -32018,
     "E_MIGRATION_ABORTED": -32019,
@@ -103,14 +101,14 @@ CAT_A: dict[str, int] = {**_CAT_A_FACADE, **_CAT_A_ENGINE, **_CAT_A_FRONTMATTER}
 
 CAT_B: dict[str, int] = {
     "FullBatchTooLarge": -32602,  # invalid params: len > MAX_FULL_BATCH
-    "PitFullNotSupported": -32050,  # server error: full + pit MVP-0
-    "NotInMVP0": -32602,  # invalid params: axis not in MVP-0 set
+    "PitFullNotSupported": -32050,  # server error: full + pit in the first release
+    "NotInMVP0": -32602,  # invalid params: axis not in the supported set
     # State conflict (already-in-state), NOT an implementation bug — sits in the
     # server-defined band next to NotFound (-32052), not on -32603 (Internal).
     "InvalidationConflictError": -32051,
-    "NotFound": -32052,  # server error: no vigente to mutate
+    "NotFound": -32052,  # server error: no current-state episode to mutate
     "IntegrityError": -32603,  # internal: storage constraint
-    # Sprint C: procedural-skill validation (canonical body) — client-of-#12.
+    # Procedural-skill validation (canonical body) — client of the facade.
     "ProceduralError": -32053,
 }
 
@@ -119,28 +117,29 @@ CAT_B: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 _ORIGIN_BY_CLASS = {
-    # SeahorseError subclasses → #12
+    # SeahorseError subclasses → facade
     "SeahorseError": "#12",
     "InvalidPITKind": "#12",
     "PitRecallNotSupportedMVP0": "#12",
     "EmptyQueryError": "#12",
-    # #11 retrieval — plain Exception (no .code), raised at the recall entrypoint
-    # on an unknown pit.kind. Distinct __name__ from #12's InvalidPITKind (C8.6).
+    # Hybrid-retrieval errors — plain Exception (no .code), raised at the recall
+    # entrypoint on an unknown pit.kind. Distinct __name__ from the facade's
+    # InvalidPITKind.
     "RetrievalInvalidPITKind": "#11",
-    # EngineError → #2
+    # EngineError → engine
     "EngineError": "#2",
-    # disclosure exceptions → #8
+    # disclosure exceptions → progressive disclosure
     "FullBatchTooLarge": "#8",
     "PitFullNotSupported": "#8",
     "NotInMVP0": "#8",
-    # engine contracts → #2
+    # engine contracts → engine
     "NotFound": "#2",
     "InvalidationConflictError": "#2",
-    # storage → #6
+    # storage → persistence
     "IntegrityError": "#6",
-    # procedural skills (Sprint C) — client of #12
+    # procedural skills — client of the facade
     "ProceduralError": "#procedural",
-    # frontmatter (#3, commit 5)
+    # frontmatter (the migrator)
     "FrontmatterInvalid": "#3",
     "MigrationError": "#3",
     "XReservedCollision": "#3",
@@ -153,7 +152,7 @@ def _origin_of(exc: BaseException) -> str:
     for name, comp in _ORIGIN_BY_CLASS.items():
         if cls == name:
             return comp
-    # EngineError subclasses (if any) carry .code → #2
+    # EngineError subclasses (if any) carry .code → engine
     if hasattr(exc, "code") and hasattr(exc, "context"):
         return "#2"
     return "#13"
@@ -170,7 +169,7 @@ def _rpc_error(
 
 def translate(exc: BaseException, request_id: Any) -> dict[str, Any]:
     """Translate a raised exception into a JSON-RPC error response."""
-    # Wire-shape error (Cat: wire) — detected by #13, never reached #12.
+    # Wire-shape error — detected by the MCP server, never reached the facade.
     if isinstance(exc, WireShapeError):
         data: dict[str, Any] = {
             "wire_shape_error": True,
@@ -210,10 +209,10 @@ def translate(exc: BaseException, request_id: Any) -> dict[str, Any]:
         )
 
     # Generic fallback — fail-loud, no swallow, no synthetic code. The component
-    # is resolved via ``_origin_of`` (C8.6 [24]): a plain-Exception class that IS
-    # in ``_ORIGIN_BY_CLASS`` — e.g. #11's ``RetrievalInvalidPITKind`` (no ``.code``,
-    # not in CAT_B) — now attributes to its real owner instead of being masked as
-    # ``#13``. Unknown classes still fall back to ``#13``.
+    # is resolved via ``_origin_of``: a plain-Exception class that IS in
+    # ``_ORIGIN_BY_CLASS`` — e.g. the hybrid-retrieval ``RetrievalInvalidPITKind``
+    # (no ``.code``, not in CAT_B) — attributes to its real owner instead of being
+    # masked as the MCP server. Unknown classes still fall back to the MCP server.
     return _rpc_error(
         request_id,
         -32603,
@@ -237,18 +236,18 @@ _MESSAGE_BY_CODE = {
     "E_EMPTY_QUERY": "Empty query",
     "E_INVALID_PIT_KIND": "Invalid PIT kind",
     "E_PIT_REQUIRES_T": "PIT requires t",
-    "E_PIT_RECALL_MVP_0": "PIT recall not supported in MVP-0",
-    "E_NOT_IN_MVP_0_1": "Primitive not in MVP-0/MVP-1",
+    "E_PIT_RECALL_MVP_0": "PIT recall not supported in the first release",
+    "E_NOT_IN_MVP_0_1": "Primitive not available in this release",
     "E_COLLISION_EXISTS": "Collision exists",
     "E_PENDING_CANNOT_INVALIDATE": "PENDING cannot invalidate",
     "E_DANGLING_SUPERSEDES": "Dangling supersedes",
     "E_SKIP_CONTRACT_VIOLATED": "Skip contract violated",
-    "E_NOT_IN_MVP_0": "Not in MVP-0",
+    "E_NOT_IN_MVP_0": "Not available in the first release",
     "E_VALID_AT_HUMAN_ONLY": "valid_at human-only",
     "E_EXPIRED_AT_NON_NULL": "expired_at non-null",
     "E_CREATED_AT_ENGINE_OWNED": "created_at engine-owned",
     "E_MONOTONICITY_VIOLATED": "Monotonicity violated",
-    # frontmatter (#3, commit 5)
+    # frontmatter (the migrator)
     "E_FRONTMATTER_INVALID": "Frontmatter invalid",
     "E_MIGRATION_ABORTED": "Migration aborted",
     "E_X_RESERVED_COLLISION": "X reserved collision",
@@ -257,8 +256,8 @@ _MESSAGE_BY_CODE = {
 
 _MESSAGE_BY_CLASS = {
     "FullBatchTooLarge": "Full batch too large",
-    "PitFullNotSupported": "PIT full not supported in MVP-0",
-    "NotInMVP0": "Timeline axis not in MVP-0",
+    "PitFullNotSupported": "PIT full not supported in the first release",
+    "NotInMVP0": "Timeline axis not in the first release",
     "InvalidationConflictError": "Invalidation conflict",
     "NotFound": "Not found",
     "IntegrityError": "Storage integrity error",

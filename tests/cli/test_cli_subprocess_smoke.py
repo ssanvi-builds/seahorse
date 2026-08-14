@@ -1,22 +1,22 @@
-"""Subprocess CLI smoke — the systematic functional review (C2), committed as
+"""Subprocess CLI smoke — the systematic functional review, committed as
 regression tests.
 
 In-process tests (``invoke()``) cannot catch what a real user hits: the
 console-script wrapper, ``sys.argv`` parsing, the real process boundary, env
 discovery, and the actual ``seahorse`` on PATH. These tests spawn the installed
 ``seahorse`` binary per step and assert exit code + parse JSON, covering the
-full MVP-0 matrix: init → status → remember → recall → recall-full →
+full first-release matrix: init → status → remember → recall → recall-full →
 recall-timeline → improve → forget → inspect → migrate → uuid7, the honest
 exit codes (64/67/70/88), the reserved stubs (75), and the --json/--jsonl
 formats.
 
-Note on the seam: ``--vault``/``--json``/``--jsonl`` are GLOBAL Typer options
+Note on the parsing boundary: ``--vault``/``--json``/``--jsonl`` are GLOBAL Typer options
 (parsed by the callback) so they MUST precede the subcommand. Success payloads
 go to stdout; the ``{"error": {...}}`` envelope goes to stderr (``main()``'s
 ``_emit_error`` writes to ``sys.stderr``), so error cases parse stderr.
 
-Pattern mirrors the ruamel-confinement guardian (``tests/cli/test_vault_ops.py``
-287-298): subprocess against the real installed binary.
+Pattern mirrors the subprocess guardian in ``tests/cli/test_vault_ops.py``
+(lines 287-298): subprocess against the real installed binary.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def _seahorse_bin() -> str | None:
     that owns the running pytest (``sys.executable``'s bin dir).
 
     No PATH fallback: a ``shutil.which`` hit could resolve a stale ``seahorse``
-    from a different venv with the same MVP-0 surface, passing the suite without
+    from a different venv with the same first-release surface, passing the suite without
     exercising the code under test. Requiring the co-located binary guarantees
     the subprocess runs the same install as the test code.
     """
@@ -106,11 +106,11 @@ def test_status_db_absent_before_first_write(vault: Path) -> None:
 
 def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
     # A survivor episode with NO "madrid" token — the positive control for
-    # both recall assertions. MVP-0 recall ignores the query beyond a non-empty
-    # check and returns the full vigente listing, so query="madrid" must surface
-    # the survivor too; and after improve+forget the survivor is the only
-    # vigente episode left, so its presence (not just the absence of the
-    # invalidated ids) is what proves forget worked.
+    # both recall assertions. First-release recall ignores the query beyond a
+    # non-empty check and returns the full current-state listing, so
+    # query="madrid" must surface the survivor too; and after improve+forget
+    # the survivor is the only current-state episode left, so its presence (not
+    # just the absence of the invalidated ids) is what proves forget worked.
     r = _run(
         ["remember", "Paris is the capital of France", "--title", "geo"],
         vault=vault,
@@ -125,8 +125,9 @@ def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
     assert wr["status"] == "ACTIVE"
     ep_id = wr["ep_id"]
 
-    # recall("madrid") returns the FULL vigente listing — both episodes appear
-    # regardless of the query token (proves MVP-0 does NOT filter by query).
+    # recall("madrid") returns the FULL current-state listing — both episodes
+    # appear regardless of the query token (proves the first release does NOT
+    # filter by query).
     r = _run(["recall", "madrid"], vault=vault, json_out=True)
     assert r.returncode == 0, r.stderr
     rows = _j(r.stdout)
@@ -169,7 +170,7 @@ def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
     assert forgotten["invalid_at"] is not None
 
     # After improve (invalidates ep_id) + forget (invalidates new_id), the ONLY
-    # vigente episode is the survivor — assert its presence AND the exact
+    # current-state episode is the survivor — assert its presence AND the exact
     # count, not just the absence of the invalidated ids (which would pass
     # vacuously against an empty listing).
     r = _run(["recall", "madrid"], vault=vault, json_out=True)
@@ -182,7 +183,7 @@ def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# error exit codes (Cat A / Cat B) — envelope on stderr
+# error exit codes — envelope on stderr
 # ---------------------------------------------------------------------------
 
 
@@ -215,7 +216,7 @@ def test_improve_not_found_exits_88(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# honest stubs (Cat C CLI_NOT_IN_MVP_0 = 75) — envelope on stderr
+# honest stubs (CLI_NOT_IN_MVP_0 = 75) — envelope on stderr
 # ---------------------------------------------------------------------------
 
 

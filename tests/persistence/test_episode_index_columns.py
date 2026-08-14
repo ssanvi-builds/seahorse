@@ -1,13 +1,13 @@
-"""C8.3 [36] — ``episode_index`` column-list single source of truth.
+"""``episode_index`` column-list single source of truth.
 
 Two write paths populate ``episode_index`` and used to hardcode the column list
-independently: the Engine hot path (``sqlite_episode_repo._INDEX_INSERT`` —
+independently: the engine hot path (``sqlite_episode_repo._INDEX_INSERT`` —
 15 core columns, file metadata left NULL) and the vault rebuild
 (``sqlite_sidecar._REBUILD_INDEX_INSERT`` — all 18, owning file metadata). A new
 column required touching both INSERT statements in sync, plus the DDL, plus the
-``_row_to_index`` reader — a silent drift hazard the audit flagged as [36].
+``_row_to_index`` reader — a silent drift hazard the audit flagged.
 
-C8.3 centralizes the column set in ``episode_index_columns``: both INSERT
+This module centralizes the column set in ``episode_index_columns``: both INSERT
 statements are derived from it via ``index_insert_sql``, and a DDL-equality
 guard fails if the constant drifts from the actual ``PRAGMA table_info``. The
 ``_row_to_index`` reader is covered by a subset guard (every column it reads is
@@ -30,7 +30,7 @@ from seahorse.persistence.migrations.migrator import apply_migrations
 
 
 def _load_vec0(c: sqlite3.Connection) -> None:
-    """Load sqlite-vec so migration 010 (``USING vec0``) runs in-memory (M1-A.2)."""
+    """Load sqlite-vec so migration 010 (``USING vec0``) runs in-memory."""
     import sqlite_vec  # type: ignore[import-untyped]
 
     c.enable_load_extension(True)

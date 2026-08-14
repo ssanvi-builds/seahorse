@@ -1,14 +1,13 @@
-"""Retrieval metrics — the LLM-free honest floor (f5-16 §4.4).
+"""Retrieval metrics — the LLM-free honest floor.
 
 Recall@k / nDCG@k (binary) / MRR / Precision@k are computed over the
 ``fact_id → session_id`` bridge: each ``SUTResponse.retrieved_session_ids`` is
 compared against ``golden_session_ids``. Abstention questions are excluded
 (LMEB convention — no ground-truth localization). nDCG@k uses BINARY relevance
-(``rel_i = 1`` if the session is golden, else 0), aligned with LongMemEval
-(f5-16 §4.4 F5).
+(``rel_i = 1`` if the session is golden, else 0), aligned with LongMemEval.
 
-``k_effectivo`` (f5-16 §8.3 D4): when the SUT returns fewer than ``k`` results,
-Precision@k uses the effective k as denominator and the metric reports it.
+When the SUT returns fewer than ``k`` results, Precision@k uses the effective k
+(the number actually returned) as the denominator and the metric reports it.
 """
 
 from __future__ import annotations
@@ -86,10 +85,10 @@ class RecallAtK:
 
 
 class NDCGAtK:
-    """nDCG@k with BINARY relevance (f5-16 §4.4 F5).
+    """nDCG@k with BINARY relevance.
 
     ``DCG@k = Σ rel_i / log2(i+1)``, ``IDCG@k = Σ_{i=1..min(k,|golden|)} 1/log2(i+1)``.
-    Computable under the G2 fallback (order = created_at desc) — it measures
+    Computable under the listing regime (order = created_at desc) — it measures
     whether that order surfaces relevant items, not "not computable".
     """
 
@@ -139,7 +138,7 @@ class NDCGAtK:
             report=MetricReport(
                 metric_name=self.name(),
                 global_value=_mean(values),
-                by_slice=by_cog_r,  # ADR-10: stratified by cognitive_category
+                by_slice=by_cog_r,  # honest slicing: stratified by cognitive_category
                 n_samples=len(values),
                 details={"by_question_type": by_type_r, "k": k, "relevance": "binary"},
             ),
@@ -194,9 +193,9 @@ class MRR:
 
 
 class PrecisionAtK:
-    """Precision@k = |golden ∩ recovered| / k_effectivo (f5-16 §8.3 D4).
+    """Precision@k = |golden ∩ recovered| / effective k.
 
-    ``k_effectivo = min(k, len(recovered))`` — when the SUT returns fewer than
+    ``effective k = min(k, len(recovered))`` — when the SUT returns fewer than
     k results, the effective k is the denominator (documented limitation, not
     an error).
     """

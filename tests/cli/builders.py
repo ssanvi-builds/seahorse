@@ -1,4 +1,4 @@
-"""Builders + doubles for #14 CLI tests (shared with ``conftest.py``).
+"""Builders + doubles for the CLI tests (shared with ``conftest.py``).
 
 Kept in a plain module (not ``conftest``) so test modules can import the
 builders directly via ``from tests.cli.builders import ...`` — ``conftest``
@@ -109,7 +109,7 @@ def make_full_detail() -> FullDetail:
 
 
 class RecordingFacade:
-    """Records the 7 facade calls #14 makes; returns configurable results.
+    """Records the 7 facade calls the CLI makes; returns configurable results.
 
     The ``recall`` kwargs are captured verbatim (``**kwargs``) so absent keys
     are ABSENT in the recording — this structurally enforces the "forwarded

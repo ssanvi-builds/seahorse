@@ -1,11 +1,12 @@
-"""Tests for the #12 facade payload types.
+"""Tests for the primitives facade payload types.
 
 ``Provenance`` is a ``TypedDict(total=False)`` — at runtime it IS a plain dict,
 so it passes straight into the engine's ``by: dict`` parameter and is
-JSON-serializable for #13. ``RememberPayload``/``RecallPayload``/``FacadeConfig``
-are frozen dataclasses. ``COGNITIVE_TYPES``/``SOURCE_TYPES`` are informative
-frozensets (referenced by #13/#14; NOT enforced by #12 in MVP-0 — the engine
-and #1 schema are the authority, so #12 does not replicate domain invariants).
+JSON-serializable for the MCP server. ``RememberPayload``/``RecallPayload``/
+``FacadeConfig`` are frozen dataclasses. ``COGNITIVE_TYPES``/``SOURCE_TYPES``
+are informative frozensets (referenced by the MCP server and CLI; NOT enforced
+by the primitives facade in the first release — the engine and its schema are
+the authority, so the primitives facade does not replicate domain invariants).
 """
 
 from __future__ import annotations
@@ -88,7 +89,8 @@ class TestRememberPayload:
 
     def test_tags_default_empty_tuple(self) -> None:
         p = RememberPayload(body="hello", by={"source_type": "agent"})
-        # forward-compat field; MVP-0 rejects non-empty at the facade border
+        # forward-compat field; the first release rejects non-empty at the
+        # facade border
         assert p.tags == ()
 
 
@@ -134,7 +136,8 @@ class TestFacadeConfig:
 
 class TestImportsAreStable:
     def test_pitpoint_reexported_from_disclosure(self) -> None:
-        # #12 does not redefine PITPoint — it imports the #8 carrier.
+        # The primitives facade does not redefine PITPoint — it imports the
+        # disclosure shaper's carrier.
         from seahorse.facade import types as facade_types
 
         assert facade_types.PITPoint is PITPoint

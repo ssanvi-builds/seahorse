@@ -1,17 +1,18 @@
-"""DisclosureShaper behavior tests (#8) — RED first.
+"""DisclosureShaper behavior tests (progressive disclosure) — RED first.
 
-Guards the shaper contract (f5-08 §2-§5):
+Guards the shaper contract:
 - materialize_index: score passthrough (no reorder), no body, deterministic
-  truncation, stale/pending_ingest current-regime flags, PIT-aware via #6 typed
-  accessors, candidate order preserved (NOT ep_id order).
-- materialize_timeline: MVP-0 axes only (supersedes_chain / fact_id_scope);
-  MVP-1 axes raise NotInMVP0; score ALWAYS None; PIT composed client-side over
-  chain_rows_from by delegating to #6's PIT accessors (no predicate drift);
-  bounded by MAX_TIMELINE_WINDOW.
+  truncation, stale/pending_ingest current-regime flags, PIT-aware via the
+  persistence layer's typed accessors, candidate order preserved (NOT ep_id
+  order).
+- materialize_timeline: first-release axes only (supersedes_chain /
+  fact_id_scope); later-release axes raise NotInMVP0; score ALWAYS None; PIT
+  composed client-side over chain_rows_from by delegating to the persistence
+  layer's PIT accessors (no predicate drift); bounded by MAX_TIMELINE_WINDOW.
 - materialize_full: ONLY level that hydrates body; MAX_FULL_BATCH cap raises
-  FullBatchTooLarge; pit raises PitFullNotSupported MVP-0; provenance typed
-  (source_type from Episode, rest from provenance dict); freshness via
-  freshness_of.
+  FullBatchTooLarge; pit raises PitFullNotSupported in the first release;
+  provenance typed (source_type from Episode, rest from provenance dict);
+  freshness via freshness_of.
 """
 
 from __future__ import annotations
@@ -132,7 +133,8 @@ def test_impl_satisfies_both_protocols(index, repo):
 
 
 def test_index_score_passthrough_no_reorder(index, repo):
-    # #8 respects #11's candidate order (ranked), NOT ep_id order. get_rows
+    # Progressive disclosure respects hybrid retrieval's candidate order
+    # (ranked), NOT ep_id order. get_rows
     # returns ORDER BY ep_id; the shaper must re-project in candidate order.
     index.add(_idx_row("a"))
     index.add(_idx_row("b"))
@@ -221,10 +223,10 @@ def test_index_pit_state_at_filters_out_not_yet_valid(index, repo):
 
 
 def test_index_pit_state_at_includes_valid_at_none_from_forever(index, repo):
-    # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid at
-    # ANY t, so a state_at PIT query MUST keep it. The disclosure FakeIndex._pit_ok
-    # mirrors the production predicate (valid_at IS NULL OR valid_at <= t); this
-    # pins the disclosure layer against the previous NULL-excluding drift.
+    # valid_at IS NULL = "from forever" — valid at ANY t, so a state_at PIT
+    # query MUST keep it. The disclosure FakeIndex._pit_ok mirrors the production
+    # predicate (valid_at IS NULL OR valid_at <= t); this pins the disclosure
+    # layer against the previous NULL-excluding drift.
     index.add(_idx_row("forever", valid_at=None))  # "from forever"
     index.add(_idx_row("future", valid_at=NOW + timedelta(days=10)))  # real PENDING
     pit = PITPoint(kind="state_at", t=NOW)
@@ -271,7 +273,7 @@ def test_index_pit_state_at_drops_invalidated_before_t(index, repo):
 
 
 def test_index_pit_unknown_kind_raises_loud(index, repo):
-    # C8.6 [22]: PIT dispatch is EXPLICIT — an unknown pit.kind raises ValueError
+    # PIT dispatch is EXPLICIT — an unknown pit.kind raises ValueError
     # instead of silently falling through to known_at (the bare-else drift). The
     # facade validates pit.kind BEFORE the shaper runs, so reaching here is an
     # invariant violation; fail loud (mirror of sqlite_episode_index._pit_predicate).
@@ -284,7 +286,7 @@ def test_index_pit_unknown_kind_raises_loud(index, repo):
 
 
 def test_timeline_pit_unknown_kind_raises_loud(index, repo):
-    # C8.6 [22]: same explicit-dispatch guard on the TIMELINE PIT path
+    # Same explicit-dispatch guard on the TIMELINE PIT path
     # (_pit_filter). An unknown kind raises ValueError, not a silent known_at
     # fall-through.
     index.add(_idx_row("e1", fact_id="f1", created_at=NOW - timedelta(days=1), supersedes=None))
@@ -313,7 +315,7 @@ def test_timeline_supersedes_chain_returns_entries_score_none_no_body(index, rep
 
 
 def test_timeline_fact_id_scope_returns_vigent_row(index, repo):
-    # anchor is stale; the vigent successor shares fact_id.
+    # anchor is stale; the current-state successor shares fact_id.
     index.add(
         _idx_row(
             "e1",
@@ -334,8 +336,8 @@ def test_timeline_fact_id_scope_returns_anchor_when_vigent(index, repo):
 
 
 def test_timeline_mvp1_axis_raises_not_in_mvp0(index, repo):
-    # graph_bfs is MVP-1 (materialized in Sprint C); created_at/valid_at stay
-    # NotInMVP0 until their own MVP-1 materialization.
+    # graph_bfs is a later-release axis; created_at/valid_at stay
+    # NotInMVP0 until their own later-release materialization.
     for axis in ("created_at", "valid_at"):
         with pytest.raises(NotInMVP0) as exc:
             _shaper(index, repo).materialize_timeline("e1", axis=axis)  # type: ignore[arg-type]
@@ -394,7 +396,7 @@ def test_timeline_bounded_by_max_window(index, repo):
 
 
 # ---------------------------------------------------------------------------
-# materialize_timeline — graph_bfs (#10 MVP-1 BFS).
+# materialize_timeline — graph_bfs (the BFS axis, a later release).
 # ---------------------------------------------------------------------------
 
 
@@ -447,7 +449,7 @@ def test_timeline_graph_bfs_pit_state_at_filters(index, repo):
 
 
 def test_timeline_graph_bfs_pit_none_resolves_state_at_now(index, repo):
-    # pit=None → state_at at the injected now (ADR-03, no silent known_at).
+    # pit=None → state_at at the injected now (no silent known_at).
     index.add(_idx_row("e0", fact_id="f0", cognitive_type="semantic"))
     index.add(_idx_row("e1", fact_id="f1", cognitive_type="semantic", supersedes="e0"))
     win = _shaper(index, repo).materialize_timeline(
@@ -488,7 +490,7 @@ def test_full_provenance_typed_source_type_from_episode(index, repo):
     )
     out = _shaper(index, repo).materialize_full(["e1"], now=NOW)
     prov = out[0].provenance
-    assert prov.source_type == "human"  # from Episode.source_type (F3.1 field)
+    assert prov.source_type == "human"  # from Episode.source_type (canonical episode format field)
     assert prov.agent_id == "ag"
     assert prov.session_id == "ss"
     assert prov.extraction_mode == "skip"
@@ -527,12 +529,12 @@ def test_full_freshness_stale_for_invalidated(index, repo):
 
 
 # ---------------------------------------------------------------------------
-# Adversarial-review gap closures (PIT delegation, expired_at half,
+# Adversarial review items (PIT delegation, expired_at half,
 # fact_id_scope+PIT, guard-before-fetch ordering).
 # ---------------------------------------------------------------------------
 
 
-# #1 — known_at: the expired_at transaction-time half of the predicate is
+# known_at: the expired_at transaction-time half of the predicate is
 # never exercised by the existing suite (only created_at varies). Mirror the
 # state_at invalid_at test for known_at expired_at, at both levels.
 def test_index_pit_known_at_drops_expired_before_t(index, repo):
@@ -570,7 +572,8 @@ def test_timeline_pit_known_at_drops_expired_before_t(index, repo):
     assert [e.ep_id for e in win.entries] == ["e1"]
 
 
-# #2 — drift-prevention: structurally enforce that #8 DELEGATES PIT to #6's
+# drift-prevention: structurally enforce that progressive disclosure DELEGATES
+# PIT to the persistence layer's
 # typed accessors instead of inlining the predicate. An inlined predicate
 # produces identical outcomes and passes every outcome-only test.
 def test_index_pit_delegates_to_state_at_accessor_not_get_rows(rec_index, repo):
@@ -597,7 +600,8 @@ def test_index_pit_delegates_to_known_at_accessor_not_get_rows(rec_index, repo):
 
 def test_timeline_pit_filter_delegates_to_pit_accessor(rec_index, repo):
     # supersedes_chain + pit: chain_rows_from gathers rows, then _pit_filter
-    # must route through get_rows_state_at (NOT get_rows) to reuse #6's predicate.
+    # must route through get_rows_state_at (NOT get_rows) to reuse the
+    # persistence layer's predicate.
     rec_index.add(_idx_row("e1", fact_id="f1", created_at=NOW - timedelta(days=2)))
     rec_index.add(
         _idx_row("e2", fact_id="f1", created_at=NOW - timedelta(days=1), supersedes="e1")
@@ -610,11 +614,11 @@ def test_timeline_pit_filter_delegates_to_pit_accessor(rec_index, repo):
     assert rec_index.calls["get_rows"] == 0
 
 
-# #3 — fact_id_scope + PIT is completely untested (both PIT tests use
-# supersedes_chain). The vigent row found by find_vigent_row_by_fact_id must
+# fact_id_scope + PIT is completely untested (both PIT tests use
+# supersedes_chain). The current-state row found by find_vigent_row_by_fact_id must
 # still survive PIT composition.
 def test_timeline_fact_id_scope_with_pit_drops_not_yet_valid(index, repo):
-    # Currently-vigent row for f1 is e2 (invalid_at None, expired_at None),
+    # The current-state row for f1 is e2 (invalid_at None, expired_at None),
     # but e2 is not yet valid at t (valid_at > t). state_at(t) drops it -> empty.
     index.add(
         _idx_row(
@@ -639,7 +643,7 @@ def test_timeline_fact_id_scope_with_pit_drops_not_yet_valid(index, repo):
 
 
 def test_timeline_fact_id_scope_with_pit_keeps_valid_vigent(index, repo):
-    # Positive complement: vigent row valid at t survives PIT composition.
+    # Positive complement: the current-state row valid at t survives PIT composition.
     index.add(
         _idx_row(
             "e1",
@@ -661,7 +665,7 @@ def test_timeline_fact_id_scope_with_pit_keeps_valid_vigent(index, repo):
     assert [e.ep_id for e in win.entries] == ["e2"]
 
 
-# #4 — guards must fire BEFORE any fetch. The existing tests use empty repos,
+# guards must fire BEFORE any fetch. The existing tests use empty repos,
 # so even a guard that fired after a no-op fetch would pass. Use recording
 # doubles to assert no fetch occurs before the guard raises.
 def test_full_batch_cap_raises_before_any_fetch(index, counting_repo):

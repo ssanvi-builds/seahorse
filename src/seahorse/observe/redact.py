@@ -1,19 +1,14 @@
-"""Deterministic secret redaction for the observer (obsiforge §4.4).
+"""Deterministic secret redaction for the observer.
 
 Runs at ENQUEUE time: nothing raw is ever persisted — the queue stores only
 the already-redacted envelope. The redactor is a PURE function (same input →
-same output → stable hash, ADR-10). The structural walk covers nested JSON
-(dict/list/str) so secrets inside ``tool_input`` / ``tool_response`` are
-redacted, not just top-level strings (obsiforge §15.2 redesign 3 — the claim
-"strictly stronger than claude-mem" only holds if structured fields and
-Read/Bash content are covered).
+same output → stable hash). The structural walk covers nested JSON (dict/list/str)
+so secrets inside ``tool_input`` / ``tool_response`` are redacted, not just
+top-level strings — the guarantee of strictly stronger redaction than claude-mem
+only holds if structured fields and Read/Bash content are covered.
 
 Patterns: bearer/API keys, ``.env`` lines, private keys PEM, userinfo in URLs,
 known prefixes (``sk-``, ``AIza``, ``ghp_``, ``AKIA``, JWT).
-
-References:
-- obsiforge-evolution-architecture.md §4.4 (redaction, nothing raw persisted)
-- obsiforge-evolution-architecture.md §15.2 redesign 3 (structural walk)
 """
 
 from __future__ import annotations

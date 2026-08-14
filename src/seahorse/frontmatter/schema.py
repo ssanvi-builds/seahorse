@@ -1,18 +1,18 @@
-"""F3.1 schema surface for the frontmatter layer (f5-03 §7.2).
+"""Schema surface for the frontmatter layer.
 
-Re-exports the canonical ``Episode`` (owned by #1, materialized in
-``contracts/episode.py``) and adds the F3.1 enums + ``Provenance`` helper that
-the migrator (commit 3) and the write-path validator need. The canonical model
+Re-exports the canonical ``Episode`` (owned by the engine, materialized in
+``contracts/episode.py``) and adds the on-disk format's enums + ``Provenance``
+helper that the migrator and the write-path validator need. The canonical model
 stays permissive (``cognitive_type: str | None``, ``provenance: dict``, no
 UUIDv7/self-supersede validators) so the engine and its fixtures keep working;
 the strict write-time checks that would break those fixtures live here in
 ``validate_for_write``, applied only on the write/migrate path.
 
-Two validation surfaces (f5-03 §4.1/§7.2):
+Two validation surfaces:
 
 - **Read path** — ``parse_file`` calls ``Episode.model_validate(fm_plain,
   context={"mvp": mvp})`` directly. The canonical model's ``_reject_naive`` and
-  context-gated ``_expired_null_mvp0`` fire here (naive timestamps and MVP-0
+  context-gated ``_expired_null_mvp0`` fire here (naive timestamps and first-release
   non-null ``expired_at`` become a loud ``FrontmatterInvalid``). UUIDv7 shape and
   self-supersede are NOT checked on the read path: a hand-edited or pre-migration
   note must still be readable, and the migrator is what assigns UUIDv7 ids.
@@ -20,8 +20,8 @@ Two validation surfaces (f5-03 §4.1/§7.2):
 - **Write path** — ``validate_for_write`` adds the UUIDv7 and self-supersede
   checks the canonical model omits (they would break the engine's ``id="e1"``
   fixtures and ``supersedes == id`` cycle tests), then delegates to
-  ``model_validate(context={"mvp": mvp})`` for the shared naive/I4 checks. The
-  migrator (commit 3) calls this before writing a note.
+  ``model_validate(context={"mvp": mvp})`` for the shared naive-datetime checks.
+  The migrator calls this before writing a note.
 """
 
 from __future__ import annotations
@@ -45,13 +45,13 @@ __all__ = [
 
 
 class CognitiveType(str):
-    """F3.1 cognitive type vocabulary (f5-03 §7.2).
+    """Cognitive type vocabulary.
 
     Held as plain string values (not an ``Enum``) so the canonical ``Episode``
     field ``cognitive_type: str | None`` accepts them without coupling the model
     to an enum (the engine fixtures use ``"fact"`` and other non-enum strings).
-    The migrator (``defaults.py``) picks from these; MVP-1 write validation
-    rejects values outside this set.
+    The migrator (``defaults.py``) picks from these; a later release's write
+    validation rejects values outside this set.
     """
 
     EPISODIC = "episodic"
@@ -63,13 +63,13 @@ class CognitiveType(str):
 
 
 class SupersedesReason(str):
-    """Portable ``supersedes_reason`` vocabulary (f5-03 §12.3)."""
+    """Portable ``supersedes_reason`` vocabulary."""
 
     CONTRADICTION = "contradiction"
     CORRECTION = "correction"
     MERGE = "merge"
     REVALIDATION = "revalidation"
-    DECAY = "decay"  # reserved (mediano)
+    DECAY = "decay"  # reserved (a medium-term goal)
 
 
 # UUIDv7: version nibble 7, variant nibble 8/9/a/b.
@@ -79,16 +79,16 @@ _UUIDV7_RE = re.compile(
 
 
 class Provenance(BaseModel):
-    """Migrator-side provenance helper (f5-03 §7.2).
+    """Migrator-side provenance helper.
 
-    The canonical ``Episode.provenance`` is a freeform ``dict[str, Any]`` (SO-2:
-    #6 uses freeform dicts, not a sub-model). This helper gives the migrator a
-    typed shape to build with; it is dumped to a plain dict before constructing
-    the ``Episode``. ``extra="allow"`` lets the migrator carry importer-specific
-    fields (``importer_vendor``/``importer_loss``/custom ``x-*``) through, and
-    lets the write-path degrade marker (``degraded_from`` / ``degrade_reason``,
-    C8.7 / ADR-10 — present only on an llm→skip degrade) round-trip without a
-    schema migration.
+    The canonical ``Episode.provenance`` is a freeform ``dict[str, Any]`` (the
+    persistence layer uses freeform dicts, not a sub-model). This helper gives
+    the migrator a typed shape to build with; it is dumped to a plain dict before
+    constructing the ``Episode``. ``extra="allow"`` lets the migrator carry
+    importer-specific fields (``importer_vendor``/``importer_loss``/custom
+    ``x-*``) through, and lets the write-path degrade marker (``degraded_from`` /
+    ``degrade_reason`` — present only on an llm→skip degrade) round-trip without
+    a schema migration.
     """
 
     model_config = ConfigDict(extra="allow", frozen=True)
@@ -97,7 +97,7 @@ class Provenance(BaseModel):
     session_id: str
     source_type: str = "agent"
     extraction_mode: str  # skip | llm | consolidated (consolidated: schema-valid
-    # batch-distillation marker, obsiforge §5.2; llm_partial stays reserved)
+    # batch-distillation marker; llm_partial stays reserved)
     model_used: str | None = None
     tool: str | None = None
     prompt_hash: str | None = None
@@ -118,7 +118,7 @@ def validate_for_write(data: dict[str, Any], *, mvp: str = "0") -> Episode:
 
     Applies the two strict checks the canonical ``Episode`` omits (UUIDv7 shape,
     self-supersede) BEFORE delegating to ``Episode.model_validate(..., context=
-    {"mvp": mvp})`` for the naive-datetime and MVP-0 ``expired_at``-null checks.
+    {"mvp": mvp})`` for the naive-datetime and first-release ``expired_at``-null checks.
     Any failure raises ``FrontmatterInvalid`` (the single loud-rejection type
     the migrator and write path catch). ``source_path`` (if supplied in ``data``
     under ``_source_path``) is attached to the error for diagnostics.

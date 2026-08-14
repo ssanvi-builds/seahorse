@@ -1,9 +1,9 @@
-"""Validate the #8 disclosure payload types match the signed f5-08 contract.
+"""Validate the progressive disclosure payload types match the signed contract.
 
 Guards the frozen shapes (``IndexRow``, ``TimelineEntry``, ``TimelineWindow``,
 ``FullDetail``, ``EpisodeProvenance``, ``PITPoint``), the constant pins, the
-MVP-0/ MVP-1 axis split, and the deterministic truncation that makes the token
-target reproducible (ADR-10).
+first-release / later-release axis split, and the deterministic truncation that
+makes the token target reproducible.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ _NOW = datetime(2026, 7, 16, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
-# Constant pins (f5-08 header).
+# Constant pins.
 # ---------------------------------------------------------------------------
 
 
@@ -118,14 +118,14 @@ def test_index_row_is_frozen():
 
 
 def test_index_row_score_is_passthrough_float_not_none():
-    # score is a float (passthrough from #11); never None on the INDEX level.
+    # score is a float (passthrough from hybrid retrieval); never None on the INDEX level.
     row = _make_index_row(score=0.42)
     assert row.score == 0.42
     assert isinstance(row.score, float)
 
 
 # ---------------------------------------------------------------------------
-# TimelineEntry — score ALWAYS None in MVP-0.
+# TimelineEntry — score ALWAYS None in the first release.
 # ---------------------------------------------------------------------------
 
 
@@ -241,7 +241,7 @@ def test_episode_provenance_is_typed_and_all_nullable():
 
 
 # ---------------------------------------------------------------------------
-# PITPoint — ADR-03 two axes.
+# PITPoint — the two PIT axes.
 # ---------------------------------------------------------------------------
 
 
@@ -265,7 +265,7 @@ def test_full_batch_too_large_carries_requested_and_cap():
 
 def test_pit_full_not_supported_is_exception():
     assert issubclass(PitFullNotSupported, Exception)
-    # Constructible with no args (MVP-0 guard).
+    # Constructible with no args (first-release guard).
     err = PitFullNotSupported()
     assert isinstance(err, Exception)
 

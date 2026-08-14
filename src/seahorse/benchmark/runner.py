@@ -2,13 +2,12 @@
 
 The runner loads the dataset, ingests the corpus (skip-mode), applies knowledge
 updates, probes the disclosure levels in isolation, runs the QA queries,
-computes the metrics, and renders the reports (f5-16 §9.2). It never crashes on
-a single question (f5-16 §8.3): ``EmptyQueryError`` skips the instance and
-marks it as an error.
+computes the metrics, and renders the reports. It never crashes on a single
+question: ``EmptyQueryError`` skips the instance and marks it as an error.
 
 ``LevelProbeRunner`` measures p95 latency per disclosure level WITHOUT the
-reader LLM (f5-16 §3.6 F2) — the mandatory TIMELINE/FULL metrics are collected
-here even in MVP-1 flat mode.
+reader LLM — the mandatory TIMELINE/FULL metrics are collected here even in the
+current release's flat mode.
 """
 
 from __future__ import annotations
@@ -108,7 +107,7 @@ class EvaluationRunner:
         sut = self._sut_factory()
 
         # Ingest the corpus (skip-mode, deterministic) + knowledge updates.
-        # ``skip_ingest`` (f7 §5a warm-DB): the SUT already carries the corpus
+        # ``skip_ingest`` (warm-DB variant): the SUT already carries the corpus
         # bridge and the dataset instances already hold ``new_ep_ids_after_improve``
         # (set by the shared template) — the query/metrics phase runs directly.
         if not skip_ingest:
@@ -124,9 +123,9 @@ class EvaluationRunner:
         probe = LevelProbeRunner(sut, sample_size=self._config.sample_size)
         probe_results = probe.probe_levels(dataset)
 
-        # QA queries — never crash on a single question (f5-16 §8.3): an
-        # EmptyQueryError skips the instance (excluded from the metrics) and is
-        # recorded in the manifest.
+        # QA queries — never crash on a single question: an EmptyQueryError
+        # skips the instance (excluded from the metrics) and is recorded in the
+        # manifest.
         valid_instances = []
         responses: list[SUTResponse] = []
         run_errors: list[str] = []
@@ -159,8 +158,8 @@ class EvaluationRunner:
             dataset_hash=dataset.split_hash,
             loader_code_sha256=dataset.loader_code_sha256,
             embedding_identity="me5-small:384:<sha12>:int8",
-            embedding_batch_config="batch_size=1_forced",  # OQ-16-12
-            knn_completeness=1.0,  # OQ-16-12: sync indexer, drain is a no-op
+            embedding_batch_config="batch_size=1_forced",
+            knn_completeness=1.0,  # sync indexer: drain is a no-op
             reader_model_used=self._config.reader_model,
             judge_model_used=self._config.judge_model,
             seahorse_version=_git_sha(),

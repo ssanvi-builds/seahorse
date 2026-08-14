@@ -1,4 +1,4 @@
-"""Tests for the output cache (f5-16 §5.5)."""
+"""Tests for the output cache."""
 
 from __future__ import annotations
 

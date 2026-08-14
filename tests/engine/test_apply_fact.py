@@ -1,9 +1,10 @@
-"""Validate BiTemporalEngine.apply_fact (Phase 5, owned #2 — the critical path).
+"""Validate BiTemporalEngine.apply_fact — the engine's critical path.
 
-SO-3b: fail-loud on collision (NO append, WriteResult ep_id/fact_id = None,
-status="COLLISION"). SO-8c: WriteResult separates ep_id (UUID) from fact_id
-(SHA-256(subject)[:32]). TD #14: WriteResult.fact_id == stored fact_id by
-construction (the bridge to #16). PENDING_INGEST when valid_at > now, else ACTIVE.
+Fail-loud on collision: no append, WriteResult ep_id/fact_id = None,
+status="COLLISION". WriteResult separates ep_id (UUID) from fact_id
+(SHA-256(subject)[:32]). WriteResult.fact_id == stored fact_id by
+construction (the bridge to the benchmark harness). PENDING_INGEST when
+valid_at > now, else ACTIVE.
 """
 
 from __future__ import annotations
@@ -57,8 +58,8 @@ def test_apply_fact_sets_created_at_to_now_and_expired_at_none(engine):
     eng.apply_fact(_episode("e1", body="# X\n", source_type="human"), now=NOW)
     stored = repo.get("e1")
     assert stored is not None
-    assert stored.created_at == NOW  # I1: Engine-owned
-    assert stored.expired_at is None  # I4 MVP-0
+    assert stored.created_at == NOW  # created_at is engine-owned
+    assert stored.expired_at is None  # expired_at stays None in the current release
 
 
 def test_apply_fact_subject_and_fact_id_derived_and_stored(engine):
@@ -72,16 +73,16 @@ def test_apply_fact_subject_and_fact_id_derived_and_stored(engine):
     assert stored.fact_id == fact_id_for("# Madrid\ncontent", title=None)
 
 
-# --- SO-8c: ep_id != fact_id ------------------------------------------------
+# --- ep_id != fact_id -------------------------------------------------------
 
 
 def test_apply_fact_ep_id_distinct_from_fact_id(engine):
     eng, repo, audit = engine
     wr = eng.apply_fact(_episode("e1", body="# X\n", source_type="human"), now=NOW)
-    assert wr.ep_id != wr.fact_id  # SO-8c: UUID vs subject hash
+    assert wr.ep_id != wr.fact_id  # UUID vs subject hash
 
 
-# --- TD #14: bridge equality ------------------------------------------------
+# --- bridge equality --------------------------------------------------------
 
 
 def test_apply_fact_bridge_equality_write_result_equals_stored_fact_id(engine):
@@ -91,11 +92,11 @@ def test_apply_fact_bridge_equality_write_result_equals_stored_fact_id(engine):
     )
     stored = repo.get("e1")
     assert stored is not None
-    # TD #14: WriteResult.fact_id == IndexRow.fact_id (storage-derived) by construction.
+    # WriteResult.fact_id == IndexRow.fact_id (storage-derived) by construction.
     assert wr.fact_id == stored.fact_id == fact_id_for("# Bridge subject\n", title=None)
 
 
-# --- SO-3b: fail-loud on collision ------------------------------------------
+# --- fail-loud on collision -------------------------------------------------
 
 
 def test_apply_fact_fail_loud_no_append_on_collision(engine):
@@ -119,7 +120,7 @@ def test_apply_fact_fail_loud_no_append_on_collision(engine):
 
 def test_apply_fact_collision_does_not_relax_unique_index(engine):
     eng, repo, audit = engine
-    # Two failed collisions still leave exactly one vigente row (the first).
+    # Two failed collisions still leave exactly one current-state row (the first).
     eng.apply_fact(_episode("e1", body="# Topic\n", source_type="human"), now=NOW)
     eng.apply_fact(_episode("e2", body="# Topic\n", source_type="human"), now=NOW)
     eng.apply_fact(_episode("e3", body="# Topic\n", source_type="human"), now=NOW)
@@ -128,7 +129,7 @@ def test_apply_fact_collision_does_not_relax_unique_index(engine):
 
 
 def test_apply_fact_collision_emits_no_audit(engine):
-    # SO-3b: a rejected candidate emits NO apply AuditEvent.
+    # A rejected candidate emits NO apply AuditEvent.
     eng, repo, audit = engine
     eng.apply_fact(_episode("e1", body="# Same\n", source_type="human"), now=NOW)
     eng.apply_fact(_episode("e2", body="# Same\n", source_type="human"), now=NOW)  # COLLISION
@@ -136,9 +137,9 @@ def test_apply_fact_collision_emits_no_audit(engine):
 
 
 def test_apply_fact_force_sets_invalid_at_none_at_ingest(engine):
-    # I3 (f5-02 §2 l.123): invalid_at is written null at ingest. A direct
-    # apply_fact call with a candidate that already carries invalid_at must
-    # NOT bypass the I3 lifecycle — the stored row has invalid_at None.
+    # invalid_at is written null at ingest. A direct apply_fact call with a
+    # candidate that already carries invalid_at must NOT bypass the lifecycle —
+    # the stored row has invalid_at None.
     eng, repo, audit = engine
     eng.apply_fact(
         _episode("e1", body="# Madrid\n", source_type="human", invalid_at=NOW),

@@ -1,4 +1,4 @@
-"""Tests for the ``[observe]`` section of ``seahorse.toml`` (Sprint B).
+"""Tests for the ``[observe]`` section of ``seahorse.toml``.
 
 The observer config is additive to the existing ``[seahorse]`` / ``[llm]``
 sections. A missing ``[observe]`` section → ``observe=None`` (the observer is

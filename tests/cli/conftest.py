@@ -1,4 +1,4 @@
-"""Shared fixtures for #14 CLI tests.
+"""Shared fixtures for the CLI tests.
 
 Builders + the ``RecordingFacade`` double live in ``tests/cli/builders.py`` (a
 plain module) so test modules can import them directly. This conftest provides
@@ -27,7 +27,7 @@ from seahorse.write_path.stub import StubWritePath
 from tests.cli.builders import RecordingFacade  # noqa: F401  (re-exported)
 
 # ---------------------------------------------------------------------------
-# invoke harness — the #14 equivalent of #13's stdio loop.
+# invoke harness — the CLI equivalent of the MCP server's stdio loop.
 # ---------------------------------------------------------------------------
 
 

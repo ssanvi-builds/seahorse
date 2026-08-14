@@ -1,9 +1,9 @@
-"""End-to-end ``seahorse index rebuild`` via the invoke harness (commit 5).
+"""End-to-end ``seahorse index rebuild`` via the invoke harness.
 
 Orchestrates ``frontmatter.rebuild.rebuild_from_vault`` over the vault's ``.md``
-notes + reports ``RebuildReport`` / ``RebuildConflict``. ADR-10 honesty: conflicts
-→ exit 94 (``CLI_REBUILD_CONFLICTS``, commit 6 split from the 75 overload); a
-parse failure → Cat A ``E_FRONTMATTER_INVALID`` (exit 90).
+notes + reports ``RebuildReport`` / ``RebuildConflict``. Fail-loud honesty:
+conflicts → exit 94 (``CLI_REBUILD_CONFLICTS``, split from the 75 overload); a
+parse failure → domain error ``E_FRONTMATTER_INVALID`` (exit 90).
 """
 
 from __future__ import annotations
@@ -87,16 +87,16 @@ def test_index_rebuild_conflicts_exit_94(tmp_path, vault):
 
 
 def test_index_rebuild_conflicts_exit_distinct_from_reserved(tmp_path, vault):
-    # Commit 6 split: rebuild conflicts exit 94 is DISTINCT from the reserved-
-    # stub exit 75 (CLI_NOT_IN_MVP_0). Before the split they shared 75 and were
-    # only disambiguated by the symbolic cli_code; now the int itself differs.
+    # Rebuild conflicts exit 94 is DISTINCT from the reserved-stub exit 75
+    # (CLI_NOT_IN_MVP_0). Before the split they shared 75 and were only
+    # disambiguated by the symbolic cli_code; now the int itself differs.
     _write_note(vault, "c1", ep_id=_uuid7("01"), title="same-subject")
     _write_note(vault, "c2", ep_id=_uuid7("02"), title="same-subject")
     code, out, err = invoke(["--vault", str(vault), "index", "rebuild"])
     assert code == 94, err
     assert code != CLI_NOT_IN_MVP_0
     assert "CLI_REBUILD_CONFLICTS" in err
-    assert "reserved in MVP-0" not in err
+    assert "reserved in the current release" not in err
 
 
 def test_index_rebuild_unparseable_note_is_cat_a_90(tmp_path, vault):
@@ -128,20 +128,21 @@ def test_index_rebuild_is_no_longer_the_reserved_stub(tmp_path, vault):
 
 
 def test_index_verify_still_reserved_exit_75(tmp_path, vault):
-    # `index verify` remains an honest stub (needs #7 vec0) — ADR-10.
+    # `index verify` remains an honest stub (needs vec0 from the embedder) —
+    # fail-loud honesty.
     code, out, err = invoke(["--vault", str(vault), "index", "verify"])
     assert code == CLI_NOT_IN_MVP_0, err
     assert "CLI_NOT_IN_MVP_0" in err
-    assert "reserved in MVP-0" in err
+    assert "reserved in the current release" in err
 
 
-# --- M1-B.5: vector/FTS backfill over the rebuilt index ----------------------
+# --- vector/FTS backfill over the rebuilt index ------------------------------
 
 
 def test_index_rebuild_backfill_skipped_without_embedder(monkeypatch, tmp_path, vault):
-    # No embedder available -> honest skip (G2). Forced explicitly: with the
-    # ``embeddings`` extra installed the real fastembed backend resolves, so the
-    # unavailable path is pinned via a None embedder.
+    # No embedder available -> honest skip (the listing regime). Forced
+    # explicitly: with the ``embeddings`` extra installed the real fastembed
+    # backend resolves, so the unavailable path is pinned via a None embedder.
     import seahorse.cli.vault_ops as vo
 
     monkeypatch.setattr(vo, "_try_build_passage_embedder", lambda: None)
@@ -154,7 +155,7 @@ def test_index_rebuild_backfill_skipped_without_embedder(monkeypatch, tmp_path, 
 
 def test_index_rebuild_backfill_embeds_with_embedder(monkeypatch, tmp_path, vault):
     # With an embedder available, the rebuild backfills vec0 + FTS from the .md
-    # bodies (ADR-10: best-effort, the episode_index rebuild is the primary op).
+    # bodies (best-effort; the episode_index rebuild is the primary op).
     import numpy as np
 
     from seahorse.embeddings.types import ModelIdentity

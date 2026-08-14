@@ -1,10 +1,10 @@
-"""Vector/FTS backend tests (M1-A.3 / M1-A.4).
+"""Vector/FTS backend tests.
 
 Migration 010 creates the ``vec_episodes`` vec0 virtual table and the FTS5
 ``episode_fts`` / ``episode_content`` tables; ``SqliteVectorIndexRepository``
 and ``SqliteFullTextIndexRepository`` materialize the signed Protocols over
 them. These tests pin real behavior: upsert/count, kNN ordering + score
-(1/(1+distance)), vigent/fact_id/cognitive pushdown, CC-2 state_at / known_at
+(1/(1+distance)), currently-valid/fact_id/cognitive pushdown, state_at / known_at
 via the shared ``_pit_predicate``, BM25 ``exp(-bm25)`` scoring, subject filter,
 remove_for_rebuild / rebuild, and signature conformance with the contract.
 """
@@ -31,7 +31,7 @@ from seahorse.persistence.vector_index import SqliteVectorIndexRepository
 
 @pytest.fixture()
 def mgr(tmp_path) -> ConnectionManager:
-    # M1-A.2: the vec0 extension is required once migration 010 creates the
+    # The vec0 extension is required once migration 010 creates the
     # virtual table (``USING vec0``); mirrors the composition root (Storage).
     m = ConnectionManager(tmp_path / "seahorse.db", pool_size=4, extensions=("vec0",))
     m.open()
@@ -55,15 +55,15 @@ def fts(mgr: ConnectionManager) -> SqliteFullTextIndexRepository:
 
 def test_vector_stub_satisfies_protocol(vector: SqliteVectorIndexRepository) -> None:
     assert isinstance(vector, VectorIndexRepository)
-    assert not hasattr(vector, "atomic")  # SO-7a.6
+    assert not hasattr(vector, "atomic")
 
 
 def test_fts_stub_satisfies_protocol(fts: SqliteFullTextIndexRepository) -> None:
     assert isinstance(fts, FullTextIndexRepository)
-    assert not hasattr(fts, "atomic")  # SO-7a.6
+    assert not hasattr(fts, "atomic")
 
 
-# --- vector behavior (M1-A.3) -------------------------------------------------
+# --- vector behavior -------------------------------------------------
 
 _KNN_OVERFETCH_FACTOR = 5  # mirrors the impl constant; PIT JOIN may drop hits
 
@@ -92,7 +92,7 @@ def _insert_index_row(
     subject: str = "S",
 ) -> None:
     if fact_id is None:
-        fact_id = f"fact-{ep_id}"  # keep distinct vigent fact_ids (I11 mirror)
+        fact_id = f"fact-{ep_id}"  # keep distinct currently valid fact_ids (unique index)
     mgr.writer.execute(
         "INSERT INTO episode_index (ep_id, subject, fact_id, valid_at, invalid_at, "
         "created_at, expired_at, supersedes, cognitive_type, source_type, schema_version, "
@@ -165,8 +165,8 @@ def test_vector_knn_vigent_only_excludes_invalidated(
 ) -> None:
     _upsert_vector(vector, "e1", 1.0, 0.0, 0.0, 0.0)
     _upsert_vector(vector, "e2", 0.0, 1.0, 0.0, 0.0)
-    # M1-A.5 keeps vec_episodes.invalid_at in sync with episodes; here simulate
-    # the sync directly to pin the vigent-only pushdown on the vec0 column.
+    # vec_episodes.invalid_at is normally kept in sync with episodes; here simulate
+    # the sync directly to pin the currently-valid-only pushdown on the vec0 column.
     mgr.writer.execute(
         "UPDATE vec_episodes SET invalid_at = '2026-02-01T00:00:00+00:00' WHERE ep_id = 'e2'"
     )
@@ -197,7 +197,7 @@ def test_vector_knn_fact_id_filter_and_cognitive_types(
 def test_vector_knn_state_at_includes_from_forever_and_excludes_future_valid(
     vector: SqliteVectorIndexRepository, mgr: ConnectionManager
 ) -> None:
-    # CC-2: valid_at IS NULL ("from forever") is valid at any t; PENDING
+    # valid_at IS NULL ("from forever") is valid at any t; PENDING
     # (valid_at in the future) is excluded by the state_at predicate.
     _insert_index_row(mgr, "e1", valid_at=None)
     _insert_index_row(mgr, "e2", valid_at="2026-03-01T00:00:00+00:00")
@@ -233,7 +233,7 @@ def test_vector_remove_for_rebuild_clears(
 def test_vector_rebuild_is_honest_noop(
     vector: SqliteVectorIndexRepository,
 ) -> None:
-    # The signed contract's rebuild() takes no args; the actual backfill is #7's
+    # The signed contract's rebuild() takes no args; the actual backfill is the embedder's
     # job (RetrievalIndexer / index rebuild). Here it is an honest no-op.
     _upsert_vector(vector, "e1", 1.0, 0.0, 0.0, 0.0)
     vector.rebuild()
@@ -243,9 +243,9 @@ def test_vector_rebuild_is_honest_noop(
 def test_set_invalid_at_syncs_vec_episodes_invalid_at(
     vector: SqliteVectorIndexRepository, mgr: ConnectionManager
 ) -> None:
-    # M1-A.5 (spec §4.4 load-bearing): invalidation via the episode repo must
+    # Invalidation via the episode repo must
     # propagate to vec_episodes.invalid_at in the same transaction — otherwise
-    # the vigent-only pushdown returns invalidated episodes as vigent.
+    # the currently-valid-only pushdown returns invalidated episodes as currently valid.
     from seahorse.contracts.episode import Episode
     from seahorse.persistence.sqlite_episode_repo import SqliteEpisodeRepository
 
@@ -266,7 +266,7 @@ def test_set_invalid_at_syncs_vec_episodes_invalid_at(
     episodes.set_invalid_at("e1", datetime(2026, 2, 1, tzinfo=UTC))
     # vigent-only knn no longer returns the invalidated episode...
     assert vector.knn(_v(1.0, 0.0, 0.0, 0.0), 5) == []
-    # ...but state_at before the invalidation still includes it (CC-2).
+    # ...but state_at before the invalidation still includes it.
     hits = vector.knn_state_at(
         _v(1.0, 0.0, 0.0, 0.0), 5, datetime(2026, 1, 15, tzinfo=UTC)
     )
@@ -278,7 +278,7 @@ def test_vec_and_fts_wipes_clear_indexes(
     fts: SqliteFullTextIndexRepository,
     mgr: ConnectionManager,
 ) -> None:
-    # M1-A.6: the secondary-index wipe hooks that rebuild_all runs (C8.8 seam)
+    # The secondary-index wipe hooks that rebuild_all runs (the extension point)
     # must actually clear vec0 + FTS so a vault rebuild leaves no ghost hits.
     from seahorse.persistence.fts_index import fts_wipe
     from seahorse.persistence.vector_index import vec_wipe
@@ -297,7 +297,7 @@ def test_vec_and_fts_wipes_clear_indexes(
     assert fts.search("madrid", 5) == []
 
 
-# --- fts behavior (M1-A.4) ----------------------------------------------------
+# --- fts behavior ----------------------------------------------------
 
 
 def _upsert_fts(
@@ -356,7 +356,7 @@ def test_fts_search_subject_filter(
 def test_fts_search_state_at_includes_from_forever(
     fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
 ) -> None:
-    # CC-2: valid_at IS NULL is valid at any t; PENDING (future valid_at) excluded.
+    # valid_at IS NULL is valid at any t; PENDING (future valid_at) excluded.
     _insert_index_row(mgr, "e1", valid_at=None)
     _insert_index_row(mgr, "e2", valid_at="2026-03-01T00:00:00+00:00")
     _upsert_fts(fts, "e1", "madrid spain")
@@ -441,7 +441,7 @@ def test_fts_method_signatures_match_contract() -> None:
         assert c_sig == s_sig, f"signature drift on FullTextIndexRepository.{name}"
 
 
-# --- MVP-0 migrations do NOT create the vec0 / FTS5 tables -------------------
+# --- the first release migrations do NOT create the vec0 / FTS5 tables -------------------
 
 
 def test_010_creates_vec_episodes_and_fts_tables(mgr: ConnectionManager) -> None:
@@ -449,6 +449,6 @@ def test_010_creates_vec_episodes_and_fts_tables(mgr: ConnectionManager) -> None
         r[0]
         for r in mgr.writer.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
-    assert "vec_episodes_meta" in names  # SO-7a lateral
+    assert "vec_episodes_meta" in names  # lateral metadata table
     assert "vec_episodes" in names  # vec0 virtual table (migration 010)
     assert "episode_fts" in names  # FTS5 table (migration 010)

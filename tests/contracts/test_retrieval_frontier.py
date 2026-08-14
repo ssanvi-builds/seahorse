@@ -1,9 +1,10 @@
-"""Validate FusedCandidate — the #11 → #8 boundary (f5-08 §3.2, f5-11).
+"""Validate FusedCandidate — the hybrid-retrieval → indexer boundary.
 
-``FusedCandidate`` is owned by #11 and materialized in ``contracts.retrieval``
-by #8 (the first consumer to ship), mirroring how ``IndexRowData`` is owned by
-#8 and materialized by #6. This test guards the frozen shape and the frontier
-re-export so #11 ships against a stable contract.
+``FusedCandidate`` is owned by hybrid retrieval and materialized in
+``contracts.retrieval`` by the indexer (the first consumer to ship), mirroring
+how ``IndexRowData`` is owned by the indexer and materialized by the persistence
+layer. This test guards the frozen shape and the contract-surface re-export so
+hybrid retrieval ships against a stable contract.
 """
 
 from __future__ import annotations

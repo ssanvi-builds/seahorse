@@ -1,10 +1,10 @@
-"""Frontmatter adapter — parse/serialize/atomic-write over ``.md`` files (#3).
+"""Frontmatter adapter — parse/serialize/atomic-write over ``.md`` files.
 
-Implements f5-03 §4 (round-trip + serialization) operationally. Two reconciliation
+Implements round-trip + serialization operationally. Two reconciliation
 points where the implementation diverges from the spec's literal text to honour
 the spec's STATED GOALS (code real > doc stale):
 
-1. **Body separator.** f5-03 §4.3 says "body incluye su ``\\n`` inicial" and
+1. **Body separator.** The spec says the body includes its leading ``\\n`` inicial" and
    joins as ``---\\n{fm}\\n---{body}``. Taken literally, an engine-supplied body
    (``"# Madrid\\n"``, no leading newline) would render as ``---# Madrid`` —
    broken markdown. The adapter instead joins as ``---\\n{fm}\\n---\\n{body}``
@@ -16,7 +16,7 @@ the spec's STATED GOALS (code real > doc stale):
    ``\\n# Madrid\\n``); a body with no leading newline stays that way. The
    engine's body and the file's body stay equal — no drift across writes.
 
-2. **Merge preserves unchanged fields.** f5-03 §4.2/§4.5 want comments, quote
+2. **Merge preserves unchanged fields.** The spec wants comments, quote
    style, and key order preserved on fields the agent did not mutate. A naive
    merge that overwrites every schema field from the Pydantic dump would reset
    quote styles on every write. ``_merge_known`` instead compares each field's
@@ -58,7 +58,7 @@ _yaml = _make_yaml()
 def parse_file(
     path: Path, *, mvp: str = "0"
 ) -> tuple[CommentedMap, str, Episode]:
-    """Dual-pass F3.1 parse (f5-03 §4.1). Returns ``(commented_map, body, ep)``.
+    """Dual-pass parse of the on-disk format. Returns ``(commented_map, body, ep)``.
 
     The body is byte-a-byte from the file: ``RuamelRTHandler.split`` keys on the
     closing delimiter ``\\n---\\n`` (which consumes exactly one separator
@@ -68,7 +68,7 @@ def parse_file(
     ``Episode`` (without body — ``hydrate`` attaches it lazily).
 
     Raises ``FrontmatterInvalid`` on any validation failure (naive datetime,
-    MVP-0 non-null ``expired_at``). A file with no frontmatter returns an empty
+    non-null ``expired_at`` in the first release). A file with no frontmatter returns an empty
     commented map and the whole file as body; ``model_validate`` then raises
     ``FrontmatterInvalid`` for the missing required fields — the migrator
     handles case A by building defaults rather than calling ``parse_file``.
@@ -91,7 +91,7 @@ def parse_file(
 
 
 def hydrate(path: Path, *, mvp: str = "0") -> Episode:
-    """Parse + attach the body lazily (f5-03 §5.8)."""
+    """Parse + attach the body lazily."""
     _cm, body, ep = parse_file(path, mvp=mvp)
     return ep.model_copy(update={"body": body})
 
@@ -102,13 +102,14 @@ def hydrate(path: Path, *, mvp: str = "0") -> Episode:
 
 
 def serialize(ep: Episode, path: Path, *, exclude_none: bool, mvp: str = "0") -> None:
-    """Write ``ep`` to ``path`` (f5-03 §5.8). Body is ``ep.body or ""``.
+    """Write ``ep`` to ``path``. Body is ``ep.body or ""``.
 
     ``mvp`` threads the validation phase to the baseline re-parse inside
-    ``write_file`` (orthogonal to ``exclude_none``): MVP-1 callers (decay,
-    mediano) pass ``mvp="1"`` so a baseline with a non-null ``expired_at`` does
-    not trip the MVP-0 read-path guard (``_expired_null_mvp0``) on the re-parse.
-    Default ``"0"`` keeps existing callers and tests unchanged.
+    ``write_file`` (orthogonal to ``exclude_none``): callers in a later release
+    (decay, a medium-term goal) pass ``mvp="1"`` so a baseline with a non-null
+    ``expired_at`` does not trip the first-release read-path guard
+    (``_expired_null_mvp0``) on the re-parse. Default ``"0"`` keeps existing
+    callers and tests unchanged.
     """
     body = ep.body or ""
     write_file(path, ep, body, exclude_none=exclude_none, mvp=mvp)
@@ -126,9 +127,9 @@ def write_file(
     """Merge ``ep`` onto the baseline commented map and write atomically.
 
     Re-parses ``path`` for the baseline when ``baseline_cm`` is ``None`` and the
-    file exists (f5-03 §4.2 "re-parsea SIEMPRE sobre existentes") so ``x-*``,
-    comments, and Obsidian fields survive. The re-parse uses ``mvp`` so an
-    MVP-1 baseline with a non-null ``expired_at`` does not raise
+    file exists (existing files are always re-parsed) so ``x-*``, comments, and
+    Obsidian fields survive. The re-parse uses ``mvp`` so a later-release
+    baseline with a non-null ``expired_at`` does not raise
     ``FrontmatterInvalid`` on the guard ``_expired_null_mvp0``. When a caller
     passes ``baseline_cm`` explicitly (migrator fast path), it is deep-copied
     before merge so the caller-owned map is not mutated in place (immutability).

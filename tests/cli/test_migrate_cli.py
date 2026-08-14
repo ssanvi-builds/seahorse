@@ -1,9 +1,9 @@
-"""End-to-end ``seahorse migrate`` via the invoke harness (commit 5).
+"""End-to-end ``seahorse migrate`` via the invoke harness.
 
 ``migrate`` is the SCHEMA migrations runner (DDL 001-010 on the sidecar SQLite
 DB), NOT the frontmatter vault migrator. It reuses the ``apply_migrations(up_to=)``
-seam added in commit 4. Exit codes: success 0; ``--up-to -1`` → Cat C usage 2;
-uninitialized vault → Cat C 82/83.
+entry point. Exit codes: success 0; ``--up-to -1`` → CLI usage error 2;
+uninitialized vault → CLI error 82/83.
 """
 
 from __future__ import annotations

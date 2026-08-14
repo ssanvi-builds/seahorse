@@ -1,4 +1,4 @@
-"""#16 benchmark reporters — manifest + json + markdown + ci_gate."""
+"""Benchmark reporters — manifest + json + markdown + ci_gate."""
 
 from __future__ import annotations
 

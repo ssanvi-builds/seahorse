@@ -1,7 +1,7 @@
-"""Storage — the composition root for the persistence layer (#6).
+"""Storage — the composition root for the persistence layer.
 
 A single ``Storage`` owns the one ``ConnectionManager`` and constructs every
-repository sharing it. There is exactly ONE transaction boundary (SO-7a.6):
+repository sharing it. There is exactly ONE transaction boundary:
 the ``atomic()`` on ``ConnectionManager``, exposed here as ``Storage.atomic()``.
 No repository opens its own ``BEGIN``; a delegating ``atomic()`` that reuses
 ``ConnectionManager.atomic()`` is permitted (the ``episodes`` repo exposes one
@@ -39,16 +39,16 @@ from seahorse.persistence.sqlite_reindex_jobs import SqliteReindexJobRepository
 from seahorse.persistence.sqlite_sidecar import SqliteSidecarIndexRepository
 
 if TYPE_CHECKING:
-    # C8.2: the two MVP-1 concrete repos (vector_index / fts_index) are imported
-    # lazily inside the ``vector`` / ``fts`` property accessors, NOT at module
-    # top. When #6 lands the real sqlite-vec + FTS5 impls, those modules will
-    # ``import sqlite_vec`` (and possibly ``numpy``) at module top; a top-level
-    # import here would cascade into every ``import seahorse.facade`` /
-    # ``import seahorse.mcp`` (factory -> storage) loading the heavy MVP-1 deps
-    # at import time. The type-only import keeps the return-type annotations
+    # The two later-release concrete repos (vector_index / fts_index) are
+    # imported lazily inside the ``vector`` / ``fts`` property accessors, NOT at
+    # module top. When the real sqlite-vec + FTS5 implementations land, those
+    # modules will ``import sqlite_vec`` (and possibly ``numpy``) at module top;
+    # a top-level import here would cascade into every ``import seahorse.facade``
+    # / ``import seahorse.mcp`` (factory -> storage) loading the heavy deps at
+    # import time. The type-only import keeps the return-type annotations
     # precise for static analysis without executing the modules. The runtime
     # import lives in the property accessors (lazy, on first ``.vector`` /
-    # ``.fts`` access — never in MVP-0 since the stubs are unused).
+    # ``.fts`` access — never in the current release since the stubs are unused).
     from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
     from seahorse.persistence.vector_index import SqliteVectorIndexRepository
 
@@ -57,24 +57,24 @@ class Storage:
     """Composition root: one ``ConnectionManager`` + all repositories + one ``atomic()``."""
 
     def __init__(self, db_path: Path | str, *, pool_size: int = 4) -> None:
-        # M1-A.1: Storage opts into the vec0 extension (sqlite-vec is a core dep)
-        # so migration 010 (``CREATE VIRTUAL TABLE ... USING vec0``) runs on
+        # Storage opts into the vec0 extension (sqlite-vec is a core dep) so
+        # migration 010 (``CREATE VIRTUAL TABLE ... USING vec0``) runs on
         # ``open()``. The CM default stays ``()`` — only the composition root
         # enables the extension. ``sqlite_vec`` is loaded lazily inside
         # ``ConnectionManager._load_extensions``, never at import time.
         self._cm = ConnectionManager(db_path, pool_size=pool_size, extensions=("vec0",))
         self._cm.open()
         try:
-            apply_migrations(self._cm.writer)  # clonar-y-ejecutar: schema ready on construct
+            apply_migrations(self._cm.writer)  # clone-and-run: schema ready on construct
         except BaseException:
             # If migrations fail the Storage is unusable; close the manager so
             # the writer + reader pool do not leak (no caller reference exists).
             self._cm.close()
             raise
-        # build the MVP-0 repositories sharing the one connection manager. The
-        # two MVP-1 repos (vector / fts) are constructed lazily on first property
-        # access (C8.2) so importing this module does not pull their (future,
-        # heavy) dependencies. They stay None until accessed.
+        # build the current-release repositories sharing the one connection
+        # manager. The two later-release repos (vector / fts) are constructed
+        # lazily on first property access so importing this module does not pull
+        # their (future, heavy) dependencies. They stay None until accessed.
         self._episodes = SqliteEpisodeRepository(self._cm)
         self._episode_index = SqliteEpisodeIndexRepository(self._cm)
         self._audit = SqliteAuditEventRepository(self._cm)
@@ -84,7 +84,7 @@ class Storage:
         self._vector: SqliteVectorIndexRepository | None = None
         self._fts: SqliteFullTextIndexRepository | None = None
 
-    # -- the single shared atomic (SO-7a.6) -------------------------------------
+    # -- the single shared atomic ------------------------------------------------
 
     @contextmanager
     def atomic(self) -> Iterator[None]:
@@ -119,10 +119,11 @@ class Storage:
 
     @property
     def vector(self) -> SqliteVectorIndexRepository:
-        # C8.2: lazy import + construct. The MVP-1 concrete repo is pulled in
+        # Lazy import + construct. The later-release concrete repo is pulled in
         # only when a caller actually needs it; ``import seahorse.facade`` /
-        # ``import seahorse.mcp`` never reach here in MVP-0 (the stub is unused
-        # until #6 wires the real vector backend). Cached after first access.
+        # ``import seahorse.mcp`` never reach here in the current release (the
+        # stub is unused until the persistence layer wires the real vector
+        # backend). Cached after first access.
         if self._vector is None:
             from seahorse.persistence.vector_index import SqliteVectorIndexRepository
 
@@ -131,7 +132,7 @@ class Storage:
 
     @property
     def fts(self) -> SqliteFullTextIndexRepository:
-        # C8.2: lazy import + construct (see ``vector``).
+        # Lazy import + construct (see ``vector``).
         if self._fts is None:
             from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
 

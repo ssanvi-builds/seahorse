@@ -1,4 +1,4 @@
-"""Validate EngineError + code constants (Phase 2, owned #2).
+"""Validate EngineError + code constants.
 
 The error codes are the stable fail-loud vocabulary consumed across
 ``apply_fact`` / ``improve`` / ``forget`` / guards. Each must be a unique string
@@ -38,6 +38,6 @@ def test_all_codes_are_distinct_strings():
         for k, v in vars(errors).items()
         if k.startswith("E_") and isinstance(v, str)
     ]
-    assert len(codes) >= 8  # sanity: the known MVP-0 vocabulary
+    assert len(codes) >= 8  # sanity: the known current-release vocabulary
     assert len(codes) == len(set(codes)), f"duplicate codes: {codes}"
     assert all(isinstance(c, str) and c.startswith("E_") for c in codes)

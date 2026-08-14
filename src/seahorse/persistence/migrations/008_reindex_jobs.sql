@@ -1,6 +1,6 @@
--- 008_reindex_jobs.sql — reindex_jobs, resumable backfill job state (SO-7a).
--- Source: f5-07 §5.4, signed SO-7. Operated by #7/#14 via ReindexJobRepository.
--- MVP-0: setters (no state-transition guards); create/start/pause/finish/fail/list.
+-- 008_reindex_jobs.sql — reindex_jobs, resumable backfill job state.
+-- Operated by the embedder and the CLI via ReindexJobRepository. Setters only
+-- (no state-transition guards): create/start/pause/finish/fail/list.
 CREATE TABLE IF NOT EXISTS reindex_jobs (
     job_id        INTEGER PRIMARY KEY AUTOINCREMENT,
     model_from    TEXT NOT NULL,

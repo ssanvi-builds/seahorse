@@ -1,9 +1,9 @@
-"""Reproducibility tests (ADR-10: scores depend only on (query, episode, k)).
+"""Reproducibility tests (scores depend only on (query, episode, k)).
 
 Two runs over the same state produce the SAME fused list. RRF is rank-based, the
 tie-break is ``(-score, ep_id)`` asc, and ``pit=None`` resolves via an injectable
 clock — so nothing depends on wall-clock time or arrival order. NO LLM in the
-query path; scores are pure RRF over ranks (f5-11 §10, §16).
+query path; scores are pure RRF over ranks.
 
 Signals:
 - Two identical runs -> identical ``list[FusedCandidate]`` (structural equality).
@@ -84,8 +84,8 @@ class TestRecencyDefaultOff:
     def test_explicit_recency_none_preserves_pure_rrf(
         self, embedder, vector_repo, fts_repo, episode_repo
     ):
-        # F1 default-OFF (ADR-10): passing recency=None (or omitting it) keeps the
-        # pure-RRF bit-comparable fingerprint — the boost is never applied.
+        # default-OFF: passing recency=None (or omitting it) keeps the pure-RRF
+        # bit-comparable fingerprint — the boost is never applied.
 
         vector_repo.knn_hits = [VectorHit("e1", 0.1, 0.9), VectorHit("e2", 0.2, 0.83)]
         fts_repo.search_hits = [FullTextHit("e1", 1.0, 0.37)]

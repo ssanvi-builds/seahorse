@@ -1,11 +1,10 @@
-"""Tests for ``seahorse setup`` / ``seahorse setup --uninstall`` (Sprint B).
+"""Tests for ``seahorse setup`` / ``seahorse setup --uninstall``.
 
 ``setup`` writes the ``[observe]`` section to ``seahorse.toml`` (with a
-generated auth token, §15.2 redesign 10) and MERGES the Claude Code hooks into
-``~/.claude/settings.json`` — coexisting with claude-mem's hooks (obsiforge
-§15.3-4: coexistence = migration, not convivencia). ``--uninstall`` removes the
-observer hooks (identified by the ``seahorse observe event`` marker) and the
-``[observe]`` section, preserving other hooks.
+generated auth token) and MERGES the Claude Code hooks into
+``~/.claude/settings.json`` — coexisting with claude-mem's hooks. ``--uninstall``
+removes the observer hooks (identified by the ``seahorse observe event`` marker)
+and the ``[observe]`` section, preserving other hooks.
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ def test_write_observe_config_adds_section(tmp_path) -> None:
     assert cfg.observe is not None
     assert cfg.observe.enabled is True
     assert cfg.observe.extraction == "skip"
-    assert cfg.observe.token is not None  # auth token generated (§15.2 redesign 10)
+    assert cfg.observe.token is not None  # auth token generated
 
 
 def test_write_observe_config_preserves_existing_section(tmp_path) -> None:

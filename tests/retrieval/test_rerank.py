@@ -1,12 +1,12 @@
-"""F2 — stage-3 cross-encoder rerank (f7 §5b, cerebras-f §4).
+"""Stage-3 cross-encoder rerank.
 
 Tests the pure ``apply_rerank`` function (reorder by cross-encoder scores +
 truncate to k) and the ``recall`` wiring (over-fetch to ``k_rerank``, hydrate
 summary/subject via ``index_repo.get_rows``, score pairs, reorder, truncate).
 
-Honesty (ADR-10): a missing ``index_repo`` (no text to hydrate) or a reranker
-failure degrades to the pure-RRF order truncated to ``k`` — never invented
-scores, never a crash that would drop the hybrid path to G2.
+Honesty: a missing ``index_repo`` (no text to hydrate) or a reranker failure
+degrades to the pure-RRF order truncated to ``k`` — never invented scores, never
+a crash that would drop the hybrid path to the listing regime.
 """
 
 from __future__ import annotations

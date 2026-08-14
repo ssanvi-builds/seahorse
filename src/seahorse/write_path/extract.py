@@ -1,6 +1,6 @@
-"""#5 ``_deterministic_extract`` — the zero-LLM editorial fallback (f5-05 sec 3.2).
+"""``_deterministic_extract`` — the zero-LLM editorial fallback.
 
-The skip path has two branches (f5-05 sec 3.1/3.2):
+The skip path has two branches:
 
 1. **Use-as-is** — the engine's ``is_valid_skip_path`` gate accepts the
    candidate episode; no editorial work is needed and no LLM is spent.
@@ -15,21 +15,19 @@ The skip path has two branches (f5-05 sec 3.1/3.2):
 editorial fields (``subject`` / ``body`` / ``valid_at`` / ``cognitive_type`` /
 ``schema_version`` / ``tags``). Provenance (``extraction_mode`` /
 ``model_used`` / ``prompt_hash`` / ``confidence``) is built separately by
-``run_skip_path`` — no field duplication (f5-05 sec 3.2/11.5). Engine-owned
-fields (``created_at`` / ``invalid_at`` / ``expired_at`` / ``id``) are never
-set here; the engine owns them at write time. ``supersedes`` is #5-owned
-(``None`` in ``remember``; the engine sets it only on improve/forget per
-f5-05 sec 11.5), so it is also absent here and injected by ``run_skip_path``.
+``run_skip_path`` — no field duplication. Engine-owned fields (``created_at`` /
+``invalid_at`` / ``expired_at`` / ``id``) are never set here; the engine owns
+them at write time. ``supersedes`` is write-path-owned (``None`` in
+``remember``; the engine sets it only on improve/forget), so it is also absent
+here and injected by ``run_skip_path``.
 
-Loud failure (ADR-10): when neither ``title`` nor an H1 is present,
+Loud failure: when neither ``title`` nor an H1 is present,
 ``SubjectDerivationError`` is raised rather than silently producing a
 subject-less episode. Note: this fires ONLY in the fallback branch (gate
 invalid) — the happy path preserves the engine's existing silent
 ``subject=None`` behavior (engine/collision.py).
 
 References:
-- f5-05-skip-extraction.md section 3.2 (deterministic_extract), section 11.5
-  (field ownership)
 - seahorse/frontmatter/subject.py (raw_subject / normalize_subject)
 - seahorse/facade/types.py (RememberPayload)
 """
@@ -45,7 +43,7 @@ from seahorse.frontmatter.subject import normalize_subject, raw_subject
 
 
 class SubjectDerivationError(ValueError):
-    """Raised when ``deterministic_extract`` cannot derive a subject (ADR-10).
+    """Raised when ``deterministic_extract`` cannot derive a subject.
 
     The skip-path fallback cannot produce a subject-less episode silently.
     When ``raw_subject`` finds neither a ``title`` nor a first H1 (and there is
@@ -64,11 +62,11 @@ class SubjectDerivationError(ValueError):
 
 @dataclass(frozen=True)
 class ExtractedCandidate:
-    """Editorial-only result of ``deterministic_extract`` (f5-05 sec 3.2).
+    """Editorial-only result of ``deterministic_extract``.
 
     No provenance fields (built by ``run_skip_path``) and no engine-owned
     fields (set by the engine at write time). ``valid_at`` is passed through
-    unsanitized — the engine enforces I2 in ``apply_fact``.
+    unsanitized — the engine enforces timezone-awareness in ``apply_fact``.
     """
 
     subject: str
@@ -80,14 +78,13 @@ class ExtractedCandidate:
 
 
 def derive_summary(body: str, *, max_chars: int = SUMMARY_MAX_CHARS) -> str | None:
-    """Deterministic summary fallback (OQ3, f5-09 §6.2): first sentence of the
-    body, skipping the H1, truncated to ``max_chars``.
+    """Deterministic summary fallback: first sentence of the body, skipping the
+    H1, truncated to ``max_chars``.
 
-    Zero-LLM (ADR-10): covers 100% of episodes including the skip path. The H1
-    is skipped (obsiforge §15.2 redesign 4) so a tagged subject
-    (``[session_tag:prompt_number]``) never contaminates the summary. Returns
-    ``None`` when the body has no content after the H1 (honest — no invented
-    summary).
+    Zero-LLM: covers 100% of episodes including the skip path. The H1 is skipped
+    so a tagged subject (``[session_tag:prompt_number]``) never contaminates the
+    summary. Returns ``None`` when the body has no content after the H1 (honest
+    — no invented summary).
     """
     content = _strip_h1(body)
     if not content:
@@ -101,8 +98,8 @@ def derive_summary(body: str, *, max_chars: int = SUMMARY_MAX_CHARS) -> str | No
 def _strip_h1(body: str) -> str:
     """Drop a leading H1 line (and surrounding blank lines) from the body.
 
-    The H1 is the subject (``title > H1 > None``, SO-2); the summary must be
-    the first sentence of the CONTENT, not the tagged subject line.
+    The H1 is the subject (``title > H1 > None``); the summary must be the
+    first sentence of the CONTENT, not the tagged subject line.
     """
     lines = body.splitlines()
     i = 0
@@ -126,13 +123,13 @@ def _first_sentence(text: str) -> str:
 
 
 def deterministic_extract(payload: RememberPayload) -> ExtractedCandidate:
-    """Pure, zero-LLM editorial fallback of the skip path (f5-05 sec 3.2).
+    """Pure, zero-LLM editorial fallback of the skip path.
 
     Derives ``subject`` via ``title > first H1`` (no filename fallback —
     ``RememberPayload`` carries no path), normalized through
     ``frontmatter.subject.normalize_subject``. Raises ``SubjectDerivationError``
-    loud when neither is present (ADR-10). All other fields are passed through
-    unsanitized (I2 for ``valid_at``; the engine enforces it).
+    loudly when neither is present. All other fields are passed through
+    unsanitized (the engine enforces ``valid_at`` timezone-awareness).
     """
     raw = raw_subject(payload.title, payload.body)
     if raw is None:

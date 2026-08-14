@@ -1,9 +1,9 @@
-"""Tests for the #4 cost cap (f5-04 §4.1) — the ≤ $0.002/episodio gate.
+"""Tests for the LLM cost cap — the ≤ $0.002/episode gate.
 
-Local and free-tier cloud models price at $0 (the 2026-08-04 palanca), so the
-cap never fires for them; paid cloud rows use verified cache-miss prices. The
-sanity check from f5-04 §3.2 (deepseek on a 5KB episode ≈ $0.0007) is pinned
-here so the budget math cannot drift.
+Local and free-tier cloud models price at $0 (a 2026-08-04 pricing decision), so
+the cap never fires for them; paid cloud rows use verified cache-miss prices.
+The sanity check (deepseek on a 5KB episode ≈ $0.0007) is pinned here so the
+budget math cannot drift.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class TestEstimateCost:
         assert estimate_cost("ollama/qwen3:1.7b", 3000, 1000) == 0.0
 
     def test_deepseek_5kb_episode_sanity_check(self) -> None:
-        # f5-04 §3.2 pinned check: 3000 in + 1000 out on deepseek-chat.
+        # pinned check: 3000 in + 1000 out on deepseek-chat.
         est = estimate_cost("deepseek/deepseek-chat", 3000, 1000)
         assert est == pytest.approx(0.0007)  # (420 + 280) / 1e6
 

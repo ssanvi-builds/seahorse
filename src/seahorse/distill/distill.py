@@ -1,20 +1,15 @@
-"""The ``distill_episodes`` primitive — deterministic distillation (obsiforge §5.4).
+"""The ``distill_episodes`` primitive — deterministic distillation.
 
-A write-path operation over existing seams, NOT new storage: ``consolidated``
-is schema-valid, ``cognitive_type=semantic`` exists, and the consolidated
-episode references its representative source via ``supersedes`` (§5.2) WITHOUT
-invalidating it — the sources stay vigente (they are the evidence). The
+A write-path operation over existing mechanisms, NOT new storage:
+``consolidated`` is schema-valid, ``cognitive_type=semantic`` exists, and the
+consolidated episode references its representative source via ``supersedes``
+WITHOUT invalidating it — the sources remain valid (they are the evidence). The
 provenance carries ``extraction_mode=consolidated``. The subject is the stable
-clustering key (distinct from the per-turn stored subjects, §15.2 redesign 1).
+clustering key (distinct from the per-turn stored subjects).
 
-The distillation does NOT pass through ``decide_path`` (obsiforge §5.4): it is
-a batch operation, not single-episode ingestion — it writes via
-``engine.remember`` directly (like ``improve``).
-
-References:
-- obsiforge-evolution-architecture.md §5.2 (consolidated episode shape)
-- obsiforge-evolution-architecture.md §5.4 (distill_episodes primitive)
-- obsiforge-evolution-architecture.md §15.2 redesign 1 (clustering key)
+The distillation does NOT pass through ``decide_path``: it is a batch operation,
+not single-episode ingestion — it writes via ``engine.remember`` directly
+(like ``improve``).
 """
 
 from __future__ import annotations
@@ -42,10 +37,9 @@ def distill_episodes(
     - ``cognitive_type=semantic``, ``extraction_mode=consolidated`` (provenance).
     - ``subject`` = the stable clustering key (no ``[session_tag:n]`` suffix).
     - ``supersedes=representative.id``, ``supersedes_reason=merge`` — a soft
-      reference; the sources stay vigente (they are the evidence).
+      reference; the sources remain valid (they are the evidence).
     - ``session_id`` = a synthetic consolidator session (``consolidate-*``).
-    - ``summary`` = the OQ3 deterministic fallback (first sentence skipping the
-      H1, §15.2 redesign 4).
+    - ``summary`` = the deterministic fallback (first sentence skipping the H1).
 
     Returns the engine ``WriteResult`` verbatim.
     """

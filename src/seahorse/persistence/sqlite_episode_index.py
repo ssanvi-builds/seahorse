@@ -1,17 +1,17 @@
-"""SqliteEpisodeIndexRepository — 7 SO-1 accessors + bfs_neighbors_state_at (SO-8b).
+"""SqliteEpisodeIndexRepository — index accessors + bfs_neighbors_state_at.
 
 Implements ``seahorse.contracts.persistence.EpisodeIndexRepository`` over the
 ``episode_index`` bridge table (NO body — returns ``IndexRowData``). This is the
 hot INDEX/TIMELINE read path: reads use the WAL reader pool (no write-lock
-contention). No own ``atomic()`` (SO-7a.6).
+contention). No own ``atomic()``.
 
-Bi-temporal axes (ADR-03): ``*_state_at`` filters the valid_time axis
+Bi-temporal axes: ``*_state_at`` filters the valid_time axis
 (``valid_at``/``invalid_at``); ``*_known_at`` filters the transaction_time axis
 (``created_at``/``expired_at``). The two axes are NEVER mixed. NULL-safe:
 ``valid_at IS NULL`` (PENDING_INGEST) is excluded from ``state_at``; ``known_at``
 keeps ``expired_at IS NULL`` rows. ``bfs_neighbors_state_at`` raises
 ``HopsCapExceeded`` for ``hops > MAX_HOPS_MVP1`` and ``NotImplementedError`` for
-``include_tags_soft=True`` (mediano, not in MVP-0).
+``include_tags_soft=True`` (a medium-term goal, not in the current release).
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _parse_dt(value: str | None) -> datetime | None:
 def _req_str(value: str | None) -> str:
     # IndexRowData declares these as non-null str; the DDL allows NULL (PENDING_INGEST).
     # Coerce NULL to "" so the frozen contract holds. The INDEX level shows an empty
-    # subject/fact_id for not-yet-valid episodes; the bridge equality (#16) is only
+    # subject/fact_id for not-yet-valid episodes; the bridge equality is only
     # exercised on episodes the Engine populated with a real fact_id.
     return value if value is not None else ""
 
@@ -63,10 +63,10 @@ def _row_to_index(row: sqlite3.Row) -> IndexRowData:
 def _pit_predicate(pit_kind: PITKind, pit: datetime) -> tuple[str, tuple[str, str]]:
     """Return (SQL fragment, params) for the bi-temporal PIT filter (axes never mixed).
 
-    CC-2 (C8.6): the ``state_at`` branch includes ``valid_at IS NULL`` ("from
-    forever", f5-02 §2 line 85 — valid at any ``t``), mirroring the canonical
-    engine predicates ``get_vigente`` / ``is_valid_at``. Real PENDING is
-    ``valid_at`` in the FUTURE, excluded by ``valid_at <= ?``.
+    The ``state_at`` branch includes ``valid_at IS NULL`` ("from forever" —
+    valid at any ``t``), mirroring the canonical engine predicates
+    ``get_vigente`` / ``is_valid_at``. Real PENDING is ``valid_at`` in the
+    FUTURE, excluded by ``valid_at <= ?``.
     """
     iso = pit.isoformat()
     if pit_kind == "state_at":
@@ -132,7 +132,7 @@ class SqliteEpisodeIndexRepository:
             ).fetchall()
         return [_row_to_index(row) for row in rows]
 
-    # -- TIMELINE level (MVP-0 axes) -----------------------------------------
+    # -- TIMELINE level (current-release axes) -------------------------------
 
     def chain_rows_from(self, ep_id: str) -> list[IndexRowData]:
         """Transitive closure over ``supersedes`` on ``episode_index`` (both directions)."""
@@ -179,7 +179,7 @@ class SqliteEpisodeIndexRepository:
             row = r.execute(f"SELECT * FROM episode_index WHERE {where}", tuple(params)).fetchone()
         return _row_to_index(row) if row is not None else None
 
-    # -- TIMELINE level (MVP-1 axes — revisable, SO-1 safeguard 2) ------------
+    # -- TIMELINE level (later-release axes) ---------------------------------
 
     def _range_rows(
         self,
@@ -217,7 +217,7 @@ class SqliteEpisodeIndexRepository:
     ) -> list[IndexRowData]:
         return self._range_rows("known_at", t_start, t_end, subject)
 
-    # -- SO-8b BFS extension --------------------------------------------------
+    # -- BFS extension -------------------------------------------------------
 
     def bfs_neighbors_state_at(
         self,
@@ -229,7 +229,9 @@ class SqliteEpisodeIndexRepository:
         include_tags_soft: bool,
     ) -> list[IndexRowData]:
         if include_tags_soft:
-            raise NotImplementedError("include_tags_soft is mediano (not in MVP-0)")
+            raise NotImplementedError(
+                "include_tags_soft is a medium-term goal (not in the current release)"
+            )
         if hops > MAX_HOPS_MVP1:
             raise HopsCapExceeded(hops, MAX_HOPS_MVP1)
         pred, pred_params = _pit_predicate(cast(PITKind, pit_kind), pit)

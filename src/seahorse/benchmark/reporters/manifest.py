@@ -1,4 +1,4 @@
-"""Run manifest — deterministic fingerprint + separate execution metadata (f5-16 §5.5).
+"""Run manifest — deterministic fingerprint + separate execution metadata.
 
 The ``PinningFingerprint`` is the reproducibility contract: byte-identical
 between identical runs (NO timestamps, NO environment specifics). The
@@ -6,7 +6,7 @@ between identical runs (NO timestamps, NO environment specifics). The
 non-deterministic layer (timestamps, environment) and lives in a separate
 section.
 
-OQ-16-12 (closed): the indexer is synchronous (``StubWritePath.ingest`` calls
+The indexer is synchronous (``StubWritePath.ingest`` calls
 ``indexer.index_episode()`` in the same ``atomic()``), so the embeddings
 barrier is a no-op — the manifest reports ``embedding_batch_config:
 "batch_size=1_forced"`` and ``knn_completeness: 1.0``.
@@ -37,7 +37,7 @@ class PinningFingerprint:
     """Deterministic layer — byte-identical between identical runs.
 
     NO timestamps, NO environment specifics. ``score_source`` is the experiment
-    variant (f7 §3): ``mvp1_rrf`` | ``mvp1_rrf_recency`` | ``rrf_rerank`` |
+    variant: ``mvp1_rrf`` | ``mvp1_rrf_recency`` | ``rrf_rerank`` |
     ``fallback_g2`` (honest detected regime).
     """
 
@@ -45,8 +45,8 @@ class PinningFingerprint:
     dataset_hash: str  # Dataset.split_hash
     loader_code_sha256: str  # dataset loader code hash (trust_remote_code audit)
     embedding_identity: str  # "me5-small:384:<sha12>:int8"
-    embedding_batch_config: str  # "batch_size=1_forced" (OQ-16-12)
-    knn_completeness: float  # 1.0 — sync indexer, drain is a no-op (OQ-16-12)
+    embedding_batch_config: str  # "batch_size=1_forced" (synchronous indexer)
+    knn_completeness: float  # 1.0 — sync indexer, drain is a no-op
     reader_model_used: str  # "ollama/qwen3:1.7b@sha256:<digest>"
     judge_model_used: str  # "ollama/qwen2.5:7b@sha256:<digest>" (family-disjoint)
     seahorse_version: str  # git SHA
@@ -88,12 +88,12 @@ class RunManifest:
     execution: ExecutionMetadata
     metrics: dict[str, MetricReport]  # nested structure (matches the JSON example)
     results_sha256: str | None = None  # SHA-256 of raw responses JSONL
-    run_errors: list[str] = field(default_factory=list)  # skipped instance_ids (f5-16 §8.3)
+    run_errors: list[str] = field(default_factory=list)  # skipped instance_ids
 
 
 def _manifest_data(manifest: RunManifest) -> dict:
     """Canonical dict form, with the derived ``run_id`` injected into the
-    fingerprint section (the spec's manifest JSON includes it, f5-16 §6.4)."""
+    fingerprint section (the spec's manifest JSON includes it)."""
     data = _canonical(asdict(manifest))
     data["fingerprint"]["run_id"] = manifest.fingerprint.run_id
     return data
@@ -103,7 +103,7 @@ def write_manifest(manifest: RunManifest, path: Path) -> None:
     """Canonical serialization: sort_keys=True, indent=2, UTF-8, LF.
 
     The fingerprint section is byte-identical between identical runs. The
-    round-trip assertion verifies the ACTUAL nested structure (f5-16 §5.5 F6).
+    round-trip assertion verifies the ACTUAL nested structure.
     """
     data = _manifest_data(manifest)
     content = json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False)

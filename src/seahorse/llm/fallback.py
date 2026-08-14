@@ -1,4 +1,4 @@
-"""#4 retry + fallback chain (f5-04 §4.3/§4.4) — transient-error resilience.
+"""Retry + fallback chain — transient-error resilience.
 
 Two layers:
 
@@ -8,19 +8,14 @@ Two layers:
   (they would fail identically on retry).
 - ``call_with_fallback`` — walks the role's ``primary → secondary → tertiary``
   chain, retrying each model, and moves on when a backend is exhausted.
-  ``ContextWindowError`` is treated like a transient here (f5-04 §4.3: move to
-  a bigger-context backend or local Ollama). When the whole chain is exhausted
+  ``ContextWindowError`` is treated like a transient here (move to a
+  bigger-context backend or local Ollama). When the whole chain is exhausted
   it raises ``LLMError``; the extractor turns that into ``degraded_to_skip``
-  (f5-04 §4.5) so the write path never crashes on LLM failure.
+  so the write path never crashes on LLM failure.
 
 The jitter keeps a fleet of machines from hammering a rate-limited endpoint in
-lockstep (f5-04 §4.4). Retry budgets are small by design: max_retries=2 per
-call, and one repair per model — a model that already failed its repair moves
-on (f5-04 §4.4 "repair_per_model_limit").
-
-References:
-- f5-04-multi-llm.md §4.3 (fallback chain), §4.4 (errors/retries)
-- seahorse/llm/routing.py (RoleRoute.chain)
+lockstep. Retry budgets are small by design: max_retries=2 per call, and one
+repair per model — a model that already failed its repair moves on.
 """
 
 from __future__ import annotations
@@ -42,7 +37,7 @@ from seahorse.llm.errors import (
 _logger = logging.getLogger("seahorse.llm.fallback")
 
 # Transient family: retry with backoff. ContextWindowError is added at the
-# fallback layer (f5-04 §4.3) but NOT retried in-place — see below.
+# fallback layer but NOT retried in-place — see below.
 _TRANSIENT = (TimeoutError, RateLimitError, TransientHTTPError)
 
 T = TypeVar("T")
@@ -95,9 +90,8 @@ def call_with_fallback(
     """Walk ``primary → secondary → tertiary``, retrying each backend.
 
     A backend that exhausts its retries OR raises ``ContextWindowError`` moves
-    the chain on (f5-04 §4.3). When every backend is exhausted, raises
-    ``LLMError`` with the last error — the extractor converts this to
-    ``degraded_to_skip``.
+    the chain on. When every backend is exhausted, raises ``LLMError`` with the
+    last error — the extractor converts this to ``degraded_to_skip``.
     """
     last_err: Exception | None = None
     for model_id in route_chain:

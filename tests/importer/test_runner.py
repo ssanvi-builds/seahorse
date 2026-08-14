@@ -1,8 +1,8 @@
-"""Tests for the importer runner (#15, f5-15 §3).
+"""Tests for the importer runner.
 
 Signals:
 - ``dry-run`` maps without writing (no facade calls); manifest + projected notes.
-- ``commit`` writes via ``#12.remember`` (ADR-09 single entry).
+- ``commit`` writes via the facade's ``remember`` (single entry point).
 - Idempotency: re-import of the same record -> NOOP -> ``skipped_idempotent``.
 - Collisions are RETURNED (``WriteResult.collisions_detected``), never raised;
   default policy ``skip`` -> ``skipped_collision``.
@@ -177,7 +177,7 @@ class TestFailures:
     def test_bad_record_fails_loud_batch_continues(self, facade) -> None:
         runner = ImportRunner(facade)
         # A non-dict record makes import_record raise (record.get fails) — the
-        # runner fails that item loud and continues the batch (f5-15 §3.6).
+        # runner fails that item loud and continues the batch.
         manifest = runner.run([_record(), "not-a-dict"], mode="dry-run")
         assert manifest.aggregate["records_read"] == 2
         assert manifest.aggregate["failures"] == 1

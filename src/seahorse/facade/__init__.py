@@ -1,8 +1,8 @@
-"""#12 Memory-Native Primitives Facade — the canonical Python API.
+"""The primitives facade — the canonical Python API.
 
 Re-exports the payload types, error vocabulary, the bi-temporal / disclosure
-symbols the facade surface needs, and ``MemoryFacade`` itself. #13 (MCP) and
-#14 (CLI) import the canonical shapes from here — no transformation.
+symbols the facade surface needs, and ``MemoryFacade`` itself. The MCP server
+and the CLI import the canonical shapes from here — no transformation.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ __all__ = [
     "E_PIT_REQUIRES_T",
     "E_NOT_IN_MVP_0_1",
     "E_PIT_RECALL_MVP_0",
-    # disclosure symbols re-exported (canonical for #13/#14)
+    # disclosure symbols re-exported (canonical for the MCP server and CLI)
     "PITPoint",
     "IndexRow",
     "TimelineWindow",
@@ -78,11 +78,11 @@ __all__ = [
     "FullBatchTooLarge",
     "PitFullNotSupported",
     "NotInMVP0",
-    # return types of #12 primitives (canonical for #16 benchmark skeleton —
-    # the skeleton imports ONLY from seahorse.facade, delegation purity f5-16 §2.4)
+    # return types of the facade primitives (canonical for the benchmark
+    # skeleton — the skeleton imports ONLY from seahorse.facade)
     "WriteResult",
     "Episode",
-    # id generation re-exported so #14 (CLI) does not reach into #2 (engine)
-    # directly — the facade is the only seam (f5-14 §1, §2.3 uuid_extensions).
+    # id generation re-exported so the CLI does not reach into the engine
+    # directly — the facade is the only extension point.
     "new_uuid7",
 ]

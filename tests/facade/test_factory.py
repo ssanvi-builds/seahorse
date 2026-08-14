@@ -1,4 +1,5 @@
-"""Tests for ``seahorse.facade.factory.build_facade`` (pre-work for #13/#14)."""
+"""Tests for ``seahorse.facade.factory.build_facade`` (pre-work for the MCP
+server and CLI)."""
 
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from seahorse.persistence.storage import Storage
 
 
 class _RecordingEmbedder:
-    """``QueryEmbedder`` double that records calls (C8.4 seam tests)."""
+    """``QueryEmbedder`` double that records calls (extension-point tests)."""
 
     embedding_dim: int = 8
 
@@ -60,7 +61,7 @@ def _agent_by() -> dict:
 
 
 class _RecordingLLMClient:
-    """``LLMClient`` double that records extract calls (M4-C.3 seam tests)."""
+    """``LLMClient`` double that records extract calls (extension-point tests)."""
 
     def __init__(self, result: ExtractResult | None = None, error: Exception | None = None) -> None:
         self.calls: list[str] = []
@@ -95,11 +96,12 @@ class _RecordingLLMClient:
 
 
 class TestLlmClientSlot:
-    """M4-C.3 — ``build_facade`` gains an ``llm_client`` slot (write-path seam).
+    """``build_facade`` gains an ``llm_client`` slot (write-path extension point).
 
-    The default (None) preserves the MVP-0 honest llm→skip degrade. When a
-    real client is wired, ``remember(extraction_mode='llm')`` routes through it
-    and stores the effective LLM provenance. Skip mode never touches it.
+    The default (None) preserves the first release's honest llm→skip degrade.
+    When a real client is wired, ``remember(extraction_mode='llm')`` routes
+    through it and stores the effective LLM provenance. Skip mode never touches
+    it.
     """
 
     def test_default_no_client_degrades_llm_to_skip(self, tmp_path) -> None:
@@ -230,12 +232,12 @@ class TestBuildFacade:
 
 
 class TestEmbedModeSlot:
-    """F7 enabler (c) — ``build_facade`` gains an ``embed_mode`` slot.
+    """``build_facade`` gains an ``embed_mode`` slot.
 
     Propagated to the ``RetrievalIndexer`` (composition root, single-point swap)
-    so the F3 vectorial experiment can re-index with ``body+summary`` without
-    touching the write path (f7-experimental-design §5c). Default ``body+summary``
-    is the F3-flipped product default (f7-experiment-embed §decide).
+    so the vectorial experiment can re-index with ``body+summary`` without
+    touching the write path. Default ``body+summary`` is the vectorial
+    experiment's product default.
     """
 
     def _hybrid(self, monkeypatch, tmp_path, *, embed_mode="body+summary"):
@@ -250,7 +252,7 @@ class TestEmbedModeSlot:
         )
 
     def test_default_embed_mode_body_summary(self, monkeypatch, tmp_path) -> None:
-        # The F3 flip is at the composition root: build_facade without embed_mode
+        # The flip is at the composition root: build_facade without embed_mode
         # wires body+summary (no explicit pass-through masks the default).
         import seahorse.facade.factory as factory
 
@@ -278,13 +280,14 @@ class TestEmbedModeSlot:
 
 
 class TestPassageEmbedderSlot:
-    """F7 experiment seam — ``build_facade`` accepts a ``passage_embedder`` override.
+    """Experiment extension point — ``build_facade`` accepts a ``passage_embedder``
+    override.
 
-    The synthetic experiment (mechanical CI verification, f7 §5) needs a
-    deterministic passage embedder; the composition-root seam keeps the wiring
+    The synthetic experiment (mechanical CI verification) needs a deterministic
+    passage embedder; the composition-root extension point keeps the wiring
     honest (no monkeypatching). Default None keeps the auto-resolved fastembed
-    path. The indexer stores the override; the retriever's query seam is derived
-    over it (same async→sync adapter as the real path).
+    path. The indexer stores the override; the retriever's query extension point
+    is derived over it (same async→sync adapter as the real path).
     """
 
     def test_passage_embedder_override_reaches_indexer_and_query_seam(
@@ -302,14 +305,15 @@ class TestPassageEmbedderSlot:
             assert isinstance(facade._retriever, HybridRetriever)
             # The write-path indexer embeds with the injected passage embedder.
             assert facade._write_path._indexer._embedder is not None  # noqa: SLF001
-            # The query seam is the async→sync adapter over the same embedder.
+            # The query extension point is the async→sync adapter over the same
+            # embedder.
             assert isinstance(facade._retriever._embedder, AsyncToSyncQueryEmbedder)  # noqa: SLF001
         finally:
             storage.close()
 
     def test_default_resolves_fastembed_path(self, monkeypatch, tmp_path) -> None:
         # passage_embedder=None keeps the auto-resolution (fastembed extra) —
-        # the existing `_build_passage_embedder` seam.
+        # the existing `_build_passage_embedder` extension point.
         import seahorse.facade.factory as factory
 
         captured: dict = {}
@@ -325,11 +329,11 @@ class TestPassageEmbedderSlot:
 
 
 class TestImproveIndexesSuccessor:
-    """F7 experiment enabler — the hybrid composition root indexes the successor.
+    """Experiment enabler — the hybrid composition root indexes the successor.
 
-    ``improve`` writes the new version via ``engine.improve`` (NOT #5); without
-    an index hook the successor never reaches vec0/FTS, so hybrid recall cannot
-    recover it and ``knowledge_update_accuracy`` (f5-16 §4.6) would be 0. The
+    ``improve`` writes the new version via ``engine.improve`` (NOT the write
+    path); without an index hook the successor never reaches vec0/FTS, so hybrid
+    recall cannot recover it and ``knowledge_update_accuracy`` would be 0. The
     factory wires ``on_episode_improved`` to the write-path indexer.
     """
 
@@ -361,19 +365,22 @@ class TestImproveIndexesSuccessor:
 
 
 class TestEmbedderSlot:
-    """C8.4 — ``build_facade`` gains an ``embedder`` slot (composition-root seam).
+    """``build_facade`` gains an ``embedder`` slot (composition-root extension
+    point).
 
-    MVP-0 recall is the vigente listing (``VigenteListingRetriever``) and never
-    embeds; the slot defaults to ``StubQueryEmbedder`` so the seam EXISTS at the
-    composition root (single-point swap when #7 lands), NOT so it runs. Invoking
-    the default stub raises ``E_NOT_IN_MVP_0`` (the skip-path guard). #7 is NOT
-    wired here — the slot is the point.
+    First-release recall is the current-state listing (``VigenteListingRetriever``)
+    and never embeds; the slot defaults to ``StubQueryEmbedder`` so the extension
+    point EXISTS at the composition root (single-point swap when the embedder
+    lands), NOT so it runs. Invoking the default stub raises ``E_NOT_IN_MVP_0``
+    (the skip-path guard). The embedder is NOT wired here — the slot is the
+    point.
     """
 
     def test_default_wires_stub_embedder(self, tmp_path) -> None:
-        # G2 regime forced explicitly: with the ``embeddings`` extra installed the
-        # default auto-resolves the hybrid retrieval (real embedder), so the
-        # MVP-0 stub behavior is pinned via ``retrieval_available=False``.
+        # The listing regime forced explicitly: with the ``embeddings`` extra
+        # installed the default auto-resolves the hybrid retrieval (real
+        # embedder), so the first-release stub behavior is pinned via
+        # ``retrieval_available=False``.
         facade, storage = build_facade(tmp_path / "f.db", retrieval_available=False)
         try:
             assert isinstance(facade._embedder, StubQueryEmbedder)
@@ -400,10 +407,11 @@ class TestEmbedderSlot:
             storage.close()
 
     def test_recall_does_not_invoke_embedder_in_mvp0(self, tmp_path) -> None:
-        # The MVP-0 vigente-listing recall ignores the query for ranking, so the
-        # embedder slot is NEVER consulted. This pins "no cablea #7": the seam is
-        # present but inert. MVP-1 swaps the retriever to the hybrid adapter that
-        # DOES call it (single-point change at this composition root).
+        # The first-release current-state-listing recall ignores the query for
+        # ranking, so the embedder slot is NEVER consulted. This pins that the
+        # embedder is not wired: the extension point is present but inert. A
+        # later release swaps the retriever to the hybrid adapter that DOES call
+        # it (single-point change at this composition root).
         embedder = _RecordingEmbedder()
         facade, storage = build_facade(
             tmp_path / "f.db", embedder=embedder, retrieval_available=False
@@ -417,7 +425,7 @@ class TestEmbedderSlot:
 
 
 class _FakeAsyncEmbedder:
-    """Async #7 Embedder double for the retrieval-regime wiring tests."""
+    """Async embedder double for the retrieval-regime wiring tests."""
 
     dim = 384
 
@@ -436,9 +444,9 @@ class _FakeAsyncEmbedder:
 
 
 class TestRetrievalRegime:
-    """M1-C.3 — build_facade swaps the hybrid retriever + indexer when retrieval
-    is available, and stays G2 (VigenteListingRetriever, no vector access)
-    otherwise."""
+    """build_facade swaps the hybrid retriever + indexer when retrieval is
+    available, and stays in the listing regime (VigenteListingRetriever, no
+    vector access) otherwise."""
 
     def test_default_g2_when_passage_embedder_unavailable(self, monkeypatch, tmp_path) -> None:
         import seahorse.facade.factory as factory
@@ -463,7 +471,7 @@ class TestRetrievalRegime:
         )
         try:
             assert isinstance(facade._retriever, HybridRetriever)
-            # the query seam receives the injected embedder...
+            # the query extension point receives the injected embedder...
             assert facade._retriever._embedder is embedder  # noqa: SLF001
             # ...and the write path carries the indexer.
             assert facade._write_path._indexer is not None  # noqa: SLF001
@@ -497,13 +505,12 @@ class _QueryEmbedder384:
 
 
 class TestRecencySlot:
-    """F7 enabler (a) — ``build_facade`` gains a ``recency`` slot (composition root).
+    """``build_facade`` gains a ``recency`` slot (composition root).
 
-    The ``HybridRetriever`` already propagates ``RecencyConfig | None`` (Sprint A);
-    the composition root must expose it so the benchmark SUT and CLI can wire the
-    recency experiment without touching the facade internals (single-point swap,
-    f7-experimental-design §3). Default None keeps the pure-RRF fingerprint
-    (ADR-10).
+    The ``HybridRetriever`` already propagates ``RecencyConfig | None``; the
+    composition root must expose it so the benchmark SUT and CLI can wire the
+    recency experiment without touching the facade internals (single-point
+    swap). Default None keeps the pure-RRF fingerprint (honest, deterministic).
     """
 
     def _hybrid(self, monkeypatch, tmp_path, db_name, *, clock, recency=None):
@@ -566,7 +573,7 @@ class TestRecencySlot:
             baseline = facade.recall("capital of France", k=5)
             assert baseline and baseline[0].score > 0.0  # hybrid path served
             base_by_id = {r.ep_id: r.score for r in baseline}
-            # Wire the F1 recency signal on the SAME retriever (test hook — the
+            # Wire the recency signal on the SAME retriever (test hook — the
             # build-time propagation is covered by test_recency_config_is_propagated).
             facade._retriever._recency = RecencyConfig(  # noqa: SLF001
                 gamma=1.0, half_life_days=365.0
@@ -591,13 +598,13 @@ class _FakeReranker:
 
 
 class TestRerankSlot:
-    """F7 enabler (b) — ``build_facade`` gains a ``reranker`` slot (composition root).
+    """``build_facade`` gains a ``reranker`` slot (composition root).
 
     The ``HybridRetriever`` propagates ``QueryReranker | None``; the composition
     root must expose it so the benchmark SUT and CLI can wire the rerank A/B
-    experiment without touching the facade internals (single-point swap,
-    f7-experimental-design §3). Default None keeps the pure-RRF fingerprint
-    (ADR-10). Query-time pure: wiring a reranker never requires a reindex.
+    experiment without touching the facade internals (single-point swap). Default
+    None keeps the pure-RRF fingerprint (honest, deterministic). Query-time pure:
+    wiring a reranker never requires a reindex.
     """
 
     def _hybrid(self, monkeypatch, tmp_path, db_name, *, clock, reranker=None):
@@ -668,6 +675,6 @@ class TestRerankSlot:
             rows = facade.recall("capital of France", k=5)
             assert rows
             assert rows[0].subject == "france"  # the relevant episode ranks first
-            assert rows[0].score != 0.0  # hybrid path served (no G2)
+            assert rows[0].score != 0.0  # hybrid path served (not the listing regime)
         finally:
             storage.close()

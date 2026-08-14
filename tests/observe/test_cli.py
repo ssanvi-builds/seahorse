@@ -1,9 +1,9 @@
 """Tests for ``seahorse.observe.cli`` — ``seahorse observe start|stop|status``.
 
-The observer is a single-writer background process (§4.5). ``start`` spawns a
-detached subprocess + writes the PID; ``stop`` SIGTERMs it; ``status`` reports
-whether it is running. A second ``start`` while running fails loud
-(``CliObserverRunning``, exit 95).
+The observer is a single-writer background process. ``start`` spawns a detached
+subprocess + writes the PID; ``stop`` SIGTERMs it; ``status`` reports whether it
+is running. A second ``start`` while running fails loud (``CliObserverRunning``,
+exit 95).
 """
 
 from __future__ import annotations

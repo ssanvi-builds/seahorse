@@ -1,29 +1,28 @@
-"""JSON Schema wire shapes for the 7 MCP tools (#13, MVP-0).
+"""JSON Schema wire shapes for the MCP tools.
 
 Source of truth for both ``tools/list`` (the ``inputSchema`` advertised to
 clients) and ``validate.py`` (wire-shape enforcement before the facade is
 touched). Keeping the schema as the single source means the advertised
 contract and the enforced contract cannot drift.
 
-Drift reconciled vs f5-13 (which had a stale wire enum):
-- ``cognitive_type`` enum = the 6 F3.1 values (``episodic``, ``semantic``,
+The wire enums follow the current model:
+- ``cognitive_type`` enum = the 6 canonical values (``episodic``, ``semantic``,
   ``social``, ``project_doc`` active + ``procedural``, ``working`` reserved)
-  + ``null`` — derived from ``seahorse.constants.COGNITIVE_TYPES``, NOT the
-  divergent ``["semantic","episodic","procedural",null]`` in f5-13 l.292-294
-  (SO-14-03 alignment).
+  + ``null`` — derived from ``seahorse.constants.COGNITIVE_TYPES``.
 - ``source_type`` enum = the 4 values from ``SOURCE_TYPES``.
 - ``extraction_mode`` enum = ``["skip","llm","consolidated",null]`` —
-  ``consolidated`` is schema-valid (round-trippable batch-distillation marker,
-  obsiforge §5.2) but NOT routable by single-episode ingestion (the facade
+  ``consolidated`` is schema-valid (a round-trippable marker for batch
+  distillation) but NOT routable by single-episode ingestion (the facade
   refuses it with ``E_INVALID_EXTRACTION_MODE``); ``llm_partial`` stays
   RESERVED and rejected at wire-shape.
-- ``reason`` enum has NO ``decay`` (mediated via the omitted ``expire``, mediano).
-- ``recall`` has NO ``anchor_ep_id``/``hops`` (MVP-0; rejected by
-  ``additionalProperties: false``).
-- ``forget`` has NO ``now`` (backdating risk; OQ #13 DECIDIDA — not exposed to
-  MCP agents).
+- ``reason`` enum has NO ``decay`` (mediated via the omitted ``expire``, a
+  medium-term goal).
+- ``recall`` has NO ``anchor_ep_id``/``hops`` in the first release (rejected
+  by ``additionalProperties: false``).
+- ``forget`` has NO ``now`` (backdating risk — not exposed to MCP agents).
 - ``recall_full.ep_ids`` ``maxItems = MAX_FULL_BATCH`` (wire-level REJECT —
-  ``FullBatchTooLarge`` is a #8 exception without a stable code).
+  ``FullBatchTooLarge`` is a progressive-disclosure exception without a stable
+  code).
 """
 
 from __future__ import annotations
@@ -47,21 +46,21 @@ from seahorse.contracts.index import MAX_HOPS_MVP1, PIT_KIND_VALUES
 from seahorse.disclosure.types import MAX_FULL_BATCH, SUMMARY_MAX_CHARS
 from seahorse.facade.types import ExtractionMode
 
-# F3.1-aligned cognitive_type enum (6 values + null). Single source: constants.
+# The canonical cognitive_type enum (6 values + null). Single source: constants.
 _COGNITIVE_ENUM: list[Any] = sorted(COGNITIVE_TYPES) + [None]
 _SOURCE_ENUM: list[Any] = sorted(SOURCE_TYPES)
 
-# PIT kinds (ADR-03: the two axes are never mixed). Single source: the PITKind
-# Literal via PIT_KIND_VALUES — a future ADR-03 change lives in one place.
+# PIT kinds (the two axes are never mixed). Single source: the PITKind
+# Literal via PIT_KIND_VALUES — a future kind change lives in one place.
 # ``_PIT_KIND_ENUM`` carries ``None`` for the nullable loose input fields
 # (``pit_kind``); ``_PIT_KIND_REQUIRED_ENUM`` is the non-nullable ``PITPoint.kind``
 # enum (``kind`` is required in the $def, so ``None`` is not a valid value).
 _PIT_KIND_ENUM: list[Any] = sorted(PIT_KIND_VALUES) + [None]
 _PIT_KIND_REQUIRED_ENUM: list[Any] = sorted(PIT_KIND_VALUES)
-# F3.1-aligned extraction_mode enum (skip/llm/consolidated + null). Single
-# source: the facade ``ExtractionMode`` Literal (#12-owned) — parity #13/#14, a
-# schema-value change lives in one place. ``consolidated`` is schema-valid but
-# NOT routable by single-episode ingestion; ``llm_partial`` stays reserved.
+# The canonical extraction_mode enum (skip/llm/consolidated + null). Single
+# source: the facade ``ExtractionMode`` Literal — a schema-value change lives
+# in one place. ``consolidated`` is schema-valid but NOT routable by
+# single-episode ingestion; ``llm_partial`` stays reserved.
 _EXTRACTION_MODE_ENUM: list[Any] = sorted(get_args(ExtractionMode)) + [None]
 _REASON_ENUM: list[Any] = ["contradiction", "correction", "merge", "revalidation"]
 _AXIS_ENUM: list[Any] = ["supersedes_chain", "fact_id_scope", "graph_bfs"]
@@ -121,7 +120,7 @@ _PIT_INPUT_PROPS: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
-# Tool input schemas (7 tools, MVP-0).
+# Tool input schemas.
 # ---------------------------------------------------------------------------
 
 REMEMBER_SCHEMA: dict[str, Any] = {
@@ -232,7 +231,7 @@ BUILD_PIT_SCHEMA: dict[str, Any] = {
     },
 }
 
-# Sprint C debt closure — procedural skills + deferred read-only facade tools.
+# Procedural skills + deferred read-only facade tools.
 SKILL_ADD_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,

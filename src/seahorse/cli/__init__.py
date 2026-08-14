@@ -1,10 +1,10 @@
-"""Seahorse CLI projection (#14) — Typer-based, sister of #13 (MCP/JSON-RPC).
+"""Seahorse CLI surface — Typer-based, sibling of the MCP (JSON-RPC) server.
 
-A thin translation layer over the ``MemoryFacade`` (#12): the 6 memory-native
+A thin translation layer over the ``MemoryFacade``: the 6 memory-native
 primitives (``remember`` / ``recall`` / ``recall-timeline`` / ``recall-full`` /
 ``improve`` / ``forget``) plus management commands (``init`` / ``status`` /
-``uuid7`` / ``index rebuild``). It re-exports the F3.1 types verbatim — no
-transformation, no domain logic (delegation purity, f5-14 §1).
+``uuid7`` / ``index rebuild``). It re-exports the canonical episode types
+verbatim — no transformation, no domain logic (delegation purity).
 
 Submodules:
 - ``primitives``  — logic of the 6 memory-native commands (parser-agnostic).
@@ -13,7 +13,7 @@ Submodules:
 - ``config``      — vault discovery + ``seahorse.toml``.
 - ``output``      — human / json / jsonl renderers.
 - ``errors``      — ``CliError`` (Cat C, CLI-owned).
-- ``exit_codes``  — exception → exit-code translation (mirrors #13's catalog).
+- ``exit_codes``  — exception → exit-code translation (mirrors the MCP catalog).
 """
 
 from __future__ import annotations

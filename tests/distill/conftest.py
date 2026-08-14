@@ -1,6 +1,6 @@
 """Shared fixtures for distill tests (mirror of the engine conftest).
 
-The distill layer is a client of #2 (the engine) — tests use the real
+The distill layer is a client of the engine — tests use the real
 persistence stack so the consolidated episodes are verified against the real
 storage, not a mock.
 """

@@ -1,8 +1,8 @@
-"""Tests for ``seahorse consolidate`` — the distillation CLI command (§5.3).
+"""Tests for ``seahorse consolidate`` — the distillation CLI command.
 
-The command reads the vigente set, clusters by subject recurrence (N≥3), and
-distills each cluster into a consolidated semantic knowledge note. Idempotent:
-a cluster whose key already has a consolidated note is skipped (§5.5).
+The command reads the current-state set, clusters by subject recurrence (N≥3),
+and distills each cluster into a consolidated semantic knowledge note.
+Idempotent: a cluster whose key already has a consolidated note is skipped.
 """
 
 from __future__ import annotations

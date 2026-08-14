@@ -1,9 +1,9 @@
-"""Python → wire JSON serializer for the MCP profile (#13).
+"""Python → wire JSON serializer for the MCP profile.
 
-Owns the datetime→ISO-8601 policy for the wire (R9 f5-13): timezone-aware
-datetimes serialize to UTC with a ``Z`` suffix (F3.1 §4), preserving
-microseconds. ``exclude_none=False`` — nulls are explicit so the wire shape is
-stable across MVP-0 → MVP-1 (a field that is null now stays null, not absent).
+Owns the datetime→ISO-8601 policy for the wire: timezone-aware datetimes
+serialize to UTC with a ``Z`` suffix, preserving microseconds.
+``exclude_none=False`` — nulls are explicit so the wire shape is stable across
+releases (a field that is null now stays null, not absent).
 
 All payload types are ``@dataclass(frozen=True)`` (some with nested dataclasses:
 ``FullDetail`` carries ``Episode`` + ``EpisodeProvenance`` + ``FreshnessView``;
@@ -11,8 +11,8 @@ All payload types are ``@dataclass(frozen=True)`` (some with nested dataclasses:
 through dataclasses and converts datetimes inside, without using
 ``dataclasses.asdict`` (which leaves ``datetime`` as ``datetime``).
 
-``Episode`` is a Pydantic v2 ``BaseModel(frozen=True, extra="allow")`` (F3.1
-canonical model, shipped by #3/#1). It is NOT a dataclass, so the walker has a
+``Episode`` is a Pydantic v2 ``BaseModel(frozen=True, extra="allow")`` (the
+canonical on-disk episode model). It is NOT a dataclass, so the walker has a
 dedicated ``BaseModel`` branch: it walks ``model_fields`` via ``getattr`` (so
 ``exclude=True`` fields like ``body``/``subject``/``fact_id`` still travel the
 wire) and merges ``__pydantic_extra__`` (the ``x-*`` frontmatter keys accepted
@@ -38,9 +38,9 @@ from seahorse.facade.errors import SeahorseError
 def _iso_z(dt: datetime) -> str:
     """Canonicalize a datetime to UTC ISO-8601 with a ``Z`` suffix.
 
-    Preserves microseconds. ``+00:00`` → ``Z`` (F3.1 §4). Naive datetimes are
-    assumed UTC (the facade/engine always produce timezone-aware UTC; this is
-    a defensive canonicalization, not a silent timezone shift).
+    Preserves microseconds. ``+00:00`` → ``Z``. Naive datetimes are assumed UTC
+    (the facade/engine always produce timezone-aware UTC; this is a defensive
+    canonicalization, not a silent timezone shift).
     """
     dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
     return dt.isoformat().replace("+00:00", "Z")
@@ -70,9 +70,10 @@ def to_wire(obj: Any) -> Any:
     if isinstance(obj, SeahorseError):
         return {"code": obj.code, "detail": obj.detail}
     if isinstance(obj, BaseModel) and not isinstance(obj, type):
-        # Pydantic Episode (F3.1 canonical). getattr reads exclude=True fields
-        # (body/subject/fact_id) so they travel the wire; __pydantic_extra__
-        # carries the x-* frontmatter keys accepted by extra="allow".
+        # Pydantic Episode (the canonical on-disk model). getattr reads
+        # exclude=True fields (body/subject/fact_id) so they travel the wire;
+        # __pydantic_extra__ carries the x-* frontmatter keys accepted by
+        # extra="allow".
         out = {name: to_wire(getattr(obj, name)) for name in type(obj).model_fields}
         extra = getattr(obj, "__pydantic_extra__", None)
         if extra:

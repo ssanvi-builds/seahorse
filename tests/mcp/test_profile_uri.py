@@ -1,4 +1,5 @@
-"""Tests for the profile URI + server composition + JSON-RPC method dispatch (#13)."""
+"""Tests for the profile URI + server composition + JSON-RPC method dispatch
+(the MCP server)."""
 
 from __future__ import annotations
 

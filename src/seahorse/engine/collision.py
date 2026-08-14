@@ -1,21 +1,21 @@
-"""Collision detection for I11 (owned by #2).
+"""Collision detection for concurrent writes (owned by the engine).
 
-Two vigente episodes of the same derived subject are a detectable collision
-(I11) UNLESS they share a ``supersedes`` chain (revalidate / improve within the
-chain is not a concurrent collision). Detection is fail-loud awareness only:
+Two currently valid episodes of the same derived subject are a detectable
+collision UNLESS they share a ``supersedes`` chain (revalidate / improve within
+the chain is not a concurrent collision). Detection is fail-loud awareness only:
 the caller (``apply_fact`` / ``improve``) decides whether to skip or raise.
 
-Subject derivation (SO-2 2d): ``title > first H1 > None`` normalized with NFC +
-casefold + strip + whitespace collapse. ``fact_id = SHA-256(subject)[:32]``
-(128-bit hex). ``Collision`` is an Engine-internal type (not a frontier symbol).
+Subject derivation: ``title > first H1 > None`` normalized with NFC + casefold +
+strip + whitespace collapse. ``fact_id = SHA-256(subject)[:32]`` (128-bit hex).
+``Collision`` is an Engine-internal type (not a frontier symbol).
 
 The subject-derivation primitives (``raw_subject``, ``normalize_subject``,
-``fact_id_of``) are owned by ``seahorse.frontmatter.subject`` (#3, the
-syntactic, file-aware derivation with the filename-stem fallback). The engine
-has no ``path``, so it wraps them into a body-only signature that returns
-``None`` when no title/H1 is found (the engine's "no subject → not indexed"
-contract). No derivation logic is duplicated — the engine composes the same
-primitives. ``fact_id_for`` stays here: it is the semantic fact-id (owned by #2)
+``fact_id_of``) are owned by ``seahorse.frontmatter.subject`` (the syntactic,
+file-aware derivation with the filename-stem fallback). The engine has no
+``path``, so it wraps them into a body-only signature that returns ``None`` when
+no title/H1 is found (the engine's "no subject → not indexed" contract). No
+derivation logic is duplicated — the engine composes the same primitives.
+``fact_id_for`` stays here: it is the semantic fact-id (owned by the engine)
 that hashes the derived subject.
 """
 
@@ -64,7 +64,7 @@ def fact_id_for(body: str, title: str | None = None) -> str | None:
 
 
 class CollisionDetector:
-    """Detect I11 collisions of a candidate episode against the vigente set."""
+    """Detect concurrent-subject collisions against the currently valid set."""
 
     @staticmethod
     def derive_subject(body: str, title: str | None = None) -> str | None:

@@ -1,6 +1,6 @@
 """Persistence-layer exceptions.
 
-Re-exported from ``seahorse.contracts.engine`` so the f5-06 import path
+Re-exported from ``seahorse.contracts.engine`` so the existing import path
 ``from seahorse.persistence.errors import ...`` keeps working.
 """
 

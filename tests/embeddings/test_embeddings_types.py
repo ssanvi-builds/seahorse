@@ -1,4 +1,4 @@
-"""Embeddings core types (M1-B.1, f5-07 §3.1).
+"""Embeddings core types.
 
 Pins the signed ``ModelIdentity`` (cache_key / major_version shapes), the async
 ``Embedder`` Protocol (``embed(texts, role) -> np.ndarray`` L2-unit-normalized,

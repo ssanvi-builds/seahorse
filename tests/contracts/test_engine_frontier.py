@@ -1,9 +1,10 @@
-"""Validate the #2-owned frontier extension: WriteResult + FreshnessView.
+"""Validate the engine-owned contract surface: WriteResult + FreshnessView.
 
-SO-8c (f6-signoffs.md): ``WriteResult`` separates the episode UUID (``ep_id``)
-from the subject hash (``fact_id = SHA-256(subject)[:32]``). The 4-field shape is
-the stable frontier #12/#13/#14/#16 consume; a silent field add/remove here
-fails the build. ``FreshnessView`` (5 fields) is the #13 freshness snapshot.
+``WriteResult`` separates the episode UUID (``ep_id``) from the subject hash
+(``fact_id = SHA-256(subject)[:32]``). The 4-field shape is the stable contract
+surface the facade, the MCP server, the CLI, and the benchmark harness consume;
+a silent field add/remove here fails the build. ``FreshnessView`` (5 fields) is
+the MCP server's freshness snapshot.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from seahorse.contracts import engine as engine_mod
 
 
 def test_write_result_has_exactly_4_fields():
-    # SO-8c: ep_id, fact_id, status, collisions_detected.
+    # ep_id, fact_id, status, collisions_detected.
     assert len(dataclasses.fields(WriteResult)) == 4
 
 
@@ -34,7 +35,7 @@ def test_write_result_is_frozen():
 
 
 def test_write_result_collision_shape_uses_none_ids():
-    # SO-3b fail-loud: on collision ep_id and fact_id are None.
+    # Fail-loud: on collision ep_id and fact_id are None.
     wr = WriteResult(ep_id=None, fact_id=None, status="COLLISION", collisions_detected=[object()])
     assert wr.ep_id is None
     assert wr.fact_id is None
@@ -43,7 +44,7 @@ def test_write_result_collision_shape_uses_none_ids():
 
 
 def test_write_result_ep_id_and_fact_id_are_distinct_concepts():
-    # SO-8c: ep_id is the episode UUID; fact_id is SHA-256(subject)[:32].
+    # ep_id is the episode UUID; fact_id is SHA-256(subject)[:32].
     wr = WriteResult(
         ep_id="0195d3e4-uuid-v7", fact_id="a1b2c3d4", status="ACTIVE", collisions_detected=[]
     )

@@ -1,7 +1,7 @@
-"""Tests for the F7 experiment harness (variants / decide / runner).
+"""Tests for the experiment harness (variants / decide / runner).
 
-The experiments decide F1 (recency) and F3 (embed) per f7-experimental-design
-§5. The decision functions are pure and unit-tested with crafted results (all
+The experiments decide recency and embedding behavior. The decision functions
+are pure and unit-tested with crafted results (all
 threshold branches); the runner is verified end-to-end on the synthetic corpus
 (mechanical CI verification — deterministic, no HF/Ollama).
 """
@@ -99,7 +99,7 @@ class TestVariantsFor:
         assert variants_for("embed") == embed_variants()
 
 
-# ---------------------------------------------------------------- decide (a)
+# ---------------------------------------------------------------- decide
 
 def _result(name: str, recall_global: float, ndcg: float, slices: dict, *,
             detected: str = "mvp1_rrf") -> ExperimentResult:
@@ -193,7 +193,7 @@ class TestDecideRecency:
         assert decision["variant"] == "recency_g1_hl7"
 
 
-# ---------------------------------------------------------------- decide (b)
+# ---------------------------------------------------------------- decide
 
 def _rerank_result(name: str, ndcg: float, p95: float, *,
                    detected: str = "mvp1_rrf") -> ExperimentResult:
@@ -248,7 +248,7 @@ class TestDecideRerank:
         assert decision["flip"] is False
 
 
-# ---------------------------------------------------------------- decide (c)
+# ---------------------------------------------------------------- decide
 
 class TestDecideEmbed:
     def test_flip_f3_when_recall_improves_1pp(self):
@@ -361,7 +361,7 @@ class TestRunExperimentSynthetic:
 def test_warm_db_matches_fresh_db(tmp_path):
     """Warm-DB (shared ingest across variants) must produce IDENTICAL retrieval
     metrics to fresh-DB runs — the recency boost reads created_at/now, both
-    deterministic and identical across the shared template (f7 §5a)."""
+    deterministic and identical across the shared template."""
     warm = run_experiment(
         experiment="recency", corpus="synthetic",
         output_dir=str(tmp_path / "warm"), **_fake_kwargs(), warm_db=True,
@@ -382,7 +382,7 @@ def test_warm_db_matches_fresh_db(tmp_path):
 
 def test_warm_db_embed_reuses_body_template(tmp_path):
     """The embed experiment's body variant reuses the body template; only
-    body+summary needs its own ingest (f7 §5c — different embedding text)."""
+    body+summary needs its own ingest (different embedding text)."""
     cache: dict = {}
     report = run_experiment(
         experiment="embed", corpus="synthetic",
@@ -401,7 +401,7 @@ def test_clock_delta_spans_real_date_range(synthetic_dataset):
     """The AdvancingClock delta is derived from the haystack's real date spread
     (span / deduped turns), NOT a fixed 1-day-per-write — a fixed delta would
     make created_at span N_writes days (547 years for LMEB's 199K turns) and
-    the recency boost's age would be meaningless (f7 §5a)."""
+    the recency boost's age would be meaningless."""
     from seahorse.benchmark.experiments.runner import _clock_delta_seconds
 
     delta = _clock_delta_seconds(synthetic_dataset)

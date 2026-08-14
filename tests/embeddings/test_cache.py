@@ -1,4 +1,4 @@
-"""Query cache (M1-B.4, f5-07 §3.5).
+"""Query cache.
 
 ``CachedQueryEmbedder`` wraps a sync ``QueryEmbedder`` with an in-memory LRU
 (cap 4096) + the SQLite ``EmbeddingsCacheRepository`` (migration 007). Key:

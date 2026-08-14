@@ -1,12 +1,12 @@
-"""Tests for ``MemoryFacade.context()`` — the shared bootstrap method (§6.2).
+"""Tests for ``MemoryFacade.context()`` — the shared bootstrap method.
 
 The context bootstrap is by RECENCY, not semantics (claude-mem does not inject
 semantic context — it injects recency + summaries + a fetch pointer; Seahorse
-replicates this, obsiforge §6.1). Four blocks at INDEX level, no body:
-(1) recent episodes (created_at desc, ep_id asc — sort G2, ADR-10);
-(2) current vigente state; (3) last session grouped by provenance.session_id
-(INDEX list, NOT an abstractive summary — honesty, §6.2); (4) header + counter
-+ pointer. Deterministic (ADR-10).
+replicates this behavior). Four blocks at INDEX level, no body:
+(1) recent episodes (created_at desc, ep_id asc — the listing-regime sort,
+deterministic); (2) the current-state listing; (3) last session grouped by
+provenance.session_id (INDEX list, NOT an abstractive summary — honesty);
+(4) header + counter + pointer. Deterministic.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ T0 = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
 
 
 def _remember(facade, *, body: str, session_id: str, now: datetime) -> None:
-    # The body's H1 becomes the subject (title > H1 > None, SO-2).
+    # The body's H1 becomes the subject (title > H1 > None).
     facade.remember(
         RememberPayload(
             body=f"# {body}\n\nDetails about {body}.",
@@ -53,7 +53,7 @@ def test_context_empty_db(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# recent episodes — deterministic G2 sort
+# recent episodes — deterministic listing-regime sort
 # ---------------------------------------------------------------------------
 
 
@@ -118,8 +118,8 @@ def test_context_last_session_is_most_recent(tmp_path) -> None:
 
 
 def test_context_last_session_is_index_list_not_summary(tmp_path) -> None:
-    """Honesty (§6.2): 'last session' is an INDEX list, not an abstractive
-    summary — Seahorse has no session summaries yet. Declared, not faked."""
+    """Honesty: 'last session' is an INDEX list, not an abstractive summary —
+    Seahorse has no session summaries yet. Declared, not faked."""
     facade, storage = build_facade(tmp_path / "seahorse.db")
     try:
         _remember(facade, body="Session fact", session_id="sess-1", now=T0)
@@ -133,7 +133,7 @@ def test_context_last_session_is_index_list_not_summary(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# determinism (ADR-10)
+# determinism
 # ---------------------------------------------------------------------------
 
 

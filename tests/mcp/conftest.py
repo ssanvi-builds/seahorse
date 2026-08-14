@@ -1,4 +1,4 @@
-"""Shared fixtures + payload builders for #13 MCP tests.
+"""Shared fixtures + payload builders for the MCP server tests.
 
 Two layers:
 - **Real-stack facade** (``real_facade``): a ``MemoryFacade`` over real
@@ -206,12 +206,12 @@ def make_pit(kind: str = "state_at") -> PITPoint:
 # ---------------------------------------------------------------------------
 # RecordingFacade — records the 7 facade method calls (delegation-purity double).
 #
-# This double structurally enforces #13's delegation invariants that
+# This double structurally enforces the MCP server's delegation invariants that
 # outcome-only tests cannot catch: it asserts WHAT facade method was called,
 # with WHICH kwargs, in WHICH order — and that guards fire BEFORE any read
 # (call counts stay zero on the wire-shape error path). It is NOT a real
 # facade; it returns configurable results so handlers can be tested in
-# isolation from #2/#5/#8.
+# isolation from the engine, write path, and disclosure shaper.
 # ---------------------------------------------------------------------------
 
 
@@ -248,7 +248,7 @@ class RecordingFacade:
         self.audit_result: list = []
         self.chain_result: list = []
 
-    # The facade method names + signatures #13 calls.
+    # The facade method names + signatures the MCP server calls.
     def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
         self.remember_calls.append(
             {
@@ -309,7 +309,7 @@ class RecordingFacade:
             raise self.build_pit_raise
         return self.build_pit_result
 
-    # Sprint C debt closure: the deferred read-only facade tools.
+    # The deferred read-only facade tools.
     def freshness_view(self, ep_id, *, now=None):
         self.freshness_calls.append({"ep_id": ep_id, "now": now})
         return self.freshness_result

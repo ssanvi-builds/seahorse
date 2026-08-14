@@ -1,11 +1,11 @@
-"""FastEmbed ONNX backend (M1-B.2, f5-07 §3.2.2 + OQ-7-12).
+"""FastEmbed ONNX backend.
 
 The backend wraps fastembed's sync ``TextEmbedding`` behind the async
 ``Embedder`` Protocol via ``asyncio.to_thread``. These tests use a duck-typed
 fake model (``query_embed`` / ``passage_embed`` generators) so the async routing
 and L2 normalization are pinned WITHOUT the real model / onnxruntime. The real
-factory is gated on ``SEAHORSE_RUN_MODEL_TESTS=1`` + network (OQ-7-12 bundle:
-mE5-small fp32-O4, 235MB — int8 not published for arm64, verified live).
+factory is gated on ``SEAHORSE_RUN_MODEL_TESTS=1`` + network (mE5-small
+fp32-O4, 235MB — int8 not published for arm64, verified live).
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ def gate_model_tests() -> None:
 
 
 def test_build_fastembed_embedder_real(gate_model_tests) -> None:
-    # OQ-7-12: real build registers the mE5-small custom model (fp32-O4 bundle)
+    # Real build registers the mE5-small custom model (fp32-O4 bundle)
     # and constructs the embedder; requires the extra 'embeddings' + network.
     from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
 
@@ -119,9 +119,9 @@ def test_build_fastembed_embedder_real(gate_model_tests) -> None:
 
 
 def test_build_fastembed_embedder_idempotent(gate_model_tests) -> None:
-    # F7 warm-DB: a facade is built per variant, each calling this — the second
+    # Warm-DB: a facade is built per variant, each calling this — the second
     # call must reuse the registered model, not raise "already registered"
-    # (which would silently degrade the hybrid regime to G2).
+    # (which would silently degrade the hybrid regime to the listing regime).
     from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
 
     e1 = build_fastembed_embedder()

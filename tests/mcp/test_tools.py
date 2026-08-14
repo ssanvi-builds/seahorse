@@ -1,9 +1,10 @@
-"""Tests for the 7 MCP tool handlers (#13) — delegation purity + guards-before-read.
+"""Tests for the 7 MCP tool handlers (the MCP server) — delegation purity +
+guards-before-read.
 
 Uses ``RecordingFacade`` to assert WHAT facade method was called, with WHICH
 kwargs, and that wire-shape guards fire BEFORE any facade read (call counts
 stay zero on the error path). This is the structural enforcement outcome-only
-tests cannot provide (the #8 adversarial-review lesson).
+tests cannot provide (the structural-review lesson).
 """
 
 from __future__ import annotations
@@ -77,7 +78,7 @@ class TestRememberHandler:
         assert facade.remember_calls[0]["payload"].tags == ("a", "b")
 
     def test_summary_forwarded(self) -> None:
-        # OQ3 enabler: the wire accepts summary as an additive editorial field.
+        # The wire accepts summary as an additive editorial field.
         facade = RecordingFacade()
         dispatch("remember", {"body": "hi", "by": _by(), "summary": "A summary"}, facade, 1)
         assert facade.remember_calls[0]["payload"].summary == "A summary"
@@ -217,7 +218,8 @@ class TestRecallHandler:
         assert "subject_filter" not in facade.recall_calls[0]
 
     def test_pit_recall_surfaces_mvp0_refusal(self) -> None:
-        # A resolved pit → recall raises PitRecallNotSupportedMVP0 (MVP-1 path).
+        # A resolved pit → recall raises PitRecallNotSupportedMVP0 (the
+        # later-release path).
         facade = RecordingFacade()
         facade.recall_raise = PitRecallNotSupportedMVP0()
         facade.build_pit_result = make_pit("state_at")
@@ -320,9 +322,9 @@ class TestRecallFullHandler:
         assert pit.kind == "state_at"
 
     def test_resolved_pit_surfaces_pit_full_not_supported(self) -> None:
-        # A resolved pit → recall_full raises PitFullNotSupported (#8 MVP-0
-        # refusal). #13 translates it to -32050 with exception_class, no
-        # synthetic seahorse_code.
+        # A resolved pit → recall_full raises PitFullNotSupported (the
+        # disclosure shaper's first-release refusal). The MCP server translates
+        # it to -32050 with exception_class, no synthetic seahorse_code.
         from seahorse.disclosure.types import PitFullNotSupported
 
         facade = RecordingFacade()
@@ -346,7 +348,8 @@ class TestRecallFullHandler:
 
 class TestImproveHandler:
     def test_delegates_verbatim_by(self) -> None:
-        # #13 does NOT synthesize effective provenance — the facade does.
+        # The MCP server does NOT synthesize effective provenance — the facade
+        # does.
         facade = RecordingFacade()
         by = {"agent_id": "a", "session_id": "s", "source_type": "human"}
         dispatch("improve", {"ep_id": "ep-1", "new_body": "new", "by": by}, facade, 1)
@@ -354,7 +357,7 @@ class TestImproveHandler:
         assert call["ep_id"] == "ep-1"
         assert call["new_body"] == "new"
         assert call["by"] == by  # verbatim, no effective-provenance synthesis
-        assert "extraction_mode" not in call["by"]  # #13 did not add it
+        assert "extraction_mode" not in call["by"]  # the MCP server did not add it
         assert call["reason"] == "correction"  # default
 
     def test_passes_reason_when_present(self) -> None:
@@ -392,7 +395,7 @@ class TestImproveHandler:
 
 class TestForgetHandler:
     def test_delegates_with_now_none(self) -> None:
-        # OQ #13 DECIDIDA: the wire has no `now`; #13 never overrides the clock.
+        # The wire has no `now`; the MCP server never overrides the clock.
         facade = RecordingFacade()
         dispatch("forget", {"ep_id": "ep-1", "reason": "wrong", "by": _by()}, facade, 1)
         call = facade.forget_calls[0]
@@ -446,7 +449,7 @@ class TestBuildPitHandler:
             1,
         )
         # precedence is the facade's: pit object + (pit_kind, t) all passed;
-        # facade.build_pit resolves (pit wins). #13 does not pick.
+        # facade.build_pit resolves (pit wins). The MCP server does not pick.
         call = facade.build_pit_calls[0]
         assert call["pit"] is not None  # parsed PITPoint
         assert call["pit_kind"] == "known_at"
@@ -464,7 +467,8 @@ class TestBuildPitHandler:
         assert facade.build_pit_calls[0]["t"] == datetime(2026, 7, 16, 12, 0, 0, tzinfo=UTC)
 
     def test_pit_kind_without_t_propagates_facade_error(self) -> None:
-        # #13 does NOT pre-validate; facade.build_pit raises E_PIT_REQUIRES_T.
+        # The MCP server does NOT pre-validate; facade.build_pit raises
+        # E_PIT_REQUIRES_T.
         facade = RecordingFacade()
         facade.build_pit_raise = SeahorseError(code="E_PIT_REQUIRES_T", detail="needs t")
         resp = dispatch("build_pit", {"pit_kind": "state_at"}, facade, 1)
@@ -556,7 +560,7 @@ class TestHandlerDirectCall:
         assert len(getattr(facade, record_attr)) == 1
 
 # ---------------------------------------------------------------------------
-# Sprint C debt closure — skill_add / skill_show + deferred read-only tools.
+# skill_add / skill_show + deferred read-only tools.
 # ---------------------------------------------------------------------------
 
 

@@ -1,42 +1,39 @@
-"""#4 Multi-LLM client contract — frozen from MVP-0 (SO-5a).
+"""Multi-LLM client contract — frozen from the first release.
 
-#5 (write-path) imports this contract so the ``llm`` extraction path compiles
-and is testable without a real LLM. MVP-0 never calls it: ``StubWritePath``
-degrades ``llm``→``skip`` and ``StubLLMClient`` raises ``NotImplementedError``.
+The write path imports this contract so the ``llm`` extraction path compiles
+and is testable without a real LLM. The first release never calls it:
+``StubWritePath`` degrades ``llm``→``skip`` and ``StubLLMClient`` raises
+``NotImplementedError``.
 
-Materialization note: the signed contract (f6-signoffs SO-5a) uses Pydantic
-``BaseModel``. The result/budget types are materialized as stdlib ``@dataclass``
-(the field sets are identical to the signed contract; this mirrors
-``contracts/episode.py``, where #1 signs a Pydantic model and #6 materializes it
-as a dataclass). ``LLMClient.extract`` reconciles ``schema_hint`` to
-``type[BaseModel]`` (f5-04 §2.3) — the MVP-0 materialization typed it ``str``,
-a drift corrected when the real client landed; Pydantic is a core dependency
-since #3, so this does not relax the dependency posture.
+Materialization note: the signed contract uses Pydantic ``BaseModel``. The
+result/budget types are materialized as stdlib ``@dataclass`` (the field sets
+are identical to the signed contract; this mirrors ``contracts/episode.py``,
+where the engine signs a Pydantic model and persistence materializes it as a
+dataclass). ``LLMClient.extract`` reconciles ``schema_hint`` to
+``type[BaseModel]`` — the earlier materialization typed it ``str``, a drift
+corrected when the real client landed. Pydantic is already a core dependency,
+so this does not relax the dependency posture.
 
 ``BudgetContext`` is the documented immutability exception: a mutable execution
 accumulator that advances across retries (``spent_usd`` / ``tokens_spent`` via
 ``record_actual_cost``). It is execution state, not domain data.
 
-Sync/async seam (C8.7 [54]-decision): this contract is deliberately SYNC
-(``complete`` / ``extract`` return results, not coroutines). The real #4 adapter
-will almost certainly be async under the hood (HTTP LLM clients are async-first),
-so #4 owns the async→sync bridge — it runs its event loop internally and returns
-a plain ``CompletionResult`` / ``ExtractResult``. Keeping the SEAM sync means #5
-(``StubWritePath`` / the future real write-path) calls ``extract`` synchronously
-with no ``await`` ripple: the facade (#12), MCP (#13) and CLI (#14) stay sync and
-do not need to become async just because the LLM client is. The cost of the bridge
-(a thread or a ``loop.run_until_complete``) is encapsulated in #4 and is invisible
-to every caller above. This is the single-point swap the C8.7 seam hardening
-preserves: when #4 ships, only #4 changes; #5 and everything above it are untouched.
-MVP-0 never reaches this seam — ``StubWritePath`` degrades ``llm``→``skip`` before
-``StubLLMClient`` is ever called — but the contract is frozen now so the swap is a
-single component's work, not a cross-cutting async refactor.
-
-References:
-- f6-signoffs.md SO-5a (signed contract — LLMClient, ExtractResult, BudgetContext, StubLLMClient)
-- f5-04-multi-llm.md (Multi-LLM extraction design)
-- f5-05-skip-extraction.md sec 5 line 111 (llm→skip degrade: core None, intent logged)
-- seahorse/write_path/ (#5 — the consumer; StubWritePath degrades llm→skip)
+Sync/async boundary: this contract is deliberately SYNC (``complete`` /
+``extract`` return results, not coroutines). The real LLM adapter will almost
+certainly be async under the hood (HTTP LLM clients are async-first), so the
+adapter owns the async→sync bridge — it runs its event loop internally and
+returns a plain ``CompletionResult`` / ``ExtractResult``. Keeping the boundary
+sync means the write path (``StubWritePath`` / the future real write-path)
+calls ``extract`` synchronously with no ``await`` ripple: the facade, the MCP
+server and the CLI stay sync and do not need to become async just because the
+LLM client is. The cost of the bridge (a thread or a ``loop.run_until_complete``)
+is encapsulated in the LLM layer and is invisible to every caller above. This is
+the single-point swap the sync boundary preserves: when the real adapter ships,
+only the adapter changes; the write path and everything above it are untouched.
+The first release never reaches this boundary — ``StubWritePath`` degrades
+``llm``→``skip`` before ``StubLLMClient`` is ever called — but the contract is
+frozen now so the swap is a single component's work, not a cross-cutting async
+refactor.
 """
 
 from __future__ import annotations
@@ -64,7 +61,7 @@ class CompletionResult:
 class ExtractResult:
     """Result of ``LLMClient.extract`` (structured fact extraction).
 
-    Field set is the signed SO-5a contract. ``model_used`` is ``None`` when
+    Field set matches the signed contract. ``model_used`` is ``None`` when
     ``degraded_to_skip`` is ``True`` (the write-path fell back to the
     deterministic skip-path).
     """
@@ -84,7 +81,7 @@ class BudgetContext:
 
     Advances across retries via ``record_actual_cost``. ``fallback_to_skip=True``
     lets the write-path degrade to the deterministic skip-path when the budget
-    is exhausted (MVP-0 honesty: no silent overspend).
+    is exhausted (no silent overspend).
     """
 
     cap_usd: float = 0.002
@@ -93,8 +90,9 @@ class BudgetContext:
     tokens_spent: int = 0
     repair_budget: int = 2
     fallback_to_skip: bool = True
-    # Extra execution state (non-signed, additive, non-breaking): retry counter
-    # and the reason of the last degradation, for observability by #5/#13.
+    # Extra execution state (additive, non-breaking): retry counter and the
+    # reason of the last degradation, for observability by the write path and
+    # the MCP server.
     retries_used: int = 0
     last_degradation_reason: str | None = field(default=None)
 
@@ -112,12 +110,12 @@ class BudgetContext:
 
 @runtime_checkable
 class LLMClient(Protocol):
-    """LLM client seam (signed SO-5a, stable MVP-0 → MVP-1).
+    """LLM client contract (signed, stable across releases).
 
     ``complete`` is the free-form completion entry; ``extract`` is the
-    structured fact extraction used by the #5 write-path. Both take an optional
-    ``BudgetContext`` so the caller can bound cost. MVP-0's ``StubLLMClient``
-    refuses both — the ``llm`` path is MVP-1.
+    structured fact extraction used by the write path. Both take an optional
+    ``BudgetContext`` so the caller can bound cost. The ``StubLLMClient`` stub
+    refuses both — the ``llm`` path is a later release.
     """
 
     def complete(
@@ -143,13 +141,13 @@ class LLMClient(Protocol):
 
 
 class StubLLMClient:
-    """MVP-0 stub for ``LLMClient`` — refuses both methods.
+    """First-release stub for ``LLMClient`` — refuses both methods.
 
-    The ``llm`` extraction path is not implemented in MVP-0. ``StubWritePath``
-    degrades ``extraction_mode='llm'`` to the deterministic skip-path before
-    this is ever called, so a raise here is a fail-loud backstop: if a caller
-    reaches the stub directly, it learns the path is MVP-1 rather than getting
-    silent garbage.
+    The ``llm`` extraction path is not implemented in the first release.
+    ``StubWritePath`` degrades ``extraction_mode='llm'`` to the deterministic
+    skip-path before this is ever called, so a raise here is a fail-loud
+    backstop: if a caller reaches the stub directly, it learns the path is not
+    yet implemented rather than getting silent garbage.
     """
 
     def complete(
@@ -162,8 +160,8 @@ class StubLLMClient:
         timeout_s: float | None = None,
     ) -> CompletionResult:
         raise NotImplementedError(
-            "LLM completion not implemented in MVP-0. "
-            "Use extraction_mode='skip' (default). The LLM path is MVP-1."
+            "LLM completion not implemented in the current release. "
+            "Use extraction_mode='skip' (default). The LLM path is a later release."
         )
 
     def extract(
@@ -177,8 +175,8 @@ class StubLLMClient:
         timeout_s: float | None = None,
     ) -> ExtractResult:
         raise NotImplementedError(
-            "LLM extraction not implemented in MVP-0. "
-            "Use extraction_mode='skip' (default). The LLM path is MVP-1."
+            "LLM extraction not implemented in the current release. "
+            "Use extraction_mode='skip' (default). The LLM path is a later release."
         )
 
 

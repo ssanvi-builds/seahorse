@@ -1,11 +1,11 @@
 """ConnectionManager — single writer (reentrant RLock) + N readers (WAL pool).
 
-Owns the SQLite file for the whole process (ADR-04 / f5-06 §3.5). All connections
+Owns the SQLite file for the whole process. All connections
 use ``check_same_thread=False`` because the repository API is sync and the caller
 (FastAPI) offloads calls to a threadpool — the connection may be touched from a
 different thread than the one that created it.
 
-Threading model (signed in f5-06 §3.5):
+Threading model:
 
 - **One writer connection.** Every mutation goes through it, guarded by a
   reentrant ``threading.RLock`` so the ``improve`` pattern
@@ -21,8 +21,8 @@ Threading model (signed in f5-06 §3.5):
   acquisitions only bump the depth counter.
 
 The RLock serializes agent writes against each other; it does NOT coordinate with
-the human co-editor (Obsidian, ADR-03). Lost-update against the human is a declared
-MVP limitation.
+the human co-editor (Obsidian). Lost-update against the human is a declared
+limitation of the current release.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ _PRAGMAS = (
 # Concurrent first-open on a fresh DB: `PRAGMA journal_mode = WAL` needs an
 # exclusive lock and does NOT honor busy_timeout, so two processes opening the
 # same new file can race with "database is locked". Retry the pragma
-# application a bounded number of times (matrix finding, concurrency combo).
+# application a bounded number of times.
 _OPEN_RETRIES = 5
 _OPEN_RETRY_DELAY_S = 0.1
 
@@ -64,15 +64,16 @@ class ConnectionManager:
     ) -> None:
         self._db_path = str(db_path)
         self._pool_size = pool_size
-        # C8.2: MVP-1 forward-compat seam. SQLite loadable extensions (e.g.
+        # Forward-compat extension point. SQLite loadable extensions (e.g.
         # ``vec0`` from sqlite-vec) are needed when the vector / FTS5-on-vec
-        # backends land in #6. MVP-0 ships zero runtime deps and the binary is
-        # absent, so the default is empty -> ``_load_extensions`` is never
-        # called and MVP-0 never depends on extension-loading being compiled
-        # into the sqlite3 module. MVP-1 passes ``extensions=("vec0",)`` at the
-        # composition root; ``open()`` then loads each named extension on the
-        # writer AND every reader (kNN runs on the WAL reader pool, so the
-        # extension must be present on each connection that touches vec0 tables).
+        # backends land in the persistence layer. The current release ships
+        # zero runtime deps and the binary is absent, so the default is empty
+        # -> ``_load_extensions`` is never called and the current release never
+        # depends on extension-loading being compiled into the sqlite3 module.
+        # A later release passes ``extensions=("vec0",)`` at the composition
+        # root; ``open()`` then loads each named extension on the writer AND
+        # every reader (kNN runs on the WAL reader pool, so the extension must
+        # be present on each connection that touches vec0 tables).
         self._extensions = tuple(extensions)
         self._lock = threading.RLock()
         self._depth = 0
@@ -91,7 +92,7 @@ class ConnectionManager:
         Not idempotent: a second ``open()`` without an intervening ``close()``
         raises rather than orphaning the first connection set. When
         ``extensions`` is non-empty, each named extension is loaded on the writer
-        and every reader (C8.2 seam; default empty = no-op, MVP-0 safe).
+        and every reader (default empty = no-op, safe in the current release).
         """
         with self._lock:
             if self._writer is not None or self._readers:
@@ -168,28 +169,29 @@ class ConnectionManager:
                 time.sleep(_OPEN_RETRY_DELAY_S)
 
     def _load_extensions(self, conn: sqlite3.Connection) -> None:
-        """Load each named SQLite extension on ``conn`` (C8.2 MVP-1 seam).
+        """Load each named SQLite extension on ``conn``.
 
         Only called from ``open()`` when ``self._extensions`` is non-empty, so
-        MVP-0 (default empty) never reaches this path. Enables extension
-        loading, loads each name, then re-disables loading so arbitrary SQL
-        cannot ``load_extension`` later. A missing binary or a Python build
-        without extension-loading support raises here — MVP-1 must surface
-        that (MVP-0 is unaffected because it never sets ``extensions``).
+        the current release (default empty) never reaches this path. Enables
+        extension loading, loads each name, then re-disables loading so
+        arbitrary SQL cannot ``load_extension`` later. A missing binary or a
+        Python build without extension-loading support raises here — a later
+        release must surface that (the current release is unaffected because it
+        never sets ``extensions``).
 
-        M1-A.1: the ``vec0`` name resolves to the ``sqlite-vec`` PyPI package
+        The ``vec0`` name resolves to the ``sqlite-vec`` PyPI package
         (``import sqlite_vec; sqlite_vec.load(conn)``) rather than a raw
         ``load_extension`` — the package does not publish a ``vec0.dylib``-named
         binary, and ``sqlite_vec.load`` locates the bundled shared library.
         ``sqlite_vec`` is imported lazily here (never at module top) so the core
-        import path stays free of heavy deps (C8.2 import-laziness guard).
+        import path stays free of heavy deps.
         """
         if not hasattr(conn, "enable_load_extension"):
             # A Python build without SQLITE_ENABLE_LOAD_EXTENSION lacks the
             # method entirely. Fail with an actionable message instead of a
-            # cryptic AttributeError (matrix finding: `uv sync` on a pyenv
-            # Python). doctor already reports this as a FAIL; the DB commands
-            # must not lie about the cause.
+            # cryptic AttributeError (`uv sync` on a pyenv Python). The doctor
+            # already reports this as a FAIL; the DB commands must not lie
+            # about the cause.
             raise RuntimeError(
                 "this Python's sqlite3 lacks enable_load_extension (sqlite-vec "
                 "needs it); install Seahorse with a Python that supports it, "

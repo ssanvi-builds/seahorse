@@ -1,11 +1,11 @@
-"""Bi-temporal memory metrics (f5-16 §4.5).
+"""Bi-temporal memory metrics.
 
-- ``FAMAGapMetric`` — MVP-1 SANITY CHECK: gap=0 is the expected outcome of the
+- ``FAMAGapMetric`` — sanity check: gap=0 is the expected outcome of the
   bi-temporal design (recall filters invalidated episodes by construction). It
   is NOT a competitive finding without a baseline; the discriminator is
   ``knowledge_update_accuracy``.
-- ``KnowledgeUpdateAccuracyMetric`` — the MVP-1 flag metric: fraction of
-  knowledge-update questions where the NEW (post-``improve``) version appears
+- ``KnowledgeUpdateAccuracyMetric`` — the current-release flag metric: fraction
+  of knowledge-update questions where the NEW (post-``improve``) version appears
   in top-k. Exercises the ``supersedes`` chains the ``KnowledgeUpdateSimulator``
   creates.
 """
@@ -24,12 +24,12 @@ from seahorse.benchmark.contracts import (
 
 
 class FAMAGapMetric:
-    """FAMA-gap sanity check (f5-16 §4.5 level 1).
+    """FAMA-gap sanity check.
 
     ``gap = |responses with invalidated_ep_ids| / |responses|``. Since recall
-    returns vigente only (``invalid_at IS NULL``), the expected value is 0.0 —
-    reported with the explicit caveat that it does not measure a competitive
-    gap without a baseline.
+    returns only current-state episodes (``invalid_at IS NULL``), the expected
+    value is 0.0 — reported with the explicit caveat that it does not measure a
+    competitive gap without a baseline.
     """
 
     def name(self) -> str:
@@ -70,8 +70,8 @@ class KnowledgeUpdateAccuracyMetric:
     """Fraction of knowledge-update questions where the NEW version is in top-k.
 
     The ``new_ep_ids_after_improve`` are tracked by the ``KnowledgeUpdateSimulator``
-    and attached to ``inst.metadata`` by the runner (f5-16 §4.5). A question
-    counts correct when at least one new ep_id appears in the retrieved set.
+    and attached to ``inst.metadata`` by the runner. A question counts correct
+    when at least one new ep_id appears in the retrieved set.
     """
 
     def name(self) -> str:

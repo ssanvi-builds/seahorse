@@ -1,14 +1,14 @@
-"""F7 experiments — the harness that decides F1 (recency), F2 (rerank), F3 (embed).
+"""Benchmark experiments — the harness that decides recency, rerank, and embedding.
 
-An experiment runs the #16 skeleton once per variant (``score_source`` is the
-manifest variant, f7 §3) and applies the f7 §5 thresholds to the retrieval
+An experiment runs the benchmark harness once per variant (``score_source`` is
+the manifest variant) and applies the decision thresholds to the retrieval
 metrics. ``run_experiment`` is the entry point; the decision functions are pure
 and independently testable.
 
-Honesty (ADR-10): ``--corpus synthetic`` (CI default) verifies the harness
+Fail-loud honesty: ``--corpus synthetic`` (CI default) verifies the harness
 MECHANICS with a deterministic embedder/reranker — it is NOT the science. The
-authoritative F1/F2/F3 decision comes from ``--corpus lmeb-s`` with the real
-embeddings + LongMemEval haystack.
+authoritative recency/rerank/embedding decisions come from ``--corpus lmeb-s``
+with the real embeddings + LongMemEval haystack.
 """
 
 from seahorse.benchmark.experiments.decide import (

@@ -1,20 +1,16 @@
-"""Interactive LLM provider onboarding for the CLI (#14, M4-C.3).
+"""Interactive LLM provider onboarding for the CLI.
 
 ``seahorse init --llm`` opens a no-TUI wizard (``typer.prompt`` /
-``typer.confirm`` — the CLI stays Textual-free per f5-14 §1.3 / ADR-10). Steps:
-detect what the user HAS (a running Ollama, free-tier API keys in the
-environment), pick a provider (default preselected by the detection), choose
-the model id (local size 1.7b / 0.6b for Ollama), an optional fallback model,
-an optional self-test, and write the ``[llm]`` section to ``seahorse.toml``.
+``typer.confirm`` — the CLI stays Textual-free). Steps: detect what the user
+HAS (a running Ollama, free-tier API keys in the environment), pick a provider
+(default preselected by the detection), choose the model id (local size 1.7b /
+0.6b for Ollama), an optional fallback model, an optional self-test, and write
+the ``[llm]`` section to ``seahorse.toml``.
 
-A user with NOTHING lands on local Ollama qwen3:1.7b (the 2026-08-04 factory
-default): zero registration, zero key, data never leaves the machine. A
-free-tier cloud key (Gemini / Groq / OpenRouter) is the QUALITY lever and is
-preselected when present, with Ollama available as the no-network tertiary.
-
-References:
-- f5-04-multi-llm.md §2.4/§2.5 (providers, role route)
-- seahorse/cli/config.py (LlmConfig, write_llm_config)
+A user with NOTHING lands on local Ollama qwen3:1.7b (the factory default):
+zero registration, zero key, data never leaves the machine. A free-tier cloud
+key (Gemini / Groq / OpenRouter) is the QUALITY lever and is preselected when
+present, with Ollama available as the no-network tertiary.
 """
 
 from __future__ import annotations
@@ -40,8 +36,8 @@ class _ProviderMeta:
     label: str
 
 
-# Provider catalog (f5-04 §2.4 + the 2026-08-04 free-tier palanca). Ordered:
-# Ollama first (local-first), then the cloud quality lever.
+# Provider catalog. Ordered: Ollama first (local-first), then the cloud
+# quality lever.
 _PROVIDERS: dict[str, _ProviderMeta] = {
     "ollama": _ProviderMeta(None, "qwen3:1.7b", "Ollama local (private, zero config)"),
     "gemini": _ProviderMeta("GEMINI_API_KEY", "gemini-2.5-flash", "Gemini (free tier)"),

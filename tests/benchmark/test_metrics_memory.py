@@ -1,4 +1,4 @@
-"""Tests for the bi-temporal memory metrics (f5-16 §4.5)."""
+"""Tests for the bi-temporal memory metrics."""
 
 from __future__ import annotations
 

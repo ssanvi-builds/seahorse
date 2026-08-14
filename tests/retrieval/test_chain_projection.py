@@ -1,17 +1,17 @@
-"""Chain PIT projection tests (f5-11 §7.5; ADR-03 axis separation).
+"""Chain PIT projection tests (axis separation).
 
 The ``supersedes`` chain is projected read-only under PIT. The two axes NEVER
-mix (ADR-03): ``state_at`` reads ONLY ``valid_at``/``invalid_at`` (valid_time);
+mix: ``state_at`` reads ONLY ``valid_at``/``invalid_at`` (valid_time);
 ``known_at`` reads ONLY ``created_at``/``expired_at`` (transaction_time). The
-predicates mirror ``tests/disclosure/conftest._pit_ok`` — NOT spec §7.5, which
-mixes axes (it includes ``expired_at`` in the state_at predicate — an ADR-03
+predicates mirror the shared disclosure test helper — NOT the spec, which mixes
+axes (it includes ``expired_at`` in the state_at predicate — an axis-separation
 violation). These tests lock the corrected behavior.
 
 Signals:
 - ``_chain_active_now``: last episode that is not invalidated, not expired, and
   valid (``valid_at is None or valid_at <= now``).
 - ``_chain_vigent_at``: state_at — ``valid_at IS NULL`` ("from forever") is valid
-  at any ``t`` (CC-2); ``expired_at`` (transaction_time) does NOT affect the
+  at any ``t``; ``expired_at`` (transaction_time) does NOT affect the
   result; ``invalid_at`` (valid_time) does.
 - ``_chain_known_at``: known_at — ``invalid_at`` (valid_time) does NOT affect the
   result; ``expired_at`` (transaction_time) does.
@@ -64,8 +64,8 @@ class TestChainActiveNow:
 
 class TestChainVigentAtStateAxisOnly:
     def test_expired_at_does_not_affect_state_at(self):
-        # v has expired_at set (transaction_time) but is vigent on the valid_time
-        # axis -> STILL vigent_at t. ADR-03: state_at ignores expired_at.
+        # v has expired_at set (transaction_time) but is current-state on the
+        # valid_time axis -> STILL current-state at t. state_at ignores expired_at.
         v = _ep("v", created_at=T0, valid_at=T0, expired_at=T2)
         assert _chain_vigent_at(_chain(v), T1) is v
 
@@ -78,24 +78,24 @@ class TestChainVigentAtStateAxisOnly:
         assert _chain_vigent_at(_chain(v), T1) is None  # valid_at > t1
 
     def test_valid_at_none_is_vigent_anytime(self):
-        # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid
-        # at ANY t. The state_at predicate is ``valid_at IS NULL OR valid_at <= t``,
-        # mirroring ``is_valid_at`` / ``get_vigente`` (the canonical engine
-        # predicates already include NULL). The previous drift excluded NULL,
-        # mis-treating "from forever" as PENDING.
+        # valid_at IS NULL = "from forever" — valid at ANY t. The state_at
+        # predicate is ``valid_at IS NULL OR valid_at <= t``, mirroring
+        # ``is_valid_at`` / ``get_vigente`` (the canonical engine predicates
+        # already include NULL). The previous drift excluded NULL, mis-treating
+        # "from forever" as PENDING.
         v = _ep("v", created_at=T0)  # valid_at None
         assert _chain_vigent_at(_chain(v), T1) is v
 
     def test_last_vigent_wins(self):
         v1 = _ep("v1", created_at=T0, valid_at=T0, invalid_at=T2)
-        v2 = _ep("v2", created_at=T1, valid_at=T1)  # still vigent at T1.5
+        v2 = _ep("v2", created_at=T1, valid_at=T1)  # still current-state at T1.5
         assert _chain_vigent_at(_chain(v1, v2), T1) is v2
 
 
 class TestChainKnownAtTransactionAxisOnly:
     def test_invalid_at_does_not_affect_known_at(self):
         # v has invalid_at set (valid_time) but is known on the transaction_time
-        # axis -> STILL known_at t. ADR-03: known_at ignores invalid_at.
+        # axis -> STILL known_at t. known_at ignores invalid_at.
         v = _ep("v", created_at=T0, invalid_at=T1)
         assert _chain_known_at(_chain(v), T2) == [v]
 

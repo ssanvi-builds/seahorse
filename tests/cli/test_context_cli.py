@@ -1,9 +1,9 @@
-"""Tests for ``seahorse context`` — the CLI bootstrap command (§6.3).
+"""Tests for ``seahorse context`` — the CLI bootstrap command.
 
 The hook calls the CLI which calls the facade — ``MemoryFacade.context()`` is
 the single point of change. The command renders the four INDEX-level blocks and
 degrades to "no context" when the DB is empty (the day-1 context is empty until
-episodes are indexed, §15.3 redesign 3).
+episodes are indexed).
 """
 
 from __future__ import annotations

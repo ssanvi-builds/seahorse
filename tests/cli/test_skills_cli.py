@@ -1,9 +1,9 @@
-"""``seahorse skill`` CLI — delegation purity + R5 trust gate.
+"""``seahorse skill`` CLI — delegation purity + the trust gate.
 
-The skill surface is a client of #12 (MemoryFacade) and the procedural layer:
-``add`` delegates to ``record_procedure`` (canonical body validated before any
-write), ``list`` uses ``get_vigente`` filtered to procedural, ``search`` uses
-``recall`` with the procedural filter, ``show`` uses ``recall_full`` + the R5
+The skill surface is a client of the facade (MemoryFacade) and the procedural
+layer: ``add`` delegates to ``record_procedure`` (canonical body validated before
+any write), ``list`` uses ``get_vigente`` filtered to procedural, ``search``
+uses ``recall`` with the procedural filter, ``show`` uses ``recall_full`` + the
 trust gate at the CLI layer (never reaches into the facade's internals).
 """
 

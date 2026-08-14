@@ -1,26 +1,28 @@
-"""Memory-native primitive commands for the CLI (#14).
+"""Memory-native primitive commands for the CLI.
 
 The logic layer of the 6 primitives (``remember`` / ``recall`` /
 ``recall-timeline`` / ``recall-full`` / ``improve`` / ``forget``) plus the
-``expire`` / ``revalidate`` stubs (SO-14-05). These functions are
-parser-agnostic: ``app.py`` wires Typer callbacks that parse argv and call
-them; tests call them directly with a ``MemoryFacade`` (real via
-``build_facade`` or a ``RecordingFacade`` double).
+``expire`` / ``revalidate`` stubs. These functions are parser-agnostic:
+``app.py`` wires Typer callbacks that parse argv and call them; tests call them
+directly with a ``MemoryFacade`` (real via ``build_facade`` or a
+``RecordingFacade`` double).
 
-Delegation purity (f5-14 §1, load-bearing):
-- #14 is a CLIENT of #12. It calls the facade only — never #2/#5/#8/#11.
+Delegation purity (load-bearing):
+- The CLI is a CLIENT of the facade. It calls the facade only — never the
+  engine, the write path, the disclosure layer, or the retrieval layer.
 - CLI-shape validation is limited to: size caps (constants.py), vocabulary
   membership the facade does NOT enforce (``source_type`` / ``cognitive_type``),
   and ISO-8601 parsing. Facade-owned checks (empty body/query, missing
   source_type, invalid extraction_mode, PIT kind/t) are LEFT to surface as Cat A
-  exit codes (64+) — #14 does not invent ``SeahorseError`` codes (f5-14 §3.3).
-- ``list[IndexRow]`` always (shape stable MVP-0 → MVP-1). ``--pit`` on recall
+  exit codes (64+) — the CLI does not invent ``SeahorseError`` codes.
+- ``list[IndexRow]`` always (shape stable across releases). ``--pit`` on recall
   INDEX → ``E_PIT_RECALL_MVP_0`` (70) from the facade, not intercepted.
-- ``--tag`` is NOT exposed in MVP-0 (facade rejects non-empty tags with
-  ``E_NOT_IN_MVP_0_1``; ADR-10 honesty + YAGNI — tags are MVP-1).
-- ``now`` IS exposed on ``forget`` (f5-13 §9.2: CLI is where the clock override
-  lives for tests / internal CLI; backdating risk is bounded to the local
-  surface, unlike #13 MCP which hides it).
+- ``--tag`` is NOT exposed in the current release (facade rejects non-empty
+  tags with ``E_NOT_IN_MVP_0_1``; fail-loud honesty + YAGNI — tags are a later
+  release).
+- ``now`` IS exposed on ``forget``: the CLI is where the clock override lives
+  for tests / internal use; backdating risk is bounded to the local surface,
+  unlike the MCP server which hides it.
 """
 
 from __future__ import annotations
@@ -79,10 +81,11 @@ def _build_provenance(
     """Build the caller-authority ``Provenance`` dict (facade-owned type).
 
     Validates ``source_type`` membership (the facade only checks presence, not
-    membership — #14 guards the vocabulary at the CLI border so garbage does
+    membership — the CLI guards the vocabulary at the border so garbage does
     not get stored verbatim by the engine). ``agent_id``/``session_id`` are
-    length-capped; they are NOT required for ``source_type=agent`` in MVP-0
-    (the facade/engine do not enforce it — documented future enhancement).
+    length-capped; they are NOT required for ``source_type=agent`` in the
+    current release (the facade/engine do not enforce it — documented future
+    enhancement).
     """
     if source_type not in SOURCE_TYPES:
         raise CliUsageError(
@@ -128,14 +131,14 @@ def run_remember(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse remember`` — clean creation via #5 ``ingest`` (ADR-09).
+    """``seahorse remember`` — clean creation via the write path (near-zero cost).
 
     ``extraction_mode`` validation is intentionally DEFERRED to the facade — it
-    owns ``E_INVALID_EXTRACTION_MODE`` (66). #14 does not replicate mode
-    validation (delegation purity, f5-14 §3.3); a typo like ``llm_partial``
-    surfaces as Cat A exit 66, not a CLI usage error. ``summary`` is an additive
-    editorial field (OQ3 enabler): when omitted, the write path derives a
-    deterministic fallback (first sentence of the body).
+    owns ``E_INVALID_EXTRACTION_MODE`` (66). The CLI does not replicate mode
+    validation (delegation purity); a typo like ``llm_partial`` surfaces as Cat
+    A exit 66, not a CLI usage error. ``summary`` is an additive editorial
+    field: when omitted, the write path derives a deterministic fallback
+    (first sentence of the body).
     """
     _require_le(body, limit=BODY_MAX_CHARS, field="body")
     _validate_cognitive_type(cognitive_type)
@@ -179,7 +182,7 @@ def run_recall(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse recall`` — INDEX level (MVP-0 G2 vigente listing)."""
+    """``seahorse recall`` — INDEX level (current-state listing)."""
     _require_le(query, limit=QUERY_MAX_CHARS, field="query")
     _validate_cognitive_type(cognitive_type)
     if subject_filter is not None:
@@ -192,11 +195,11 @@ def run_recall(
         pit = facade.build_pit(pit_kind=pit_kind, t=t)
 
     # Facade validates empty query (E_EMPTY_QUERY=67) and pit on INDEX
-    # (E_PIT_RECALL_MVP_0=70). #14 does NOT intercept — those are Cat A.
+    # (E_PIT_RECALL_MVP_0=70). The CLI does NOT intercept — those are Cat A.
     #
-    # Forward optional filters only when present (sister-projection parity with
-    # #13: absent keys are ABSENT in the facade call, not collapsed to None —
-    # a structural delegation-purity invariant, not a behavioral difference).
+    # Forward optional filters only when present (parity with the MCP server:
+    # absent keys are ABSENT in the facade call, not collapsed to None — a
+    # structural delegation-purity invariant, not a behavioral difference).
     recall_kwargs: dict[str, Any] = {"pit": pit, "k": top_k}
     if cognitive_type is not None:
         recall_kwargs["cognitive_type"] = cognitive_type
@@ -217,12 +220,12 @@ def run_context(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse context`` — the memory bootstrap (SessionStart hook, §6.3).
+    """``seahorse context`` — the memory bootstrap (SessionStart hook).
 
-    Renders the four INDEX-level blocks (recent / vigente / last session /
-    header + counter + pointer) via the context assembler. The hook calls the
+    Renders the four INDEX-level blocks (recent / current-state / last session
+    / header + counter + pointer) via the context assembler. The hook calls the
     CLI which calls the facade — the facade's ``context()`` is the single point
-    of change (obsiforge §6.3). Degrades to "no context" when the DB is empty.
+    of change. Degrades to "no context" when the DB is empty.
     """
     from seahorse.context.assembler import render_context
 
@@ -241,11 +244,11 @@ def run_consolidate(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse consolidate`` — distill recurrent episodes (§5.3).
+    """``seahorse consolidate`` — distill recurrent episodes.
 
-    Reads the vigente set, clusters by subject recurrence (N≥3), and distills
-    each cluster into a consolidated semantic knowledge note. Idempotent: a
-    cluster whose key already has a consolidated note is skipped (§5.5).
+    Reads the current-state set, clusters by subject recurrence (N≥3), and
+    distills each cluster into a consolidated semantic knowledge note.
+    Idempotent: a cluster whose key already has a consolidated note is skipped.
     """
     from seahorse.distill.consolidate import consolidate
 
@@ -300,9 +303,9 @@ def run_recall_timeline(
 ) -> None:
     """``seahorse recall-timeline`` — TIMELINE level (anchor-based, no body).
 
-    ``hops`` is the #10 ``graph_bfs`` traversal depth (1-2; >2 surfaces #8's
-    ``HopsCapExceeded`` — the CLI does NOT replicate the cap, delegation
-    purity).
+    ``hops`` is the ``graph_bfs`` traversal depth (1-2; >2 surfaces the
+    disclosure layer's ``HopsCapExceeded`` — the CLI does NOT replicate the
+    cap, delegation purity).
     """
 
     _require_le(anchor_ep_id, limit=EP_ID_MAX_CHARS, field="anchor-ep-id")
@@ -333,8 +336,8 @@ def run_recall_full(
     """``seahorse recall-full`` — FULL level (hydrates body, cap MAX_FULL_BATCH=5).
 
     The batch cap (``FullBatchTooLarge`` → 84) and PIT-in-full refusal
-    (``PitFullNotSupported`` → 85) are #8's domain contract — #14 does NOT
-    replicate them (delegation purity, f5-14 §1).
+    (``PitFullNotSupported`` → 85) are the disclosure layer's domain contract —
+    the CLI does NOT replicate them (delegation purity).
     """
 
     for ep_id in ep_ids:
@@ -394,11 +397,11 @@ def run_forget(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse forget`` — bi-temporal soft-delete (ADR-07).
+    """``seahorse forget`` — bi-temporal soft-delete.
 
-    ``now`` IS exposed (f5-13 §9.2): the CLI is the local surface where the
-    clock override lives for tests / internal use, unlike #13 MCP (backdating
-    risk bounds it to the local actor).
+    ``now`` IS exposed: the CLI is the local surface where the clock override
+    lives for tests / internal use, unlike the MCP server (backdating risk
+    bounds it to the local actor).
     """
 
     _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
@@ -411,19 +414,20 @@ def run_forget(
 
 
 # ---------------------------------------------------------------------------
-# expire / revalidate — SO-14-05: CLI-intercepted, Cat C CLI_NOT_IN_MVP_0 (75).
+# expire / revalidate — CLI-intercepted, Cat C CLI_NOT_IN_MVP_0 (75).
 # ---------------------------------------------------------------------------
 
 
 def run_expire_revalidate(command: str) -> None:
-    """Refuse ``expire`` / ``revalidate`` at the CLI layer (SO-14-05).
+    """Refuse ``expire`` / ``revalidate`` at the CLI layer.
 
     Never reaches ``facade.expire``/``facade.revalidate`` (which raise
     ``E_NOT_IN_MVP_0_1``). The CLI owns the "reserved command" surface so the
     user sees the command exists and is reserved, not absent (fail-loud,
-    divergent from #13 MCP which omits the tools entirely — honest divergence).
+    divergent from the MCP server which omits the tools entirely — honest
+    divergence).
     """
-    raise CliNotInMVP0(command, reason="decay/revalidate are MVP-1+ (mediano)")
+    raise CliNotInMVP0(command, reason="decay/revalidate are a later release (medium-term goal)")
 
 
 __all__ = [

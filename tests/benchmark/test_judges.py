@@ -1,4 +1,4 @@
-"""Tests for the judges (f5-16 §6.3 bias mitigations)."""
+"""Tests for the judges (bias mitigations)."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def test_llm_judge_parses_no(monkeypatch):
 
 
 def test_llm_judge_pair_position_swap(monkeypatch):
-    """A wins only if judged better in both orders (f5-16 §6.3)."""
+    """A wins only if judged better in both orders."""
     judge = LLMJudge("ollama/qwen2.5:7b")
     calls = []
 
@@ -76,6 +76,6 @@ def test_llm_judge_pair_position_swap(monkeypatch):
         return _resp_with("yes" if "Answer A: A" in content else "no")
 
     install_litellm(monkeypatch, fake_completion)
-    # A wins only if judged better in both orders (f5-16 §6.3)
+    # A wins only if judged better in both orders
     assert judge.judge_pair("Q?", "A", "B", "rubric") is True
     assert len(calls) == 2  # forward + backward

@@ -1,9 +1,9 @@
 """Tests for ``seahorse.distill.consolidate`` — the consolidate orchestration.
 
-``consolidate(facade)`` reads the vigente set, clusters by subject recurrence
-(N≥3, §5.3), and distills each cluster into a consolidated semantic episode via
-the facade. The consolidated body uses the stable clustering key as its H1
-(no ``[session_tag:n]`` suffix). The sources stay vigente.
+``consolidate(facade)`` reads the current-state set, clusters by subject
+recurrence (N≥3), and distills each cluster into a consolidated semantic
+episode via the facade. The consolidated body uses the stable clustering key as
+its H1 (no ``[session_tag:n]`` suffix). The sources stay current-state.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def test_consolidate_distills_recurrent_cluster(tmp_path) -> None:
         assert report.items[0].key == "fix the flaky recall test"
         assert report.items[0].source_count == 3
         assert report.items[0].status == "ACTIVE"
-        # The consolidated episode is a semantic knowledge note (4 vigente:
+        # The consolidated episode is a semantic knowledge note (4 current-state:
         # 3 sources + 1 consolidated).
         eps = facade.get_vigente()
         assert len(eps) == 4
@@ -76,7 +76,7 @@ def test_consolidate_sources_stay_vigente(tmp_path) -> None:
             )
         consolidate(facade)
         eps = facade.get_vigente()
-        # 4 vigente: 3 sources + 1 consolidated (none invalidated).
+        # 4 current-state: 3 sources + 1 consolidated (none invalidated).
         assert len(eps) == 4
     finally:
         storage.close()
@@ -98,7 +98,7 @@ def test_consolidate_ignores_below_threshold(tmp_path) -> None:
 
 
 def test_consolidate_is_deterministic(tmp_path) -> None:
-    """Two fresh facades with the same data produce the same report (ADR-10)."""
+    """Two fresh facades with the same data produce the same report."""
     reports = []
     for idx in range(2):
         db_dir = tmp_path / f"db-{idx}"
@@ -119,7 +119,7 @@ def test_consolidate_is_deterministic(tmp_path) -> None:
 
 
 def test_consolidate_is_idempotent(tmp_path) -> None:
-    """§5.5: a cluster whose key already has a consolidated note is skipped —
+    """A cluster whose key already has a consolidated note is skipped —
     the second run does NOT create a duplicate knowledge note."""
     facade, storage = _facade(tmp_path / "seahorse.db")
     try:

@@ -1,12 +1,12 @@
-"""Claude Code adapter — the first harness adapter (obsiforge §4.2).
+"""Claude Code adapter — the first harness adapter.
 
 The adapter is the ONLY piece that touches a harness. It builds envelopes from
-hook payloads, REDACTS before enqueue (nothing raw is ever persisted, §4.4),
-and applies ``drop_tools`` (Read/Bash) BEFORE enqueue — their content is
-entirely secret and redaction cannot guarantee it is clean (§15.2 redesign 3).
-The worker owns ``skip_tools`` (discard from the turn body) + the drop backstop.
+hook payloads, REDACTS before enqueue (nothing raw is ever persisted), and
+applies ``drop_tools`` (Read/Bash) BEFORE enqueue — their content is entirely
+secret and redaction cannot guarantee it is clean. The worker owns
+``skip_tools`` (discard from the turn body) + the drop backstop.
 
-The four hooks (obsiforge §4.2):
+The four hooks:
 - ``SessionStart`` — registers the session (prompt_number=0).
 - ``UserPromptSubmit`` — advances the persisted prompt_number (turn boundary)
   and enqueues the prompt event.
@@ -15,11 +15,6 @@ The four hooks (obsiforge §4.2):
 - ``Stop`` — enqueues the stop marker (drains the open turn).
 
 The engine never sees a hook — only ``RememberPayload`` (delegation purity).
-
-References:
-- obsiforge-evolution-architecture.md §4.2 (event contract, adapter)
-- obsiforge-evolution-architecture.md §4.4 (redaction at enqueue)
-- obsiforge-evolution-architecture.md §15.2 redesign 3 (drop_tools Read/Bash)
 """
 
 from __future__ import annotations
@@ -72,7 +67,7 @@ def handle_user_prompt_submit(
     agent_id: str | None = None,
 ) -> None:
     """UserPromptSubmit hook: advance the persisted prompt_number (turn
-    boundary, §15.2) and enqueue the prompt event."""
+    boundary) and enqueue the prompt event."""
     prompt_number = queue.advance_prompt_number(session_id)
     env = Envelope(
         schema_version="1.0",
@@ -100,8 +95,8 @@ def handle_post_tool_use(
     """PostToolUse hook: redact + enqueue the tool event.
 
     ``drop_tools`` (Read/Bash) are dropped BEFORE enqueue — their content is
-    entirely secret and redaction cannot guarantee it is clean (§15.2 redesign
-    3). Nothing raw is ever persisted (§4.4).
+    entirely secret and redaction cannot guarantee it is clean. Nothing raw is
+    ever persisted.
     """
     if should_drop_event(tool_name):
         return

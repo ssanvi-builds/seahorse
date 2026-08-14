@@ -1,8 +1,8 @@
-"""End-to-end CLI tests via the ``invoke`` harness (#14).
+"""End-to-end CLI tests via the ``invoke`` harness for the CLI.
 
 Exercises the real Typer parser + ``main()`` exception-translation seam over
 the real facade (SQLite stack). Exit codes are the contract — every path is
-asserted against the f5-14 §3.3 layout.
+asserted against the documented exit-code layout.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def _make_claude_mem_db(tmp_path) -> str:
 
 def test_benchmark_experiment_retrieval_only_wires_stub(monkeypatch):
     """``--retrieval-only`` passes the deterministic StubReaderLLM (no Ollama)
-    to the experiment runner — the F1/F3 decision metrics are retrieval-only."""
+    to the experiment runner — the decision metrics are retrieval-only."""
     captured: dict = {}
 
     class _FakeReport:
@@ -121,14 +121,14 @@ def test_remember_json_output(vault):
     obj = json.loads(out)
     assert obj["status"] == "ACTIVE"
     assert obj["ep_id"]
-    # Honest MVP-0 shape (WriteResult, no embedded episode — ADR-10).
+    # Honest first-release shape (WriteResult, no embedded episode — fail-loud honesty).
     # fact_id may be None with the stub write path; the key is present.
     assert "fact_id" in obj
     assert obj["collisions_detected"] == []
 
 
 def test_remember_jsonl_shortcut(vault):
-    """--jsonl is a shortcut for --format jsonl (f5-14 §3.4)."""
+    """--jsonl is a shortcut for --format jsonl."""
     invoke(["--vault", str(vault), "remember", "a"])
     invoke(["--vault", str(vault), "remember", "b"])
     code, out, err = invoke(["--vault", str(vault), "--jsonl", "recall", "x"])
@@ -182,7 +182,7 @@ def test_recall_timeline_round_trip(vault):
 
 
 def test_improve_then_forget_conflict(vault):
-    """improve invalidates the original → forget on it raises 87 (Cat B)."""
+    """improve invalidates the original → forget on it raises 87 (disclosure error)."""
     _, out, _ = invoke(["--vault", str(vault), "--json", "remember", "x"])
     ep = json.loads(out)["ep_id"]
     code, out, err = invoke(["--vault", str(vault), "improve", ep, "corrected"])
@@ -211,7 +211,7 @@ def test_status_command(vault):
     assert code == 0, err
     assert "Seahorse vault" in out
     assert "skip" in out
-    # Onboarding: the retrieval regime is surfaced (hybrid or G2).
+    # Onboarding: the retrieval regime is surfaced (hybrid or the listing regime).
     assert "retrieval:" in out
 
 
@@ -223,7 +223,7 @@ def test_uuid7_command():
 
 
 # ---------------------------------------------------------------------------
-# Reserved stubs (Cat C, exit 75).
+# Reserved stubs (exit 75).
 # ---------------------------------------------------------------------------
 
 
@@ -241,7 +241,7 @@ def test_reserved_commands_exit_75(vault, argv):
     code, out, err = invoke(["--vault", str(vault), *argv])
     assert code == CLI_NOT_IN_MVP_0, err
     assert "CLI_NOT_IN_MVP_0" in err
-    assert "reserved in MVP-0" in err
+    assert "reserved in the current release" in err
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ def test_no_such_command(vault):
 
 
 # ---------------------------------------------------------------------------
-# Cat A — facade/engine domain errors.
+# Facade/engine domain errors.
 # ---------------------------------------------------------------------------
 
 
@@ -331,7 +331,7 @@ def test_invalid_pit_kind_exit_68(vault):
 
 
 def test_invalid_extraction_mode_exit_66(vault):
-    """extraction_mode validation is the facade's → Cat A 66 (not CLI usage 2)."""
+    """extraction_mode validation is the facade's → domain error 66 (not CLI usage 2)."""
     code, out, err = invoke(
         ["--vault", str(vault), "remember", "x", "--extraction-mode", "llm_partial"]
     )
@@ -341,7 +341,7 @@ def test_invalid_extraction_mode_exit_66(vault):
 
 
 def test_bad_timeline_axis_exit_86(vault):
-    """recall-timeline with a non-materialized axis → NotInMVP0 (Cat B 86, #8)."""
+    """recall-timeline with a non-materialized axis → NotInMVP0 (disclosure error 86)."""
     _, out, _ = invoke(["--vault", str(vault), "--json", "remember", "x"])
     ep = json.loads(out)["ep_id"]
     code, out, err = invoke(["--vault", str(vault), "recall-timeline", ep, "--axis", "created_at"])
@@ -351,7 +351,7 @@ def test_bad_timeline_axis_exit_86(vault):
 
 
 # ---------------------------------------------------------------------------
-# Cat B — #8 disclosure contract errors.
+# Disclosure contract errors.
 # ---------------------------------------------------------------------------
 
 
@@ -386,7 +386,7 @@ def test_not_found_exit_88(vault):
 
 
 # ---------------------------------------------------------------------------
-# Cat C — bootstrap/config errors.
+# Bootstrap/config errors.
 # ---------------------------------------------------------------------------
 
 
@@ -436,7 +436,7 @@ def test_error_payload_is_json_when_json_flag(vault):
     code, out, err = invoke(["--vault", str(vault), "--json", "remember", "   "])
     assert code == 64
     obj = json.loads(err)
-    # f5-14 §3.3: errors carry an {"error": {...}} envelope.
+    # Errors carry an {"error": {...}} envelope.
     assert "error" in obj
     payload = obj["error"]
     assert payload["seahorse_code"] == "E_EMPTY_BODY"

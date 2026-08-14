@@ -1,4 +1,4 @@
-"""``CIGate`` — CI exit codes 0/10/3 (f5-16 §6.4, PRML v0.1 compatible).
+"""``CIGate`` — CI exit codes 0/10/3.
 
 - 0 = Pass — all metrics within expected bounds.
 - 10 = Fail — a metric is below its threshold.

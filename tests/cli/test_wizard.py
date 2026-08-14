@@ -1,4 +1,4 @@
-"""Tests for the interactive LLM provider wizard (M4-C.3).
+"""Tests for the interactive LLM provider wizard.
 
 The wizard is a no-TUI flow (typer.prompt/confirm). The tests drive it with a
 fake prompt/confirm (mimicking typer's ``type=int`` coercion) and assert the

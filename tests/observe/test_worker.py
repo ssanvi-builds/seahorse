@@ -1,12 +1,10 @@
 """Tests for ``seahorse.observe.worker`` — the observer worker.
 
-The worker drains the queue, batches by SESSION (F7 decision (d) — por_sesion:
-the turn is NOT a recoverable unit, f7-experiment-batch), renders each turn via
-the deterministic batcher, and writes episodes via ``facade.remember``
-(skip-first, ADR-09). Thresholding (§4.3): a turn without a user prompt → no
-episode; body < 40 chars → no episode; skip_tools discard the event;
-drop_tools discard the event entirely. The OQ3 summary skips the H1 (§15.2
-redesign 4).
+The worker drains the queue, batches by SESSION (the turn is NOT a recoverable
+unit), renders each turn via the deterministic batcher, and writes episodes via
+``facade.remember`` (skip-first). Thresholding: a turn without a user prompt →
+no episode; body < 40 chars → no episode; skip_tools discard the event;
+drop_tools discard the event entirely. The summary skips the H1.
 """
 
 from __future__ import annotations
@@ -150,7 +148,7 @@ def test_drain_summary_skips_h1(facade_and_queue) -> None:
     _worker(facade, queue).drain()
     rows = facade.recall("flaky recall", k=10)
     summary = rows[0].summary or ""
-    # §15.2 redesign 4: the summary must NOT be the tagged H1.
+    # The summary must NOT be the tagged H1.
     assert "[sess" not in summary
     assert "flaky recall" in summary  # first sentence of the content
 
@@ -181,7 +179,7 @@ def test_drain_empty_queue(facade_and_queue) -> None:
 
 
 # ---------------------------------------------------------------------------
-# thresholding (§4.3)
+# thresholding
 # ---------------------------------------------------------------------------
 
 

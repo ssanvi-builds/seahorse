@@ -1,6 +1,6 @@
 """Observer CLI commands — ``seahorse observe start|stop|status|run``.
 
-The observer is a single-writer background process (obsiforge §4.5):
+The observer is a single-writer background process:
 - ``start`` — spawns ``observe run`` as a detached subprocess, writes the PID.
 - ``stop`` — SIGTERM the PID, removes the PID file.
 - ``status`` — reports whether the observer is running.
@@ -11,7 +11,6 @@ The PID file lives in ``{seahorse_dir}/observer/observer.pid``. A second
 competing writer would break single-writer semantics.
 
 References:
-- obsiforge-evolution-architecture.md §4.5 (single-writer queue)
 - seahorse/cli/errors.py (CliObserverRunning)
 """
 
@@ -111,7 +110,7 @@ def run_observe_status(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -
 
 
 def run_observe_start(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
-    """Spawn the observer as a detached subprocess (single-writer, §4.5)."""
+    """Spawn the observer as a detached subprocess (single-writer)."""
     pid = _read_pid(cfg)
     if pid is not None and _pid_alive(pid):
         raise CliObserverRunning(pid)
@@ -213,8 +212,8 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
 
     Reads the hook env vars (``CLAUDE_HOOK_EVENT_NAME`` / ``CLAUDE_SESSION_ID``
     / ``CLAUDE_PROMPT`` / ``CLAUDE_TOOL_*``) and POSTs the envelope to the unix
-    socket. The hook must NEVER abort the agent session (§15.3 redesign 3): a
-    missing observer or a failed POST is a silent no-op (exit 0).
+    socket. The hook must NEVER abort the agent session: a missing observer or a
+    failed POST is a silent no-op (exit 0).
     """
     event_name = os.environ.get("CLAUDE_HOOK_EVENT_NAME", "")
     event_type = _HOOK_EVENT_TYPES.get(event_name)
@@ -243,9 +242,9 @@ def run_observe_run(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> N
     """Run the observer in the foreground (endpoint thread + worker loop).
 
     Builds the facade + queue from the resolved config and delegates to
-    ``run_observer``. The observer is a client of #12 — the engine never sees a
-    hook, only ``RememberPayload``. Requires the ``[observe]`` section (written
-    by ``seahorse setup``); a missing section fails loud (ADR-10).
+    ``run_observer``. The observer is a client of the facade — the engine never
+    sees a hook, only ``RememberPayload``. Requires the ``[observe]`` section
+    (written by ``seahorse setup``); a missing section fails loud.
     """
     from seahorse.facade.factory import build_facade
     from seahorse.facade.types import FacadeConfig

@@ -1,4 +1,4 @@
-"""Entrypoint tests for the runnable stdio MCP server (#13 → C1).
+"""Entrypoint tests for the runnable stdio MCP server.
 
 Two surfaces must launch the SAME server from an install:
 
@@ -11,8 +11,8 @@ Two surfaces must launch the SAME server from an install:
 
 Invariants guarded here:
 - ``main`` exists and is callable with injectable stdio (no real pipes needed).
-- vault/db resolution reuses the CLI seam (a missing vault → exit 82, not a
-  traceback; ``SEAHORSE_VAULT`` is honored).
+- vault/db resolution reuses the CLI extension point (a missing vault → exit
+  82, not a traceback; ``SEAHORSE_VAULT`` is honored).
 - ``serverInfo.version`` is single-sourced from ``importlib.metadata`` so the
   version bump flows without touching ``profile.py``.
 - ``import seahorse.mcp`` stays stdlib-only: it must NOT load Typer nor pull
@@ -103,7 +103,7 @@ def test_main_creates_db_and_runs_remember_recall(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# vault/db resolution reuses the CLI seam
+# vault/db resolution reuses the CLI extension point
 # ---------------------------------------------------------------------------
 
 
@@ -192,7 +192,7 @@ def test_seahorse_mcp_subcommand_is_listed() -> None:
 
 
 # ---------------------------------------------------------------------------
-# adversarial-review fixes (C1 pre-commit review)
+# review fixes (pre-commit review)
 # ---------------------------------------------------------------------------
 
 
@@ -223,7 +223,8 @@ def test_main_survives_broken_client_pipe(tmp_path) -> None:
 
 def test_main_honors_vault_top_k(tmp_path) -> None:
     """The console script honors ``seahorse.toml`` ``top_k`` (parity with the
-    ``seahorse mcp`` subcommand). With 4 vigente facts and ``top_k = 2``, recall
+    ``seahorse mcp`` subcommand). With 4 current-state facts and ``top_k = 2``,
+    recall
     returns at most 2; without the fix (default ``top_k = 10``) it would be 4.
     """
     from seahorse.mcp.profile import main

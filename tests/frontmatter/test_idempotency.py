@@ -1,4 +1,4 @@
-"""Migrator idempotency — re-running a migrated vault is a no-op (f5-03 §3.5)."""
+"""Migrator idempotency — re-running a migrated vault is a no-op."""
 
 from __future__ import annotations
 

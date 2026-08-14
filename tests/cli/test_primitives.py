@@ -1,10 +1,10 @@
 """``seahorse.cli.primitives`` — delegation purity + CLI-shape guards.
 
-The ``RecordingFacade`` double structurally enforces #14's invariants:
+The ``RecordingFacade`` double structurally enforces the CLI's invariants:
 - WHAT facade method was called, with WHICH kwargs, in WHICH order.
 - CLI-border guards (caps, vocabulary, datetime parse) fire BEFORE any facade
   call — call counts stay zero on the usage-error path.
-- ``run_expire_revalidate`` never reaches the facade (SO-14-05, Cat C exit 75).
+- ``run_expire_revalidate`` never reaches the facade (CLI error, exit 75).
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def test_remember_valid_at_parsed_to_datetime(recording: RecordingFacade):
 
 
 def test_remember_summary_forwarded(recording: RecordingFacade):
-    # OQ3 enabler: the CLI accepts --summary as an additive editorial field.
+    # The CLI accepts --summary as an additive editorial field.
     run_remember(recording, body="x", summary="A summary", fmt="human", out=_out())
     assert recording.remember_calls[0]["payload"].summary == "A summary"
 
@@ -320,7 +320,7 @@ def test_forget_bad_now_raises_usage(recording: RecordingFacade):
 
 
 # ---------------------------------------------------------------------------
-# expire / revalidate — SO-14-05: CLI-intercepted, never reaches the facade.
+# expire / revalidate — CLI-intercepted, never reaches the facade.
 # ---------------------------------------------------------------------------
 
 

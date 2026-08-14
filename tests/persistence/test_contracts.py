@@ -1,5 +1,5 @@
 """Validate the contracts module: episode/engine/persistence shapes and Protocol
-signatures match the signed contracts (SO-1, SO-2, SO-3, SO-7, SO-8b).
+signatures match the signed contracts.
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ from seahorse.contracts.persistence import (
 
 
 def test_episode_has_signed_field_set():
-    # SO-2 superset: #3 ships the canonical Pydantic model; the field set is a
-    # superset of what #6 materialized (adds supersedes_reason, the portable
-    # frontmatter key from f5-03 §12.3).
+    # The frontmatter adapter ships the canonical Pydantic model; the field set is a
+    # superset of what persistence materialized (adds supersedes_reason, the portable
+    # frontmatter key).
     names = set(Episode.model_fields)
     expected = {
         "id",
@@ -56,11 +56,11 @@ def test_episode_has_signed_field_set():
 
 
 def test_episode_body_is_excluded_from_dump():
-    # f5-03 §5.8: body is Optional (str | None, default None) and exclude=True.
-    # parse_file (#3) constructs an Episode from frontmatter WITHOUT body (body
+    # body is Optional (str | None, default None) and exclude=True.
+    # parse_file (the frontmatter adapter) constructs an Episode from frontmatter WITHOUT body (body
     # is not in the YAML); hydrate attaches it lazily via model_copy. The DDL
     # NOT NULL on body_md is enforced at storage write, not at construction.
-    # The wire serializers read body via getattr so it still travels #13/#14's
+    # The wire serializers read body via getattr so it still travels the MCP server and CLI
     # wire; model_dump (the YAML round-trip) omits it.
     body_field = Episode.model_fields["body"]
     assert body_field.exclude is True
@@ -128,7 +128,7 @@ def test_episode_model_copy_preserves_frozen():
 
 
 def test_audit_event_has_eleven_fields():
-    # SO-3c: AuditEvent inferred from audit_events DDL (11 columns).
+    # AuditEvent inferred from audit_events DDL (11 columns).
     names = {f.name for f in dataclasses.fields(AuditEvent)}
     expected = {
         "primitive",
@@ -149,7 +149,7 @@ def test_audit_event_has_eleven_fields():
 
 
 def test_episode_repository_protocol_methods_present():
-    # The Protocol surface #6 must implement. NO delete / update_body.
+    # The Protocol surface that persistence must implement. NO delete / update_body.
     methods = {
         "append",
         "set_invalid_at",
@@ -169,7 +169,7 @@ def test_episode_repository_protocol_methods_present():
 
 
 def test_episode_index_repository_has_seven_accessors_and_bfs():
-    # SO-1 (7 accessors) + SO-8b (bfs_neighbors_state_at).
+    # Seven accessors plus bfs_neighbors_state_at.
     so1 = {
         "get_rows",
         "get_rows_state_at",
@@ -180,7 +180,7 @@ def test_episode_index_repository_has_seven_accessors_and_bfs():
         "range_rows_known_at",
     }
     for m in so1:
-        assert hasattr(EpisodeIndexRepository, m), f"missing SO-1 accessor {m}"
+        assert hasattr(EpisodeIndexRepository, m), f"missing accessor {m}"
     assert hasattr(EpisodeIndexRepository, "bfs_neighbors_state_at")
     # bfs signature: keyword-only pit_kind, hops, include_tags_soft after *
     sig = inspect.signature(EpisodeIndexRepository.bfs_neighbors_state_at)
@@ -194,7 +194,7 @@ def test_episode_index_repository_has_seven_accessors_and_bfs():
 
 
 def test_vector_index_repository_upsert_is_folded():
-    # SO-7b: model_identity/content_hash/embedded_at folded into upsert kwargs.
+    # model_identity/content_hash/embedded_at folded into upsert kwargs.
     sig = inspect.signature(VectorIndexRepository.upsert)
     params = sig.parameters
     assert "model_identity" in params
@@ -202,7 +202,7 @@ def test_vector_index_repository_upsert_is_folded():
     assert "embedded_at" in params
     assert "dim" in params
     assert params["model_identity"].kind is inspect.Parameter.KEYWORD_ONLY
-    # NO write_meta method (rejected alternative 7b-i).
+    # NO write_meta method.
     assert not hasattr(VectorIndexRepository, "write_meta")
     assert hasattr(VectorIndexRepository, "distinct_model_identities")
 

@@ -1,4 +1,4 @@
-"""``frontmatter.handler`` — ruamel round-trip handler (f5-03 §4.1/§7.1)."""
+"""``frontmatter.handler`` — ruamel round-trip handler."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from seahorse.frontmatter.handler import RuamelRTHandler, _make_yaml
 
 def test_make_yaml_is_round_trip() -> None:
     y = _make_yaml()
-    # typ='rt' is what preserves comments/quotes/order; the others are F3.1 config.
+    # typ='rt' is what preserves comments/quotes/order; the others are canonical-format settings.
     assert y.typ == ["rt"]
     assert y.preserve_quotes is True
     assert y.width == 4096

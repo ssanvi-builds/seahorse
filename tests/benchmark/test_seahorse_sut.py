@@ -1,4 +1,4 @@
-"""Tests for ``SeahorseSUT`` — the #12 → SUT adapter (f5-16 §3.2)."""
+"""Tests for ``SeahorseSUT`` — the primitives facade → SUT adapter."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from tests.benchmark.conftest import FakeReaderLLM, FakeTokenizer
 
 @pytest.fixture
 def sut(tmp_path, fake_reader, fake_tokenizer):
-    """A SeahorseSUT over a real G2 facade (no embeddings needed).
+    """A SeahorseSUT over a facade in the listing regime (no embeddings needed).
 
-    ``retrieval_available=False`` forces the G2 regime explicitly — with the
+    ``retrieval_available=False`` forces the listing regime explicitly — with the
     ``embeddings`` extra installed the default auto-resolves the hybrid path.
     """
     db = tmp_path / "bench.db"
@@ -49,7 +49,7 @@ def test_ingest_populates_bridge(sut):
 def test_sut_accepts_prepopulated_bridge(tmp_path, fake_reader, fake_tokenizer):
     """Warm-DB: a variant SUT over a copied corpus DB receives the template's
     bridge (ep_id→session, fact_id→session, fact_key→ep_id) instead of
-    re-ingesting (f7 §5a warm-DB — the recency variants share one ingest)."""
+    re-ingesting (the recency variants share one ingest)."""
     facade, storage = build_facade(tmp_path / "bench.db")
     sut = SeahorseSUT(
         facade,
@@ -99,7 +99,7 @@ def test_query_returns_response_with_bridge(sut, fake_reader):
 
 
 def test_query_records_index_rerank_latency_when_enabled(sut, fake_reader):
-    """F2 (f7 §5b): with rerank_enabled the SUT records latency_ms["index_rerank"]
+    """With rerank_enabled the SUT records latency_ms["index_rerank"]
     (the rerank-path INDEX latency — the stage-3 budget)."""
     sut._rerank_enabled = True  # noqa: SLF001 — test hook
     d = datetime(2026, 1, 1, tzinfo=UTC)
@@ -113,7 +113,7 @@ def test_query_records_index_rerank_latency_when_enabled(sut, fake_reader):
 
 def test_query_omits_index_rerank_when_disabled(sut, fake_reader):
     """Baseline (rerank OFF): no index_rerank key — the base path keeps its
-    250ms promise (f7 §5b)."""
+    250ms promise."""
     d = datetime(2026, 1, 1, tzinfo=UTC)
     sut.ingest(
         [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
@@ -123,7 +123,7 @@ def test_query_omits_index_rerank_when_disabled(sut, fake_reader):
 
 
 def test_query_detects_fallback_g2(sut):
-    """In the G2 regime all scores are 0.0 → honest score_source=fallback_g2."""
+    """In the listing regime all scores are 0.0 → honest score_source=fallback_g2."""
     d = datetime(2026, 1, 1, tzinfo=UTC)
     sut.ingest(
         [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
@@ -190,7 +190,7 @@ def test_apply_knowledge_updates_creates_supersedes(sut):
     assert sut._ep_id_to_session[new_ep_ids[0]] == "s2"
     # The old version is invalidated
     rows = sut._facade.recall("France", k=10)
-    assert all(r.invalid_at is None for r in rows)  # recall returns vigente only
+    assert all(r.invalid_at is None for r in rows)  # recall returns current-state versions only
 
 
 def test_reset_clears_bridges(sut):
@@ -211,13 +211,13 @@ def test_identity_reports_experiment_flags(sut):
     assert ident["score_source"] == "mvp1_rrf"
     assert ident["recency_config"] is None
     assert ident["rerank_enabled"] is False
-    assert ident["embed_mode"] == "body+summary"  # F3 flip product default
+    assert ident["embed_mode"] == "body+summary"  # current product default
 
 
 # --------------------------------------------------------- PIT temporal-reasoning
 
 def test_query_passes_state_at_pit_in_temporal_mode(sut):
-    """f5-16 §3.4: temporal-reasoning questions evaluate with ``state_at`` PIT."""
+    """Temporal-reasoning questions evaluate with ``state_at`` PIT."""
     from seahorse.disclosure.types import PITPoint
 
     calls: list = []
@@ -241,7 +241,7 @@ def test_query_passes_state_at_pit_in_temporal_mode(sut):
 
 
 def test_query_pit_queries_false_queries_active_now(sut):
-    """F7 §5a: the recency boost's gate is ``pit is None`` — the recency
+    """The recency boost's gate is ``pit is None`` — the recency
     experiment queries the active-now regime (no PIT) even in temporal mode, so
     the boost is actually testable (all LMEB questions carry a question_date)."""
     calls: list = []
@@ -286,7 +286,7 @@ def test_query_no_pit_without_question_date(sut):
 
 
 def test_query_falls_back_without_pit_when_unsupported(sut):
-    """G2 (no PIT axis, ADR-03): honest degrade to active-now, no crash."""
+    """The listing regime has no PIT axis: it degrades gracefully to active-now, no crash."""
     from seahorse.disclosure.types import PITPoint
     from seahorse.facade.errors import PitRecallNotSupportedMVP0
 

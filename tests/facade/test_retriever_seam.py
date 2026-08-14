@@ -1,12 +1,14 @@
-"""C8.1 seam test — ``recall`` policy is delegated to an injected ``Retriever``.
+"""Recall-policy extension-point test — ``recall`` policy is delegated to an
+injected ``Retriever``.
 
-The facade's MVP-0 recall (vigente listing, no ranking, no PIT) used to live
-inline in ``_recall_mvp0``. C8.1 extracts it behind a ``Retriever`` seam so
-swapping to the MVP-1 hybrid regime (``seahorse.retrieval.recall``) is a
-single-point change at the composition root, not a 6+ touch-point edit across
-facade/MCP/CLI (audit #3). These tests pin the seam: the facade delegates to the
-injected retriever, forwards its ``FusedCandidate`` output to #8
-``materialize_index``, and returns #8's result verbatim. The retriever owns
+The facade's first-release recall (current-state listing, no ranking, no PIT)
+used to live inline in ``_recall_mvp0``. The change extracts it behind a
+``Retriever`` extension point so swapping to the later-release hybrid regime
+(``seahorse.retrieval.recall``) is a single-point change at the composition
+root, not a 6+ touch-point edit across facade/MCP/CLI. These tests pin the
+extension point: the facade delegates to the injected retriever, forwards its
+``FusedCandidate`` output to the disclosure shaper's ``materialize_index``,
+and returns the disclosure shaper's result verbatim. The retriever owns
 ranking/filter/truncate; the facade owns boundary validation + the shaper call.
 """
 
@@ -52,7 +54,7 @@ class RecordingRetriever:
 
 
 class PitCapableRetriever(RecordingRetriever):
-    """Retriever that declares PIT capability (M1-C.2)."""
+    """Retriever that declares PIT capability."""
 
     supports_pit = True
 
@@ -96,7 +98,8 @@ class TestRetrieverDelegation:
 
     def test_facade_forwards_pit_none_to_retriever(self, seam_facade) -> None:
         # The facade refuses a caller-supplied pit before delegating; when there
-        # is no pit, it forwards pit=None to the retriever (MVP-0 has no PIT axis).
+        # is no pit, it forwards pit=None to the retriever (the first release has
+        # no PIT axis).
         f, retriever = seam_facade
         f.recall("sergio")
         assert retriever.calls[0]["pit"] is None
@@ -131,8 +134,8 @@ class TestRetrieverDelegation:
         assert result[0] is row
 
     def test_pit_still_refused_before_delegation(self, seam_facade) -> None:
-        # The seam does not weaken the ADR-03 PIT refusal: pit is rejected at the
-        # facade boundary BEFORE the retriever is consulted.
+        # The extension point does not weaken the PIT refusal: pit is rejected
+        # at the facade boundary BEFORE the retriever is consulted.
         f, retriever = seam_facade
         pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
         with pytest.raises(PitRecallNotSupportedMVP0):
@@ -147,7 +150,7 @@ class TestRetrieverDelegation:
 
 
 class TestPitForwardWhenCapable:
-    """M1-C.2: a retriever that declares ``supports_pit`` receives the pit."""
+    """A retriever that declares ``supports_pit`` receives the pit."""
 
     def test_pit_forwarded_to_retriever_and_shaper(self, shaper, clock) -> None:
         retriever = PitCapableRetriever(
@@ -166,7 +169,8 @@ class TestPitForwardWhenCapable:
         f.recall("sergio", pit=pit)
         # the retriever received the pit verbatim...
         assert retriever.calls[0]["pit"] == pit
-        # ...and #8 materialize_index received the SAME pit (not None).
+        # ...and the disclosure shaper's materialize_index received the SAME pit
+        # (not None).
         assert shaper.index_calls[0]["pit"] == pit
 
     def test_retriever_without_capability_still_refuses_pit(self, seam_facade) -> None:
@@ -182,10 +186,11 @@ class TestPitForwardWhenCapable:
 class TestRetrieverDefaultWiring:
     """When no retriever is injected, the facade uses VigenteListingRetriever.
 
-    The existing ``test_recall.py`` suite already pins the MVP-0 vigente-listing
-    behavior end-to-end; this just asserts the default-construct path compiles
-    and delegates (no retriever arg => the composition root supplies the MVP-0
-    impl, preserving the pre-C8.1 behavior).
+    The existing ``test_recall.py`` suite already pins the first-release
+    current-state-listing behavior end-to-end; this just asserts the
+    default-construct path compiles and delegates (no retriever arg => the
+    composition root supplies the first-release impl, preserving the original
+    behavior).
     """
 
     def test_make_facade_without_retriever_uses_default(self, engine, shaper, clock) -> None:
@@ -193,8 +198,8 @@ class TestRetrieverDefaultWiring:
 
         f, _log = make_facade(engine=engine, shaper=shaper, clock=clock)
         # The default retriever wraps the recording engine, so a recall still
-        # drives engine.get_vigente (the pre-C8.1 behavior).
+        # drives engine.get_vigente (the original behavior).
         f.recall("sergio")
         assert len(engine.get_vigente_calls) == 1
-        # And the facade's retriever is the MVP-0 impl, not a stub.
+        # And the facade's retriever is the first-release impl, not a stub.
         assert isinstance(f._retriever, VigenteListingRetriever)

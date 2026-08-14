@@ -1,17 +1,13 @@
-"""R5 trust gate for procedural skills (L2c §6.1, prompt-injection).
+"""Trust gate for procedural skills (prompt-injection mitigation).
 
 A skill body is read as instructions by the LLM during trigger evaluation → it
-is a persistent prompt-injection vector. Skills arrive by F3.1 import, LLM
+is a persistent prompt-injection vector. Skills arrive via import, LLM
 distillation of sessions (potentially injected content), or the observer. The
 mitigation: a per-skill trust level derived from ``provenance.agent_id`` +
 origin (manual/import/distilled), and a trust gate BEFORE the body reaches the
 agent's context — low-trust skills are delivered as citation/context, not as
 instruction. The trigger is evaluated in the agent but with the body treated as
 low-trust data until the gate.
-
-References:
-- incorporation-design.md §6.1 (seguridad R5)
-- incorporation-design.md §10.9 (SK-1 mitigation)
 """
 
 from __future__ import annotations
@@ -23,7 +19,7 @@ from seahorse.contracts.engine import Episode
 
 
 class TrustLevel(IntEnum):
-    """Per-skill trust level (R5). Higher rank = more trusted as instruction.
+    """Per-skill trust level. Higher rank = more trusted as instruction.
 
     ``IntEnum`` so ordering is numeric (``HIGH >= MEDIUM``), not lexicographic
     on the string value.
@@ -35,11 +31,11 @@ class TrustLevel(IntEnum):
 
 
 def trust_level_of(episode: Episode) -> TrustLevel:
-    """Derive the skill trust level from provenance (R5 §6.1).
+    """Derive the skill trust level from provenance.
 
     Origin rules:
     - ``source_type=human`` (manual) → HIGH.
-    - ``source_type=importer`` (F3.1 import) → LOW (content potentially injected).
+    - ``source_type=importer`` (import) → LOW (content potentially injected).
     - ``extraction_mode=consolidated`` (LLM distillation) → LOW.
     - ``source_type=agent`` (skip) → MEDIUM.
     - Unknown → MEDIUM (conservative default, never HIGH).
@@ -60,7 +56,7 @@ def trust_level_of(episode: Episode) -> TrustLevel:
 
 @dataclass(frozen=True)
 class SkillDelivery:
-    """The gated delivery of a skill body (R5).
+    """The gated delivery of a skill body.
 
     ``as_instruction`` is True only when the skill's trust meets the gate's
     ``min_trust``. A low-trust skill is delivered with ``as_instruction=False``:
@@ -77,7 +73,7 @@ class SkillDelivery:
 def gate_skill(
     episode: Episode, *, min_trust: TrustLevel = TrustLevel.MEDIUM
 ) -> SkillDelivery:
-    """Gate a skill before its body reaches the agent's context (R5).
+    """Gate a skill before its body reaches the agent's context.
 
     The gate is the single decision point: it derives the trust level and
     decides whether the body is safe to treat as an instruction. The body is

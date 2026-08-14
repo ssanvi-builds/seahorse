@@ -1,9 +1,9 @@
-"""Validate BiTemporalEngine.forget (Phase 7, owned #2).
+"""Validate BiTemporalEngine.forget — the soft-delete path.
 
-Op 1 — soft-delete bi-temporal: marks ``invalid_at = now`` (I3, once null->now),
-preserves the row (I6), never touches ``expired_at`` (I7). The invalidation
-metadata (``reason``, ``agent_id``) lives ONLY in the ``AuditEvent`` (I10/I3),
-never in the episode row or frontmatter.
+Soft-delete bi-temporal: marks ``invalid_at = now`` (once null->now), preserves
+the row, never touches ``expired_at``. The invalidation metadata (``reason``,
+``agent_id``) lives ONLY in the ``AuditEvent``, never in the episode row or
+frontmatter.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def test_forget_expired_at_untouched(engine):
     eng, repo, audit = engine
     _apply(eng)
     eng.forget("e1", reason="r", by={"agent_id": "a"}, now=LATER)
-    assert repo.get("e1").expired_at is None  # I7
+    assert repo.get("e1").expired_at is None  # expired_at untouched
 
 
 # --- not found / already invalidated ----------------------------------------
@@ -71,7 +71,7 @@ def test_forget_raises_invalidation_conflict_if_already_invalidated(engine):
         eng.forget("e1", reason="second", by={"agent_id": "a"}, now=LATER)
 
 
-# --- PENDING cannot be invalidated (I5) -------------------------------------
+# --- PENDING cannot be invalidated ------------------------------------------
 
 
 def test_forget_pending_ingest_cannot_be_invalidated(engine):
@@ -84,7 +84,7 @@ def test_forget_pending_ingest_cannot_be_invalidated(engine):
     assert repo.get("e1").invalid_at is None
 
 
-# --- reason/agent live ONLY in audit (I10/I3) -------------------------------
+# --- reason/agent live ONLY in audit ----------------------------------------
 
 
 def test_forget_reason_lives_in_audit_not_in_row(engine):
@@ -110,4 +110,4 @@ def test_forget_preserves_body_and_subject(engine):
     eng.forget("e1", reason="r", by={"agent_id": "a"}, now=LATER)
     stored = repo.get("e1")
     assert stored.body == "# Subject\n"
-    assert stored.subject == "subject"  # I6: no overwrite of content
+    assert stored.subject == "subject"  # no overwrite of content

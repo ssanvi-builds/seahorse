@@ -1,4 +1,4 @@
-"""``JsonReporter`` — manifest.json + summary.json + samples.jsonl (f5-16 §6.4)."""
+"""``JsonReporter`` — manifest.json + summary.json + samples.jsonl."""
 
 from __future__ import annotations
 

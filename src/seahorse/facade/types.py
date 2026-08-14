@@ -1,34 +1,28 @@
-"""Facade payload types (owned by #12).
+"""Facade payload types (owned by the facade).
 
 The canonical Python API shapes for the four memory-native primitives plus the
 three progressive-disclosure read levels. ``Provenance`` is a
 ``TypedDict(total=False)`` so it IS a plain dict at runtime — it passes
 straight into the engine's ``by: dict`` parameter and is JSON-serializable for
-#13. The payload dataclasses are frozen.
+the MCP server. The payload dataclasses are frozen.
 
-Ownership note (f5-12 §3): ``Provenance`` is **facade-owned**, not
-``contracts``-owned. ``contracts/`` is for cross-component frontiers of the
-lower layers; #1 (the Pydantic schema authority) has not shipped, so freezing a
-``Provenance`` frontier in ``contracts/`` would falsely sign off #1's shape.
-When #1 ships, this dissolves into an import. This mirrors
-``disclosure/types.py`` (owned by #8).
+``Provenance`` is **facade-owned**, not ``contracts``-owned. ``contracts/`` is
+for cross-component frontiers of the lower layers; the schema module (the
+Pydantic schema authority) has not shipped, so freezing a ``Provenance``
+frontier in ``contracts/`` would falsely sign off its shape. When the schema
+module ships, this dissolves into an import. This mirrors
+``disclosure/types.py`` (owned by progressive disclosure).
 
 ``COGNITIVE_TYPES`` / ``SOURCE_TYPES`` are **informative** frozensets referenced
-by #13/#14 for UI vocabularies. #12 does NOT enforce them at the boundary in
-MVP-0 — the engine (#2) and the schema (#1) are the authority for those domain
-invariants, and #12 is a clean delegation layer (it does not replicate engine
-invariants). This avoids the drift where engine tests use ``cognitive_type=
-"fact"`` (a value outside the f5-01 enum).
+by the MCP server and CLI for UI vocabularies. The facade does NOT enforce them
+at the boundary in the current release — the engine and the schema are the
+authority for those domain invariants, and the facade is a clean delegation layer
+(it does not replicate engine invariants). This avoids the drift where engine
+tests use ``cognitive_type="fact"`` (a value outside the vocabulary enum).
 
 The canonical home for these vocabularies is ``seahorse/constants.py`` (the
-shared module #13 and #14 import, per SO-14-03 / f5-14 §Pins). This module
-re-exports them so the #12 public API stays stable.
-
-References:
-- f5-12 §3 (payload shapes, Provenance facade-owned)
-- f5-01 §2.4 (cognitive_type vocabulary)
-- seahorse/disclosure/types.py (PITPoint, TOP_K — re-exported, not redefined)
-- seahorse/engine/engine.py (BiTemporalEngine.remember/forget/improve `by: dict`)
+shared module the MCP server and CLI import). This module re-exports them so the
+facade public API stays stable.
 """
 
 from __future__ import annotations
@@ -40,19 +34,20 @@ from typing import Literal, TypedDict
 from seahorse.constants import COGNITIVE_TYPES, SOURCE_TYPES
 from seahorse.disclosure.types import TOP_K, PITPoint
 
-# F3.1 ``extraction_mode`` schema value set (#12-owned, single source for #13).
-# - ``skip`` / ``llm`` — single-episode ingestion modes, routable by #5
-#   ``decide_path``.
+# The ``extraction_mode`` schema value set (facade-owned, single source for the
+# MCP server).
+# - ``skip`` / ``llm`` — single-episode ingestion modes, routable by the write
+#   path's ``decide_path``.
 # - ``consolidated`` — schema-valid, round-trippable batch-distillation marker
-#   (obsiforge §5.2: a stable knowledge note). NOT routable by single-episode
-#   ingestion: #5 ``decide_path`` refuses it, because the batch distillation
-#   writes via ``engine.remember`` directly, bypassing ``decide_path``
-#   (obsiforge §5.4). The engine does not produce it yet (ADR-10: schema-valid,
-#   not built).
+#   (a stable knowledge note). NOT routable by single-episode ingestion: the
+#   write path's ``decide_path`` refuses it, because the batch distillation
+#   writes via ``engine.remember`` directly, bypassing ``decide_path``. The
+#   engine does not produce it yet (schema-valid, not built).
 # - ``llm_partial`` — fully reserved (not in the schema value set).
 #
-# #13's wire enum derives from this Literal (``wire_schema._EXTRACTION_MODE_ENUM``),
-# so the two sister projections share one definition of the value set.
+# The MCP server's wire enum derives from this Literal
+# (``wire_schema._EXTRACTION_MODE_ENUM``), so the two sister projections share
+# one definition of the value set.
 ExtractionMode = Literal["skip", "llm", "consolidated"]
 
 
@@ -60,17 +55,17 @@ class Provenance(TypedDict, total=False):
     """Caller-supplied authority + write-path provenance (a plain dict at runtime).
 
     ``source_type`` is the caller's authority (``agent``|``human``|``importer``|
-    ``system``); #5's ``decide_path`` uses it to route importer payloads down
-    the deterministic skip-path. The write-path overwrites ``extraction_mode``/
-    ``model_used``/``prompt_hash``/``confidence``; the rest is stored verbatim
-    by the engine as ``Episode.provenance``.
+    ``system``); the write path's ``decide_path`` uses it to route importer
+    payloads down the deterministic skip-path. The write-path overwrites
+    ``extraction_mode``/``model_used``/``prompt_hash``/``confidence``; the rest
+    is stored verbatim by the engine as ``Episode.provenance``.
 
-    ``degraded_from`` / ``degrade_reason`` are the durable degrade marker
-    (C8.7, ADR-10): present ONLY on an llm→skip degrade, never on a genuine
-    skip. They distinguish a degraded episode from a real skip in stored
-    provenance (no "permanent lie"). Per f5-05 sec 5 line 111 the caller's
-    CLAIMED ``model_used``/``prompt_hash`` (the LLM intent that was degraded)
-    are LOGUED by #5, NOT stored in core — core stays ``None`` on degrade.
+    ``degraded_from`` / ``degrade_reason`` are the durable degrade marker:
+    present ONLY on an llm→skip degrade, never on a genuine skip. They
+    distinguish a degraded episode from a real skip in stored provenance (no
+    "permanent lie"). The caller's CLAIMED ``model_used``/``prompt_hash`` (the
+    LLM intent that was degraded) are LOGGED by the write path, NOT stored in
+    core — core stays ``None`` on degrade.
     """
 
     source_type: str
@@ -80,29 +75,29 @@ class Provenance(TypedDict, total=False):
     model_used: str | None
     prompt_hash: str | None
     confidence: float
-    importer_vendor: str  # importer path (deterministic UUIDv5, SO-4b)
+    importer_vendor: str  # importer path (deterministic UUIDv5)
     source_record_id: str  # importer path
-    degraded_from: str  # llm→skip degrade marker (C8.7, ADR-10) — degrade-only
-    degrade_reason: str  # llm→skip degrade marker (C8.7, ADR-10) — degrade-only
+    degraded_from: str  # llm→skip degrade marker — degrade-only
+    degrade_reason: str  # llm→skip degrade marker — degrade-only
 
 
-# Informative vocabularies (NOT enforced by #12 in MVP-0; engine/#1 authority).
-# Active + reserved cognitive types per f5-01 §2.4. Defined in
-# ``seahorse/constants.py`` (shared with #13/#14) and re-exported here.
+# Informative vocabularies (NOT enforced by the facade in the current release;
+# the engine / schema are the authority). Active + reserved cognitive types.
+# Defined in ``seahorse/constants.py`` (shared with the MCP server and CLI) and
+# re-exported here.
 
 
 @dataclass(frozen=True)
 class RememberPayload:
-    """Payload for the ``remember`` primitive (delegated to #5 ``ingest``).
+    """Payload for the ``remember`` primitive (delegated to the write path's ``ingest``).
 
     ``title`` forwards to ``engine.remember`` (subject derivation: title > H1 >
-    None). ``summary`` is an additive editorial field (OQ3 enabler, f5-09 §6.2):
-    when ``None``, the write path derives a deterministic fallback (first
-    sentence of the body, truncated to ``SUMMARY_MAX_CHARS=200``) — zero-LLM,
-    covers 100% of episodes including the skip path. ``tags`` is a
-    forward-compat field: MVP-0 has no tags write-path, so #12 rejects a
-    non-empty ``tags`` at the border (``E_NOT_IN_MVP_0_1``) rather than silently
-    dropping it (ADR-10 honesty).
+    None). ``summary`` is an additive editorial field: when ``None``, the write
+    path derives a deterministic fallback (first sentence of the body, truncated
+    to ``SUMMARY_MAX_CHARS=200``) — zero-LLM, covers 100% of episodes including
+    the skip path. ``tags`` is a forward-compat field: the current release has
+    no tags write-path, so the facade rejects a non-empty ``tags`` at the border
+    (``E_NOT_IN_MVP_0_1``) rather than silently dropping it.
     """
 
     body: str
@@ -117,12 +112,13 @@ class RememberPayload:
 
 @dataclass(frozen=True)
 class RecallPayload:
-    """Payload for the ``recall`` primitive (MVP-0 G2 vigente listing).
+    """Payload for the ``recall`` primitive (current-state listing).
 
-    In MVP-0 the ``query`` is validated non-empty but is NOT used for ranking —
-    the canonical MVP-0 recall is a vigente listing ordered by ``created_at``
-    desc. ``pit`` is accepted by the type but refused by the facade in MVP-0
-    (``PitRecallNotSupportedMVP0``); the #11 retrieval path is MVP-1.
+    In the current release the ``query`` is validated non-empty but is NOT used
+    for ranking — the canonical recall is a current-state listing ordered by
+    ``created_at`` desc. ``pit`` is accepted by the type but refused by the
+    facade in the current release (``PitRecallNotSupportedMVP0``); the hybrid
+    retrieval path is a later release.
     """
 
     query: str
@@ -146,7 +142,7 @@ class FacadeConfig:
 
 @dataclass(frozen=True)
 class ContextEpisode:
-    """One INDEX-level row of the context bootstrap (§6.2). No body."""
+    """One INDEX-level row of the context bootstrap. No body."""
 
     ep_id: str
     subject: str | None
@@ -157,13 +153,14 @@ class ContextEpisode:
 
 @dataclass(frozen=True)
 class ContextData:
-    """The context bootstrap data (obsiforge §6.2) — assembled by the facade.
+    """The context bootstrap data — assembled by the facade.
 
-    ``recent`` is the top-k vigente episodes (created_at desc, ep_id asc — sort
-    G2, ADR-10). ``vigente_count`` is the full vigente set size. ``last_session``
-    is the most recent session's episodes grouped by ``provenance.session_id`` —
-    an INDEX list, NOT an abstractive summary (honesty: Seahorse has no session
-    summaries yet, §6.2). The assembler renders this to the bootstrap text.
+    ``recent`` is the top-k currently valid episodes (created_at desc, ep_id asc
+    — deterministic sort). ``vigente_count`` is the full currently valid set
+    size. ``last_session`` is the most recent session's episodes grouped by
+    ``provenance.session_id`` — an INDEX list, NOT an abstractive summary
+    (honesty: Seahorse has no session summaries yet). The assembler renders this
+    to the bootstrap text.
     """
 
     recent: list[ContextEpisode]

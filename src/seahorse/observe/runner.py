@@ -5,12 +5,8 @@ socket (a daemon thread), and the worker drains the queue in the main loop.
 ``seahorse observe start`` spawns this in the background; ``observe run`` runs
 it in the foreground.
 
-``max_drains`` / ``stop_event`` are test seams (ADR-10): a real observer runs
-forever until SIGTERM/KeyboardInterrupt.
-
-References:
-- obsiforge-evolution-architecture.md §4.4 (unix socket endpoint)
-- obsiforge-evolution-architecture.md §4.5 (queue + worker)
+``max_drains`` / ``stop_event`` are test controls: a real observer runs forever
+until SIGTERM/KeyboardInterrupt.
 """
 
 from __future__ import annotations
@@ -43,7 +39,7 @@ def run_observer(
 
     The endpoint thread receives envelopes on the unix socket; the main loop
     drains the queue every ``interval_s`` seconds. Exits on ``stop_event``,
-    ``max_drains`` (test seam), or KeyboardInterrupt.
+    ``max_drains`` (test control), or KeyboardInterrupt.
     """
     endpoint = ObserverEndpoint(queue, socket_path=socket_path, token=token)
     worker = ObserverWorker(facade, queue, config=config)

@@ -1,4 +1,4 @@
-"""SqliteVectorIndexRepository — real vec0 backend (M1-A.3, SO-7b).
+"""SqliteVectorIndexRepository — real vec0 backend.
 
 Materializes the ``VectorIndexRepository`` Protocol (fold-into-upsert +
 ``distinct_model_identities``) over the sqlite-vec ``vec_episodes`` virtual
@@ -6,21 +6,21 @@ table created by migration 010. Requires the sqlite-vec extension loaded on the
 connection (``ConnectionManager.extensions=("vec0",)`` — Storage opts in).
 
 Notes:
-- **Upsert fold-into (SO-7b)**: one atomic call writes the vector into
+- **Upsert fold-into**: one atomic call writes the vector into
   ``vec_episodes`` AND the model stamp into ``vec_episodes_meta`` (no split
   write window). ``fact_id`` / ``cognitive_type`` / ``created_at`` are derived
   from ``episode_index`` (aux columns for filter pushdown) so the impl stays
   within the signed ``upsert(ep_id, vector, *, dim, model_identity,
   content_hash, embedded_at)`` surface.
-- **kNN (vigent / filtered)**: sqlite-vec v0.1.9 flat scan applies auxiliary
-  filters DURING the scan, so ``k`` is the final cap — no over-fetch needed.
-  ``score = 1/(1+distance)`` (ADR-10, L2 over unit vectors).
+- **kNN (current-state / filtered)**: sqlite-vec v0.1.9 flat scan applies
+  auxiliary filters DURING the scan, so ``k`` is the final cap — no over-fetch
+  needed. ``score = 1/(1+distance)`` (L2 over unit vectors).
 - **kNN PIT**: ``state_at`` / ``known_at`` span ``valid_at`` / ``expired_at``
   which vec0 does not carry, so they JOIN ``episode_index`` with the canonical
-  ``_pit_predicate`` (CC-2, ``valid_at IS NULL`` = from-forever included) AFTER
-  the kNN. Over-fetch by ``KNN_OVERFETCH_FACTOR`` and re-cap to ``k``.
+  ``_pit_predicate`` (``valid_at IS NULL`` = from-forever included) AFTER the
+  kNN. Over-fetch by ``KNN_OVERFETCH_FACTOR`` and re-cap to ``k``.
 - ``rebuild()`` is an honest no-op (signed signature takes no args; the actual
-  backfill is #7's ``RetrievalIndexer`` / ``index rebuild``).
+  backfill is the ``RetrievalIndexer`` / ``index rebuild``).
 """
 
 from __future__ import annotations
@@ -34,22 +34,22 @@ from seahorse.contracts.persistence import VectorHit
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.sqlite_episode_index import _pit_predicate
 
-# v0.1.9 flat: filters apply during the scan, so k is final for vigent knn; the
-# PIT variants over-fetch because the JOIN predicate drops hits after kNN.
+# v0.1.9 flat: filters apply during the scan, so k is final for current-state
+# kNN; the PIT variants over-fetch because the JOIN predicate drops hits after kNN.
 KNN_OVERFETCH_FACTOR = 5
 
 
 def _as_bytes(query: Any) -> bytes:
     """Coerce the opaque ``query`` to a float32 BLOB (the shape vec0 expects).
 
-    The #7 QueryEmbedder adapter returns ``bytes``; a non-bytes value is a
-    contract violation surfaced loud (ADR-10) rather than silently mis-encoded.
+    The QueryEmbedder adapter returns ``bytes``; a non-bytes value is a
+    contract violation surfaced loudly rather than silently mis-encoded.
     """
     if isinstance(query, bytes):
         return query
     raise TypeError(
         f"knn query must be a bytes float32 BLOB; got {type(query).__name__} "
-        "(the #7 QueryEmbedder adapter returns bytes)"
+        "(the QueryEmbedder adapter returns bytes)"
     )
 
 
@@ -71,8 +71,8 @@ class SqliteVectorIndexRepository:
     ) -> None:
         blob = _as_bytes(vector)
         # v0.1.9 vec0 has no INSERT OR REPLACE / ON CONFLICT — upsert is
-        # DELETE + INSERT in the same transaction (f5-06 §4.4). The lateral
-        # vec_episodes_meta follows the same pattern (fold-into-upsert SO-7b).
+        # DELETE + INSERT in the same transaction. The lateral vec_episodes_meta
+        # follows the same pattern.
         with self._cm.atomic() as w:
             w.execute("DELETE FROM vec_episodes WHERE ep_id = ?", (ep_id,))
             w.execute(
@@ -167,7 +167,7 @@ class SqliteVectorIndexRepository:
 
     def rebuild(self) -> None:
         # Honest no-op: the signed contract takes no args; the real backfill is
-        # #7's RetrievalIndexer / `index rebuild` (M1-B.5).
+        # the RetrievalIndexer / `index rebuild`.
         return None
 
     def count(self) -> int:
@@ -184,7 +184,7 @@ def _row_to_hit(row: Any) -> VectorHit:
 
 
 def vec_wipe(conn: sqlite3.Connection) -> None:
-    """Secondary-index wipe for the sidecar rebuild (M1-A.6, C8.8 seam).
+    """Secondary-index wipe for the sidecar rebuild.
 
     Clears vec0 + the lateral model stamp so a vault rebuild leaves no ghost
     vectors pointing at ep_ids deleted from ``episode_index``. Runs inside the

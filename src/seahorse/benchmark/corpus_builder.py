@@ -1,15 +1,15 @@
-"""``CorpusBuilder`` — skip-mode ingestion of the benchmark haystack (f5-16 §3.3).
+"""``CorpusBuilder`` — skip-mode ingestion of the benchmark haystack.
 
-The corpus is ingested via #12.remember with ``extraction_mode=skip`` (zero
-LLM, deterministic, reproducible bit-a-bit). The ``AdvancingClock`` is the
-deterministic AND temporally ordered clock (f5-16 §3.5 U5): ``base + i*delta``
-per call — a constant ``FixedClock`` would degenerate ``created_at desc``
-ordering, ``age_days``, and the "newest version" determination in
-knowledge-update.
+The corpus is ingested via ``MemoryFacade.remember`` with
+``extraction_mode=skip`` (zero LLM, deterministic, reproducible bit-a-bit). The
+``AdvancingClock`` is the deterministic AND temporally ordered clock:
+``base + i*delta`` per call — a constant ``FixedClock`` would degenerate
+``created_at desc`` ordering, ``age_days``, and the "newest version"
+determination in knowledge-update.
 
 The builder collects the union of all haystack sessions across instances and
 delegates to the SUT's ``ingest`` (which owns the per-turn ``remember`` and the
-retrieval bridge). Returns the ``fact_id → session_id`` map (f5-16 §3.7).
+retrieval bridge). Returns the ``fact_id → session_id`` map.
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ _DEFAULT_BASE = datetime(2026, 1, 1, tzinfo=UTC)
 class AdvancingClock:
     """Deterministic AND temporally ordered: ``base + i*delta`` per call.
 
-    Reproducible across runs (same sequence) AND preserves temporal ordering
-    (f5-16 §3.5 U5). Controls #2 ``created_at`` via the facade's injectable
-    clock; #11 owns its own UTC clock (TD-17, declared limitation).
+    Reproducible across runs (same sequence) AND preserves temporal ordering.
+    Controls the engine's ``created_at`` via the facade's injectable clock;
+    hybrid retrieval owns its own UTC clock (a declared limitation).
     """
 
     def __init__(self, base: datetime, delta_seconds: float = 1.0) -> None:
@@ -41,7 +41,7 @@ class AdvancingClock:
         return t
 
     def position(self) -> datetime:
-        """The current time WITHOUT advancing (f7 §5a warm-DB).
+        """The current time WITHOUT advancing (warm-DB variant).
 
         After a corpus ingest, ``position()`` is the next ``now`` a query would
         see — the warm-DB variant clock seeds from it so the recency boost reads
@@ -64,9 +64,9 @@ def earliest_session_date(dataset: BenchmarkDataset) -> datetime:
 class CorpusBuilder:
     """Ingests the benchmark haystack into the SUT (skip-mode, deterministic).
 
-    MVP-1 is Seahorse-only: the builder reads the ``fact_id_to_session`` bridge
-    the ``SeahorseSUT`` owns (f5-16 §3.7). External SUTs (mediano) would expose
-    their own bridge.
+    The first release is Seahorse-only: the builder reads the
+    ``fact_id_to_session`` bridge the ``SeahorseSUT`` owns. External SUTs (a
+    medium-term goal) would expose their own bridge.
     """
 
     def __init__(self, sut: SeahorseSUT) -> None:

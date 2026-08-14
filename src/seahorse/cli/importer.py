@@ -1,12 +1,13 @@
-"""``seahorse import`` — the claude-mem migration bridge (#15, f5-15).
+"""``seahorse import`` — the claude-mem migration bridge.
 
 The CLI surface of the importer runner: reads claude-mem observations
-(``~/.claude-mem/claude-mem.db`` by default), maps them to F3.1 episodes via the
-pure ``import_record``, and either dry-runs (manifest + projected notes only) or
-commits (writes via ``#12.remember``, ADR-09). claude-mem is NEVER a runtime
-dependency — the importer reads its SQLite as a one-time migration source.
+(``~/.claude-mem/claude-mem.db`` by default), maps them to canonical episodes
+via the pure ``import_record``, and either dry-runs (manifest + projected notes
+only) or commits (writes via the facade's ``remember``, near-zero cost).
+claude-mem is NEVER a runtime dependency — the importer reads its SQLite as a
+one-time migration source.
 
-Delegation purity (f5-14 §1): the CLI imports only from ``seahorse.facade`` +
+Delegation purity: the CLI imports only from ``seahorse.facade`` +
 ``seahorse.importer``. It does not build episodes, resolve collisions, or touch
 the engine directly.
 """
@@ -32,7 +33,7 @@ def run_import(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse import`` — map claude-mem observations to F3.1 episodes.
+    """``seahorse import`` — map claude-mem observations to canonical episodes.
 
     ``mode`` is ``"dry-run"`` (default, safe) or ``"commit"``. The manifest is
     always produced; with ``--output-dir`` it is persisted to

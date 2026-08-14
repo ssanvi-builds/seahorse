@@ -1,12 +1,13 @@
-"""Procedural skills (L2c §6.1) — deterministic, stdlib-only.
+"""Procedural skills — deterministic, stdlib-only.
 
-A skill is an ``Episode`` F3.1 with ``cognitive_type=procedural``. The layer is
-a client of #12 (MemoryFacade) and #8 (DisclosureShaper) — it never reaches the
-engine directly (delegation purity).
+A skill is an ``Episode`` in the canonical format with
+``cognitive_type=procedural``. The layer is a client of the primitives facade
+(MemoryFacade) and the disclosure shaper (DisclosureShaper) — it never reaches
+the engine directly (delegation purity).
 
 - ``config`` — the canonical skill format (sections, ``x-*`` metadata, caps).
-- ``operations`` — ``record_procedure`` (deterministic creation, ADR-09 skip).
-- ``trust`` — the R5 trust gate (prompt-injection mitigation).
+- ``operations`` — ``record_procedure`` (deterministic creation, skip-first).
+- ``trust`` — the trust gate (prompt-injection mitigation).
 - ``shaper`` — ``ProceduralShaper`` (3-level progressive disclosure).
 """
 

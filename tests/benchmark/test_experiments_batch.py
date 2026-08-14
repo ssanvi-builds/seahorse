@@ -1,6 +1,6 @@
-"""Tests for the F7 experiment (d) — batch-por-turno (f7 §5d).
+"""Tests for the batch experiment — batch-por-turno.
 
-The synthetic corpus verifies the harness MECHANICS (ADR-10): coherent turns
+The synthetic corpus verifies the harness MECHANICS: coherent turns
 (observations sharing a topic) must yield high cluster recall@k, diverse turns
 low cluster recall@k. The authoritative decision comes from the real claude-mem
 corpus (``--corpus claude-mem``).
@@ -176,7 +176,7 @@ class TestBuildSyntheticCorpus:
         try:
             rows = facade.recall("France capital", k=BATCH_TOP_K)
             assert rows
-            assert any(r.score > 0.0 for r in rows)  # hybrid, not G2
+            assert any(r.score > 0.0 for r in rows)  # hybrid, not the listing regime
         finally:
             storage.close()
 
@@ -195,7 +195,7 @@ class TestRunExperimentWiring:
         assert report.batch_result.regime == "hybrid"
         assert report.decision["decision"] in ("batch_por_turno", "por_sesion")
         rendered = render_experiment_report(report)
-        assert "batch-por-turno" in rendered
+        assert "per-turn batching" in rendered
         assert "decision:" in rendered
 
     def test_batch_rejects_lmeb_corpus(self) -> None:

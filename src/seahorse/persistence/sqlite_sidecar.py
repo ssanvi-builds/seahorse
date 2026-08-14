@@ -1,16 +1,16 @@
-"""SqliteSidecarIndexRepository — episode_paths + episode_index maintenance (§7a.5).
+"""SqliteSidecarIndexRepository — episode_paths + episode_index maintenance.
 
 Implements ``seahorse.contracts.persistence.SidecarIndexRepository``. ``put_path``
 is an UPSERT (file rename = UPDATE, allowed because episode_paths is mutable and
 separate from the append-only episodes table). ``reindex`` wraps the path update
 in the shared atomic so the caller's indexing work commits with the metadata.
 ``rebuild_all`` repopulates ``episode_index`` + ``episode_paths`` from ruamel-free
-``ParsedNote`` payloads (clear-then-rebuild, B3=(i) austere). No own ``atomic()``
-(SO-7a.6); ``rebuild_all`` borrows the shared ``ConnectionManager.atomic()``.
+``ParsedNote`` payloads (clear-then-rebuild). No own ``atomic()``;
+``rebuild_all`` borrows the shared ``ConnectionManager.atomic()``.
 
 Ruamel-confinement invariant: this module is CORE and must NOT import
 ``ruamel.yaml``/``python-frontmatter``. The frontmatter codec is confined to
-``frontmatter.handler``/``frontmatter.adapter``; the caller (#3) builds
+``frontmatter.handler``/``frontmatter.adapter``; the frontmatter migrator builds
 ``ParsedNote`` from parsed ``.md`` and hands it here. ``Episode`` is a core
 contract (ruamel-free), so the sidecar may import it freely.
 """
@@ -38,7 +38,7 @@ _PUT_PATH_SQL = (
     "ON CONFLICT(ep_id) DO UPDATE SET file_path=excluded.file_path, "
     "mtime_ms=excluded.mtime_ms, size=excluded.size"
 )
-# C8.3 [36]: the rebuild INSERT column list is derived from the single source in
+# The rebuild INSERT column list is derived from the single source in
 # ``episode_index_columns`` (all 18 columns — the rebuild owns the file metadata
 # the hot path leaves NULL). The VALUES tuple below must stay in
 # EPISODE_INDEX_REBUILD_COLUMNS order.
@@ -48,14 +48,14 @@ _DELETE_PATHS_SQL = "DELETE FROM episode_paths"
 _DUPLICATE_VIGENT_REASON = "duplicate-vigent-fact_id"
 _DUPLICATE_EP_ID_REASON = "duplicate-ep_id"
 
-# C8.8 (#9 forward-compat): a secondary-index wipe hook. ``rebuild_all`` runs
-# these inside its atomic (clear phase, after the episode_index/episode_paths
-# DELETEs, before repopulate) so the FTS5/vec0 tables are cleared in the SAME
-# transaction as the episode cache — no half-wiped ghost state where the
-# secondary indexes still point at ep_ids deleted from episode_index. MVP-0
-# passes none (the FTS5/vec0 tables do not exist yet — no ghost hits); the seam
-# is in place for MVP-1 to plug bulk-wipe callables (``DELETE FROM episode_fts``
-# / the vec0 wipe) without reopening ``rebuild_all``.
+# A secondary-index wipe hook. ``rebuild_all`` runs these inside its atomic
+# (clear phase, after the episode_index/episode_paths DELETEs, before
+# repopulate) so the FTS5/vec0 tables are cleared in the SAME transaction as the
+# episode cache — no half-wiped ghost state where the secondary indexes still
+# point at ep_ids deleted from episode_index. The current release passes none
+# (the FTS5/vec0 tables do not exist yet — no ghost hits); the hook is in place
+# for a later release to plug bulk-wipe callables (``DELETE FROM episode_fts`` /
+# the vec0 wipe) without reopening ``rebuild_all``.
 SecondaryIndexWipe = Callable[[sqlite3.Connection], None]
 
 
@@ -64,8 +64,8 @@ def _fmt_dt(dt: datetime | None) -> str | None:
 
 
 def _skip_extraction(note: ParsedNote) -> int:
-    # ADR-09: skip_extraction=1 excludes from the MVP-1 FTS5 + embedding queue.
-    # Derived from provenance["extraction_mode"] == "skip" (matches #16 shaper).
+    # The skip path: skip_extraction=1 excludes from the FTS5 + embedding queue.
+    # Derived from provenance["extraction_mode"] == "skip" (matches the shaper).
     # The migrator default is extraction_mode=skip, so migrated notes land at 1.
     mode = note.episode.provenance.get("extraction_mode")
     return 1 if mode == "skip" else 0
@@ -109,30 +109,31 @@ class SqliteSidecarIndexRepository:
         Clear-then-rebuild (not upsert): ``.md`` is the source of truth, the SQLite
         index a derived cache, so both tables are wiped and repopulated each call
         — vault deletions/edits propagate without a diff. Does NOT touch
-        ``episodes`` (B3=(i) austere).
+        ``episodes``.
 
-        Conflict policy (f5-06 §7a.5 + ADR-10): a duplicate vigent ``fact_id``
-        (the I11 partial unique ``uq_episode_index_active_per_subject``) is NOT
-        auto-resolved — ALL members of the conflict group are skipped and
-        reported in ``RebuildReport.skipped``. The operator decides which note
-        wins; the index never carries an arbitrary choice. ``fact_id IS NULL``
-        notes never conflict (SQLite treats NULLs as distinct in a UNIQUE index).
+        Conflict policy: a duplicate currently-valid ``fact_id`` (the partial
+        unique ``uq_episode_index_active_per_subject``) is NOT auto-resolved —
+        ALL members of the conflict group are skipped and reported in
+        ``RebuildReport.skipped``. The operator decides which note wins; the
+        index never carries an arbitrary choice. ``fact_id IS NULL`` notes never
+        conflict (SQLite treats NULLs as distinct in a UNIQUE index).
 
         Atomicity: the clear + repopulate is ONE ``ConnectionManager.atomic()``,
         so a mid-stream DB error (e.g. a CHECK violation the pre-pass does not
         screen) rolls back the DELETE too — the prior index is preserved, not
         half-wiped.
 
-        Secondary-index wipe seam (C8.8 / #9 forward-compat): ``secondary_index_wipes``
-        are caller-supplied hooks run inside the SAME atomic, in the clear phase
-        (after the ``episode_index``/``episode_paths`` DELETEs, before the
-        repopulate loop), each given the writer connection. They exist so MVP-1
-        can clear the FTS5/vec0 tables in the same transaction as the episode cache
-        — without this, a vault rebuild leaves the secondary indexes pointing at
-        deleted ep_ids (ghost hits). MVP-0 passes none: the FTS5/vec0 tables do
-        not exist yet, there is nothing to wipe, and the default is a pure no-op.
-        A wipe that raises rolls back the whole clear (the prior index is
-        preserved, not half-wiped) — the coordinated wipe is atomic.
+        Secondary-index wipe hook: ``secondary_index_wipes`` are caller-supplied
+        hooks run inside the SAME atomic, in the clear phase (after the
+        ``episode_index``/``episode_paths`` DELETEs, before the repopulate loop),
+        each given the writer connection. They exist so a later release can clear
+        the FTS5/vec0 tables in the same transaction as the episode cache —
+        without this, a vault rebuild leaves the secondary indexes pointing at
+        deleted ep_ids (ghost hits). The current release passes none: the
+        FTS5/vec0 tables do not exist yet, there is nothing to wipe, and the
+        default is a pure no-op. A wipe that raises rolls back the whole clear
+        (the prior index is preserved, not half-wiped) — the coordinated wipe is
+        atomic.
         """
         materialized = list(notes)
         conflict_ep_ids, ep_id_reason = self._conflict_group_ids(materialized)
@@ -190,8 +191,8 @@ class SqliteSidecarIndexRepository:
         # Pre-pass for two integrity conflicts the DB would otherwise reject
         # mid-rebuild (raising an opaque IntegrityError instead of a report):
         #
-        # 1. Duplicate vigent fact_id (I11 partial unique
-        #    uq_episode_index_active_per_subject): group VIGENT notes
+        # 1. Duplicate currently-valid fact_id (partial unique
+        #    uq_episode_index_active_per_subject): group currently-valid notes
         #    (invalid_at + expired_at both NULL) by non-NULL fact_id; any group
         #    with >1 member is a conflict — ALL members skipped (no auto-pick).
         #    NULL fact_ids never conflict (SQLite treats NULLs as distinct).

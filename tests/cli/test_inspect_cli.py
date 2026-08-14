@@ -1,4 +1,4 @@
-"""End-to-end ``seahorse inspect`` via the invoke harness (commit 5).
+"""End-to-end ``seahorse inspect`` via the invoke harness.
 
 Read-only sidecar snapshot. Exit 0 always on success (empty or populated DB).
 """
@@ -92,15 +92,15 @@ def test_inspect_after_rebuild_distinguishes_vigentes_vs_activos_ahora(tmp_path,
     """e2e: rebuild → inspect must surface the two bi-temporal axes separately.
 
     Closes the coverage gap where inspect e2e only asserted the zero state. A
-    future-scheduled invalidation (invalid_at far ahead) is ``activo-ahora`` but
-    NOT ``vigente`` (vigente requires invalid_at IS NULL), so the two counts
+    future-scheduled invalidation (invalid_at far ahead) is active-now but NOT
+    current-state (current-state requires invalid_at IS NULL), so the two counts
     diverge: vigentes=1, activos_ahora=2. If run_inspect ever swapped or dropped
     a predicate, this e2e catches it (the unit-level test in
     test_sidecar_status.py covers the SQL; this covers the CLI wiring).
     """
-    # alpha: vigente AND activo-ahora (no invalidation).
+    # alpha: current-state AND active-now (no invalidation).
     _write_note(vault, "alpha", ep_id=_uuid7("01"))
-    # bravo: future-scheduled invalidation -> activo-ahora but NOT vigente.
+    # bravo: future-scheduled invalidation -> active-now but NOT current-state.
     _write_note(
         vault, "bravo", ep_id=_uuid7("02"), invalid_at=datetime(2099, 1, 1, tzinfo=UTC)
     )

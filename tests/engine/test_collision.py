@@ -1,10 +1,10 @@
-"""Validate CollisionDetector (Phase 4, owned #2).
+"""Validate CollisionDetector — the engine's collision detection.
 
-SO-2 2d: ``subject = title > first H1 > None`` normalized (NFC + casefold + strip
-+ whitespace collapse); ``fact_id = SHA-256(subject)[:32]`` (128-bit hex). I11:
-two vigente episodes of the same subject are a detectable collision UNLESS they
-share a ``supersedes`` chain (revalidate / improve within the chain is not a
-concurrent collision).
+``subject = title > first H1 > None`` normalized (NFC + casefold + strip +
+whitespace collapse); ``fact_id = SHA-256(subject)[:32]`` (128-bit hex). Two
+current-state episodes of the same subject are a detectable collision UNLESS
+they share a ``supersedes`` chain (revalidate / improve within the chain is not
+a concurrent collision).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from tests.engine.conftest import _episode
 
 
 class _FakeRepo:
-    """Controlled repo for detect branches: returns a fixed vigente + chain."""
+    """Controlled repo for detect branches: returns a fixed current-state + chain."""
 
     def __init__(self, *, vigent=None, chain=None) -> None:
         self._vigent = vigent
@@ -126,7 +126,7 @@ def test_detect_concurrent_collision():
 
 
 def test_detect_excludes_self():
-    # Same id as the only vigente → no collision with itself.
+    # Same id as the only current-state → no collision with itself.
     ep = _episode("e-self", body="# Subject\n", title=None)
     repo = _FakeRepo(vigent=ep)
     assert CollisionDetector().detect(ep, repo) == []

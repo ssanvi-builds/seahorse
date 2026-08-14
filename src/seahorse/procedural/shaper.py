@@ -1,22 +1,18 @@
-"""``ProceduralShaper`` — skill progressive disclosure (L2c §6.1).
+"""``ProceduralShaper`` — skill progressive disclosure.
 
 A decorator/wrapper over a ``DisclosureShaper`` that adds the skill-specific
 three levels:
 - **Discovery** (INDEX): the skill's summary, capped at 280 chars — what the
   agent sees first to decide relevance, without the body.
 - **Activation** (TIMELINE): passthrough to the inner shaper (the skill's
-  version history via ``supersedes_chain``, or the #10 ``graph_bfs`` axis).
-- **Execution** (FULL): the gated body (R5) — the ONLY level that hydrates the
-  body, and the point where the trust gate decides whether the body is safe to
-  treat as an instruction (``as_instruction=True``) or must be delivered as
+  version history via ``supersedes_chain``, or the BFS ``graph_bfs`` axis).
+- **Execution** (FULL): the gated body — the ONLY level that hydrates the body,
+  and the point where the trust gate decides whether the body is safe to treat
+  as an instruction (``as_instruction=True``) or must be delivered as
   citation/context (``as_instruction=False``).
 
-The wrapper is a client of #8 (the inner ``DisclosureShaper``) — it never
-reaches the engine or the repos directly (delegation purity).
-
-References:
-- incorporation-design.md §6.1 (skills / memoria procedural L2c)
-- incorporation-design.md §10.9 (SK-1: trust gate before the agent context)
+The wrapper is a client of the inner ``DisclosureShaper`` — it never reaches the
+engine or the repos directly (delegation purity).
 """
 
 from __future__ import annotations
@@ -38,7 +34,7 @@ from seahorse.procedural.trust import TrustLevel, gate_skill
 
 @dataclass(frozen=True)
 class SkillDetail:
-    """Execution level for a skill: the gated body (R5).
+    """Execution level for a skill: the gated body.
 
     ``detail`` is the inner ``FullDetail`` (episode + provenance + freshness).
     ``trust`` is the derived trust level; ``as_instruction`` is True only when
@@ -54,7 +50,7 @@ class SkillDetail:
 
 
 def _discovery_row(row: IndexRow) -> IndexRow:
-    """Cap the Discovery-level summary at 280 chars (L2c §6.1)."""
+    """Cap the Discovery-level summary at 280 chars."""
     if row.summary is not None and len(row.summary) > SKILL_SUMMARY_MAX_CHARS:
         return replace(row, summary=row.summary[:SKILL_SUMMARY_MAX_CHARS])
     return row
@@ -74,7 +70,7 @@ class ProceduralShaper:
     """Skill-specific progressive disclosure, wrapping a ``DisclosureShaper``.
 
     ``min_trust`` is the gate threshold: skills at or above it are delivered as
-    instructions; below it, as citation/context (R5).
+    instructions; below it, as citation/context.
     """
 
     def __init__(
@@ -111,7 +107,7 @@ class ProceduralShaper:
             anchor_ep_id, axis=axis, pit=pit, hops=hops, now=now
         )
 
-    # Execution — FULL (the ONLY level that hydrates body; gated by R5).
+    # Execution — FULL (the ONLY level that hydrates body; gated by trust).
     def materialize_full(
         self,
         ep_ids: list[str],

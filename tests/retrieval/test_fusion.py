@@ -1,11 +1,11 @@
 """Unit tests for ``seahorse.retrieval.fusion`` — pure-Python RRF over ranks.
 
-Test signals (f5-11 §16, load-bearing):
-- RRF operates on RANK, not the ``score`` magnitudes of #6 (correction LOW 6).
+Test signals (load-bearing):
+- RRF operates on RANK, not the ``score`` magnitudes of the persistence layer.
 - Deduplication by ``ep_id`` BEFORE fusing; ``sources`` = sorted union.
-- Deterministic tie-break by ``ep_id`` asc (reproducibility ADR-10).
-- Truncation to ``k``; robust to ``<k`` and empty sources; NO padding (ADR-10).
-- ``sources`` is provenance only, NOT a rerank signal (R11).
+- Deterministic tie-break by ``ep_id`` asc (reproducibility).
+- Truncation to ``k``; robust to ``<k`` and empty sources; NO padding.
+- ``sources`` is provenance only, NOT a rerank signal.
 
 RRF_K = 60 (Cormack 2009): rank 1 -> 1/61, rank 2 -> 1/62, rank 3 -> 1/63.
 """
@@ -41,7 +41,7 @@ def _rrf(rank: int) -> float:
 
 
 # ---------------------------------------------------------------------------
-# 1. RRF operates on RANK, not on score magnitudes (correction LOW 6).
+# 1. RRF operates on RANK, not on score magnitudes.
 # ---------------------------------------------------------------------------
 
 
@@ -110,7 +110,7 @@ class TestDedup:
 
 
 # ---------------------------------------------------------------------------
-# 3. Deterministic tie-break by ep_id asc (ADR-10).
+# 3. Deterministic tie-break by ep_id asc.
 # ---------------------------------------------------------------------------
 
 
@@ -134,7 +134,7 @@ class TestTieBreak:
 
 
 # ---------------------------------------------------------------------------
-# 4. Truncation; robust to <k and empty; NO padding (ADR-10).
+# 4. Truncation; robust to <k and empty; NO padding.
 # ---------------------------------------------------------------------------
 
 
@@ -156,7 +156,7 @@ class TestTruncationAndRobustness:
 
 
 # ---------------------------------------------------------------------------
-# 5. sources is provenance only, NOT a rerank signal (R11).
+# 5. sources is provenance only, NOT a rerank signal.
 # ---------------------------------------------------------------------------
 
 
@@ -190,7 +190,7 @@ class TestSourcesNotRerankSignal:
 
 
 # ---------------------------------------------------------------------------
-# 6. Ranking order is reproducible across two identical runs (ADR-10).
+# 6. Ranking order is reproducible across two identical runs.
 # ---------------------------------------------------------------------------
 
 

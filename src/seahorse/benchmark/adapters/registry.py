@@ -1,4 +1,4 @@
-"""``AdapterRegistry`` — pluggable dataset adapters (f5-16 §2.3).
+"""``AdapterRegistry`` — pluggable dataset adapters.
 
 Adding a benchmark = one ``adapter_xxx.py`` file with a ``@register``
 decorator. The runner, metrics, and reporters never change.

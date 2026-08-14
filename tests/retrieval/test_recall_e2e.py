@@ -1,16 +1,17 @@
-"""End-to-end ``recall`` tests — the full 2-stage flow + the #8 seam.
+"""End-to-end ``recall`` tests — the full 2-stage flow + the disclosure extension point.
 
 ``recall`` runs stage 1 (kNN + BM25), picks the stage-1 top-1 as the anchor (or
-an explicit ``anchor_ep_id``), runs stage 2 (chain [+ BFS if mediano]) off that
+an explicit ``anchor_ep_id``), runs stage 2 (chain [+ BFS when enabled]) off that
 anchor, and fuses the union with RRF. The output is ``list[FusedCandidate]`` —
-the exact seam #8 ``materialize_index`` consumes; #8 projects and does NOT
-re-rank (``score`` is passthrough, ADR-10).
+the exact extension point the progressive-disclosure ``materialize_index``
+consumes; it projects and does NOT re-rank (``score`` is passthrough).
 
-Signals (f5-11 §7.7, §16):
+Signals:
 - All four sources (vector/bm25/chain/bfs) contribute to the union.
 - An ep_id present in multiple sources -> ONE candidate with the union ``sources``.
 - The anchor (stage-1 top-1) drives BOTH the chain and the BFS.
-- ``FusedCandidate.score`` is the RRF score #8 reads verbatim (passthrough).
+- ``FusedCandidate.score`` is the RRF score the progressive-disclosure layer
+  reads verbatim (passthrough).
 - Ordering by ``(-score, ep_id)``.
 """
 
@@ -122,7 +123,8 @@ class TestScorePassthrough:
     def test_score_is_rrf_value_seam_eight_reads(
         self, embedder, vector_repo, fts_repo, episode_repo
     ):
-        # The FusedCandidate.score #8 reads verbatim is the RRF score (no rerank).
+        # The FusedCandidate.score the progressive-disclosure layer reads verbatim
+        # is the RRF score (no rerank).
         vector_repo.knn_hits = [VectorHit("e1", 0.1, 0.9), VectorHit("e2", 0.2, 0.83)]
         fts_repo.search_hits = [FullTextHit("e1", 1.0, 0.37)]
         result = recall(

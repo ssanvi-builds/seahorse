@@ -1,4 +1,4 @@
-"""Frontmatter adapter/migrator — the ``.md`` ↔ ``Episode`` codec (#3, F3.3).
+"""Frontmatter adapter/migrator — the ``.md`` ↔ ``Episode`` codec.
 
 Confinement (load-bearing): ``ruamel.yaml`` and ``python-frontmatter`` are
 imported ONLY by modules of this package that touch the codec —

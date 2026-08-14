@@ -1,4 +1,4 @@
-"""Atomic write — tmp + ``os.replace`` (f5-03 §4.2, safe-watcher)."""
+"""Atomic write — tmp + ``os.replace``."""
 
 from __future__ import annotations
 

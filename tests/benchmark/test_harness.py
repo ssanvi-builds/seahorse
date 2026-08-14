@@ -1,4 +1,4 @@
-"""Tests for the harness (reader LLM + tokenizer, f5-16 §5.2/§4.4 F4)."""
+"""Tests for the harness (reader LLM + tokenizer)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from tests.benchmark.conftest import install_litellm
 def test_stub_reader_is_deterministic_no_litellm():
     """The retrieval-only reader never imports litellm (works without the llm
     extra) and is deterministic — the experiment decision metrics (recall@10 /
-    ndcg@10) never consume the reader's answer (f5-16 §4.4 honest floor)."""
+    ndcg@10) never consume the reader's answer (honest floor)."""
     reader = StubReaderLLM()
     assert reader.generate("Q?", "context") == ""
     assert reader.generate("Q2?", "ctx", question_date=None) == ""

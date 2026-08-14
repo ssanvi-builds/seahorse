@@ -1,10 +1,10 @@
-"""Tests for ``seahorse.context.assembler`` — the bootstrap renderer (§6.2).
+"""Tests for ``seahorse.context.assembler`` — the bootstrap renderer.
 
 The assembler is a PURE function of ``ContextData``: it renders the four
-bootstrap blocks (recent episodes / vigente state / last session / header +
-counter + pointer) at INDEX level, no body. Deterministic (ADR-10) — the same
+bootstrap blocks (recent episodes / current-state / last session / header +
+counter + pointer) at INDEX level, no body. Deterministic — the same
 data always renders the same text. The last-session block is an INDEX list,
-NOT an abstractive summary (honesty, §6.2).
+NOT an abstractive summary (honesty).
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def test_render_empty_data() -> None:
     text = render_context(_data())
     assert "Seahorse memory context" in text
     assert "Recent episodes (0)" in text
-    assert "Vigente state (0 facts)" in text
+    assert "Current state (0 facts)" in text
     assert "Last session" in text
     assert "episodes total" in text
 
@@ -58,7 +58,7 @@ def test_render_four_blocks() -> None:
     )
     text = render_context(data)
     assert "## Recent episodes (1)" in text
-    assert "## Vigente state (1 facts)" in text
+    assert "## Current state (1 facts)" in text
     assert "## Last session (sess-1)" in text
     assert "## Stats" in text
 
@@ -75,7 +75,7 @@ def test_render_includes_subject_and_summary() -> None:
 
 
 def test_render_last_session_is_index_list_not_summary() -> None:
-    """Honesty (§6.2): the last-session block lists INDEX rows, not a session
+    """Honesty: the last-session block lists INDEX rows, not a session
     summary — Seahorse has no session summaries yet."""
     data = _data(
         last_session_id="sess-1",

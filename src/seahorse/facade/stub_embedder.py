@@ -1,23 +1,26 @@
-"""MVP-0 composition-root stub for the ``embedder`` slot (C8.4 seam).
+"""Composition-root stub for the ``embedder`` slot.
 
 ``build_facade`` wires ``StubQueryEmbedder`` as the default ``embedder`` so the
-``QueryEmbedder`` seam EXISTS at the composition root (a single-point swap when
-#7 lands), NOT so it runs. MVP-0 ``recall`` is the vigente listing
-(``VigenteListingRetriever``) and never embeds; the stub raises ``E_NOT_IN_MVP_0``
-fail-loud if a non-skip recall path invokes it before #7 is wired (ADR-10
-honesty — never silently degrade). MVP-1 swaps this slot for the real #7 adapter
-(async→sync wrapper over ``embed(texts, role='query')``; see the contract in
+``QueryEmbedder`` extension point EXISTS at the composition root (a single-point
+swap when the real embedder lands), NOT so it runs. Current ``recall`` is the
+current-state listing (``VigenteListingRetriever``) and never embeds; the stub
+raises ``E_NOT_IN_MVP_0`` fail-loud if a non-skip recall path invokes it before
+the real embedder is wired (honesty — never silently degrade). A later release
+swaps this slot for the real embedder adapter (async→sync wrapper over
+``embed(texts, role='query')``; see the contract in
 ``seahorse.contracts.embeddings``).
 
-``embedding_dim`` is ``0`` (sentinel): no consumer reads it in MVP-0. #6's
-vector index validates the query shape against it at MVP-1 materialization.
+``embedding_dim`` is ``0`` (sentinel): no consumer reads it in the current
+release. The vector index validates the query shape against it at a later
+materialization.
 
 The stub raises a facade ``SeahorseError`` carrying the engine-owned
-``E_NOT_IN_MVP_0`` marker code (the cross-cutting "not available in MVP-0"
-code, already in ``CAT_A`` for both #13 and #14). The facade composition root is
-the right component-of-origin attribution: it is #12 saying "no embedder is
-wired here." This reuses an existing stable code rather than minting a new one,
-so no CAT_A / exit-code / drift-guard churn.
+``E_NOT_IN_MVP_0`` marker code (the cross-cutting "not available in this
+release" code, already in the shared error catalog for both the MCP server and
+the CLI). The facade composition root is the right component-of-origin
+attribution: it is the facade saying "no embedder is wired here." This reuses an
+existing stable code rather than minting a new one, so no error-catalog /
+exit-code / drift-guard churn.
 """
 
 from __future__ import annotations
@@ -29,20 +32,21 @@ from seahorse.engine.errors import E_NOT_IN_MVP_0
 from seahorse.facade.errors import SeahorseError
 
 _DETAIL = (
-    "query embedder is not wired in MVP-0; a non-skip recall path invoked the "
-    "embedder slot, which is an MVP-1 (#7) capability — wire a real embedder at "
-    "build_facade or swap the retriever to the hybrid adapter"
+    "the query embedder is not wired in this release; a non-skip recall path "
+    "invoked the embedder slot, which requires a real embedder backend — wire "
+    "one via build_facade or swap the retriever to the hybrid adapter"
 )
 
 
 class StubQueryEmbedder:
-    """MVP-0 composition-root default for the ``embedder`` slot (fail-loud).
+    """Composition-root default for the ``embedder`` slot (fail-loud).
 
-    Satisfies the widened ``QueryEmbedder`` Protocol (``embedding_dim`` +
+    Satisfies the ``QueryEmbedder`` Protocol (``embedding_dim`` +
     ``embed_query`` + ``embed_queries``) but raises ``E_NOT_IN_MVP_0`` on any
-    embed call. In MVP-0 the slot is wired but inert: ``VigenteListingRetriever``
-    never calls it. The guard fires only on misuse — an early MVP-1 recall path
-    wired before #7's real adapter lands.
+    embed call. In the current release the slot is wired but inert:
+    ``VigenteListingRetriever`` never calls it. The guard fires only on misuse —
+    an early later-release recall path wired before the real embedder adapter
+    lands.
     """
 
     embedding_dim: int = 0

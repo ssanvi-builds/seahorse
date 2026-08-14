@@ -1,10 +1,10 @@
-"""Tests for ``seahorse.distill.cluster`` — deterministic clustering (§5.3).
+"""Tests for ``seahorse.distill.cluster`` — deterministic clustering.
 
-The clustering key is DISTINCT from the stored subject (§15.2 redesign 1): the
-observer's H1 carries a ``[session_tag:prompt_number]`` suffix, so the stored
-subject is unique per turn — the N≥3 recurrence trigger would NEVER fire if it
-clustered on the stored subject. The key strips the tag suffix, so episodes
-about the same topic cluster together. Deterministic (ADR-10).
+The clustering key is DISTINCT from the stored subject: the observer's H1
+carries a ``[session_tag:prompt_number]`` suffix, so the stored subject is
+unique per turn — the N≥3 recurrence trigger would NEVER fire if it clustered on
+the stored subject. The key strips the tag suffix, so episodes about the same
+topic cluster together. Deterministic.
 """
 
 from __future__ import annotations

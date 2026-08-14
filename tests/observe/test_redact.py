@@ -1,10 +1,10 @@
 """Tests for ``seahorse.observe.redact`` — deterministic secret redaction.
 
-The redactor is a PURE function (same input → same output → stable hash,
-obsiforge §4.4). It runs at ENQUEUE time: nothing raw is ever persisted — the
-queue stores only the already-redacted envelope. The structural walk covers
-nested JSON (dict/list/str) so secrets inside ``tool_input`` / ``tool_response``
-are redacted, not just top-level strings (obsiforge §15.2 redesign 3).
+The redactor is a PURE function (same input → same output → stable hash). It runs
+at ENQUEUE time: nothing raw is ever persisted — the queue stores only the
+already-redacted envelope. The structural walk covers nested JSON (dict/list/str)
+so secrets inside ``tool_input`` / ``tool_response`` are redacted, not just
+top-level strings.
 
 The claim "strictly stronger than claude-mem" (whose ``pending_messages``
 stores ``tool_input``/``tool_response`` raw) is pinned by the frozen fixtures

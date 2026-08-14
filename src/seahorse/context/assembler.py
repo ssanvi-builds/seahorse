@@ -1,15 +1,10 @@
-"""Context bootstrap renderer (obsiforge §6.2).
+"""Context bootstrap renderer.
 
 A PURE function of ``ContextData``: renders the four bootstrap blocks at INDEX
-level, no body. Deterministic (ADR-10) — the same data always renders the same
-text. The last-session block is an INDEX list, NOT an abstractive summary
-(honesty: Seahorse has no session summaries yet, §6.2). Progressive disclosure:
-the bootstrap is compressed (~1-2k tokens); the agent scales to ``recall_full``
-when it decides.
-
-References:
-- obsiforge-evolution-architecture.md §6.2 (four blocks, INDEX level)
-- obsiforge-evolution-architecture.md §6.3 (hook injects the render)
+level, no body. Deterministic — the same data always renders the same text. The
+last-session block is an INDEX list, NOT an abstractive summary (honesty:
+Seahorse has no session summaries yet). Progressive disclosure: the bootstrap is
+compressed (~1-2k tokens); the agent scales to ``recall_full`` when it decides.
 """
 
 from __future__ import annotations
@@ -34,7 +29,7 @@ def render_context(data: ContextData) -> str:
     """Render the four bootstrap blocks to text. Pure + deterministic."""
     lines: list[str] = [_HEADER, ""]
 
-    # Block 1: recent episodes (created_at desc, ep_id asc — sort G2).
+    # Block 1: recent episodes (created_at desc, ep_id asc).
     lines.append(f"## Recent episodes ({len(data.recent)})")
     if data.recent:
         lines.extend(_entry(e) for e in data.recent)
@@ -42,9 +37,9 @@ def render_context(data: ContextData) -> str:
         lines.append("(none yet — the context is empty until episodes are indexed)")
     lines.append("")
 
-    # Block 2: current vigente state (the recent list IS the vigente set).
-    lines.append(f"## Vigente state ({data.vigente_count} facts)")
-    lines.append("The recent list above is the vigente set (created_at desc).")
+    # Block 2: current-state (the recent list IS the current-state set).
+    lines.append(f"## Current state ({data.vigente_count} facts)")
+    lines.append("The recent list above is the current-state set (created_at desc).")
     lines.append("")
 
     # Block 3: last session — an INDEX list, NOT an abstractive summary.

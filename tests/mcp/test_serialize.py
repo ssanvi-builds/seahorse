@@ -1,4 +1,4 @@
-"""Tests for the Python → wire JSON serializer (#13)."""
+"""Tests for the Python → wire JSON serializer (the MCP server)."""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ class TestCollections:
 
 
 class TestExcludeNoneFalse:
-    """nulls are explicit (R9 f5-13) — shape stable MVP-0 → MVP-1."""
+    """nulls are explicit — shape stable across releases."""
 
     def test_none_value_kept_as_null(self) -> None:
         out = to_wire({"a": None, "b": 1})
@@ -120,7 +120,7 @@ class TestDataclassSerialization:
         assert out["expired_at"] is None  # exclude_none=False
 
     def test_episode_exclude_fields_travel_wire(self) -> None:
-        # Regression guard for the Pydantic migration (commit 1): body/subject/
+        # Regression guard for the Pydantic migration: body/subject/
         # fact_id are Field(exclude=True) — model_dump omits them, but the wire
         # walker reads via getattr so they STILL travel the wire. If someone
         # switches the walker to model_dump, body would silently vanish from
@@ -138,8 +138,8 @@ class TestDataclassSerialization:
         assert "fact_id" not in ep.model_dump(mode="json")
 
     def test_episode_supersedes_reason_travels_wire_as_null(self) -> None:
-        # supersedes_reason is NEW (commit 1): travels the wire as null until
-        # commit 4 persists it. Locks the additive wire key.
+        # supersedes_reason is NEW: travels the wire as null until a later
+        # change persists it. Locks the additive wire key.
         from tests.mcp.conftest import make_episode
 
         out = to_wire(make_episode())

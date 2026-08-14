@@ -1,4 +1,4 @@
-"""``MarkdownReporter`` — human-readable report.md with comparison tables (f5-16 §6.4)."""
+"""``MarkdownReporter`` — human-readable report.md with comparison tables."""
 
 from __future__ import annotations
 

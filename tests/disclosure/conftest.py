@@ -1,14 +1,16 @@
-"""Fakes for #8 DisclosureShaper unit tests.
+"""Fakes for the progressive disclosure shaper unit tests.
 
 Lightweight in-memory implementations of ``EpisodeIndexRepository`` and
-``EpisodeRepository`` conforming to the contracts. They isolate #8's projection
-logic from #6's SQL (already covered by 149 persistence tests) and keep the
-disclosure tests fast and focused on shaper behavior: score passthrough, PIT
-composition, deterministic truncation, caps, and fail-loud guards.
+``EpisodeRepository`` conforming to the contracts. They isolate the progressive
+disclosure projection logic from the persistence layer's SQL (already covered by
+149 persistence tests) and keep the disclosure tests fast and focused on shaper
+behavior: score passthrough, PIT composition, deterministic truncation, caps, and
+fail-loud guards.
 
-PIT predicates mirror #6's ``_pit_predicate`` exactly (ADR-03, never mix axes):
+PIT predicates mirror the persistence layer's ``_pit_predicate`` exactly (never
+mix axes):
 - state_at(t): (valid_at IS NULL OR valid_at <= t) AND (invalid_at IS NULL OR invalid_at > t)
-  — CC-2 (C8.6): valid_at IS NULL ("from forever") is valid at any t → INCLUDED.
+  — valid_at IS NULL ("from forever") is valid at any t → INCLUDED.
 - known_at(t): created_at <= t AND (expired_at IS NULL OR expired_at > t)
 """
 
@@ -26,7 +28,7 @@ from seahorse.contracts.index import IndexRowData, PITKind
 
 
 class FakeIndexRepo:
-    """In-memory ``EpisodeIndexRepository`` for #8 tests."""
+    """In-memory ``EpisodeIndexRepository`` for progressive disclosure tests."""
 
     def __init__(self) -> None:
         self.rows: dict[str, IndexRowData] = {}
@@ -40,10 +42,10 @@ class FakeIndexRepo:
     @staticmethod
     def _pit_ok(row: IndexRowData, pit_kind: PITKind, t: datetime) -> bool:
         if pit_kind == "state_at":
-            # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) —
-            # valid at ANY t. The predicate is ``valid_at IS NULL OR valid_at <= t``
-            # (mirrors the canonical engine predicates get_vigente / is_valid_at,
-            # which already include NULL). Real PENDING is valid_at in the FUTURE.
+            # valid_at IS NULL = "from forever" — valid at ANY t. The predicate
+            # is ``valid_at IS NULL OR valid_at <= t`` (mirrors the canonical
+            # engine predicates get_vigente / is_valid_at, which already include
+            # NULL). Real PENDING is valid_at in the FUTURE.
             return (
                 (row.valid_at is None or row.valid_at <= t)
                 and (row.invalid_at is None or row.invalid_at > t)
@@ -69,7 +71,7 @@ class FakeIndexRepo:
             if (r := self.rows.get(i)) is not None and self._pit_ok(r, "known_at", t)
         ]
 
-    # TIMELINE MVP-0
+    # TIMELINE (first release)
     def chain_rows_from(self, ep_id: str) -> list[IndexRowData]:
         # Transitive closure over supersedes (both directions), sorted by created_at.
         seen: set[str] = set()
@@ -106,7 +108,7 @@ class FakeIndexRepo:
                 return row
         return None
 
-    # TIMELINE MVP-1 axes — not exercised by #8 MVP-0 (raise if called).
+    # TIMELINE later-release axes — not exercised by the first release (raise if called).
     def range_rows_state_at(
         self, t_start: datetime, t_end: datetime, *, subject: str | None = None
     ) -> list[IndexRowData]:
@@ -120,7 +122,7 @@ class FakeIndexRepo:
     def bfs_neighbors_state_at(
         self, ep_id: str, pit: datetime, *, pit_kind: PITKind, hops: int, include_tags_soft: bool
     ) -> list[IndexRowData]:
-        """Supersedes-based BFS mirror of the SQLite impl (SO-8b).
+        """Supersedes-based BFS mirror of the SQLite impl.
 
         Traverses ``supersedes`` edges in both directions (rows pointing INTO
         the current layer, and rows the current layer points to), collecting
@@ -152,7 +154,7 @@ class FakeIndexRepo:
 
 
 class FakeEpisodeRepo:
-    """In-memory ``EpisodeRepository`` for #8 FULL-level tests."""
+    """In-memory ``EpisodeRepository`` for progressive disclosure FULL-level tests."""
 
     def __init__(self) -> None:
         self.eps: dict[str, Episode] = {}
@@ -239,18 +241,19 @@ def repo() -> FakeEpisodeRepo:
 
 
 # ---------------------------------------------------------------------------
-# Recording doubles — structurally enforce #8's delegation / guard-order
-# invariants that outcome-only tests cannot catch (adversarial review #2, #4).
+# Recording doubles — structurally enforce the disclosure layer's delegation /
+# guard-order invariants that outcome-only tests cannot catch (adversarial
+# review items).
 # ---------------------------------------------------------------------------
 
 
 class RecordingIndex(FakeIndexRepo):
     """``FakeIndexRepo`` that counts per-accessor calls.
 
-    Used to prove #8 DELEGATES PIT to #6's typed accessors
-    (``get_rows_state_at`` / ``get_rows_known_at``) instead of inlining the
-    predicate (drift-prevention, ADR-03), and that guards fire BEFORE any
-    index fetch.
+    Used to prove the disclosure layer DELEGATES PIT to the persistence
+    layer's typed accessors (``get_rows_state_at`` / ``get_rows_known_at``)
+    instead of inlining the predicate (drift-prevention), and that guards fire
+    BEFORE any index fetch.
     """
 
     def __init__(self) -> None:

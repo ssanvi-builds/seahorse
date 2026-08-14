@@ -1,36 +1,36 @@
-"""Frontmatter key collisions (f5-03 §3.1/§3.3/§3.6).
+"""Frontmatter key collisions.
 
-Two collision classes the migrator must report (never auto-resolve, f5-03
-§3.8):
+Two collision classes the migrator must report (never auto-resolve):
 
-1. **Legacy↔F3.1 name collision.** An Obsidian/legacy frontmatter key names a
-   concept that F3.1 also names, with a different semantic. The classic case:
-   Obsidian ``created`` (a free-form date the human sets) vs F3.1 ``created_at``
-   (the bi-temporal created_at, UTC datetime). The migrator preserves the legacy
-   key intact and ADDS the F3.1 key alongside, recording the collision so the
-   human can reconcile later. ``COLLISION_MAP`` lists the pairs we know about.
+1. **Legacy↔on-disk name collision.** An Obsidian/legacy frontmatter key names a
+   concept that the on-disk format also names, with a different semantic. The
+   classic case: Obsidian ``created`` (a free-form date the human sets) vs the
+   format's ``created_at`` (the bi-temporal created_at, UTC datetime). The
+   migrator preserves the legacy key intact and ADDS the canonical key alongside,
+   recording the collision so the human can reconcile later. ``COLLISION_MAP``
+   lists the pairs we know about.
 
-2. **x-* reserved collision.** F3.1 reserves the ``x-`` prefix for importer/plugin
-   metadata (f5-03 §2.7). A legacy key that ALREADY uses an ``x-`` name reserved
-   for a core F3.1 field (e.g. ``x-valid-at``) is a case-D incompatibility: the
+2. **x-* reserved collision.** The on-disk format reserves the ``x-`` prefix for
+   importer/plugin metadata. A legacy key that ALREADY uses an ``x-`` name
+   reserved for a core field (e.g. ``x-valid-at``) is incompatible: the
    validator would reject the merged frontmatter, so the migrator refuses to
    migrate and logs to ``migration_errors.log``.
 
-Owned by #3, stdlib-only (no ruamel, no pydantic).
+Part of the frontmatter migrator, stdlib-only (no ruamel, no pydantic).
 """
 
 from __future__ import annotations
 
-# Legacy Obsidian key -> the F3.1 key it semantically collides with. The legacy
-# key is PRESERVED (case B); the F3.1 key is ADDED; the pair is logged.
+# Legacy Obsidian key -> the on-disk key it semantically collides with. The legacy
+# key is PRESERVED (case B); the canonical key is ADDED; the pair is logged.
 COLLISION_MAP: dict[str, str] = {
     "created": "created_at",
-    "modified": "modified_at",  # not an F3.1 core field, but reserved name space
+    "modified": "modified_at",  # not an on-disk core field, but reserved name space
     "publish": "publish_state",  # informational; recorded for human awareness
 }
 
-# x-* names reserved for F3.1 core fields. A legacy key using one of these is a
-# case-D incompatibility (validator would reject the merged frontmatter).
+# x-* names reserved for on-disk core fields. A legacy key using one of these is
+# incompatible (validator would reject the merged frontmatter).
 X_RESERVED_KEYS: frozenset[str] = frozenset(
     {
         "x-valid-at",
@@ -47,7 +47,7 @@ X_RESERVED_KEYS: frozenset[str] = frozenset(
 def detect_legacy_collisions(legacy_keys: set[str]) -> list[str]:
     """Return the collision pairs present, as ``"legacy vs f31"`` strings.
 
-    Only keys that are actually present AND have an F3.1 counterpart in
+    Only keys that are actually present AND have an on-disk counterpart in
     ``COLLISION_MAP`` are reported. Order is stable (sorted by legacy key) so
     the manifest/diff is deterministic.
     """

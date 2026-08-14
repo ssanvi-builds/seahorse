@@ -1,10 +1,10 @@
-"""``ReaderLLMClient`` — the harness-controlled reader LLM (f5-16 §5.2).
+"""``ReaderLLMClient`` — the harness-controlled reader LLM.
 
-The reader is the agent that USES the memory (the L3 agent), NOT Seahorse
-itself. It calls LiteLLM directly (the #4 contract has no temperature/seed —
-f5-16 §10.1 OQ-16-2) with t=0, seed=42, max_tokens pinned. The system prompt
-is git-tracked (``harness/prompts/reader_system_prompt.txt``) and hashed into
-the manifest fingerprint.
+The reader is the agent that USES the memory, NOT Seahorse itself. It calls
+LiteLLM directly (the LLM backend contract has no temperature/seed) with t=0,
+seed=42, max_tokens pinned. The system prompt is git-tracked
+(``harness/prompts/reader_system_prompt.txt``) and hashed into the manifest
+fingerprint.
 """
 
 from __future__ import annotations
@@ -62,13 +62,13 @@ class ReaderLLMClient:
 class StubReaderLLM:
     """Retrieval-only reader double — deterministic, no litellm import.
 
-    The F1/F3 experiment DECISION metrics (recall@10, ndcg@10, knowledge-update
-    accuracy, token/latency) never consume the reader's ``answer`` (f5-16 §4.4
-    honest floor — retrieval is LLM-free). A retrieval-only pass therefore
-    produces the SAME decision numbers as a full QA run, without the hours of
-    Ollama calls or the ``llm`` extra (f7 §5 cost note). The returned empty
-    answer is never scored; ``answer``, ``reader_latency_ms`` and
-    ``total_query_latency_ms`` differ from a real run and must not be compared.
+    The DECISION metrics (recall@10, ndcg@10, knowledge-update accuracy,
+    token/latency) never consume the reader's ``answer`` (honest floor —
+    retrieval is LLM-free). A retrieval-only pass therefore produces the SAME
+    decision numbers as a full QA run, without the hours of Ollama calls or the
+    ``llm`` extra. The returned empty answer is never scored; ``answer``,
+    ``reader_latency_ms`` and ``total_query_latency_ms`` differ from a real run
+    and must not be compared.
     """
 
     def __init__(self, temperature: float = 0.0) -> None:

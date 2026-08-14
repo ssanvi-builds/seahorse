@@ -1,11 +1,10 @@
-"""#15 Importers — the migration/coexistence bridge (f5-15, obsiforge §15.4).
+"""Importers — the migration/coexistence bridge.
 
-The importer is the **validador del foso competitivo** (f5-15 §tesis): it
-demonstrates that the open F3.1 format absorbs the final state of an existing
-memory vendor (claude-mem) without silent loss. It is a one-time, one-way
-migration (vendor -> F3.1); there is no ongoing sync (ADR-03).
+The importer demonstrates that the open F3.1 format absorbs the final state of
+an existing memory vendor (claude-mem) without silent loss. It is a one-time,
+one-way migration (vendor -> F3.1); there is no ongoing sync.
 
-Two layers (f5-15 §3.1):
+Two layers:
 - **Pure mapping** — ``import_record(vendor_record, vendor) -> ImporterResult``
   (no state, no store, no LLM, no conflict resolution).
 - **Ingestion driver** — ``ImportRunner`` (dry-run/commit, manifest, idempotency
@@ -13,10 +12,6 @@ Two layers (f5-15 §3.1):
 
 claude-mem is NEVER a runtime dependency — the importer reads its local SQLite
 (``~/.claude-mem/claude-mem.db``) as a one-time migration source.
-
-References:
-- f5-15-importers.md (the load-bearing spec)
-- obsiforge-evolution-architecture.md §15.4 (importer = migration bridge)
 """
 
 from __future__ import annotations

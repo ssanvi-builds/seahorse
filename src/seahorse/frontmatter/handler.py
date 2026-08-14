@@ -1,12 +1,12 @@
-"""ruamel.yaml round-trip handler for python-frontmatter (f5-03 §4.1/§7.1).
+"""ruamel.yaml round-trip handler for python-frontmatter.
 
-F3.1 sec 4.2 mandates a single YAML engine that preserves comments, key order,
-quote style, block scalars, and anchors/aliases. ``python-frontmatter`` defaults
-to PyYAML (safe load/dump), which destroys all of those. F3.3 cables a custom
-``RuamelRTHandler`` that delegates parse/dump to ``ruamel.yaml`` ``typ='rt'``
-(round-trip), so ``parse_file`` receives a ``CommentedMap`` carrying the
-file's original formatting — the baseline ``_merge_known`` writes back onto, so
-``x-*`` keys, comments, and inherited quote styles survive the round-trip.
+The on-disk format mandates a single YAML engine that preserves comments, key
+order, quote style, block scalars, and anchors/aliases. ``python-frontmatter``
+defaults to PyYAML (safe load/dump), which destroys all of those. This package
+wires a custom ``RuamelRTHandler`` that delegates parse/dump to ``ruamel.yaml``
+``typ='rt'`` (round-trip), so ``parse_file`` receives a ``CommentedMap`` carrying
+the file's original formatting — the baseline ``_merge_known`` writes back onto,
+so ``x-*`` keys, comments, and inherited quote styles survive the round-trip.
 
 This handler is confined to ``seahorse/frontmatter/`` (it imports
 ``ruamel.yaml`` and ``frontmatter``); neither leaks into the core.
@@ -24,17 +24,17 @@ from ruamel.yaml.comments import CommentedMap
 
 
 def _make_yaml() -> YAML:
-    """A round-trip ruamel YAML tuned for frontmatter preservation (f5-03 §4.1).
+    """A round-trip ruamel YAML tuned for frontmatter preservation.
 
     - ``typ='rt'``: round-trip mode (keeps comments / quotes / order / anchors).
     - ``preserve_quotes=True``: keep the original quote style on scalars.
     - ``width=4096``: do not wrap long scalar lines (frontmatter values stay
       one-line; wrapping would mutate the file on every write).
-    - ``indent(mapping=2, sequence=4, offset=2)``: the canonical F3.1 indent.
+    - ``indent(mapping=2, sequence=4, offset=2)``: the canonical indent.
     - explicit ``null``: ruamel emits ``None`` as an empty value by default
-      (``key:``); F3.1 MVP-1 wants the canonical ``key: null`` literal (f5-03
-      §4.4). A registered representer forces the ``null`` scalar so MVP-1
-      ``exclude_none=False`` writes explicit nulls. MVP-0 uses
+      (``key:``); a later release wants the canonical ``key: null`` literal. A
+      registered representer forces the ``null`` scalar so that release's
+      ``exclude_none=False`` writes explicit nulls. The current release uses
       ``exclude_none=True`` so no ``None`` reaches the dumper — the representer
       is inert there.
     """
@@ -119,7 +119,7 @@ class RuamelRTHandler(BaseHandler):
         if data is None:
             return CommentedMap()
         if not isinstance(data, CommentedMap):
-            # A non-mapping frontmatter (e.g. a bare scalar) is invalid F3.1;
+            # A non-mapping frontmatter (e.g. a bare scalar) is invalid on-disk;
             # normalize to an empty map so model_validate raises a typed error
             # rather than a ruamel TypeError.
             return CommentedMap()

@@ -1,4 +1,5 @@
-"""Tests for the minimal JSON Schema validator subset (#13 wire-shape)."""
+"""Tests for the minimal JSON Schema validator subset (the MCP server
+wire-shape)."""
 
 from __future__ import annotations
 
@@ -295,9 +296,9 @@ class TestRealSchemas:
 
     def test_remember_accepts_consolidated_extraction_mode(self) -> None:
         # ``consolidated`` is now schema-valid at wire-shape (round-trippable
-        # batch-distillation marker, obsiforge §5.2). The single-episode route
-        # still refuses it later, at the facade (E_INVALID_EXTRACTION_MODE) —
-        # but the wire must not reject a value the schema round-trips.
+        # batch-distillation marker). The single-episode route still refuses it
+        # later, at the facade (E_INVALID_EXTRACTION_MODE) — but the wire must
+        # not reject a value the schema round-trips.
         validate(
             {
                 "body": "hello",

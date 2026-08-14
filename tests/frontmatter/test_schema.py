@@ -1,4 +1,4 @@
-"""``frontmatter.schema`` — write-path validation + enums + Provenance (f5-03 §7.2).
+"""``frontmatter.schema`` — write-path validation + enums + Provenance.
 
 Covers the split validation surfaces:
 - read path (parse_file) fires only the canonical model's ``_reject_naive`` and
@@ -92,7 +92,7 @@ class TestEpisodeReadPathValidators:
     """The canonical model's context-gated validators (no validate_for_write)."""
 
     def test_expired_at_non_null_without_context_passes(self) -> None:
-        # No context → guard I4 does not fire → existing guard tests still work.
+        # No context → the guard does not fire → existing guard tests still work.
         ep = Episode(
             id="e1",
             created_at=CREATED,

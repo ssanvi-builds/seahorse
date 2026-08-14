@@ -1,14 +1,10 @@
-"""``seahorse skill`` — procedural skills CLI (L2c §6.1).
+"""``seahorse skill`` — procedural skills CLI.
 
 Parser-agnostic logic for the skill surface: ``add`` (deterministic creation via
 ``record_procedure``), ``list`` / ``search`` (Discovery — INDEX level with the
-procedural filter), ``show`` (Execution — FULL level with the R5 trust gate).
-The CLI is a client of #12 (MemoryFacade) and the procedural layer — it never
-reaches the engine directly (delegation purity).
-
-References:
-- incorporation-design.md §6.1 (skills / memoria procedural L2c)
-- f5-14-cli-bootstrap.md (CLI delegation purity)
+procedural filter), ``show`` (Execution — FULL level with the trust gate).
+The CLI is a client of the facade (``MemoryFacade``) and the procedural layer —
+it never reaches the engine directly (delegation purity).
 """
 
 from __future__ import annotations
@@ -40,7 +36,7 @@ def run_skill_add(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse skill add`` — deterministic skill creation (ADR-09 skip).
+    """``seahorse skill add`` — deterministic skill creation (skip path).
 
     Validates the canonical body (``## Trigger`` / ``## Steps`` /
     ``## Validation`` / ``## Rationale``) via ``record_procedure`` — a
@@ -74,7 +70,7 @@ def run_skill_list(
 ) -> None:
     """``seahorse skill list`` — Discovery level (procedural filter).
 
-    Uses ``get_vigente`` (all vigente episodes) filtered to
+    Uses ``get_vigente`` (all current-state episodes) filtered to
     ``cognitive_type=procedural`` — an honest listing, not a fake query. The
     Discovery row is the episode's summary (≤ 280 chars, no body).
     """
@@ -136,13 +132,13 @@ def run_skill_show(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """``seahorse skill show`` — Execution level (FULL, R5 trust gate).
+    """``seahorse skill show`` — Execution level (FULL, trust gate).
 
     The body is delivered with the trust gate applied: a low-trust skill is
     flagged ``as_instruction=False`` (citation/context, not instructions). The
-    CLI is a client of #12 (``facade.recall_full``) and applies the gate at the
-    CLI layer — it never reaches into the facade's internals (delegation
-    purity).
+    CLI is a client of the facade (``facade.recall_full``) and applies the gate
+    at the CLI layer — it never reaches into the facade's internals
+    (delegation purity).
     """
     _require_le(ep_id, limit=64, field="ep-id")
     trust = _parse_trust(min_trust)

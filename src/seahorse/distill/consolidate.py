@@ -1,17 +1,14 @@
-"""Consolidate orchestration — the deterministic distillation driver (§5.3).
+"""Consolidate orchestration — the deterministic distillation driver.
 
-``consolidate(facade)`` reads the vigente set, clusters by subject recurrence
-(N≥3, §5.3), and distills each cluster into a consolidated semantic episode via
-the facade. The consolidated body uses the stable clustering key as its H1 (no
-``[session_tag:n]`` suffix). The sources stay vigente (they are the evidence).
+``consolidate(facade)`` reads the currently-valid set, clusters by subject
+recurrence (N≥3), and distills each cluster into a consolidated semantic
+episode via the facade. The consolidated body uses the stable clustering key as
+its H1 (no ``[session_tag:n]`` suffix). The sources remain valid (they are the
+evidence).
 
 The trigger is ON-DEMAND (``seahorse consolidate``) — the session-end signal is
-OFF by default (§15.2 redesign 5: single-session consolidation contradicts the
-evidence; it is conditioned on real budget pressure measured in F7).
-
-References:
-- obsiforge-evolution-architecture.md §5.3 (recurrence trigger, N≥3)
-- obsiforge-evolution-architecture.md §15.2 redesign 5 (session-end off)
+OFF by default (single-session consolidation contradicts the evidence; it is
+conditioned on real budget pressure).
 """
 
 from __future__ import annotations
@@ -64,18 +61,18 @@ def _consolidated_body(cluster: Cluster) -> str:
 
 
 def consolidate(facade: Any, *, by: dict[str, Any] | None = None) -> ConsolidateReport:
-    """Consolidate recurrent vigente episodes into semantic knowledge notes.
+    """Consolidate recurrent currently-valid episodes into semantic knowledge notes.
 
-    Reads the vigente set via ``facade.get_vigente()``, clusters EPISODIC
-    sources by subject recurrence (N≥3), and distills each cluster via
-    ``facade.distill``. Idempotent (§5.5): a cluster whose key already has a
+    Reads the currently-valid set via ``facade.get_vigente()``, clusters
+    EPISODIC sources by subject recurrence (N≥3), and distills each cluster via
+    ``facade.distill``. Idempotent: a cluster whose key already has a
     consolidated knowledge note is SKIPPED — the note is the current knowledge,
-    not re-distilled. Returns a report (deterministic order, ADR-10).
+    not re-distilled. Returns a report (deterministic order).
     """
     effective_by = by or {"source_type": "system", "agent_id": CONSOLIDATOR_AGENT}
     eps = facade.get_vigente()
     # Cluster only EPISODIC sources — consolidated notes are the OUTPUT, not
-    # the input (idempotency, §5.5).
+    # the input (idempotency).
     sources = [e for e in eps if not _is_consolidated(e)]
     existing_keys = {e.subject for e in eps if _is_consolidated(e)}
     clusters = cluster_episodes(sources)

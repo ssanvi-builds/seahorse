@@ -1,8 +1,8 @@
-"""Tests for #4 role routing (f5-04 §2.5) — the fallback chain shape.
+"""Tests for role routing — the fallback chain shape.
 
 The extraction route is primary→secondary→tertiary. Only the ``extraction``
-role is materialized in MVP; other roles are rejected loudly so they are added
-deliberately.
+role is materialized in the first release; other roles are rejected loudly so
+they are added deliberately.
 """
 
 from __future__ import annotations

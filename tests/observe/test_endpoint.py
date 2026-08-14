@@ -1,11 +1,10 @@
 """Tests for ``seahorse.observe.endpoint`` — the observer's HTTP endpoint.
 
 The endpoint is the edge where envelopes arrive (the hooks POST to the unix
-socket, obsiforge §4.4). It validates auth (token, §15.2 redesign 10), parses
-the envelope tolerantly (caps, malformed → 400), REDACTS before enqueue
-(nothing raw persisted), and applies ``drop_tools`` (Read/Bash never reach the
-queue). The unix socket (dir 0700, socket 0600) is the FS-level auth; the token
-is the caller-level auth.
+socket). It validates auth (token), parses the envelope tolerantly (caps,
+malformed → 400), REDACTS before enqueue (nothing raw persisted), and applies
+``drop_tools`` (Read/Bash never reach the queue). The unix socket (dir 0700,
+socket 0600) is the FS-level auth; the token is the caller-level auth.
 """
 
 from __future__ import annotations
@@ -151,7 +150,7 @@ def test_serve_forever_accepts_post(tmp_path) -> None:
                 break
             time.sleep(0.05)
         assert os.path.exists(socket_path)
-        # Socket permissions: 0600 (FS-level auth, §4.4).
+        # Socket permissions: 0600 (FS-level auth).
         assert os.stat(socket_path).st_mode & 0o777 == 0o600
         status = _post(socket_path, _raw_event())
         assert status == 200

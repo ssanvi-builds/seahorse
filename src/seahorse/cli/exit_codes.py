@@ -1,69 +1,66 @@
-"""Exit-code translation for the CLI projection (#14).
+"""Exit-code translation for the CLI projection.
 
-The sister of ``seahorse.mcp.errors`` (#13): both translate the SAME
-``SeahorseError`` / ``EngineError`` catalog, #13 to JSON-RPC ``-32xxx`` codes,
-#14 to process exit codes in the ``sysexits.h`` application band (64+). The
-catalog is mirrored from #13's ``CAT_A`` / ``CAT_B`` so a change in #12 moves
-both tables in lockstep (single point of change, f5-14 §3.3).
+The sibling of ``seahorse.mcp.errors``: both translate the SAME
+``SeahorseError`` / ``EngineError`` catalog, the MCP server to JSON-RPC
+``-32xxx`` codes, the CLI to process exit codes in the ``sysexits.h``
+application band (64+). The catalog is mirrored from the MCP server's
+``CAT_A`` / ``CAT_B`` so a change in the facade moves both tables in lockstep
+(single point of change).
 
-Three categories (f5-14 §3.3), consistent with #13:
+Three categories, consistent with the MCP server:
 
-- **Cat A — exceptions with a stable ``.code``** (``SeahorseError`` from #12 and
-  ``EngineError`` from #2): the ``code`` is surfaced as ``seahorse_code`` on
-  stderr and mapped to a unique exit code. The caller matches on
-  ``seahorse_code``.
+- **Cat A — exceptions with a stable ``.code``** (``SeahorseError`` from the
+  facade and ``EngineError`` from the engine): the ``code`` is surfaced as
+  ``seahorse_code`` on stderr and mapped to a unique exit code. The caller
+  matches on ``seahorse_code``.
 - **Cat B — propagated exceptions WITHOUT a stable code** (``FullBatchTooLarge``,
-  ``PitFullNotSupported``, ``NotInMVP0`` from #8; ``InvalidationConflictError``,
-  ``NotFound`` from #2; ``IntegrityError`` from #6): surfaced as
-  ``exception_class`` (no synthetic ``seahorse_code`` — that would lie about a
-  code the lower component does not own).
-- **Cat C — CLI-owned exit codes** (prefixed ``CLI_``, NOT from the #12
+  ``PitFullNotSupported``, ``NotInMVP0`` from the disclosure layer;
+  ``InvalidationConflictError``, ``NotFound`` from the engine; ``IntegrityError``
+  from persistence): surfaced as ``exception_class`` (no synthetic
+  ``seahorse_code`` — that would lie about a code the lower component does not
+  own).
+- **Cat C — CLI-owned exit codes** (prefixed ``CLI_``, NOT from the facade
   catalog): bootstrap/config/reserved-feature errors of the CLI surface itself.
 
-Drift reconciled vs f5-14 §3.3 (which cites an idealized 12-Cat-A table): the
-real catalog #12/#2 raise is 17 Cat A codes (8 facade + 9 engine), mirrored
-from #13's ``CAT_A``. ``E_INVALID_SOURCE_TYPE`` (f5-14) → ``E_MISSING_SOURCE_TYPE``
-(real). ``E_INVALID_COGNITIVE_TYPE`` is NOT raised by #12 in MVP-0 (the facade
-does not validate ``cognitive_type`` — engine/#1 authority) so it is not
-mapped. ``InvalidPITKind`` carries ``.code = E_INVALID_PIT_KIND`` → Cat A (the
-f5-14 table wrongly listed it Cat B). ``HopsCapExceeded`` / ``BfsKnownAtUnsupported``
-/ ``SubjectDerivationError`` are NOT in code in MVP-0 (#11 / real #5 unbuilt)
-and are not mapped — parity with #13's ``CAT_B``.
+The real catalog the facade and engine raise is 17 Cat A codes (8 facade + 9
+engine), mirrored from the MCP server's ``CAT_A``. ``E_INVALID_SOURCE_TYPE``
+→ ``E_MISSING_SOURCE_TYPE`` (the real code). ``E_INVALID_COGNITIVE_TYPE`` is
+NOT raised in the current release (the facade does not validate
+``cognitive_type`` — the engine is authoritative) so it is not mapped.
+``InvalidPITKind`` carries ``.code = E_INVALID_PIT_KIND`` → Cat A.
+``HopsCapExceeded`` / ``BfsKnownAtUnsupported`` / ``SubjectDerivationError``
+are not in code in the current release and are not mapped — parity with the
+MCP server's ``CAT_B``.
 
-SO-14-05 resolution (2026-07-20): ``expire`` / ``revalidate`` are CLI-intercepted
-at the CLI layer (Cat C ``CLI_NOT_IN_MVP_0`` = 75), never reaching
-``facade.expire``/``revalidate`` (which raise ``E_NOT_IN_MVP_0_1``). ``--tag`` is
-not exposed in MVP-0 (the facade rejects non-empty tags with
-``E_NOT_IN_MVP_0_1``; ADR-10 honesty + YAGNI — tags are an MVP-1 enabler).
-``E_NOT_IN_MVP_0_1`` is therefore currently UNREACHABLE via #14; it is mapped at
-71 for parity with #13 and as defense-in-depth if a future surface routes here.
+``expire`` / ``revalidate`` are CLI-intercepted at the CLI layer (Cat C
+``CLI_NOT_IN_MVP_0`` = 75), never reaching ``facade.expire``/``revalidate``
+(which raise ``E_NOT_IN_MVP_0_1``). ``--tag`` is not exposed in the current
+release (the facade rejects non-empty tags with ``E_NOT_IN_MVP_0_1``;
+fail-loud honesty + YAGNI — tags are a later-release enabler).
+``E_NOT_IN_MVP_0_1`` is therefore currently UNREACHABLE via the CLI; it is
+mapped at 71 for parity with the MCP server and as defense-in-depth if a
+future surface routes here.
 
 Exit-code layout (64–99, ``sysexits.h`` application band):
 
 - ``0``  success, ``1`` general/unhandled, ``2`` usage/argparse.
-- Cat A (21): 64–74, 76–81 (75 skipped — Cat C anchor), 90–93 (frontmatter #3,
-  commit 5). The 4 frontmatter codes live in the previously-reserved 90–93 band
-  because they are a distinct component origin (#3, not #12/#2) and the 64–81
-  band was already full.
-- Cat C (5):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty, SO-14-05),
+- Cat A (21): 64–74, 76–81 (75 skipped — Cat C anchor), 90–93 (frontmatter).
+  The 4 frontmatter codes live in the previously-reserved 90–93 band because
+  they are a distinct component origin (the frontmatter migrator, not the
+  facade/engine) and the 64–81 band was already full.
+- Cat C (5):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty),
   82 ``CLI_VAULT_NOT_FOUND``, 83 ``CLI_CONFIG_INVALID``,
-  94 ``CLI_REBUILD_CONFLICTS`` (ADR-10 index-rebuild conflict honesty),
+  94 ``CLI_REBUILD_CONFLICTS`` (index-rebuild conflict honesty),
   97 ``CLI_MIGRATION_DEFERRED`` (frontmatter migrate case-D honesty).
 - Cat B (6):  84–89.
 
-NOTE — 75 overload resolved (commit 6): ``CLI_NOT_IN_MVP_0`` and
-``CLI_REBUILD_CONFLICTS`` shared exit code 75 in commit 5 (distinguishable only
-on the structured ``cli_code`` payload, not on the int). Commit 6 split
-``CLI_REBUILD_CONFLICTS`` onto a fresh 90–99 slot (94 — frontmatter Cat A took
-90–93, so 94 is the next free CLI-owned slot) so the two are distinct even on
-the int exit code. Both stay CLI-owned Cat C (never Cat A), so they never
-collide with the 21-code Cat A table; 94 is also outside the Cat A
-64–81 / 90–93 set.
-
-References:
-- f5-14 §3.3 (exit-code table, as-designed — reconciled here against real code)
-- seahorse/mcp/errors.py (sister projection; mirrored catalog)
-- SO-14-05 (expire/revalidate CLI-intercept decision)
+NOTE — 75 overload resolved: ``CLI_NOT_IN_MVP_0`` and ``CLI_REBUILD_CONFLICTS``
+shared exit code 75 (distinguishable only on the structured ``cli_code``
+payload, not on the int). ``CLI_REBUILD_CONFLICTS`` was split onto a fresh
+90–99 slot (94 — frontmatter Cat A took 90–93, so 94 is the next free
+CLI-owned slot) so the two are distinct even on the int exit code. Both stay
+CLI-owned Cat C (never Cat A), so they never collide with the 21-code Cat A
+table; 94 is also outside the Cat A 64–81 / 90–93 set.
 """
 
 from __future__ import annotations
@@ -90,8 +87,9 @@ _CAT_A_FACADE = {
     "E_INVALID_PIT_KIND": 68,
     "E_PIT_REQUIRES_T": 69,
     "E_PIT_RECALL_MVP_0": 70,
-    # Currently unreachable via #14 (expire/revalidate CLI-intercepted, --tag
-    # not exposed); mapped for parity with #13 + defense-in-depth.
+    # Currently unreachable via the CLI (expire/revalidate CLI-intercepted,
+    # --tag not exposed); mapped for parity with the MCP server +
+    # defense-in-depth.
     "E_NOT_IN_MVP_0_1": 71,
 }
 
@@ -99,7 +97,7 @@ _CAT_A_ENGINE = {
     "E_COLLISION_EXISTS": 72,
     "E_PENDING_CANNOT_INVALIDATE": 73,
     "E_DANGLING_SUPERSEDES": 74,
-    # 75 reserved for Cat C CLI_NOT_IN_MVP_0 (SO-14-05 anchor).
+    # 75 reserved for Cat C CLI_NOT_IN_MVP_0.
     "E_SKIP_CONTRACT_VIOLATED": 76,
     "E_NOT_IN_MVP_0": 77,
     "E_VALID_AT_HUMAN_ONLY": 78,
@@ -108,9 +106,9 @@ _CAT_A_ENGINE = {
     "E_MONOTONICITY_VIOLATED": 81,
 }
 
-# Frontmatter codes (4) — owned by #3 (commit 5), distinct component origin.
-# Placed in the 90–93 band (previously reserved) so they do not displace the
-# 64–81 domain band. Mirrors seahorse.mcp.errors._CAT_A_FRONTMATTER.
+# Frontmatter codes (4) — owned by the frontmatter migrator, distinct
+# component origin. Placed in the 90–93 band (previously reserved) so they do
+# not displace the 64–81 domain band. Mirrors seahorse.mcp.errors._CAT_A_FRONTMATTER.
 _CAT_A_FRONTMATTER = {
     "E_FRONTMATTER_INVALID": 90,
     "E_MIGRATION_ABORTED": 91,
@@ -131,41 +129,41 @@ CAT_B: dict[str, int] = {
     "InvalidationConflictError": 87,
     "NotFound": 88,
     "IntegrityError": 89,
-    # Sprint C: procedural-skill validation (canonical body) — a client-of-#12
-    # domain error, propagated without a stable code (parity with #13).
+    # Procedural-skill validation (canonical body) — a facade-client domain
+    # error, propagated without a stable code (parity with the MCP server).
     "ProceduralError": 96,
 }
 
 # ---------------------------------------------------------------------------
-# Cat C — CLI-owned exit codes (prefixed CLI_, NOT from the #12 catalog).
+# Cat C — CLI-owned exit codes (prefixed CLI_, NOT from the facade catalog).
 # ---------------------------------------------------------------------------
-CLI_NOT_IN_MVP_0 = 75  # SO-14-05: expire/revalidate + unbuilt-dependency stubs
+CLI_NOT_IN_MVP_0 = 75  # expire/revalidate + unbuilt-dependency stubs
 CLI_VAULT_NOT_FOUND = 82
 CLI_CONFIG_INVALID = 83
-# ADR-10 honesty: index rebuild reports conflicts and fails loud (no auto-pick).
-# Commit 6 split this off the 75 overload (shared with CLI_NOT_IN_MVP_0) onto a
+# Fail-loud honesty: index rebuild reports conflicts and fails loud (no
+# auto-pick). Split off the 75 overload (shared with CLI_NOT_IN_MVP_0) onto a
 # fresh 90–99 slot so the rebuild-conflict concern is distinct from the
 # reserved-stub 75 even on the int exit code. Both stay Cat C (never Cat A).
 CLI_REBUILD_CONFLICTS = 94
-# Sprint B: ``seahorse observe start`` when the observer is already running.
+# ``seahorse observe start`` when the observer is already running.
 CLI_OBSERVER_RUNNING = 95
-# Frontmatter migrate (gap closure): apply met incompatible notes (case D).
-# ADR-10 honesty — the run completes (A/B/C migrated, D logged) but the vault is
-# not fully migrated, so scripts/chained commands must see it. 96 is Cat B
+# Frontmatter migrate: apply met incompatible notes (case D). Fail-loud
+# honesty — the run completes (A/B/C migrated, D logged) but the vault is not
+# fully migrated, so scripts/chained commands must see it. 96 is Cat B
 # (ProceduralError), so 97 is the next free Cat C slot.
 CLI_MIGRATION_DEFERRED = 97
 
 # ---------------------------------------------------------------------------
-# Component-of-origin attribution for stderr ``component:`` (parity with #13).
+# Component-of-origin attribution for stderr ``component:`` (parity with the MCP server).
 # ---------------------------------------------------------------------------
 _ORIGIN_BY_CLASS = {
     "SeahorseError": "#12",
     "InvalidPITKind": "#12",
     "PitRecallNotSupportedMVP0": "#12",
     "EmptyQueryError": "#12",
-    # #11 retrieval — plain Exception (no .code), raised at the recall
-    # entrypoint on an unknown pit.kind. Distinct __name__ from #12's
-    # InvalidPITKind (C8.6) so the table attributes each to its real owner.
+    # Retrieval — plain Exception (no .code), raised at the recall entrypoint
+    # on an unknown pit.kind. Distinct __name__ from the facade's
+    # InvalidPITKind so the table attributes each to its real owner.
     "RetrievalInvalidPITKind": "#11",
     "EngineError": "#2",
     "FullBatchTooLarge": "#8",
@@ -174,9 +172,9 @@ _ORIGIN_BY_CLASS = {
     "NotFound": "#2",
     "InvalidationConflictError": "#2",
     "IntegrityError": "#6",
-    # procedural skills (Sprint C) — client of #12
+    # procedural skills — client of the facade
     "ProceduralError": "#procedural",
-    # frontmatter (#3, commit 5)
+    # frontmatter (the frontmatter migrator)
     "FrontmatterInvalid": "#3",
     "MigrationError": "#3",
     "XReservedCollision": "#3",
@@ -190,18 +188,18 @@ _MESSAGE_BY_CODE = {
     "E_EMPTY_QUERY": "Empty query",
     "E_INVALID_PIT_KIND": "Invalid PIT kind",
     "E_PIT_REQUIRES_T": "PIT requires t",
-    "E_PIT_RECALL_MVP_0": "PIT recall not supported in MVP-0",
-    "E_NOT_IN_MVP_0_1": "Primitive not in MVP-0/MVP-1",
+    "E_PIT_RECALL_MVP_0": "PIT recall not supported in the current release",
+    "E_NOT_IN_MVP_0_1": "Primitive not available in the current release",
     "E_COLLISION_EXISTS": "Collision exists",
     "E_PENDING_CANNOT_INVALIDATE": "PENDING cannot invalidate",
     "E_DANGLING_SUPERSEDES": "Dangling supersedes",
     "E_SKIP_CONTRACT_VIOLATED": "Skip contract violated",
-    "E_NOT_IN_MVP_0": "Not in MVP-0",
+    "E_NOT_IN_MVP_0": "Not available in the current release",
     "E_VALID_AT_HUMAN_ONLY": "valid_at human-only",
     "E_EXPIRED_AT_NON_NULL": "expired_at non-null",
     "E_CREATED_AT_ENGINE_OWNED": "created_at engine-owned",
     "E_MONOTONICITY_VIOLATED": "Monotonicity violated",
-    # frontmatter (#3, commit 5)
+    # frontmatter (the frontmatter migrator)
     "E_FRONTMATTER_INVALID": "Frontmatter invalid",
     "E_MIGRATION_ABORTED": "Migration aborted",
     "E_X_RESERVED_COLLISION": "X reserved collision",
@@ -210,8 +208,8 @@ _MESSAGE_BY_CODE = {
 
 _MESSAGE_BY_CLASS = {
     "FullBatchTooLarge": "Full batch too large",
-    "PitFullNotSupported": "PIT full not supported in MVP-0",
-    "NotInMVP0": "Timeline axis not in MVP-0",
+    "PitFullNotSupported": "PIT full not supported in the current release",
+    "NotInMVP0": "Timeline axis not available in the current release",
     "InvalidationConflictError": "Invalidation conflict",
     "NotFound": "Not found",
     "IntegrityError": "Storage integrity error",
@@ -272,10 +270,10 @@ def translate(exc: BaseException) -> tuple[int, dict[str, Any]]:
         }
 
     # Generic fallback — fail-loud, no swallow, no synthetic code. The component
-    # is resolved via ``_origin_of`` (C8.6 [24]): a plain-Exception class that IS
-    # in ``_ORIGIN_BY_CLASS`` — e.g. #11's ``RetrievalInvalidPITKind`` (no ``.code``,
-    # not in CAT_B) — now attributes to its real owner instead of being masked as
-    # ``#14``. Unknown classes still fall back to ``#14``.
+    # is resolved via ``_origin_of``: a plain-Exception class that IS in
+    # ``_ORIGIN_BY_CLASS`` — e.g. the retrieval layer's ``RetrievalInvalidPITKind``
+    # (no ``.code``, not in CAT_B) — now attributes to its real owner instead of
+    # being masked as the CLI. Unknown classes still fall back to the CLI.
     return EXIT_GENERAL, {
         "exception_class": cls,
         "detail": str(exc),

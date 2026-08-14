@@ -1,30 +1,25 @@
-"""#4 LiteLLM backend (f5-04 §2.1/§6.3) — the real ``LLMClient``.
+"""LiteLLM backend — the real ``LLMClient``.
 
-Implements the signed ``LLMClient`` Protocol over LiteLLM (ADR-05): a single
-SDK for the 100+ provider surface, so swapping ``ollama/qwen3:1.7b`` for
+Implements the ``LLMClient`` Protocol over LiteLLM: a single SDK for the 100+
+provider surface, so swapping ``ollama/qwen3:1.7b`` for
 ``gemini/gemini-2.5-flash`` is a config change, not code. LiteLLM lives in the
 optional ``llm`` extra and is imported LAZILY inside the call — importing the
 package never requires it (mirrors the ``embeddings`` extra pattern).
 
-Sync seam (C8.7): the contract is sync; LiteLLM's ``completion`` is used
-directly. ``extract`` orchestrates the full f5-04 pipeline: pre-flight budget
-gate → plain-prompt build (injection-delimited) → fallback chain with retries →
+Sync boundary: the contract is sync; LiteLLM's ``completion`` is used
+directly. ``extract`` orchestrates the full pipeline: pre-flight budget gate →
+plain-prompt build (injection-delimited) → fallback chain with retries →
 Pydantic validate → repair loop (1 repair per model) → ``degraded_to_skip``
 when the chain is exhausted or the budget/repair cap fires. The write path
-never sees a raised LLM error from ``extract`` (f5-04 §4.5); ``complete``
-propagates instead (the complete-path caller expects the text).
+never sees a raised LLM error from ``extract``; ``complete`` propagates instead
+(the complete-path caller expects the text).
 
 Native structured outputs (``response_format``) are OPT-IN and gated on
 ``ProviderConfig.supports_json_schema``; the default is the plain prompt +
-validator path that works on every model including the weakest (ADR-05, f5-04
-§6.1). ``model_used`` is normalized to ``{provider}/{resp.model}`` (fix low
-Lens C: LiteLLM can return a bare model id), and ``prompt_hash`` hashes the
-prompt that produced the VALID output (after a repair, the repair prompt).
-
-References:
-- f5-04-multi-llm.md §2.1 (LiteLLM), §4.1 (cost cap), §4.3 (fallback), §4.5 (degrade)
-- f5-04-multi-llm.md §6.1 (no hard structured outputs), §6.3 (_kwargs_for)
-- seahorse/llm/types.py (the signed contract, C8.7 sync seam)
+validator path that works on every model including the weakest. ``model_used``
+is normalized to ``{provider}/{resp.model}`` (LiteLLM can return a bare model
+id), and ``prompt_hash`` hashes the prompt that produced the VALID output
+(after a repair, the repair prompt).
 """
 
 from __future__ import annotations
@@ -60,11 +55,11 @@ from seahorse.llm.types import BudgetContext, CompletionResult, ExtractResult
 _logger = logging.getLogger("seahorse.llm.litellm")
 
 _DEFAULT_MAX_TOKENS = 2048
-_DEFAULT_TIMEOUT_S = 20.0  # extraction role timeout (f5-04 §4.4)
+_DEFAULT_TIMEOUT_S = 20.0  # extraction role timeout
 
 
 def _count_tokens(text: str) -> int:
-    """Rough pre-flight token estimate (content ≤5KB typical, f5-04 §6.5).
+    """Rough pre-flight token estimate (content ≤5KB typical).
 
     A ~4-char-per-token heuristic is enough for the cost gate; the real usage
     comes from the response after the call.
@@ -73,7 +68,7 @@ def _count_tokens(text: str) -> int:
 
 
 def _translate_litellm_exc(exc: Exception) -> NoReturn:
-    """Map a LiteLLM vendor exception to the #4 taxonomy by class name.
+    """Map a LiteLLM vendor exception to the error taxonomy by class name.
 
     Matching by name keeps the translation robust without importing litellm's
     exception module (which is only present when the extra is installed).
@@ -131,7 +126,7 @@ class LiteLLMBackend:
         max_tokens: int | None = None,
         timeout_s: float | None = None,
     ) -> CompletionResult:
-        """Free-form completion over the fallback chain (f5-04 §4.3).
+        """Free-form completion over the fallback chain.
 
         Propagates ``LLMError`` when the chain is exhausted — the complete-path
         caller expects text and must handle failure; ``extract`` is the
@@ -159,14 +154,14 @@ class LiteLLMBackend:
         """Structured extraction: pre-flight budget → prompt → validate → repair.
 
         Never raises for a failed extraction — returns ``degraded_to_skip=True``
-        with ``model_used=None`` (f5-04 §4.5) so the write path degrades
-        honestly instead of crashing.
+        with ``model_used=None`` so the write path degrades honestly instead of
+        crashing.
         """
         ctx = budget or BudgetContext()
         timeout = timeout_s or self._timeout_s
         try:
-            # Pre-flight cost gate (f5-04 §4.1, ADR-09): degrade when the
-            # primary's worst-case estimate exceeds the remaining episode cap.
+            # Pre-flight cost gate: degrade when the primary's worst-case
+            # estimate exceeds the remaining episode cap.
             if self._route is not None:
                 try:
                     cost.check_budget(
@@ -217,7 +212,7 @@ class LiteLLMBackend:
                 data = parse_and_validate(res.text, schema_hint)
                 return ExtractResult(
                     data=data,
-                    prompt_hash=hash_prompt(messages),  # effective prompt (f5-04 §5.5)
+                    prompt_hash=hash_prompt(messages),  # effective prompt
                     model_used=res.model_used,
                     cost_usd=ctx.spent_usd,
                     confidence=None,
@@ -309,7 +304,7 @@ class LiteLLMBackend:
         if raw_model and raw_model.startswith(f"{provider}/"):
             model_used = raw_model  # litellm already prefixed it
         elif raw_model:
-            model_used = f"{provider}/{raw_model}"  # bare id → normalize (Lens C)
+            model_used = f"{provider}/{raw_model}"  # bare id → normalize
         else:
             model_used = model_id
         return CompletionResult(
@@ -329,11 +324,11 @@ class LiteLLMBackend:
         max_tokens: int | None,
         timeout_s: float,
     ) -> dict[str, Any]:
-        """Select the backend features (f5-04 §6.3). Default: plain prompt.
+        """Select the backend features. Default: plain prompt.
 
         Native ``json_schema`` is an OPT-IN optimization only when the provider
-        advertises support (ADR-05 forbids hard dependence); tool-use is
-        reserved for mediano and not emitted here.
+        advertises support (hard dependence is avoided); tool-use is reserved
+        for a medium-term goal and not emitted here.
         """
         prov = resolve_provider(model_id)
         kwargs: dict[str, Any] = {

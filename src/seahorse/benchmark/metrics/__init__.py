@@ -1,9 +1,8 @@
-"""#16 benchmark metrics — retrieval / memory / efficiency + registry.
+"""Benchmark metrics — retrieval / memory / efficiency + registry.
 
 Shared statistical helpers (``_mean``, ``_p95``) live here so the metric
 modules stay focused. The ``MetricRegistry`` is the pluggable registration
-point (f5-16 §2.3): adding a metric = registering an instance, no runner
-changes.
+point: adding a metric = registering an instance, no runner changes.
 """
 
 from __future__ import annotations

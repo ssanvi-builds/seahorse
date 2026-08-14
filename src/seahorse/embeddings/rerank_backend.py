@@ -1,20 +1,21 @@
-"""FastEmbed ONNX cross-encoder backend (F2, f7 §5b).
+"""FastEmbed ONNX cross-encoder backend.
 
-Wraps fastembed's sync ``TextCrossEncoder`` behind the ``QueryReranker`` seam
-(``contracts/rerank.py``). fastembed + onnxruntime live in the optional
-``embeddings`` extra; ``build_fastembed_reranker`` imports ``fastembed`` lazily
-so the default ``uv sync --extra dev`` (G2 mode) never pulls the heavy stack.
+Wraps fastembed's sync ``TextCrossEncoder`` behind the ``QueryReranker``
+extension point (``contracts/rerank.py``). fastembed + onnxruntime live in the
+optional ``embeddings`` extra; ``build_fastembed_reranker`` imports ``fastembed``
+lazily so the default ``uv sync --extra dev`` (the listing regime) never pulls
+the heavy stack.
 
 Bundle (validated 2026-08-08 on Apple Silicon): ``bge-reranker-v2-m3`` (MIT,
 multilingual) converted to ONNX o4 — ``hooman650/bge-reranker-v2-m3-onnx-o4``
 (``model.onnx`` + ``model.onnx.data``, ~1.1GB). A 20-pair rerank measured
-~204ms on arm64 — within the ``p95_index_rerank_ms <= 500ms`` budget (f7 §5b).
-The fastembed default ``jina-reranker-v2-base-multilingual`` is cc-by-nc-4.0
-(incompatible with the Apache-2.0 standard, ADR-011) — the MIT
-``bge-reranker-v2-m3`` is the coherent multilingual choice (cerebras-f §4.2).
+~204ms on arm64 — within the ``p95_index_rerank_ms <= 500ms`` budget. The
+fastembed default ``jina-reranker-v2-base-multilingual`` is cc-by-nc-4.0
+(incompatible with the project's Apache-2.0 license) — the MIT
+``bge-reranker-v2-m3`` is the coherent multilingual choice.
 
-The reranker is query-time pure: changing the model NEVER requires a reindex
-(cerebras-f §4.2). Cost is fixed per query (O(k_rerank) pairs), not per episode.
+The reranker is query-time pure: changing the model NEVER requires a reindex.
+Cost is fixed per query (O(k_rerank) pairs), not per episode.
 """
 
 from __future__ import annotations
@@ -36,9 +37,9 @@ class FastEmbedReranker:
     """Sync adapter over a fastembed ``TextCrossEncoder`` (duck-typed for tests).
 
     ``rerank(query, docs)`` returns one relevance score per doc (higher = more
-    relevant), aligned with ``docs`` — the ``QueryReranker`` seam #11 consumes.
-    The batch is sized to the full doc list (20 pairs in one ONNX run — the
-    measured ~204ms on arm64, f7 §5b).
+    relevant), aligned with ``docs`` — the ``QueryReranker`` extension point the
+    retrieval engine consumes. The batch is sized to the full doc list (20 pairs
+    in one ONNX run — the measured ~204ms on arm64).
     """
 
     def __init__(self, model) -> None:
@@ -50,14 +51,15 @@ class FastEmbedReranker:
 
 
 def build_fastembed_reranker() -> FastEmbedReranker:
-    """Build the FastEmbed ONNX cross-encoder for bge-reranker-v2-m3 (F2).
+    """Build the FastEmbed ONNX cross-encoder for bge-reranker-v2-m3.
 
     Requires the ``embeddings`` extra (``fastembed`` + ``onnxruntime``); the
     model downloads lazily on the first build (not at import). Idempotent
     registration: ``add_custom_model`` raises "already registered" on a second
-    call in the same process — the F7 warm-DB experiment builds a facade per
+    call in the same process — a warm-database experiment builds a facade per
     variant, so the second+ calls must reuse the registered model instead of
-    failing (which would silently degrade the hybrid regime to G2).
+    failing (which would silently degrade the hybrid regime to the listing
+    regime).
     """
     from fastembed.common.model_description import (  # type: ignore[import-not-found]
         ModelSource,

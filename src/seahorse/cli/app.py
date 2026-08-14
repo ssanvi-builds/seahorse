@@ -1,16 +1,17 @@
-"""Typer application + ``main()`` entrypoint for the Seahorse CLI (#14).
+"""Typer application + ``main()`` entrypoint for the Seahorse CLI.
 
 This is the parser/wiring layer only — every command body is a thin callback
 that resolves the facade (via the composition root ``build_facade``) and calls
 the parser-agnostic logic in ``primitives`` / ``management``. No domain logic
-lives here (delegation purity, f5-14 §1).
+lives here (delegation purity).
 
-Error model (f5-14 §3.3): ``main()`` is the single exception-translation seam.
-Typer usage errors (vendored click ``ClickException``) → their ``.exit_code``
+Error model: ``main()`` is the single exception-translation seam. Typer usage
+errors (vendored click ``ClickException``) → their ``.exit_code``
 (2 for usage). Our ``CliError`` / the facade's ``SeahorseError`` / the engine's
-``EngineError`` / #8 ``Cat B`` exceptions → ``exit_codes.translate()``. A
-structured payload is written to stderr (JSON when ``--json``/``--format json``,
-human otherwise). Nothing is swallowed — uncatalogued ``Exception`` → exit 1.
+``EngineError`` / the disclosure layer's ``Cat B`` exceptions →
+``exit_codes.translate()``. A structured payload is written to stderr (JSON
+when ``--json``/``--format json``, human otherwise). Nothing is swallowed —
+uncatalogued ``Exception`` → exit 1.
 
 The facade/storage lifecycle: the global callback builds a ``CliContext`` per
 invocation and pushes it on a module-level stack; ``main()`` pops + closes the
@@ -123,11 +124,10 @@ class CliContext:
     def _build_llm_client(cfg: SeahorseConfig) -> LLMClient | None:
         """Build the write-path LLM client from the ``[llm]`` config.
 
-        ``None`` (no ``[llm]`` section) keeps the MVP-0 honest llm→skip
-        degrade. A configured section builds the ``LiteLLMBackend`` over the
-        extraction route; a missing ``llm`` extra surfaces later as a setup
-        hint (the backend degrades with "install seahorse[llm]"), never a
-        crash.
+        ``None`` (no ``[llm]`` section) keeps the honest llm→skip degrade. A
+        configured section builds the ``LiteLLMBackend`` over the extraction
+        route; a missing ``llm`` extra surfaces later as a setup hint (the
+        backend degrades with "install seahorse[llm]"), never a crash.
         """
         if cfg.llm is None:
             return None
@@ -164,7 +164,7 @@ _CURRENT_ARGV: list[str] = []
 
 app = typer.Typer(
     name="seahorse",
-    help="Seahorse — persistent, self-evolving memory for LLM agents (MVP-0).",
+    help="Seahorse — persistent, self-evolving memory for LLM agents.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -186,9 +186,9 @@ def _fmt_from(format_opt: str, json_flag: bool, jsonl_flag: bool) -> OutputForma
 def _out(ctx: typer.Context) -> TextIO:
     """stdout sink for command output — discarded under ``--quiet``.
 
-    ``--quiet`` (f5-14 §3.4) suppresses stdout for CI/scripts; errors still go
-    to stderr via ``main()``'s translation seam. A throwaway ``StringIO`` is the
-    discard sink so the run_* writers need no quiet-awareness.
+    ``--quiet`` suppresses stdout for CI/scripts; errors still go to stderr via
+    ``main()``'s translation seam. A throwaway ``StringIO`` is the discard sink
+    so the run_* writers need no quiet-awareness.
     """
     return io.StringIO() if ctx.obj.quiet else sys.stdout
 
@@ -292,7 +292,7 @@ def remember(
     skip_extraction: bool | None = typer.Option(None, "--skip-extraction/--extract"),
     extraction_mode: str | None = typer.Option(None, "--extraction-mode", help="skip | llm."),
 ) -> None:
-    """Remember a fact (clean creation, ADR-09)."""
+    """Remember a fact (clean creation, near-zero cost)."""
     run_remember(
         ctx.obj.facade(),
         body=body,
@@ -313,7 +313,7 @@ def remember(
 @app.command(name="recall")
 def recall_cmd(
     ctx: typer.Context,
-    query: str = typer.Argument(..., help="Recall query (INDEX level, vigente listing)."),
+    query: str = typer.Argument(..., help="Recall query (INDEX level, current-state listing)."),
     top_k: int = typer.Option(10, "--top-k", "-k"),
     cognitive_type: str | None = typer.Option(None, "--cognitive-type"),
     subject_filter: str | None = typer.Option(None, "--subject-filter"),
@@ -322,7 +322,7 @@ def recall_cmd(
     ),
     pit_t: str | None = typer.Option(None, "--pit-t", help="ISO-8601 timestamp for the PIT."),
 ) -> None:
-    """Recall the INDEX level (MVP-0 vigente listing)."""
+    """Recall the INDEX level (current-state listing)."""
     run_recall(
         ctx.obj.facade(),
         query=query,
@@ -338,13 +338,13 @@ def recall_cmd(
 
 @app.command()
 def context(ctx: typer.Context) -> None:
-    """Render the memory bootstrap context (SessionStart hook, §6.3)."""
+    """Render the memory bootstrap context (SessionStart hook)."""
     run_context(ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command()
 def consolidate(ctx: typer.Context) -> None:
-    """Distill recurrent episodes into semantic knowledge notes (§5.3)."""
+    """Distill recurrent episodes into semantic knowledge notes."""
     run_consolidate(ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
@@ -425,7 +425,7 @@ def forget(
     agent_id: str | None = typer.Option(None, "--agent-id"),
     now: str | None = typer.Option(None, "--now", help="Override the clock (ISO-8601)."),
 ) -> None:
-    """Forget a fact (bi-temporal soft-delete, ADR-07)."""
+    """Forget a fact (bi-temporal soft-delete)."""
     run_forget(
         ctx.obj.facade(),
         ep_id=ep_id,
@@ -441,18 +441,20 @@ def forget(
 @app.command()
 def expire(
     ctx: typer.Context,
-    ep_id: str = typer.Argument(..., help="Episode to decay (reserved in MVP-0)."),
+    ep_id: str = typer.Argument(..., help="Episode to decay (reserved in the current release)."),
 ) -> None:
-    """Decay a fact (set expired_at) — RESERVED in MVP-0 (SO-14-05)."""
+    """Decay a fact (set expired_at) — reserved in the current release."""
     run_expire_revalidate("expire")
 
 
 @app.command()
 def revalidate(
     ctx: typer.Context,
-    ep_id: str = typer.Argument(..., help="Episode to revalidate (reserved in MVP-0)."),
+    ep_id: str = typer.Argument(
+        ..., help="Episode to revalidate (reserved in the current release)."
+    ),
 ) -> None:
-    """Revalidate a decayed fact — RESERVED in MVP-0 (SO-14-05)."""
+    """Revalidate a decayed fact — reserved in the current release."""
     run_expire_revalidate("revalidate")
 
 
@@ -472,7 +474,7 @@ def import_cmd(
         None, "--output-dir", help="Manifest output dir (default: not persisted)."
     ),
 ) -> None:
-    """Import claude-mem observations as F3.1 episodes (migration bridge, #15)."""
+    """Import claude-mem observations as canonical episodes (migration bridge)."""
     run_import(
         ctx.obj.facade(),
         source=source,
@@ -484,14 +486,14 @@ def import_cmd(
     )
 
 
-# ``observe`` group: ``observe start|stop|status|run`` (Sprint B, #17).
-observe_app = typer.Typer(help="Observer capture layer (Sprint B).")
+# ``observe`` group: ``observe start|stop|status|run`` (the observer).
+observe_app = typer.Typer(help="Observer capture layer.")
 app.add_typer(observe_app, name="observe")
 
 
 @observe_app.command("start")
 def observe_start_cmd(ctx: typer.Context) -> None:
-    """Start the observer as a background process (single-writer, §4.5)."""
+    """Start the observer as a background process (single-writer)."""
     from seahorse.observe.cli import run_observe_start
 
     run_observe_start(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
@@ -530,7 +532,7 @@ def observe_event_cmd(ctx: typer.Context) -> None:
 
 
 # ``benchmark`` group: ``benchmark run`` / ``benchmark list`` / ``benchmark adapters``.
-benchmark_app = typer.Typer(help="LMEB benchmark harness (#16).")
+benchmark_app = typer.Typer(help="LMEB benchmark harness.")
 app.add_typer(benchmark_app, name="benchmark")
 
 
@@ -554,22 +556,22 @@ def benchmark_run_cmd(
     recency_gamma: float | None = typer.Option(
         None,
         "--recency-gamma",
-        help="F1 recency max boost at age 0 (pairs with --recency-half-life).",
+        help="Recency max boost at age 0 (pairs with --recency-half-life).",
     ),
     recency_half_life: float | None = typer.Option(
         None,
         "--recency-half-life",
-        help="F1 recency half-life in days (pairs with --recency-gamma).",
+        help="Recency half-life in days (pairs with --recency-gamma).",
     ),
     embed_mode: str = typer.Option(
         "body+summary",
         "--embed-mode",
-        help="Passage text to embed: body+summary (F3 flip default) | body (baseline).",
+        help="Passage text to embed: body+summary (default) | body (baseline).",
     ),
     rerank_enable: bool = typer.Option(
         False,
         "--rerank-enable",
-        help="F2 cross-encoder rerank (opt-in, score_source=rrf_rerank, f7 §5b).",
+        help="Cross-encoder rerank (opt-in, score_source=rrf_rerank).",
     ),
 ) -> None:
     """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
@@ -596,14 +598,14 @@ def benchmark_run_cmd(
 def benchmark_experiment_cmd(
     ctx: typer.Context,
     experiment: str = typer.Argument(
-        ..., help="recency | rerank | embed | batch (which F7 experiment to run)."
+        ..., help="recency | rerank | embed | batch (which experiment to run)."
     ),
     corpus: str = typer.Option(
         "synthetic",
         "--corpus",
         help=(
             "synthetic (CI mechanical verification) | lmeb-s (authoritative) | "
-            "claude-mem (batch-por-turno real corpus)."
+            "claude-mem (real batch corpus)."
         ),
     ),
     output_dir: str = typer.Option("benchmark-output", "--output-dir"),
@@ -615,19 +617,19 @@ def benchmark_experiment_cmd(
     ),
     top_k: int = typer.Option(10, "--top-k", "-k"),
     temporal: bool = typer.Option(
-        True, "--temporal/--no-temporal", help="Temporal ingestion (source_type=human, f7 §4)."
+        True, "--temporal/--no-temporal", help="Temporal ingestion (source_type=human)."
     ),
     retrieval_only: bool = typer.Option(
         False,
         "--retrieval-only",
         help=(
-            "Retrieval-only pass: deterministic stub reader (no Ollama). The F1/F3 "
+            "Retrieval-only pass: deterministic stub reader (no Ollama). The "
             "decision metrics (recall@10/ndcg@10) never consume the reader's answer "
-            "(f5-16 §4.4 honest floor) — identical decision numbers, zero LLM cost."
+            "— identical decision numbers, zero LLM cost."
         ),
     ),
 ) -> None:
-    """Run an F7 experiment and print the sweep table + decision (f7 §5)."""
+    """Run an experiment and print the sweep table + decision."""
     from seahorse.benchmark.experiments.runner import (
         render_experiment_report,
         run_experiment,
@@ -758,19 +760,19 @@ def migrate_cmd(
 
 @app.command()
 def inspect(ctx: typer.Context) -> None:
-    """Read-only sidecar snapshot (schema_version, counts, vigentes vs activos-ahora)."""
+    """Read-only sidecar snapshot (schema_version, counts, current-state vs active-now)."""
     run_inspect(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command(name="vigentes")
 def vigentes_cmd(ctx: typer.Context) -> None:
-    """Full vigente set with freshness — RESERVED in MVP-0 (MVP-1)."""
+    """Full current-state set with freshness — reserved in the current release."""
     run_reserved("vigentes")
 
 
 @app.command(name="activos-ahora")
 def activos_ahora_cmd(ctx: typer.Context) -> None:
-    """Decay-aware active set — RESERVED (mediano, needs expire)."""
+    """Decay-aware active set — reserved (a medium-term goal; needs expire)."""
     run_reserved("activos-ahora")
 
 
@@ -785,7 +787,7 @@ def index_rebuild_cmd(
     embed_mode: str = typer.Option(
         "body+summary",
         "--embed-mode",
-        help="Passage text to embed: body+summary (F3 flip default) | body (baseline).",
+        help="Passage text to embed: body+summary (default) | body (baseline).",
     ),
 ) -> None:
     """Rebuild the sidecar index from the vault's .md notes (clear-then-rebuild)."""
@@ -799,12 +801,14 @@ def index_rebuild_cmd(
 
 @index_app.command(name="verify")
 def index_verify_cmd(ctx: typer.Context) -> None:
-    """Verify index integrity — RESERVED in MVP-0."""
+    """Verify index integrity — reserved in the current release."""
     run_reserved("index-verify")
 
 
-# ``frontmatter`` group: the vault migrator (F3.3 #3) — migrate legacy notes.
-frontmatter_app = typer.Typer(help="Frontmatter operations (migrate legacy notes to F3.1).")
+# ``frontmatter`` group: the vault migrator — migrate legacy notes.
+frontmatter_app = typer.Typer(
+    help="Frontmatter operations (migrate legacy notes to the canonical format)."
+)
 app.add_typer(frontmatter_app, name="frontmatter")
 
 
@@ -821,9 +825,10 @@ def frontmatter_migrate_cmd(
         None, "--batch-size", help="Manifest checkpoint cadence (default 500)."
     ),
 ) -> None:
-    """Migrate legacy Obsidian notes to F3.1 frontmatter (cases A/B/C/D).
+    """Migrate legacy Obsidian notes to canonical frontmatter (cases A/B/C/D).
 
-    MVP-0 runs serialized (workers=1, f5-03 §3.7); parallel parsing is MVP-1.
+    The current release runs serialized (workers=1); parallel parsing is
+    planned for a later release.
     """
     # resolve_vault (not resolved_config): migrating can precede `seahorse init`
     # — the migrator only touches .md files + the manifest, no config needed.
@@ -838,7 +843,7 @@ def frontmatter_migrate_cmd(
     )
 
 
-# ``skill`` group: procedural skills (L2c §6.1) — add / list / search / show.
+# ``skill`` group: procedural skills — add / list / search / show.
 skill_app = typer.Typer(help="Procedural skills (deterministic, skip-first).")
 app.add_typer(skill_app, name="skill")
 
@@ -900,7 +905,7 @@ def skill_show_cmd(
         None, "--min-trust", help="low | medium | high (default: [procedural] config)."
     ),
 ) -> None:
-    """Show a skill's gated body (Execution level, R5 trust gate)."""
+    """Show a skill's gated body (Execution level, trust gate)."""
     cfg = ctx.obj.resolved_config()
     default_trust = cfg.procedural.min_trust if cfg.procedural is not None else "medium"
     run_skill_show(
@@ -929,7 +934,7 @@ def _emit_error(exc: BaseException, fmt: OutputFormat, err: TextIO) -> int:
     if fmt in ("json", "jsonl"):
         import json
 
-        # f5-14 §3.3: machine errors carry an {"error": {...}} envelope so
+        # Machine errors carry an {"error": {...}} envelope so
         # `jq '.error.seahorse_code'` works for both Cat A and Cat B.
         err.write(json.dumps({"error": info}, ensure_ascii=False) + "\n")
     else:

@@ -1,4 +1,4 @@
-"""Tests for ``CorpusBuilder`` + ``AdvancingClock`` (f5-16 §3.3/§3.5)."""
+"""Tests for ``CorpusBuilder`` + ``AdvancingClock``."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def test_advancing_clock_position_reports_current_time():
     clock()
     assert clock.position() == base + timedelta(hours=2)
     # A fresh clock seeded at the position reproduces the same next value —
-    # the warm-DB variant clock (f7 §5a: recency boost reads now vs created_at).
+    # the warm-DB variant clock (the recency boost reads now vs created_at).
     clock2 = AdvancingClock(clock.position(), delta_seconds=3600.0)
     assert clock2() == base + timedelta(hours=2)
 

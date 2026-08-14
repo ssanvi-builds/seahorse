@@ -1,15 +1,15 @@
 """Tests for ``seahorse.observe.queue`` — the observer's SQLite queue.
 
 The queue is the observer's OWN SQLite DB (``{vault}/.seahorse/observer/
-observer.db``), NOT the engine sidecar (obsiforge §4.5). It reuses the
-``ConnectionManager`` pattern (single-writer, WAL + ack). Three dedup layers:
-(1) queue-level unique ``(session_id, prompt_number, event_fingerprint)`` with
-``INSERT OR IGNORE`` → reprocess is a no-op; (2) store-level backstop I11;
-(3) ``deterministic_id`` NOT extended to agent (UUIDv7 fresh).
+observer.db``), NOT the engine sidecar. It reuses the ``ConnectionManager``
+pattern (single-writer, WAL + ack). Three dedup layers: (1) queue-level unique
+``(session_id, prompt_number, event_fingerprint)`` with ``INSERT OR IGNORE`` →
+reprocess is a no-op; (2) store-level backstop; (3) ``deterministic_id`` NOT
+extended to agent (UUIDv7 fresh).
 
-The §15.2 redesign is load-bearing here: ``prompt_number`` is PERSISTED in the
-DB (not memory) so a resumed session continues from the last prompt_number —
-a new byte-identical turn is never falsely deduped.
+Persisting ``prompt_number`` is load-bearing here: it is stored in the DB (not
+memory) so a resumed session continues from the last prompt_number — a new
+byte-identical turn is never falsely deduped.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def queue(tmp_path) -> ObserverQueue:
 
 
 # ---------------------------------------------------------------------------
-# session prompt_number persistence (§15.2)
+# session prompt_number persistence
 # ---------------------------------------------------------------------------
 
 
@@ -72,8 +72,8 @@ def test_prompt_number_persists_across_reopen(tmp_path) -> None:
     q1.advance_prompt_number("sess-1")
     q1.close()
 
-    # §15.2: a resumed session continues from the persisted prompt_number, so a
-    # new byte-identical turn gets a fresh prompt_number → never falsely deduped.
+    # A resumed session continues from the persisted prompt_number, so a new
+    # byte-identical turn gets a fresh prompt_number → never falsely deduped.
     q2 = ObserverQueue(db)
     assert q2.current_prompt_number("sess-1") == 2
     assert q2.advance_prompt_number("sess-1") == 3

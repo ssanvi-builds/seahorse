@@ -1,16 +1,16 @@
-"""Property-based bi-temporal invariants — the C8.0 safety net.
+"""Property-based bi-temporal invariants — a regression safety net.
 
-Hypothesis stateful machine that drives the real #6 storage stack
+Hypothesis stateful machine that drives the real persistence stack
 (``ConnectionManager`` + migrations + ``SqliteEpisodeRepository`` /
 ``SqliteAuditEventRepository``) through arbitrary sequences of
 ``remember`` / ``improve`` / ``forget`` with random ``valid_at`` offsets, then
 asserts the bi-temporal invariants hold over the stored state after every op.
 
-These are NOT feature tests (RED-then-GREEN); the engine is already correct
-(audit 2026-07-30 confirmed the invariants). They are a regression safety net so
-the C8 refactors (Retriever extraction, lazy-imports, audit-inside-atomic,
-state_at NULL alignment) cannot silently break the bi-temporal contract. Run
-them with ``-m property``; they run in the normal suite.
+These are NOT feature tests (RED-then-GREEN); the engine is already correct.
+They are a regression safety net so refactors (Retriever extraction,
+lazy-imports, audit-inside-atomic, state_at NULL alignment) cannot silently
+break the bi-temporal contract. Run them with ``-m property``; they run in the
+normal suite.
 
 Why ``RuleBasedStateMachine`` and not ``@given``: each generated test case needs
 a FRESH database. A function-scoped pytest fixture is shared across all
@@ -18,19 +18,18 @@ a FRESH database. A function-scoped pytest fixture is shared across all
 examples. The stateful machine calls ``__init__`` (fresh temp DB) once per test
 case, which is the correct isolation boundary.
 
-Ops use ``source_type="human"`` so the I2 guard admits arbitrary ``valid_at``
-(past / future / null); ``agent`` would restrict ``valid_at`` to null-or-now and
-starve the PENDING / past-valid_at branches we want to exercise. Bodies are
-drawn from a small finite set so I11 collisions and fact_id reuse occur
+Ops use ``source_type="human"`` so the valid_at guard admits arbitrary
+``valid_at`` (past / future / null); ``agent`` would restrict ``valid_at`` to
+null-or-now and starve the PENDING / past-valid_at branches we want to exercise.
+Bodies are drawn from a small finite set so collisions and fact_id reuse occur
 naturally. ``now`` advances by a fixed step per op (monotonic transaction time,
 mirrors deployment). ``improve`` / ``forget`` address ep_ids by index into the
 list of accepted creates, modulo its length (the common dependent-op pattern
 that avoids a runtime-dependent strategy).
 
 References:
-- f5-02 §3 (I1-I11), §2 l.85 (valid_at null = "desde siempre")
-- f5-02 §8.3 l.908 (PENDING_INGEST = valid_at futuro; is_valid_at(now) False until now>=valid_at)
-- C8 plan (``~/.claude/plans/twinkly-cuddling-zebra.md``)
+- valid_at null = "from forever" (valid at any now)
+- PENDING_INGEST = valid_at in the future; is_valid_at(now) is False until now >= valid_at
 """
 
 from __future__ import annotations
@@ -60,8 +59,8 @@ pytestmark = pytest.mark.property
 NOW0 = datetime(2026, 1, 1, tzinfo=UTC)
 STEP = timedelta(hours=1)
 
-# Small body set so I11 collisions (same subject+fact_id) and fact_id reuse
-# happen naturally across ops.
+# Small body set so collisions (same subject+fact_id) and fact_id reuse happen
+# naturally across ops.
 BODIES = ("alpha note", "beta note", "gamma note", "delta note")
 
 # human admits arbitrary valid_at (past/future/null); agent would restrict to
@@ -132,7 +131,7 @@ class BiTemporalInvariantMachine(RuleBasedStateMachine):
             return
         if wr.status in ("ACTIVE", "PENDING_INGEST"):
             self._remembered.append(wr.ep_id)
-        # COLISION / NOOP -> no append, do not record.
+        # COLLISION / NOOP -> no append, do not record.
 
     @rule(idx=st.integers(min_value=0, max_value=7), body=st.sampled_from(BODIES), voff=_VOFF)
     def improve(self, idx: int, body: str, voff: int | None) -> None:
@@ -166,7 +165,7 @@ class BiTemporalInvariantMachine(RuleBasedStateMachine):
 
         Soundness AND completeness: every returned ep satisfies the predicate,
         and every stored ep satisfying the predicate is returned. ``valid_at IS
-        NULL`` ("desde siempre") IS valid at any now (f5-02 §2 l.85).
+        NULL`` ("from forever") IS valid at any now.
         """
         now = self._now
         expected = {
@@ -177,7 +176,7 @@ class BiTemporalInvariantMachine(RuleBasedStateMachine):
             and (ep.valid_at is None or ep.valid_at <= now)
         }
         actual = {ep.id for ep in self._engine.get_vigente(now=now)}
-        assert actual == expected, f"vigente mismatch at {now}: {actual} != {expected}"
+        assert actual == expected, f"current-state mismatch at {now}: {actual} != {expected}"
 
     @invariant()
     def is_valid_at_matches_predicate(self) -> None:
@@ -200,24 +199,24 @@ class BiTemporalInvariantMachine(RuleBasedStateMachine):
 
     @invariant()
     def vigente_and_is_valid_at_agree(self) -> None:
-        """Bulk and single PIT predicates must agree (CC-2-class drift guard).
+        """Bulk and single PIT predicates must agree (drift guard).
 
-        For every stored ep with ``expired_at IS NULL`` (always true in MVP-0),
-        membership in ``get_vigente(now)`` must equal ``is_valid_at(ep, now)``.
-        These are two independent code paths (the bulk ``query_vigent`` + reader
-        post-filter vs. the single-ep predicate); a divergence between them is
-        exactly the class of bug CC-2 found (``is_valid_at`` included
-        ``valid_at IS NULL`` while the bulk state_at predicates excluded it).
-        This cross-check is the highest-value invariant in the suite: the
-        per-method predicate invariants above are near-tautological (they
-        re-derive each method's own predicate), but this one cross-validates two
-        methods against each other, so a one-sided drift cannot pass.
+        For every stored ep with ``expired_at IS NULL`` (always true in the
+        current release), membership in ``get_vigente(now)`` must equal
+        ``is_valid_at(ep, now)``. These are two independent code paths (the bulk
+        ``query_vigent`` + reader post-filter vs. the single-ep predicate); a
+        divergence between them is exactly the class of bug where ``is_valid_at``
+        included ``valid_at IS NULL`` while the bulk state_at predicates
+        excluded it. This cross-check is the highest-value invariant in the
+        suite: the per-method predicate invariants above are near-tautological
+        (they re-derive each method's own predicate), but this one cross-validates
+        two methods against each other, so a one-sided drift cannot pass.
         """
         now = self._now
         vigente_ids = {ep.id for ep in self._engine.get_vigente(now=now)}
         for ep in self._stored():
             if ep.expired_at is not None:
-                continue  # MVP-1 decay path; out of scope for this MVP-0 net
+                continue  # decay path deferred to a later release; out of scope for this net
             membership = ep.id in vigente_ids
             validity = self._engine.is_valid_at(ep.id, now)
             assert membership == validity, (
@@ -248,15 +247,16 @@ class BiTemporalInvariantMachine(RuleBasedStateMachine):
 
     @invariant()
     def stored_state_monotonic(self) -> None:
-        """I5: valid_at <= invalid_at and created_at <= expired_at (when both non-null)."""
+        """valid_at <= invalid_at and created_at <= expired_at (when both non-null)."""
         for ep in self._stored():
             if ep.valid_at is not None and ep.invalid_at is not None:
                 assert ep.valid_at <= ep.invalid_at, (
-                    f"I5 violated on {ep.id}: valid_at={ep.valid_at} > invalid_at={ep.invalid_at}"
+                    f"monotonicity violated on {ep.id}: "
+                    f"valid_at={ep.valid_at} > invalid_at={ep.invalid_at}"
                 )
             if ep.expired_at is not None and ep.created_at is not None:
                 assert ep.created_at <= ep.expired_at, (
-                    f"I5 violated on {ep.id}: "
+                    f"monotonicity violated on {ep.id}: "
                     f"created_at={ep.created_at} > expired_at={ep.expired_at}"
                 )
 

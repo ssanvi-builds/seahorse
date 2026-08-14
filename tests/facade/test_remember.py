@@ -1,9 +1,11 @@
-"""Tests for ``MemoryFacade.remember`` — boundary validation + delegation to #5.
+"""Tests for ``MemoryFacade.remember`` — boundary validation + delegation to
+the write path.
 
-#12.remember validates shape only (body, source_type, tags-empty, resolved
-extraction_mode) and delegates to #5 ``WritePath.ingest``. It does NOT call
-``engine.remember`` (the write-path owns that) and does NOT replicate the
-``source_type → skip`` guard (that lives in #5 ``decide_path``).
+The primitives facade's ``remember`` validates shape only (body, source_type,
+tags-empty, resolved extraction_mode) and delegates to the write path's
+``WritePath.ingest``. It does NOT call ``engine.remember`` (the write path owns
+that) and does NOT replicate the ``source_type → skip`` guard (that lives in the
+write path's ``decide_path``).
 """
 
 from __future__ import annotations
@@ -34,7 +36,8 @@ class TestRememberDelegation:
         assert len(write_path.ingest_calls) == 1
 
     def test_does_not_call_engine_remember(self, facade, engine) -> None:
-        # #12 never reaches the engine directly for remember — #5 owns the write.
+        # The primitives facade never reaches the engine directly for remember —
+        # the write path owns the write.
         facade.remember(_payload())
         assert engine.improve_calls == []
         assert engine.forget_calls == []
@@ -95,7 +98,8 @@ class TestRememberResolveMode:
         assert exc.value.code == E_INVALID_EXTRACTION_MODE
 
     def test_invalid_mode_before_write_path(self, facade, write_path) -> None:
-        # Invalid extraction_mode raises BEFORE #5 is touched (no ingest call).
+        # Invalid extraction_mode raises BEFORE the write path is touched (no
+        # ingest call).
         with pytest.raises(SeahorseError) as exc:
             facade.remember(_payload(), extraction_mode="llm_partial")  # type: ignore[arg-type]
         assert exc.value.code == E_INVALID_EXTRACTION_MODE
@@ -104,9 +108,9 @@ class TestRememberResolveMode:
     def test_consolidated_schema_valid_but_not_routable(self, facade, write_path) -> None:
         # ``consolidated`` is schema-valid (wire round-trips it) but NOT routable
         # by single-episode ``remember`` — the batch distillation writes via
-        # ``engine.remember`` directly, bypassing ``decide_path`` (obsiforge
-        # §5.4). The facade refuses loud (ADR-10) BEFORE touching #5, so the
-        # write path never receives a mode it cannot honor.
+        # ``engine.remember`` directly, bypassing ``decide_path``. The facade
+        # refuses loud (fail-loud honesty) BEFORE touching the write path, so
+        # the write path never receives a mode it cannot honor.
         with pytest.raises(SeahorseError) as exc:
             facade.remember(_payload(), extraction_mode="consolidated")
         assert exc.value.code == E_INVALID_EXTRACTION_MODE
@@ -132,21 +136,22 @@ class TestRememberBoundaryValidation:
         assert exc.value.code == E_NOT_IN_MVP_0_1
 
     def test_validation_fires_before_write_path(self, facade, write_path) -> None:
-        # Empty body raises BEFORE #5 is touched (no ingest call).
+        # Empty body raises BEFORE the write path is touched (no ingest call).
         with pytest.raises(SeahorseError):
             facade.remember(_payload(body=""))
         assert write_path.ingest_calls == []
 
     def test_does_not_validate_cognitive_type_enum(self, facade, write_path) -> None:
-        # #12 does NOT enforce COGNITIVE_TYPES — engine/#1 are the authority.
-        # 'fact' is outside the f5-01 enum but passes the facade (engine tests use it).
+        # The primitives facade does NOT enforce COGNITIVE_TYPES — the engine is
+        # the authority. 'fact' is outside the canonical enum but passes the
+        # facade (engine tests use it).
         facade.remember(_payload(cognitive_type="fact"))
         assert len(write_path.ingest_calls) == 1
 
     def test_does_not_validate_source_type_enum(self, facade, write_path) -> None:
-        # #12 does NOT enforce SOURCE_TYPES — engine/#1 are the authority.
-        # 'robot' is outside the SOURCE_TYPES vocabulary but passes the facade
-        # (presence-only check, not membership).
+        # The primitives facade does NOT enforce SOURCE_TYPES — the engine is
+        # the authority. 'robot' is outside the SOURCE_TYPES vocabulary but
+        # passes the facade (presence-only check, not membership).
         p = RememberPayload(body="hi", by={"source_type": "robot"})
         facade.remember(p)
         assert len(write_path.ingest_calls) == 1
@@ -169,9 +174,10 @@ class TestRememberForwardsNow:
 
 class TestRememberDoesNotReplicateGuard:
     def test_importer_llm_not_forced_skip_by_facade(self, facade, write_path) -> None:
-        # The source_type→skip guard lives in #5 decide_path, NOT in #12.
-        # #12 passes 'llm' through; #5 would then degrade. Here we only assert
-        # #12 does not rewrite the mode.
+        # The source_type→skip guard lives in the write path's decide_path, NOT
+        # in the primitives facade. The primitives facade passes 'llm' through;
+        # the write path would then degrade. Here we only assert the primitives
+        # facade does not rewrite the mode.
         p = RememberPayload(body="hi", by={"source_type": "importer"})
         facade.remember(p, extraction_mode="llm")
         assert write_path.ingest_calls[0]["extraction_mode"] == "llm"
@@ -180,8 +186,9 @@ class TestRememberDoesNotReplicateGuard:
         self, facade, write_path
     ) -> None:
         # remember forwards the caller's by untouched — it does NOT build
-        # effective provenance (#5 run_skip_path owns that). improve is the only
-        # primitive that injects extraction_mode/model_used/prompt_hash/confidence.
+        # effective provenance (the write path's run_skip_path owns that).
+        # improve is the only primitive that injects
+        # extraction_mode/model_used/prompt_hash/confidence.
         by = {"source_type": "agent", "agent_id": "a1"}
         p = RememberPayload(body="hello world", by=by)
         facade.remember(p)
@@ -198,8 +205,9 @@ class TestRememberDoesNotReplicateGuard:
 
 class TestRememberDoesNotValidateValidAt:
     def test_far_future_valid_at_passed_through(self, facade, write_path) -> None:
-        # The valid_at guard is engine/#5-owned. #12 must NOT reject a
-        # far-future value at the border — it forwards it untouched.
+        # The valid_at guard is engine/write-path-owned. The primitives facade
+        # must NOT reject a far-future value at the border — it forwards it
+        # untouched.
         t = datetime(9999, 1, 1, tzinfo=UTC)
         p = RememberPayload(body="hi", by={"source_type": "agent"}, valid_at=t)
         facade.remember(p)

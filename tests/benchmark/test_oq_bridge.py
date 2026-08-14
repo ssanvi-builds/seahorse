@@ -1,9 +1,9 @@
-"""OQ-16-11 closure — bridge test: ``WriteResult.fact_id == IndexRow.fact_id``.
+"""Bridge test: ``WriteResult.fact_id == IndexRow.fact_id``.
 
-Guaranteed by construction (TD #14: ``fact_id_for`` shared between the engine
+Guaranteed by construction (``fact_id_for`` shared between the engine
 and the index — ``engine/engine.py`` derives ``fact_id_of(subject)``,
 ``disclosure/shaper.py`` reads ``row.fact_id`` from the index). This test pins
-the bridge the benchmark's Recall@k/nDCG@k depend on (f5-16 §3.7): the
+the bridge the benchmark's Recall@k/nDCG@k depend on: the
 ``fact_id → session_id`` map populated from ``WriteResult.fact_id`` must match
 the ``IndexRow.fact_id`` returned by ``recall``.
 """
@@ -62,7 +62,7 @@ def test_bridge_holds_across_multiple_episodes(facade):
 
 def test_fact_id_to_session_bridge_is_consistent(facade):
     """The fact_id→session_id map the CorpusBuilder builds is consistent with
-    the IndexRow.fact_id returned by recall (f5-16 §3.7 step 2)."""
+    the IndexRow.fact_id returned by recall."""
     body = "# France\n\nThe capital of France is Paris."
     wr = remember_episode(facade, body, session_id="s1", title="France")
     assert wr.fact_id is not None

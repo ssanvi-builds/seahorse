@@ -1,4 +1,4 @@
-"""SqliteReindexJobRepository tests (Phase 5c). Setters + list(status). No guards."""
+"""SqliteReindexJobRepository tests. Setters + list(status). No guards."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def jobs(tmp_path) -> SqliteReindexJobRepository:
 
 def test_structurally_satisfies_protocol(jobs: SqliteReindexJobRepository) -> None:
     assert isinstance(jobs, ReindexJobRepository)
-    assert not hasattr(jobs, "atomic")  # SO-7a.6
+    assert not hasattr(jobs, "atomic")
 
 
 def test_create_returns_id_and_lists_as_running(
@@ -67,7 +67,7 @@ def test_list_status_filter(jobs: SqliteReindexJobRepository) -> None:
 
 
 def test_setters_have_no_transition_guards(jobs: SqliteReindexJobRepository) -> None:
-    # MVP-0: setters; pausing a done job is allowed (no guard raises).
+    # The first release: setters; pausing a done job is allowed (no guard raises).
     jid = jobs.create(model_from="a", model_to="b", total=1)
     jobs.finish(jid)
     jobs.pause(jid)  # no exception

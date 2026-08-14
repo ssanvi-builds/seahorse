@@ -1,16 +1,16 @@
-"""Tests for the claude-mem importer pure mapping + reader (#15, f5-15 §2).
+"""Tests for the claude-mem importer pure mapping + reader.
 
 Signals:
 - ``import_record`` is pure: same record -> same ImporterResult (no state, no
   store, no LLM, no conflict resolution).
-- Body has H1 = title (engine derives subject, SO-2); the importer guarantees a
-  body with H1 (f5-15 §8.2).
-- ``valid_at`` = the observation's ``created_at`` (importer editorial authority,
-  I2/SO-4a).
-- ``cognitive_type`` conservative heuristic (f5-15 §6.5).
+- Body has H1 = title (engine derives subject); the importer guarantees a body
+  with H1.
+- ``valid_at`` = the observation's ``created_at`` (importer editorial
+  authority).
+- ``cognitive_type`` conservative heuristic.
 - Provenance carries the importer contract (source_type=importer,
   importer_vendor=claude-mem, extraction_mode=skip) + the vendor id.
-- Id is a deterministic UUIDv5 (SO-4b) — re-import yields the same id.
+- Id is a deterministic UUIDv5 — re-import yields the same id.
 - Loss report documents every loss/synthesis (auditable).
 """
 
@@ -90,19 +90,19 @@ class TestImportRecord:
         assert uuid.UUID(ep.id).version == 5
 
     def test_preserves_vendor_session_id(self) -> None:
-        """The vendor ``memory_session_id`` survives in provenance (f7 §5d turn
-        structure — the batch-por-turno experiment groups by it)."""
+        """The vendor ``memory_session_id`` survives in provenance (turn
+        structure — the per-turn batching experiment groups by it)."""
         ep = import_record(_record(), "claude-mem")["notes"][0]
         assert ep.provenance["x-claude-mem-session-id"] == "sess-abc-123"
 
     def test_preserves_prompt_number(self) -> None:
-        """The vendor ``prompt_number`` survives in provenance (f7 §5d turn
-        structure — the batch-por-turno experiment groups by it)."""
+        """The vendor ``prompt_number`` survives in provenance (turn
+        structure — the per-turn batching experiment groups by it)."""
         ep = import_record(_record(), "claude-mem")["notes"][0]
         assert ep.provenance["x-claude-mem-prompt-number"] == 3
 
     def test_prompt_number_not_reported_lost(self) -> None:
-        """``prompt_number`` is now mapped to provenance, not lost (f7 §5d)."""
+        """``prompt_number`` is now mapped to provenance, not lost."""
         loss = import_record(_record(), "claude-mem")["loss_report"]
         assert not any("prompt_number" in f for f in loss["fields_lost"])
 

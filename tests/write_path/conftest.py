@@ -1,11 +1,12 @@
-"""Shared fixtures + recording doubles for #5 write-path tests.
+"""Shared fixtures + recording doubles for write-path tests.
 
 ``RecordingEngine`` captures every ``remember`` call's kwargs so tests assert
-WHAT was delegated, with WHICH provenance — not just the return value (the #8
-adversarial-review lesson: outcome-only tests cannot catch provenance-shape
-regressions). It also exposes a configurable ``is_valid_skip_path`` gate (the
-#5 first-class skip-path border contract) so tests can drive the gate-valid,
-gate-invalid, and gate-raising branches without a real engine.
+WHAT was delegated, with WHICH provenance — not just the return value (the
+progressive disclosure adversarial-review lesson: outcome-only tests cannot
+catch provenance-shape regressions). It also exposes a configurable
+``is_valid_skip_path`` gate (the write path's first-class skip-path border
+contract) so tests can drive the gate-valid, gate-invalid, and gate-raising
+branches without a real engine.
 """
 
 from __future__ import annotations
@@ -31,8 +32,8 @@ class RememberCall:
     schema_version: str
     title: str | None
     now: datetime | None
-    summary: str | None = None  # OQ3 enabler (caller value or deterministic fallback)
-    subject: str | None = None  # M4-C.3 LLM-path override (None on skip path)
+    summary: str | None = None  # caller value or deterministic fallback
+    subject: str | None = None  # LLM-path override (None on skip path)
 
 
 @dataclass

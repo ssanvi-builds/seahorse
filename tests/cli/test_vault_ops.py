@@ -1,10 +1,10 @@
-"""``seahorse.cli.vault_ops`` — real migrate / inspect / index rebuild (commit 5).
+"""``seahorse.cli.vault_ops`` — real migrate / inspect / index rebuild.
 
 Unit-level: calls ``run_migrate`` / ``run_inspect`` / ``run_index_rebuild``
 directly with a resolved ``SeahorseConfig`` and a ``StringIO`` sink, asserting
-the rendered payload + the ADR-10 honesty contract (conflicts → exit 94
-``CLI_REBUILD_CONFLICTS``, commit 6 split from the 75 overload; parse
-failure → ``FrontmatterInvalid`` → Cat A). The invoke-harness end-to-end tests
+the rendered payload + the fail-loud honesty contract (conflicts → exit 94
+``CLI_REBUILD_CONFLICTS``, split from the 75 overload; parse failure →
+``FrontmatterInvalid`` → domain error). The invoke-harness end-to-end tests
 (exit codes, ``--json``, stderr) live in ``test_migrate_cli.py`` /
 ``test_inspect_cli.py`` / ``test_index_rebuild_cli.py``.
 """
@@ -70,7 +70,7 @@ def _write_note(
 
 
 # ---------------------------------------------------------------------------
-# migrate — schema migrations runner (apply_migrations with up_to seam).
+# migrate — schema migrations runner (apply_migrations with the up_to parameter).
 # ---------------------------------------------------------------------------
 
 
@@ -189,7 +189,7 @@ def test_inspect_human_output(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# index rebuild — rebuild_from_vault orchestration + ADR-10 honesty.
+# index rebuild — rebuild_from_vault orchestration + fail-loud honesty.
 # ---------------------------------------------------------------------------
 
 
@@ -216,11 +216,11 @@ def test_index_rebuild_creates_db_if_absent(tmp_path):
 
 
 def test_index_rebuild_backfill_uses_embed_mode(tmp_path, monkeypatch):
-    """F7 enabler (c): ``index rebuild --embed-mode`` re-embeds with the new mode.
+    """``index rebuild --embed-mode`` re-embeds with the new mode.
 
     The backfill ``RetrievalIndexer`` receives the requested ``embed_mode`` so a
     reindex under ``body+summary`` re-embeds honestly (new content hash → cache
-    miss, f7-experimental-design §5(c)).
+    miss).
     """
     import numpy as np
 
@@ -266,10 +266,10 @@ def test_index_rebuild_empty_vault_is_clean_zero(tmp_path):
 
 
 def test_index_rebuild_conflicts_raise_cli_rebuild_conflicts_exit_94(tmp_path):
-    # two vigent notes with the same title -> duplicate vigent fact_id -> the
-    # whole group is skipped + reported (ADR-10: NO auto-pick). Exit 94
-    # (CLI_REBUILD_CONFLICTS — commit 6 split it off the 75 overload so the
-    # rebuild-conflict concern is distinct from the reserved-stub 75).
+    # two current-state notes with the same title -> duplicate current-state
+    # fact_id -> the whole group is skipped + reported (fail-loud honesty: NO
+    # auto-pick). Exit 94 (CLI_REBUILD_CONFLICTS — split off the 75 overload so
+    # the rebuild-conflict concern is distinct from the reserved-stub 75).
     v, cfg = _config(tmp_path)
     _write_note(v, "c1", ep_id=_uuid7("01"), title="same-subject")
     _write_note(v, "c2", ep_id=_uuid7("02"), title="same-subject")
@@ -288,8 +288,9 @@ def test_index_rebuild_conflicts_raise_cli_rebuild_conflicts_exit_94(tmp_path):
 
 
 def test_index_rebuild_unparseable_note_raises_frontmatter_invalid(tmp_path):
-    # a non-migrated note (no frontmatter) -> FrontmatterInvalid (Cat A exit 90),
-    # NOT a silent skip (ADR-10). Storage is closed on the way out (finally).
+    # a non-migrated note (no frontmatter) -> FrontmatterInvalid (domain error
+    # exit 90), NOT a silent skip (fail-loud honesty). Storage is closed on the
+    # way out (finally).
     v, cfg = _config(tmp_path)
     _write_note(v, "good", ep_id=_uuid7("01"))
     (v / "raw.md").write_text("# no frontmatter here\njust body.\n", encoding="utf-8")
@@ -320,14 +321,14 @@ def test_index_rebuild_human_output_lists_conflicts(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# ruamel-confinement invariant — importing the CLI must NOT load ruamel.
+# Import-confinement invariant — importing the CLI must NOT load ruamel.
 # ---------------------------------------------------------------------------
 
 
 def test_cli_app_import_does_not_load_ruamel():
     """Importing ``seahorse.cli.app`` must NOT pull ruamel into ``sys.modules``.
 
-    Regression guard for the ruamel-confinement invariant: ``frontmatter.rebuild``
+    Regression guard for the import-confinement invariant: ``frontmatter.rebuild``
     transitively imports ruamel (via ``frontmatter.adapter``). If ``vault_ops``
     imported ``rebuild_from_vault`` at module top, every CLI command (init/status/
     recall/remember/migrate/inspect) would eagerly load ruamel. The fix keeps the
@@ -350,6 +351,6 @@ def test_cli_app_import_does_not_load_ruamel():
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
     )
     assert result.returncode == 0, (
-        f"ruamel-confinement guard failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+        f"import-confinement guard failed:\nstdout={result.stdout}\nstderr={result.stderr}"
     )
     assert result.stdout.strip() == "ok"

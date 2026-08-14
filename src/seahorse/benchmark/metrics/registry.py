@@ -1,4 +1,4 @@
-"""``MetricRegistry`` — pluggable metric registration (f5-16 §2.3).
+"""``MetricRegistry`` — pluggable metric registration.
 
 Adding a metric = registering an instance; the runner and reporters never
 change. The registry holds instances (not classes) so metrics can carry

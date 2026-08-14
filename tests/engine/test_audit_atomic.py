@@ -1,11 +1,10 @@
-"""C8.3 CC-1 — ``audit.append`` is atomic with the episode mutation.
+"""``audit.append`` is atomic with the episode mutation.
 
-Before C8.3, the engine wrote the audit event OUTSIDE the episode mutation's
-``repo.atomic()`` (``apply_fact`` / ``improve``) or with no atomic at all
-(``forget``). A failure between the episode commit and the audit INSERT left a
-persisted episode with NO audit row — a torn audit trail, breaking the very
-write-path invariant the engine's own docstrings claim (every mutation emits a
-matching ``AuditEvent``). C8.3 moves ``audit.append`` INSIDE the mutation's
+The engine writes the audit event INSIDE the episode mutation's ``repo.atomic()``
+(``apply_fact`` / ``improve`` / ``forget``). A failure between the episode commit
+and the audit INSERT would leave a persisted episode with NO audit row — a torn
+audit trail, breaking the write-path invariant that every mutation emits a
+matching ``AuditEvent``. ``audit.append`` lives INSIDE the mutation's
 ``atomic()`` (the reentrant ``ConnectionManager.atomic`` nests clean —
 ``audit.append`` opens its own ``cm.atomic()`` which just bumps the depth
 counter and reuses the outer tx), so an audit failure rolls the episode write
@@ -53,8 +52,8 @@ def test_apply_fact_rolls_back_episode_if_audit_fails(engine, monkeypatch) -> No
     _fail_audit(audit, monkeypatch)
     with pytest.raises(sqlite3.OperationalError):
         _apply(eng, "e1", "# Madrid\n")
-    # CC-1: the episode append AND its episode_index row rolled back with the
-    # failed audit — no persisted episode without an audit row.
+    # The episode append AND its episode_index row rolled back with the failed
+    # audit — no persisted episode without an audit row.
     assert repo.get("e1") is None
     with repo._cm.read() as w:  # noqa: SLF001 — assert the index row rolled back too
         idx = w.execute("SELECT 1 FROM episode_index WHERE ep_id = ?", ("e1",)).fetchone()
@@ -67,8 +66,8 @@ def test_improve_rolls_back_both_writes_if_audit_fails(engine, monkeypatch) -> N
     _fail_audit(audit, monkeypatch)  # fail the audit on the improve only
     with pytest.raises(sqlite3.OperationalError):
         eng.improve("e1", "# Madrid\nupdated\n", by={"source_type": "human"}, now=LATER)
-    # CC-1: BOTH the new episode append AND the old invalidation rolled back —
-    # the target is still vigente with its original body.
+    # BOTH the new episode append AND the old invalidation rolled back — the
+    # target is still current-state with its original body.
     e1 = repo.get("e1")
     assert e1 is not None
     assert e1.invalid_at is None
@@ -77,11 +76,11 @@ def test_improve_rolls_back_both_writes_if_audit_fails(engine, monkeypatch) -> N
 
 def test_forget_rolls_back_invalidation_if_audit_fails(engine, monkeypatch) -> None:
     eng, repo, audit = engine
-    _apply(eng, "e1", "# Madrid\n")  # e1 vigente, audit working
+    _apply(eng, "e1", "# Madrid\n")  # e1 current-state, audit working
     _fail_audit(audit, monkeypatch)  # fail the audit on the forget only
     with pytest.raises(sqlite3.OperationalError):
         eng.forget("e1", reason="wrong", by={"source_type": "human"}, now=LATER)
-    # CC-1: the invalidation rolled back with the failed audit — e1 still vigente.
+    # The invalidation rolled back with the failed audit — e1 still current-state.
     e1 = repo.get("e1")
     assert e1 is not None
     assert e1.invalid_at is None
@@ -90,10 +89,10 @@ def test_forget_rolls_back_invalidation_if_audit_fails(engine, monkeypatch) -> N
 def test_apply_fact_does_not_mask_audit_integrity_error_as_collision(
     engine, monkeypatch
 ) -> None:
-    # CC-1 guard: apply_fact's ``except sqlite3.IntegrityError`` now also wraps
-    # audit.append (moved inside the atomic). An IntegrityError from the audit
-    # INSERT (NOT the I11 collision index) must surface — not be translated to a
-    # bogus COLLISION/ACTIVE result for an episode the atomic rolled back.
+    # apply_fact's ``except sqlite3.IntegrityError`` also wraps audit.append
+    # (moved inside the atomic). An IntegrityError from the audit INSERT (NOT
+    # the collision index) must surface — not be translated to a bogus
+    # COLLISION/ACTIVE result for an episode the atomic rolled back.
     eng, repo, audit = engine
 
     def _boom(event) -> None:

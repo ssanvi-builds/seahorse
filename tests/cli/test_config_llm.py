@@ -1,4 +1,4 @@
-"""Tests for the ``[llm]`` config section (M4-C.3) — round-trip + tolerance.
+"""Tests for the ``[llm]`` config section — round-trip + tolerance.
 
 The factory default is local-first (Ollama qwen3:1.7b, 2026-08-04 decision);
 a vault without ``[llm]`` still loads (``llm=None`` → the honest llm→skip

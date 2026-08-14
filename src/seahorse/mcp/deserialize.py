@@ -1,4 +1,4 @@
-"""Wire JSON → Python payload codec for the MCP profile (#13).
+"""Wire JSON → Python payload codec for the MCP profile.
 
 Pure translation: wire JSON (already wire-shape-validated by ``validate.py``)
 becomes Python primitives the facade accepts. This module holds NO domain
@@ -6,13 +6,13 @@ logic and does NOT call the facade — it parses datetimes, builds the
 ``Provenance`` plain dict, constructs the frozen ``RememberPayload``, and
 extracts the raw PIT inputs (``pit`` object, ``pit_kind``, ``t``) into Python
 values. The precedence + kind validation of PIT is delegated to
-``facade.build_pit`` in the tool handlers (commit 3) — #13 never replicates
-PIT validation (delegation purity, R2 f5-13).
+``facade.build_pit`` in the tool handlers — the MCP server never replicates
+PIT validation (delegation purity).
 
-Why no facade here: ``deserialize.py`` is a pure codec (commit 2 = "pure
-codecs, no facade calls"). Putting ``facade.build_pit`` here would couple the
-codec to the facade and force every caller to thread a facade through. The
-handlers own the one ``facade.build_pit`` call that resolves PIT.
+Why no facade here: ``deserialize.py`` is a pure codec. Putting
+``facade.build_pit`` here would couple the codec to the facade and force every
+caller to thread a facade through. The handlers own the one
+``facade.build_pit`` call that resolves PIT.
 """
 
 from __future__ import annotations
@@ -93,11 +93,12 @@ def build_remember_payload(args: dict[str, Any]) -> RememberPayload:
     """Build a frozen ``RememberPayload`` from ``remember`` tool arguments.
 
     ``title`` is NOT accepted on the wire (the engine derives it from the body's
-    H1). ``summary`` is an additive editorial field (OQ3 enabler): when absent,
-    the write path derives a deterministic fallback (first sentence of the body).
-    ``schema_version`` is pinned to ``"1.1"`` (F3.1). ``tags`` is forwarded as a
-    tuple; the facade rejects a non-empty ``tags`` with ``E_NOT_IN_MVP_0_1``
-    (MVP-0 honesty) — #13 does not pre-reject, it delegates.
+    H1). ``summary`` is an additive editorial field: when absent, the write
+    path derives a deterministic fallback (first sentence of the body).
+    ``schema_version`` is pinned to ``"1.1"`` (the on-disk format). ``tags`` is
+    forwarded as a tuple; the facade rejects a non-empty ``tags`` with
+    ``E_NOT_IN_MVP_0_1`` (fail-loud honesty) — the MCP server does not
+    pre-reject, it delegates.
     """
     valid_at_raw = args.get("valid_at")
     return RememberPayload(

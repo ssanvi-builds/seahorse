@@ -1,7 +1,8 @@
-"""F2 — ``QueryReranker`` Protocol seam (frontier pattern, f7 §5b).
+"""``QueryReranker`` Protocol extension point.
 
-The seam is owned by #11 (the component that needs it) and materialized by the
-embeddings extra (fastembed ``TextCrossEncoder``). These tests pin:
+The extension point is owned by hybrid retrieval (the component that needs it)
+and materialized by the embeddings extra (fastembed ``TextCrossEncoder``). These
+tests pin:
 - the Protocol surface (``rerank(query, docs) -> Sequence[float]``);
 - a conforming impl satisfies the Protocol; a non-conforming one does not;
 - the scores are aligned with the input docs (one score per doc).
@@ -15,7 +16,7 @@ from seahorse.contracts.rerank import QueryReranker
 
 
 class _ConformingReranker:
-    """Post-seam shape: ``rerank(query, docs) -> Sequence[float]``."""
+    """Post-extension-point shape: ``rerank(query, docs) -> Sequence[float]``."""
 
     def rerank(self, query: str, docs: Sequence[str]) -> Sequence[float]:
         return [float(len(doc)) for doc in docs]

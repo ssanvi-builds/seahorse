@@ -1,4 +1,4 @@
-"""Tests for the wire JSON → Python payload codec (#13, pure)."""
+"""Tests for the wire JSON → Python payload codec (the MCP server, pure)."""
 
 from __future__ import annotations
 

@@ -1,20 +1,18 @@
-"""Deterministic turn render for the observer (obsiforge §4.3).
+"""Deterministic turn render for the observer.
 
 The batcher is a PURE function of the turn: the body does NOT include ``ts``,
 ``session_id``, ``prompt_number`` or ``cwd`` — a reprocess after crash must
-produce the same hash (ADR-10). Order = arrival sequence. Truncation is
-deterministic by byte (never splits a UTF-8 codepoint). Redaction happens
-BEFORE the render (at enqueue), so the render itself is pure.
+produce the same hash. Order = arrival sequence. Truncation is deterministic by
+byte (never splits a UTF-8 codepoint). Redaction happens BEFORE the render (at
+enqueue), so the render itself is pure.
 
 The H1 carries collision uniqueness: ``title = "{first line of prompt truncated}
 [{session_tag}:{prompt_number}]"`` — stable across reprocess (prompt_number is
-persisted in the observer DB, obsiforge §15.2), distinct between turns of the
-same session, distinct between sessions → I11 only collides for the SAME turn
+persisted in the observer DB), distinct between turns of the same session,
+distinct between sessions → the uniqueness index only collides for the SAME turn
 re-emitted, never for legitimate turns.
 
 References:
-- obsiforge-evolution-architecture.md §4.3 (deterministic batcher)
-- obsiforge-evolution-architecture.md §15.2 redesign 1 (clustering key)
 - seahorse/engine/canonical.py (canonical_body_hash, reused for fingerprints)
 """
 
@@ -26,8 +24,8 @@ from typing import Any
 
 from seahorse.engine.canonical import canonical_body_hash as _canonical_body_hash
 
-# The H1 becomes the subject (title > H1 > None, SO-2); SUBJECT_MAX_CHARS=160
-# (f5-09 §2.1) bounds the title so the derived subject is never truncated away.
+# The H1 becomes the subject (title > H1 > None); SUBJECT_MAX_CHARS=160 bounds
+# the title so the derived subject is never truncated away.
 TITLE_MAX_CHARS = 160
 # A turn body cap: generous but bounded (deterministic byte truncation).
 BODY_MAX_CHARS = 8000
@@ -38,7 +36,7 @@ _FALLBACK_FIRST_LINE = "untitled"
 def _truncate_bytes(text: str, max_bytes: int) -> str:
     """Truncate ``text`` to ``max_bytes`` UTF-8 bytes without splitting a codepoint.
 
-    Deterministic (ADR-10): the same input always truncates the same way.
+    Deterministic: the same input always truncates the same way.
     """
     if max_bytes <= 0:
         return ""
@@ -123,7 +121,7 @@ def event_fingerprint(payload: Mapping[str, Any]) -> str:
 
     ``canonical_body_hash(json.dumps(payload, sort_keys, compact))`` — the
     same redacted payload always hashes the same, so a re-emitted event is a
-    no-op (INSERT OR IGNORE, obsiforge §4.5 layer 1).
+    no-op (INSERT OR IGNORE, the queue-level dedup layer).
     """
     canonical = json.dumps(
         dict(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False

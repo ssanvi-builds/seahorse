@@ -1,9 +1,9 @@
-"""Validate new_uuid7 + deterministic_id (Phase 2, owned #2).
+"""Validate new_uuid7 + deterministic_id.
 
-SO-4b: ``remember`` generates UUIDv7 by default (timestamp-ordered, sortable,
-unique). Importer path with ``importer_vendor`` set uses ``deterministic_id``
-(UUIDv5, RFC 4122 over NAMESPACE_URL) so re-import yields the same id. UUIDv5
-(version bit 5) never collides with UUIDv7 (version bit 7).
+``remember`` generates UUIDv7 by default (timestamp-ordered, sortable, unique).
+Importer path with ``importer_vendor`` set uses ``deterministic_id`` (UUIDv5,
+RFC 4122 over NAMESPACE_URL) so re-import yields the same id. UUIDv5 (version
+bit 5) never collides with UUIDv7 (version bit 7).
 """
 
 from __future__ import annotations

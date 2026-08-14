@@ -1,4 +1,4 @@
-"""``_merge_known`` — preserve x-*/comments/quotes; only mutated fields change (f5-03 §4.2/§4.5).
+"""``_merge_known`` — preserve x-*/comments/quotes; only mutated fields change.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ class TestPreservation:
         assert "title: Madrid" in after
         assert "- geo" in after
         assert "cognitive_type: semantic" in after
-        # the only addition vs the MVP-0 baseline is the explicit invalid_at null
+        # the only addition vs the first-release baseline is the explicit invalid_at null
         # becoming a value (and exclude_none=False adds nulls) — check invalid_at
         assert "invalid_at: '2026-07-17T12:00:00Z'" in after
         del before

@@ -1,4 +1,4 @@
-"""#16 benchmark adapters — external benchmark → canonical form (f5-16 §4)."""
+"""Benchmark dataset adapters — external benchmark → canonical form."""
 
 from __future__ import annotations
 

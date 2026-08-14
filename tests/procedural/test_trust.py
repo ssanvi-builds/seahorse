@@ -1,4 +1,4 @@
-"""Tests for the R5 trust gate (L2c §6.1, prompt-injection).
+"""Tests for the trust gate (prompt-injection).
 
 A skill body is read as instructions by the LLM during trigger evaluation → it
 is a persistent prompt-injection vector. The trust level is derived from

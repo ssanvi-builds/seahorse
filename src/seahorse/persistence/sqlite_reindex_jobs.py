@@ -1,13 +1,13 @@
-"""SqliteReindexJobRepository — resumable backfill job state (SO-7a).
+"""SqliteReindexJobRepository — resumable backfill job state.
 
 Implements ``seahorse.contracts.persistence.ReindexJobRepository`` over
-``reindex_jobs`` (f5-07 §5.4). MVP-0 methods are SETTERS: there are no
+``reindex_jobs``. Current-release methods are SETTERS: there are no
 state-transition guards (a ``pause`` on a ``done`` job is allowed and just sets the
-column). No own ``atomic()`` (SO-7a.6).
+column). No own ``atomic()``.
 
 Timestamps: ``started_at`` is stamped at ``create`` time; ``finished_at`` at
 ``finish`` / ``fail``. These are operational (not query-path) so wall-clock
-``datetime.now`` is acceptable here — ADR-10 reproducibility applies to the query
+``datetime.now`` is acceptable here — reproducibility applies to the query
 path, not to job bookkeeping.
 """
 

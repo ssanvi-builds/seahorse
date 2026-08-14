@@ -1,10 +1,11 @@
-"""Exit-code translation (#14) — mirrors ``tests/mcp/test_errors.py`` over the
-same catalog, but to process exit codes (64+) instead of JSON-RPC ``-32xxx``.
+"""Exit-code translation for the CLI — mirrors ``tests/mcp/test_errors.py`` over
+the same catalog, but to process exit codes (64+) instead of JSON-RPC ``-32xxx``.
 
 Covers:
-- Cat A (17 ``SeahorseError``/``EngineError`` codes → 64–81, 75 skipped).
-- Cat B (6 classes → 84–89), surfaced as ``exception_class`` (no synthetic code).
-- Cat C (``CliError`` short-circuits with its own ``exit_code``).
+- Domain errors (17 ``SeahorseError``/``EngineError`` codes → 64–81, 75 skipped).
+- Disclosure-contract errors (6 classes → 84–89), surfaced as ``exception_class``
+  (no synthetic code).
+- CLI errors (``CliError`` short-circuits with its own ``exit_code``).
 - ``message_for`` short labels.
 - Generic ``Exception`` → exit 1 (fail-loud, no swallow, no synthetic code).
 """
@@ -38,7 +39,8 @@ from seahorse.cli.exit_codes import (
     translate,
 )
 
-# Import the real Cat B classes used by #8/#2/#6.
+# Import the real disclosure-contract classes used by the disclosure path,
+# the engine, and persistence.
 from seahorse.contracts.engine import InvalidationConflictError, NotFound
 from seahorse.disclosure.types import FullBatchTooLarge, NotInMVP0, PitFullNotSupported
 from seahorse.engine.errors import EngineError
@@ -55,12 +57,12 @@ from seahorse.frontmatter.errors import (
     XReservedCollision,
 )
 
-# ``IntegrityError`` in CAT_B is stdlib ``sqlite3.IntegrityError`` — #6 raises
-# the native constraint error, matched by class name.
+# ``IntegrityError`` in CAT_B is stdlib ``sqlite3.IntegrityError`` — persistence
+# raises the native constraint error, matched by class name.
 
 
 # ---------------------------------------------------------------------------
-# Cat A — every code in the catalog maps to a unique exit in 64–81.
+# Domain errors — every code in the catalog maps to a unique exit in 64–81.
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +89,7 @@ from seahorse.frontmatter.errors import (
     ],
 )
 def test_cat_a_code_maps_to_exit(code, exc_cls):
-    """Each Cat A code → its mapped exit code, with seahorse_code on stderr."""
+    """Each domain-error code → its mapped exit code, with seahorse_code on stderr."""
     if exc_cls is SeahorseError:
         exc = SeahorseError(code=code, detail="x")
     elif exc_cls is EngineError:
@@ -104,7 +106,8 @@ def test_cat_a_code_maps_to_exit(code, exc_cls):
 
 
 def test_cat_a_frontmatter_codes_map_to_exit():
-    """The 4 frontmatter Cat A codes (#3, commit 5) → 90–93 with seahorse_code.
+    """The 4 frontmatter domain-error codes (the frontmatter migrator) → 90–93
+    with seahorse_code.
 
     These mirror ``seahorse.mcp.errors`` (parity, single point of change) and
     carry ``.code`` as a class attribute (``FrontmatterInvalid`` etc.).
@@ -124,7 +127,7 @@ def test_cat_a_frontmatter_codes_map_to_exit():
 
 
 def test_cat_a_table_is_21_codes_no_collision_with_75():
-    """21 Cat A codes (17 domain + 4 frontmatter), unique, none using 75."""
+    """21 domain-error codes (17 domain + 4 frontmatter), unique, none using 75."""
     assert len(CAT_A) == 21
     exits = list(CAT_A.values())
     assert len(set(exits)) == 21  # unique
@@ -135,7 +138,7 @@ def test_cat_a_table_is_21_codes_no_collision_with_75():
 
 
 def test_invalid_pit_kind_carries_code():
-    """InvalidPITKind is Cat A (.code), not Cat B (f5-14 table was wrong)."""
+    """InvalidPITKind is a domain error (.code), not a disclosure-contract error."""
     exc = InvalidPITKind("bogus")
     code, info = translate(exc)
     assert code == CAT_A["E_INVALID_PIT_KIND"]
@@ -143,7 +146,8 @@ def test_invalid_pit_kind_carries_code():
 
 
 # ---------------------------------------------------------------------------
-# Cat B — class → exit 84–89, surfaced as exception_class (no synthetic code).
+# Disclosure-contract errors — class → exit 84–89, surfaced as exception_class
+# (no synthetic code).
 # ---------------------------------------------------------------------------
 
 
@@ -166,13 +170,13 @@ def test_cat_b_class_maps_to_exit(exc, expected):
 
 
 def test_cat_b_table_is_seven_classes():
-    # Sprint C: ProceduralError (procedural-skill validation) added at 96.
+    # ProceduralError (procedural-skill validation) added at 96.
     assert len(CAT_B) == 7
     assert sorted(CAT_B.values()) == [84, 85, 86, 87, 88, 89, 96]
 
 
 # ---------------------------------------------------------------------------
-# Cat C — CliError short-circuits with its own exit_code.
+# CLI errors — CliError short-circuits with its own exit_code.
 # ---------------------------------------------------------------------------
 
 
@@ -244,20 +248,21 @@ def test_message_for_unknown_is_internal_error():
 
 
 # ---------------------------------------------------------------------------
-# #13 parity — the CLI Cat A table mirrors seahorse.mcp.errors.CAT_A (single
-# point of change). The two sister projections translate the SAME catalog.
+# MCP-server parity — the CLI domain-error table mirrors seahorse.mcp.errors.CAT_A
+# (single point of change). The two sister projections translate the SAME catalog.
 # ---------------------------------------------------------------------------
 
 
 def test_cli_cat_a_keys_mirrors_mcp_cat_a_keys():
-    """Every CLI Cat A code has a matching MCP Cat A code (parity, f5-14 §3.3)."""
+    """Every CLI domain-error code has a matching MCP domain-error code (parity)."""
     from seahorse.mcp.errors import CAT_A as MCP_CAT_A
 
     assert set(CAT_A) == set(MCP_CAT_A)
 
 
 def test_frontmatter_cat_a_origin_is_component_3():
-    """The 4 frontmatter codes attribute to #3 (not #12/#2)."""
+    """The 4 frontmatter codes attribute to the frontmatter migrator (not the
+    facade or the engine)."""
     from seahorse.mcp.errors import _ORIGIN_BY_CLASS as MCP_ORIGIN
 
     for cls in ("FrontmatterInvalid", "MigrationError", "XReservedCollision", "SubjectEmpty"):
@@ -283,21 +288,22 @@ def test_rebuild_conflicts_message_includes_count():
 
 
 def test_cli_rebuild_conflicts_distinct_from_not_in_mvp0():
-    """Commit 6 split: ``CLI_REBUILD_CONFLICTS`` no longer overloads 75.
+    """``CLI_REBUILD_CONFLICTS`` no longer overloads 75.
 
     ``CLI_NOT_IN_MVP_0`` (75) is the honest-stub code for reserved commands
     (``index verify`` / ``vigentes`` / ``activos-ahora`` / ``expire`` /
-    ``revalidate``). ``CLI_REBUILD_CONFLICTS`` is the ADR-10 honesty code for
+    ``revalidate``). ``CLI_REBUILD_CONFLICTS`` is the fail-loud honesty code for
     ``index rebuild`` conflicts — a distinct concern that previously shared 75
-    and was only disambiguated by the symbolic ``cli_code``. Commit 6 splits it
-    onto a fresh 90–99 slot (94) so the two are distinct even on the int exit
-    code. Both stay Cat C (CLI-owned), never Cat A.
+    and was only disambiguated by the symbolic ``cli_code``. It now sits on a
+    fresh 90–99 slot (94) so the two are distinct even on the int exit code.
+    Both stay CLI errors (CLI-owned), never domain errors.
     """
     assert CLI_REBUILD_CONFLICTS == 94  # fresh slot, pinned for the regression guard
     assert CLI_NOT_IN_MVP_0 == 75
     assert CLI_REBUILD_CONFLICTS != CLI_NOT_IN_MVP_0
-    # 94 lives in the 90–99 band (frontmatter Cat A took 90–93; 94 is the next
-    # free CLI-owned slot). It must NOT collide with any Cat A exit.
+    # 94 lives in the 90–99 band (frontmatter domain errors took 90–93; 94 is
+    # the next free CLI-owned slot). It must NOT collide with any domain-error
+    # exit.
     assert 94 not in CAT_A.values()
     # And the rebuild-conflicts exception still carries the symbolic name.
     code, info = translate(CliRebuildConflicts(1))

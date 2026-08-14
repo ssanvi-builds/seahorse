@@ -1,8 +1,8 @@
-"""F1 recency tests — pure ``apply_recency_boost`` + ``recall`` integration.
+"""Recency tests — pure ``apply_recency_boost`` + ``recall`` integration.
 
-Signals (cerebras-f-feasibility §3):
+Signals:
 - ``score' = score · (1 + γ·exp(-ln2·age_days/half_life))``, factor in [1, 1+γ].
-- Deterministic given ``now`` (the injectable clock of #11).
+- Deterministic given ``now`` (the injectable clock of the engine).
 - Default-OFF: ``recency=None`` keeps the pure-RRF bit-comparable fingerprint.
 - Gate ``pit is None``: PIT queries reproduce state as-of-``t`` with pure RRF.
 - ``created_at`` read in batch via ``index_repo.get_rows`` (one IN query, no N+1).
@@ -260,7 +260,8 @@ class TestRecallRecencyIntegration:
         self, embedder, vector_repo, fts_repo, episode_repo, index_repo, fixed_clock
     ):
         # A failure in the OPTIONAL recency signal must not kill the whole
-        # ranking (which would degrade the hybrid path to G2) — keep pure RRF.
+        # ranking (which would degrade the hybrid path to the listing regime) —
+        # keep pure RRF.
         vector_repo.knn_hits = [VectorHit("e1", 0.1, 0.9)]
         fts_repo.search_hits = [FullTextHit("e1", 1.0, 0.37)]
 

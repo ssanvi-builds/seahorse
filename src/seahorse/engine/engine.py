@@ -1,18 +1,15 @@
-"""Bi-temporal Engine behavior layer (owned by #2).
+"""Bi-temporal Engine behavior layer.
 
-``BiTemporalEngine`` orchestrates the Persistence Layer (#6) via the
+``BiTemporalEngine`` orchestrates the Persistence Layer via the
 ``EpisodeRepository`` Protocol: it derives ``subject``/``fact_id``, runs the
-write-time guards (I1-I11), detects I11 collisions, and emits ``AuditEvent``s.
-It never moves frontier symbols (``WriteResult`` / ``FreshnessView`` live in
-``seahorse.contracts.engine`` and are imported, not relocated).
+write-time guards, detects concurrent-subject collisions, and emits
+``AuditEvent``s. It never moves frontier symbols (``WriteResult`` /
+``FreshnessView`` live in ``seahorse.contracts.engine`` and are imported, not
+relocated).
 
-MVP-0 implements ``apply_fact``; ``remember`` / ``forget`` / ``improve`` /
-readers / freshness are added in later phases of the same component.
-
-References:
-- f5-02 (bi-temporal engine design)
-- f6-signoffs.md SO-3 (apply_fact fail-loud, AuditEvent store)
-- f6-signoffs.md SO-8c (WriteResult(ep_id, fact_id), TD #14 bridge equality)
+The first release implements ``apply_fact``; ``remember`` / ``forget`` /
+``improve`` / readers / freshness are added in later phases of the same
+component.
 """
 
 from __future__ import annotations
@@ -49,15 +46,15 @@ _STATUS_PENDING = "PENDING_INGEST"
 _STATUS_COLLISION = "COLLISION"
 _STATUS_NOOP = "NOOP"
 
-# Semver 2.0.0 with optional patch and pre-release/build (f5-02 §6.4 border
-# contract). Accepts "1.1" (no patch) so existing #6 episodes pass.
+# Semver 2.0.0 with optional patch and pre-release/build. Accepts "1.1" (no
+# patch) so existing persisted episodes pass.
 _SEMVER_RE = re.compile(
     r"^\d+\.\d+(\.\d+)?(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"
 )
 
 
 class BiTemporalEngine:
-    """Orchestrates #6 storage behind the bi-temporal write/read primitives."""
+    """Orchestrates the persistence storage behind the write/read primitives."""
 
     def __init__(
         self,
@@ -71,12 +68,13 @@ class BiTemporalEngine:
         self._audit = audit
         self._guards = guards or WriteGuards()
         self._collision = collision or CollisionDetector()
-        # Engine-level single-writer serialization backstop (f5-02 §8.9). The
+        # Engine-level single-writer serialization backstop. The
         # ConnectionManager serves a FastAPI threadpool, so cross-thread
         # interleaving of mutators is a real deployment scenario even though
-        # MVP-0 declares single-writer semantics. This reentrant lock serializes
-        # the whole mutator span (get -> validate -> write); it nests cleanly
-        # with the per-transaction ConnectionManager lock used by repo.atomic().
+        # the first release declares single-writer semantics. This reentrant
+        # lock serializes the whole mutator span (get -> validate -> write); it
+        # nests cleanly with the per-transaction ConnectionManager lock used by
+        # repo.atomic().
         self._lock = threading.RLock()
 
     @staticmethod
@@ -90,26 +88,26 @@ class BiTemporalEngine:
         now: datetime | None = None,
         subject_override: str | None = None,
     ) -> WriteResult:
-        """Append a candidate episode, fail-loud on I11 collision (SO-3b/SO-8c).
+        """Append a candidate episode, fail-loud on a concurrent collision.
 
         Derives ``subject``/``fact_id``, force-sets ``created_at=now``,
-        ``expired_at=None`` (I1/I4) and ``invalid_at=None`` (I3 — written null at
-        ingest, f5-02 §2 l.123), runs the write guards, then detects
-        collisions and appends INSIDE ``repo.atomic()`` so detect+append share
-        one transaction (closes the TOCTOU window; f5-02 §7.9 l.884). On
-        collision: NO append, return ``WriteResult(ep_id=None, fact_id=None,
-        status="COLLISION", ...)``. The I11 partial unique index is the data
-        backstop: a concurrent slip surfaces as ``sqlite3.IntegrityError``,
-        caught and translated to the same COLLISION result (SO-3b never raises).
+        ``expired_at=None`` and ``invalid_at=None`` (written null at ingest),
+        runs the write guards, then detects collisions and appends INSIDE
+        ``repo.atomic()`` so detect+append share one transaction (closes the
+        time-of-check/time-of-use window). On collision: NO append, return
+        ``WriteResult(ep_id=None, fact_id=None, status="COLLISION", ...)``. The
+        partial unique index is the data backstop: a concurrent slip surfaces as
+        ``sqlite3.IntegrityError``, caught and translated to the same COLLISION
+        result (it never raises).
         """
         now = self._now(now)
-        # LLM-path override (M4-C.3): ``subject_override`` (passed only by
-        # ``remember`` when the extractor produced a subject) wins over the
-        # SO-2 derivation. It is a SEPARATE argument, NOT ``candidate.subject``
-        # — candidates may carry a cosmetic ``subject`` (the apply_fact tests'
-        # fixture does) that must keep being re-derived, so reading it would
-        # silently change existing callers. ``fact_id_of(subject)`` equals the
-        # old ``fact_id_for(body, title)`` when subject derives the same way
+        # LLM-path override: ``subject_override`` (passed only by ``remember``
+        # when the extractor produced a subject) wins over the derived subject.
+        # It is a SEPARATE argument, NOT ``candidate.subject`` — candidates may
+        # carry a cosmetic ``subject`` (the apply_fact tests' fixture does) that
+        # must keep being re-derived, so reading it would silently change
+        # existing callers. ``fact_id_of(subject)`` equals the old
+        # ``fact_id_for(body, title)`` when subject derives the same way
         # (regression pinned by the engine tests).
         subject = (
             subject_override if subject_override is not None else _derive_subject(candidate)
@@ -128,16 +126,16 @@ class BiTemporalEngine:
             self._guards.validate(ep, repo=self._repo, op="apply_fact", now=now)
             collisions = self._collision.detect(ep, self._repo)
             if not collisions:
-                # SO-3b: detect+append in one transaction so a concurrent
-                # append cannot slip between them. The I11 partial unique
-                # index is the data-integrity backstop; IntegrityError is
-                # translated to the fail-loud COLLISION result.
-                # CC-1 (C8.3): the audit.append runs INSIDE the same atomic so
-                # the episode write and its AuditEvent commit together — a
-                # failure between them cannot leave a persisted episode with
-                # no audit row (torn audit trail). audit.append opens its own
-                # reentrant cm.atomic() which just bumps the depth counter and
-                # reuses this outer transaction.
+                # detect+append in one transaction so a concurrent append
+                # cannot slip between them. The partial unique index is the
+                # data-integrity backstop; IntegrityError is translated to the
+                # fail-loud COLLISION result.
+                # The audit.append runs INSIDE the same atomic so the episode
+                # write and its AuditEvent commit together — a failure between
+                # them cannot leave a persisted episode with no audit row (torn
+                # audit trail). audit.append opens its own reentrant
+                # cm.atomic() which just bumps the depth counter and reuses
+                # this outer transaction.
                 try:
                     with self._repo.atomic():
                         collisions = self._collision.detect(ep, self._repo)
@@ -156,15 +154,16 @@ class BiTemporalEngine:
                                 )
                             )
                 except sqlite3.IntegrityError:
-                    # I11 concurrent-slip backstop: the partial unique index
+                    # Concurrent-slip backstop: the partial unique index
                     # rejected the append. Re-detect to translate to a COLLISION
-                    # result. CC-1 note: the try now also wraps audit.append, so an
-                    # IntegrityError from the audit INSERT (not the I11 index)
-                    # would otherwise be masked as a collision — and the atomic
-                    # would have rolled the episode back, so re-detect finds no
-                    # vigent collision. Re-raise in that case so the real error
-                    # surfaces instead of a bogus ACTIVE result for a rolled-back
-                    # episode (never swallow an error as a collision it isn't).
+                    # result. The try now also wraps audit.append, so an
+                    # IntegrityError from the audit INSERT (not the partial
+                    # unique index) would otherwise be masked as a collision —
+                    # and the atomic would have rolled the episode back, so
+                    # re-detect finds no currently valid collision. Re-raise in
+                    # that case so the real error surfaces instead of a bogus
+                    # ACTIVE result for a rolled-back episode (never swallow an
+                    # error as a collision it isn't).
                     collisions = self._collision.detect(ep, self._repo)
                     if not collisions:
                         raise
@@ -202,7 +201,7 @@ class BiTemporalEngine:
         supersedes_reason: str | None = None,
         now: datetime | None = None,
     ) -> WriteResult:
-        """Single write entry point (ADR-09). Picks the id by source (SO-4b).
+        """Single write entry point; picks the id by source.
 
         Importer path (``source_type == "importer"`` with ``importer_vendor``
         set) uses a deterministic UUIDv5 so re-import yields the same id; every
@@ -211,16 +210,15 @@ class BiTemporalEngine:
         a NOOP (no append, no audit). Otherwise an ``Episode`` is built and
         delegated to ``apply_fact``.
 
-        ``subject`` is the LLM-path override (M4-C.3): when the extractor
-        produced a subject, it wins over the SO-2 derivation in ``apply_fact``.
-        The skip path never passes it, so its behaviour is byte-identical
-        (regression pinned). ``summary`` is the editorial summary (OQ3 enabler):
-        the write path passes the caller's value or a deterministic fallback
-        (first sentence of the body, ``SUMMARY_MAX_CHARS=200``); the engine
-        persists it verbatim. LLM-extracted ``tags`` are intentionally NOT
-        passed here: the MVP-1 SQLite episode store does not persist ``tags``
-        (the repo reads them back as ``[]``), so injecting them would be a
-        silent lie.
+        ``subject`` is the LLM-path override: when the extractor produced a
+        subject, it wins over the derived subject in ``apply_fact``. The skip
+        path never passes it, so its behaviour is byte-identical (regression
+        pinned). ``summary`` is the editorial summary: the write path passes the
+        caller's value or a deterministic fallback (first sentence of the body,
+        ``SUMMARY_MAX_CHARS=200``); the engine persists it verbatim.
+        LLM-extracted ``tags`` are intentionally NOT passed here: the SQLite
+        episode store does not persist ``tags`` (the repo reads them back as
+        ``[]``), so injecting them would be a silent lie.
         """
         now = self._now(now)
         source_type = by.get("source_type")
@@ -275,12 +273,12 @@ class BiTemporalEngine:
         by: dict,
         now: datetime | None = None,
     ) -> Episode:
-        """Op 1 — soft-delete bi-temporal. I3/I6/I7; reason lives in audit only.
+        """Soft-delete bi-temporal; reason lives in audit only.
 
-        Marks ``invalid_at = now`` once (null->now). Preserves the row (I6),
-        never touches ``expired_at`` (I7) or the body/subject. The invalidation
-        metadata (``reason``, ``agent_id``) is written ONLY to the ``AuditEvent``
-        (I10/I3), never to the episode row.
+        Marks ``invalid_at = now`` once (null->now). Preserves the row, never
+        touches ``expired_at`` or the body/subject. The invalidation metadata
+        (``reason``, ``agent_id``) is written ONLY to the ``AuditEvent``, never
+        to the episode row.
         """
         now = self._now(now)
         with self._lock:
@@ -288,12 +286,12 @@ class BiTemporalEngine:
             if ep is None:
                 raise NotFound(ep_id)
             self._guards.validate(ep, repo=self._repo, op="forget", now=now)
-            # CC-1 (C8.3): the invalidation and its AuditEvent commit in ONE
-            # transaction. Before C8.3 forget had no atomic block at all — a
-            # crash between set_invalid_at and audit.append left an invalidated
-            # episode with no forget audit row. The reentrant cm.atomic() nests
-            # clean (set_invalid_at + audit.append each open their own, which
-            # just bump the depth counter and reuse this outer transaction).
+            # The invalidation and its AuditEvent commit in ONE transaction.
+            # Forget had no atomic block at all previously — a crash between
+            # set_invalid_at and audit.append left an invalidated episode with
+            # no forget audit row. The reentrant cm.atomic() nests clean
+            # (set_invalid_at + audit.append each open their own, which just
+            # bump the depth counter and reuse this outer transaction).
             # Storage-level idempotency backstop: WHERE invalid_at IS NULL. 0 rows
             # (already invalidated between our get and the update) -> InvalidationConflictError.
             with self._repo.atomic():
@@ -323,16 +321,16 @@ class BiTemporalEngine:
         reason: str = "correction",
         now: datetime | None = None,
     ) -> Episode:
-        """Op 3 — human edit = invalidate-then-append atomically (I8, TD #8).
+        """Human edit = invalidate-then-append atomically.
 
         Invalidates the old episode and appends a new one with
         ``supersedes=old`` inside ``repo.atomic()``. If the new body's subject
-        collides with a THIRD vigente episode (not the target, already
+        collides with a THIRD currently valid episode (not the target, already
         invalidated), raises ``E_COLLISION_EXISTS`` and the whole transaction
         rolls back — the target is NOT invalidated, the new episode is NOT
         appended. Preserves the signed ``-> Episode`` return type.
 
-        CC-3 (spec §2.8): the successor carries ``supersedes_reason=
+        The successor carries ``supersedes_reason=
         SupersedesReason.CORRECTION`` — the portable enum that survives
         export/import. The free-text ``reason`` (observability) goes ONLY to the
         improve ``AuditEvent``; it is NOT copied into ``supersedes_reason`` (that
@@ -354,10 +352,10 @@ class BiTemporalEngine:
                 invalid_at=None,
                 expired_at=None,
                 supersedes=ep_id,
-                # CC-3 (C8.9 / spec §2.8): the successor of an improve is a
-                # CORRECTION — it carries the portable ``SupersedesReason`` enum so
-                # it survives export/import. The free-text ``reason`` (observability)
-                # goes ONLY to the AuditEvent below; copying it here would be
+                # The successor of an improve is a CORRECTION — it carries the
+                # portable ``SupersedesReason`` enum so it survives
+                # export/import. The free-text ``reason`` (observability) goes
+                # ONLY to the AuditEvent below; copying it here would be
                 # type-confusion (free text -> enum).
                 supersedes_reason=SupersedesReason.CORRECTION,
                 cognitive_type=old.cognitive_type,
@@ -372,17 +370,18 @@ class BiTemporalEngine:
                     "fact_id": fact_id_for(new_ep.body or "", title=new_ep.title),
                 }
             )
-            with self._repo.atomic():  # I8: rollback completo si la 2da escritura falla
+            with self._repo.atomic():  # atomic: full rollback if the 2nd write fails
                 self._repo.set_invalid_at(ep_id, now)  # invalidate-then-append order
                 self._guards.validate(new_ep, repo=self._repo, op="improve", now=now)
                 collisions = self._collision.detect(new_ep, self._repo)
                 if collisions:
-                    # TD #8: fail-loud consistent with SO-3b. Rollback: target stays
-                    # vigente, new episode not appended. Caller (#12.improve) decides.
+                    # Fail-loud, consistent with the collision path. Rollback:
+                    # target stays valid, new episode not appended. The caller
+                    # (the facade's improve) decides.
                     raise errors.EngineError(errors.E_COLLISION_EXISTS, collisions=collisions)
                 self._repo.append(new_ep)
-                # CC-1 (C8.3): audit INSIDE the atomic — the invalidation, the new
-                # episode, and the improve AuditEvent commit together (or roll back
+                # audit INSIDE the atomic — the invalidation, the new episode,
+                # and the improve AuditEvent commit together (or roll back
                 # together). A crash after append but before audit can no longer
                 # leave the successor persisted with no audit row.
                 self._audit.append(
@@ -401,17 +400,17 @@ class BiTemporalEngine:
                 )
             return new_ep
 
-    # ---------- readers (Phase 9) ------------------------------------------
+    # ---------- readers -----------------------------------------------------
 
     def get_vigente(
         self, subject: str | None = None, *, now: datetime | None = None
     ) -> list[Episode]:
-        """Activo ahora: vigente rows whose valid_at has come into effect.
+        """Currently active: valid rows whose valid_at has come into effect.
 
-        ``repo.query_vigent`` returns the I11 partial-index set (``invalid_at
-        IS NULL AND expired_at IS NULL``), which INCLUDES ``PENDING_INGEST``
-        (``valid_at`` in the future). This reader post-filters to *activo
-        ahora*: ``valid_at IS NULL OR valid_at <= now`` (f5-02 §3, l.132).
+        ``repo.query_vigent`` returns the partial-index set (``invalid_at IS
+        NULL AND expired_at IS NULL``), which INCLUDES ``PENDING_INGEST``
+        (``valid_at`` in the future). This reader post-filters to *currently
+        active*: ``valid_at IS NULL OR valid_at <= now``.
         """
         now = self._now(now)
         return [
@@ -421,16 +420,16 @@ class BiTemporalEngine:
         ]
 
     def follow_supersedes_chain(self, ep_id: str) -> list[Episode]:
-        """Bidirectional supersedes closure for ``ep_id`` (delegates to #6)."""
+        """Bidirectional supersedes closure for ``ep_id`` (delegates to the persistence layer)."""
         return self._repo.chain_from(ep_id)
 
     def is_valid_at(self, ep_id: str, point_in_time: datetime) -> bool:
-        """PIT real-world predicate (F3.1 l.880-885), NULL-safe.
+        """PIT real-world predicate, NULL-safe.
 
         ``valid_at IS NULL`` means "from forever" -> valid at any ``t`` while
         not yet invalidated. Unknown episode -> ``False``. ``point_in_time`` is
-        normalized to UTC via ``astimezone`` exactly as F3.1 l.882 does (a naive
-        datetime is interpreted as local time, then converted).
+        normalized to UTC via ``astimezone`` (a naive datetime is interpreted as
+        local time, then converted).
         """
         ep = self._repo.get(ep_id)
         if ep is None:
@@ -441,11 +440,11 @@ class BiTemporalEngine:
         return after_valid and before_invalid
 
     def is_known_at(self, ep_id: str, point_in_time: datetime) -> bool:
-        """PIT system predicate (F3.1 l.887-892), NULL-safe.
+        """PIT system predicate, NULL-safe.
 
         Was the fact known to the system at ``t``? Requires ``created_at <= t``
         and not yet expired. Unknown episode -> ``False``. ``point_in_time`` is
-        normalized to UTC via ``astimezone`` exactly as F3.1 l.889 does.
+        normalized to UTC via ``astimezone``.
         """
         ep = self._repo.get(ep_id)
         if ep is None:
@@ -456,16 +455,16 @@ class BiTemporalEngine:
         return after_created and before_expired
 
     def audit_log(self, ep_id: str) -> list[AuditEvent]:
-        """Audit events whose ``target_id`` is ``ep_id`` (delegates to #6)."""
+        """Audit events whose ``target_id`` is ``ep_id`` (delegates to the persistence layer)."""
         return self._audit.query(target_id=ep_id)
 
     def freshness_view(self, ep_id: str, *, now: datetime | None = None) -> FreshnessView:
         """Pure derivation of an episode's freshness snapshot (no external state).
 
         Fetches the episode via the repository and delegates the pure derivation
-        to ``freshness_of`` (single source of truth shared with #8's disclosure
+        to ``freshness_of`` (single source of truth shared with the disclosure
         shaper). ``fact_id`` is the subject hash (``ep.fact_id``), consistent
-        with ``WriteResult.fact_id`` (TD #14 bridge).
+        with ``WriteResult.fact_id``.
         """
         now = self._now(now)
         ep = self._repo.get(ep_id)
@@ -473,41 +472,43 @@ class BiTemporalEngine:
             raise NotFound(ep_id)
         return freshness_of(ep, now)
 
-    # ---------- MVP-1 axis stubs (signed seam, fail-loud) -----------------
-    # These accessors are part of the engine surface (SO-1 safeguard 2) but
-    # revisable until MVP-1. MVP-0 refuses to over-claim behavior that
-    # depends on a signed conflict policy (ADR-10). See policy.py.
+    # ---------- later-release stubs (declared extension point, fail-loud) --
+    # These accessors are part of the engine surface but revisable until a
+    # later release. The current release refuses to over-claim behavior that
+    # depends on a signed conflict policy (fail-loud honesty). See policy.py.
 
     def state_at(self, t: datetime, *, subject: str | None = None) -> list[Episode]:
-        """PIT bulk query: reconstruct the valid state at ``t`` (MVP-1)."""
+        """PIT bulk query: reconstruct the valid state at ``t`` (a later release)."""
         raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="state_at")
 
     def recall_pit(self, ep_id: str, t: datetime) -> Episode | None:
-        """PIT recall: the episode known to the system at ``t`` (MVP-1)."""
+        """PIT recall: the episode known to the system at ``t`` (a later release)."""
         raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="recall_pit")
 
     def detect_collisions(self, candidate: Episode) -> list:
-        """Public collision detection (MVP-1). Internal ``_collision.detect``
-        already powers ``apply_fact``/``improve`` fail-loud in MVP-0; this
-        public accessor is signed for #13/#16 but revisable until MVP-1."""
+        """Public collision detection (a later release). Internal
+        ``_collision.detect`` already powers ``apply_fact``/``improve``
+        fail-loud in the current release; this public accessor is declared for
+        the MCP server and the benchmark harness but revisable until a later
+        release."""
         raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="detect_collisions")
 
     def resolve_conflict(self, *, collision: object) -> object:
-        """Dispatch a collision to the ConflictPolicy (MVP-1)."""
+        """Dispatch a collision to the ConflictPolicy (a later release)."""
         raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="resolve_conflict")
 
     def revalidate(self, ep_id: str, *, by: dict, now: datetime | None = None) -> Episode:
-        """SUPERSEDED -> ACTIVE via a new episode (MVP-1, TD #8 sibling)."""
+        """SUPERSEDED -> ACTIVE via a new episode (a later release)."""
         raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="revalidate")
 
     def expire(self, ep_id: str, *, now: datetime | None = None) -> Episode:
-        """Decay (reserve, ADR-10). Sets ``expired_at`` (MVP mediano)."""
+        """Decay (reserved for now, fail-loud honesty). Sets ``expired_at`` (a medium-term goal)."""
         raise errors.EngineError(errors.E_NOT_IN_MVP_0, primitive="expire")
 
-    # ---------- #5 skip-path border contract ------------------------------
+    # ---------- write-path skip border contract ----------------------------
 
     def is_valid_skip_path(self, ep: Episode) -> bool:
-        """Pure border validator for the #5 deterministic skip-path (f5-02 §6.4).
+        """Pure border validator for the write path's deterministic skip-path.
 
         A payload whose ``provenance["extraction_mode"] == "skip"`` is routable
         down the deterministic skip-path ONLY if it satisfies the contract:
@@ -515,14 +516,15 @@ class BiTemporalEngine:
         ``valid_at <= created_at`` when ``valid_at`` is non-null, and a semver
         ``schema_version``. The validator reads no repo/audit state.
 
-        Reconciliation with ``-> bool`` (l.745-758):
+        Reconciliation with ``-> bool``:
 
-        - ``extraction_mode != "skip"`` -> ``False`` (not a skip payload; #5
-          uses another path, not an error).
+        - ``extraction_mode != "skip"`` -> ``False`` (not a skip payload; the
+          write path uses another mode, not an error).
         - ``extraction_mode == "skip"`` + contract holds -> ``True``.
         - ``extraction_mode == "skip"`` + contract BROKEN -> raise
           ``EngineError("E_SKIP_CONTRACT_VIOLATED")``: the payload claims skip
-          but cannot be deterministically skipped, so #5 re-routes to ``llm``.
+          but cannot be deterministically skipped, so the write path re-routes
+          to ``llm``.
         """
         extraction_mode = ep.provenance.get("extraction_mode")
         if extraction_mode != "skip":

@@ -1,4 +1,4 @@
-"""``seahorse.cli.errors`` — CliError hierarchy + Cat C exit codes."""
+"""``seahorse.cli.errors`` — CliError hierarchy + exit codes."""
 
 from __future__ import annotations
 

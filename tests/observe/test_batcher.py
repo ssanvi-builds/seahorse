@@ -1,14 +1,14 @@
 """Tests for ``seahorse.observe.batcher`` — the deterministic turn render.
 
-The batcher is a PURE function of the turn (obsiforge §4.3): the body does NOT
-include ``ts``, ``session_id``, ``prompt_number`` or ``cwd`` — a reprocess
-after crash must produce the same hash. Order = arrival sequence. Truncation is
-deterministic by byte. Redaction happens BEFORE the render (at enqueue), so the
-render itself is pure.
+The batcher is a PURE function of the turn: the body does NOT include ``ts``,
+``session_id``, ``prompt_number`` or ``cwd`` — a reprocess after crash must
+produce the same hash. Order = arrival sequence. Truncation is deterministic by
+byte. Redaction happens BEFORE the render (at enqueue), so the render itself is
+pure.
 
 The H1 carries collision uniqueness: ``title = "{first line of prompt truncated}
 [{session_tag}:{prompt_number}]"`` — stable across reprocess, distinct between
-turns of the same session, distinct between sessions → I11 only collides for
+turns of the same session, distinct between sessions → collisions only occur for
 the SAME turn re-emitted, never for legitimate turns.
 """
 

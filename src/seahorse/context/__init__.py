@@ -1,8 +1,8 @@
-"""Context injection layer (obsiforge §6).
+"""Context injection layer.
 
 The bootstrap is by RECENCY, not semantics (claude-mem does not inject semantic
 context — it injects recency + summaries + a fetch pointer; Seahorse replicates
-this, §6.1). ``MemoryFacade.context()`` assembles the four INDEX-level blocks;
+this). ``MemoryFacade.context()`` assembles the four INDEX-level blocks;
 this module renders them to the bootstrap text the SessionStart hook injects.
 """
 

@@ -1,9 +1,10 @@
-"""Tests for ``record_procedure`` — deterministic skill creation (L2c §6.1).
+"""Tests for ``record_procedure`` — deterministic skill creation.
 
-The procedural layer is a client of #12 (MemoryFacade): ``record_procedure``
-delegates to ``facade.remember`` with ``cognitive_type=procedural`` and
-``extraction_mode=skip`` (ADR-09 skip-first, cost ≈ 0). The canonical body is
-validated BEFORE the facade call (fail-loud, no partial write).
+The procedural layer is a client of the primitives facade (MemoryFacade):
+``record_procedure`` delegates to ``facade.remember`` with
+``cognitive_type=procedural`` and ``extraction_mode=skip`` (skip-first,
+near-zero cost). The canonical body is validated BEFORE the facade call
+(fail-loud, no partial write).
 """
 
 from __future__ import annotations

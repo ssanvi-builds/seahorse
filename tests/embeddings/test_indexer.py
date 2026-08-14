@@ -1,9 +1,9 @@
-"""Retrieval indexer write-path (M1-B.5).
+"""Retrieval indexer write-path.
 
 ``RetrievalIndexer`` embeds the passage body and upserts vec0 + FTS in one
 atomic, driven by the write path (``StubWritePath.ingest`` → best-effort) and
 by ``seahorse index rebuild`` (backfill). Best-effort: an embedder failure must
-never fail the episode write (ADR-10 — the index is derived).
+never fail the episode write (the index is derived).
 """
 
 from __future__ import annotations
@@ -108,10 +108,10 @@ def test_index_episode_skips_empty_body_and_missing_episode(mgr) -> None:
     assert embedder.calls == []
 
 
-# ----------------------------------------------------------- embed_mode (F7 (c))
+# ----------------------------------------------------------- embed_mode
 
 def test_embed_mode_body_summary_combines_body_and_summary(mgr) -> None:
-    # F3 vectorial candidate (f7 §5c): embed body+summary so the vector captures
+    # Vectorial candidate: embed body+summary so the vector captures
     # the editorial summary, not just the body. The effective embedded text is
     # ``summary\n\nbody`` (summary leads — the distilled signal).
     episodes = SqliteEpisodeRepository(mgr)
@@ -148,8 +148,8 @@ def test_embed_mode_body_summary_without_summary_falls_back_to_body(mgr) -> None
 
 
 def test_embed_mode_body_summary_is_default(mgr) -> None:
-    # F3 flip (f7-experiment-embed §decide): body+summary is the product
-    # default — the summary leads the vector (distilled signal first).
+    # body+summary is the product default — the summary leads the vector
+    # (distilled signal first).
     indexer, embedder, vector, fts, episodes = _stack(mgr)  # embed_mode="body+summary"
     episodes.append(_episode("e1", "madrid spain", summary="a gist"))
     indexer.index_episode("e1")
@@ -157,9 +157,9 @@ def test_embed_mode_body_summary_is_default(mgr) -> None:
 
 
 def test_reindex_with_body_summary_produces_distinct_vectors(mgr) -> None:
-    # F3 flip: reindexing the SAME episode under body+summary re-embeds honestly
-    # — the effective text changes (summary leads), so the content_hash over the
-    # EFFECTIVE text differs → cache miss vs the body-only index (f7 §5c).
+    # Reindexing the SAME episode under body+summary re-embeds honestly — the
+    # effective text changes (summary leads), so the content_hash over the
+    # EFFECTIVE text differs → cache miss vs the body-only index.
     episodes = SqliteEpisodeRepository(mgr)
     vector = SqliteVectorIndexRepository(mgr)
     fts = SqliteFullTextIndexRepository(mgr)
@@ -202,7 +202,7 @@ def test_invalid_embed_mode_rejected(mgr) -> None:
 
 
 def test_index_episode_best_effort_on_embedder_failure(mgr) -> None:
-    # ADR-10: an embedder failure must NOT raise out of the write path — the
+    # An embedder failure must NOT raise out of the write path — the
     # index is derived; the episode write already succeeded.
     from seahorse.embeddings.indexer import RetrievalIndexer as RI
 
@@ -229,7 +229,7 @@ def test_index_episode_best_effort_on_embedder_failure(mgr) -> None:
 
 
 def test_stub_write_path_indexes_after_ingest(mgr) -> None:
-    # M1-B.5: remember (skip path) drives the indexer when wired.
+    # remember (skip path) drives the indexer when wired.
     from seahorse.engine.engine import BiTemporalEngine
     from seahorse.facade.types import RememberPayload
     from seahorse.write_path.stub import StubWritePath

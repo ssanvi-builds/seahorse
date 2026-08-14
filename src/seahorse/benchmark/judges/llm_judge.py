@@ -1,10 +1,10 @@
-"""``LLMJudge`` — LLM-as-judge with bias mitigations (f5-16 §6.3).
+"""``LLMJudge`` — LLM-as-judge with bias mitigations.
 
 Mitigations implemented:
 - **Generator ≠ judge**: the judge model is family-disjoint from the reader
   (enforced by ``BenchmarkConfig.validate()`` at startup).
 - **Strict + lenient rubrics**: both are git-tracked and hashed into the
-  fingerprint (f5-16 §5.3 F7).
+  fingerprint.
 - **Position swap**: in pairwise comparisons the order is swapped and the
   verdicts aggregated (the harness exposes ``judge_pair`` for that).
 """
@@ -49,8 +49,8 @@ class LLMJudge:
     def judge_pair(self, question: str, answer_a: str, answer_b: str, rubric: str) -> bool:
         """Position-swapped pairwise comparison: does A beat B?
 
-        The order is swapped and the two verdicts aggregated (f5-16 §6.3):
-        A wins only if it is judged better in both orders.
+        The order is swapped and the two verdicts aggregated: A wins only if it
+        is judged better in both orders.
         """
         a_wins = self._judge_pair_once(question, answer_a, answer_b)
         b_wins = self._judge_pair_once(question, answer_b, answer_a)

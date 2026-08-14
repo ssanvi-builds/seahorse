@@ -1,4 +1,4 @@
-"""Tests for the retrieval metrics (f5-16 §4.4)."""
+"""Tests for the retrieval metrics."""
 
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ def test_mrr_zero_when_none_recovered():
 
 
 def test_precision_at_k_uses_effective_k():
-    # k=10 but only 2 recovered → k_effectivo=2; 1 relevant → precision 0.5
+    # k=10 but only 2 recovered → effective k=2; 1 relevant → precision 0.5
     inst = _inst("q1", ["s1"])
     resp = _resp(["s1", "s3"])
     result = PrecisionAtK().compute([inst], [resp], BenchmarkConfig())

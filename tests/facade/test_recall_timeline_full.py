@@ -1,12 +1,14 @@
-"""Tests for ``recall_timeline`` / ``recall_full`` — delegation to #8 shaper.
+"""Tests for ``recall_timeline`` / ``recall_full`` — delegation to the
+disclosure shaper.
 
 ``recall_timeline`` delegates to ``materialize_timeline(anchor, axis, pit)``
 (no ``now``). ``recall_full`` delegates to ``materialize_full(ep_ids, pit,
-now)``; the ``MAX_FULL_BATCH`` cap is #8's domain guard (the facade does NOT
-replicate it — it delegates verbatim and surfaces #8's ``FullBatchTooLarge``);
-PIT in FULL surfaces as #8's ``PitFullNotSupported``. PIT kinds are validated
-at the border (the facade's only FULL-level check), and that border check fires
-before #8's batch guard.
+now)``; the ``MAX_FULL_BATCH`` cap is the disclosure shaper's domain guard
+(the facade does NOT replicate it — it delegates verbatim and surfaces the
+disclosure shaper's ``FullBatchTooLarge``); PIT in FULL surfaces as the
+disclosure shaper's ``PitFullNotSupported``. PIT kinds are validated at the
+border (the facade's only FULL-level check), and that border check fires before
+the disclosure shaper's batch guard.
 """
 
 from __future__ import annotations
@@ -53,9 +55,9 @@ class TestRecallTimeline:
         assert shaper.timeline_calls[0]["pit"] is pit
 
     def test_now_forwarded_from_clock(self, facade, shaper, clock) -> None:
-        # Sprint C: materialize_timeline gains `now` so graph_bfs can resolve
-        # pit=None → state_at(now) (ADR-03, no silent known_at). The facade
-        # forwards its clock; the MVP-0 axes ignore it.
+        # materialize_timeline gains `now` so graph_bfs can resolve pit=None →
+        # state_at(now) (no silent known_at). The facade forwards its clock; the
+        # first-release axes ignore it.
         shaper.timeline_result = TimelineWindow(
             anchor_ep_id="e1", axis="supersedes_chain", entries=(), pit=None
         )
@@ -83,10 +85,12 @@ class TestRecallFull:
         assert facade.recall_full(["e1"]) == []
 
     def test_batch_too_large_owned_by_shaper(self, facade, shaper) -> None:
-        """#12 must NOT pre-empt #8's MAX_FULL_BATCH check (owned by #8).
+        """The primitives facade must NOT pre-empt the disclosure shaper's
+        MAX_FULL_BATCH check (owned by the disclosure shaper).
 
-        The facade delegates verbatim and surfaces #8's FullBatchTooLarge. The
-        call reaches the shaper — #12 does not short-circuit #8's domain guard.
+        The facade delegates verbatim and surfaces the disclosure shaper's
+        FullBatchTooLarge. The call reaches the shaper — the primitives facade
+        does not short-circuit the disclosure shaper's domain guard.
         """
         too_many = [f"e{i}" for i in range(MAX_FULL_BATCH + 1)]
         shaper.full_raise = FullBatchTooLarge(len(too_many), MAX_FULL_BATCH)
@@ -106,7 +110,8 @@ class TestRecallFull:
         assert shaper.full_calls[0]["ep_ids"] == at_cap
 
     def test_pit_full_surfaces_shaper_error(self, facade, shaper) -> None:
-        # #8 raises PitFullNotSupported when pit is provided to FULL.
+        # The disclosure shaper raises PitFullNotSupported when pit is provided
+        # to FULL.
         shaper.full_raise = PitFullNotSupported()
         pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
         with pytest.raises(PitFullNotSupported):
@@ -130,8 +135,9 @@ class TestRecallFull:
 
     def test_invalid_pit_kind_wins_over_oversized_batch(self, facade, shaper) -> None:
         # Border validation (pit.kind, facade-owned) fires BEFORE delegation to
-        # #8's domain batch guard: an invalid pit kind raises InvalidPITKind and
-        # #8 is never reached, even with an oversized batch.
+        # the disclosure shaper's domain batch guard: an invalid pit kind raises
+        # InvalidPITKind and the disclosure shaper is never reached, even with
+        # an oversized batch.
         too_many = [f"e{i}" for i in range(MAX_FULL_BATCH + 1)]
         pit = PITPoint(kind="future", t=datetime(2026, 1, 1, tzinfo=UTC))  # type: ignore[arg-type]
         with pytest.raises(InvalidPITKind):

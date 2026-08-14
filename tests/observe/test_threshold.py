@@ -1,13 +1,13 @@
 """Tests for ``seahorse.observe.threshold`` — skip/drop tool policy.
 
-Two distinct policies (obsiforge §4.3):
+Two distinct policies:
 - ``skip_tools`` — DISCARD the event (it never reaches the turn body).
 - ``drop_tools`` — DISCARD the event entirely (the whole turn is dropped).
 
 Default ``skip_tools``: WebSearch/WebFetch (network results are noise, not
 memory). Default ``drop_tools``: Read/Bash (their content is entirely secret —
-obsiforge §15.2 redesign 3: the "stronger than claude-mem" claim only holds if
-Read/Bash content is covered).
+the "stronger than claude-mem" claim only holds if Read/Bash content is
+covered).
 """
 
 from __future__ import annotations

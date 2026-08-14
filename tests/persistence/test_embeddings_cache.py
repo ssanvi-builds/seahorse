@@ -1,4 +1,4 @@
-"""SqliteEmbeddingsCacheRepository tests (Phase 5d).
+"""SqliteEmbeddingsCacheRepository tests.
 
 Isolation by (model_identity, role), INSERT OR REPLACE on conflict, count, and
 trim keeping the newest rows (LRU by created_at).
@@ -31,7 +31,7 @@ def _vec(seed: int) -> bytes:
 
 def test_structurally_satisfies_protocol(cache: SqliteEmbeddingsCacheRepository) -> None:
     assert isinstance(cache, EmbeddingsCacheRepository)
-    assert not hasattr(cache, "atomic")  # SO-7a.6
+    assert not hasattr(cache, "atomic")
 
 
 def test_batch_insert_then_lookup(cache: SqliteEmbeddingsCacheRepository) -> None:

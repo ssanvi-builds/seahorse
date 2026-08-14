@@ -1,4 +1,4 @@
-"""Tests for the reporters (f5-16 §5.5/§6.4)."""
+"""Tests for the reporters."""
 
 from __future__ import annotations
 

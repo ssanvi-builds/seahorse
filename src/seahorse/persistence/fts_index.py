@@ -1,21 +1,21 @@
-"""SqliteFullTextIndexRepository — real FTS5 external-content backend (M1-A.4).
+"""SqliteFullTextIndexRepository — real FTS5 external-content backend.
 
 Materializes the ``FullTextIndexRepository`` Protocol over the FTS5
 ``episode_fts`` external-content pair (``episode_content`` + ``episode_fts``,
 migration 010). External content = no triggers: every write into
 ``episode_content`` is mirrored by an explicit INSERT into ``episode_fts`` with
-the same rowid, and deletes by the ``'delete'`` command (f5-06 §7a.1); the
+the same rowid, and deletes by the ``'delete'`` command; the
 ``'rebuild'`` command resyncs the index from ``episode_content``.
 
 - ``score = exp(-bm25(episode_fts))`` — bm25 is lower=better, exp(-x) makes it
-  higher=better in (0,1] (ADR-10 reproducible, no min-max).
+  higher=better in (0,1] (reproducible, no min-max).
 - Baseline tokenizer ``unicode61 remove_diacritics 2`` (accent/case-insensitive,
-  no stemming — Snowball Spanish is mediano, f5-06 §5.2/§5.5).
-- Query escaping (f5-06 §5.7): default phrase-literal (double-quote the whole
+  no stemming — Snowball Spanish is a medium-term goal).
+- Query escaping: default phrase-literal (double-quote the whole
   query); the signed contract has no advanced-syntax flag.
-- The vigent / PIT variants JOIN ``episode_index`` (CC-2 ``_pit_predicate``);
-  the BM25 scan is capped at ``FTS_OVERFETCH_FACTOR * k`` so the JOIN drop and
-  re-cap to ``k`` stay cheap.
+- The current-state / PIT variants JOIN ``episode_index`` via
+  ``_pit_predicate``; the BM25 scan is capped at ``FTS_OVERFETCH_FACTOR * k`` so
+  the JOIN drop and re-cap to ``k`` stay cheap.
 """
 
 from __future__ import annotations
@@ -28,12 +28,12 @@ from seahorse.contracts.persistence import FtsDoc, FullTextHit
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.sqlite_episode_index import _pit_predicate
 
-# The BM25 subquery is capped above k because the PIT/vigent JOIN may drop hits.
+# The BM25 subquery is capped above k because the PIT/current-state JOIN may drop hits.
 FTS_OVERFETCH_FACTOR = 5
 
 
 def _escape_query(query: str) -> str:
-    """Phrase-literal default (f5-06 §5.7): quote the whole query as a phrase."""
+    """Phrase-literal default: quote the whole query as a phrase."""
     return f'"{query}"'
 
 
@@ -174,7 +174,7 @@ def _row_to_hit(row: sqlite3.Row) -> FullTextHit:
 
 
 def fts_wipe(conn: sqlite3.Connection) -> None:
-    """Secondary-index wipe for the sidecar rebuild (M1-A.6, C8.8 seam).
+    """Secondary-index wipe for the sidecar rebuild.
 
     Clears the FTS5 external-content tables and resyncs the index (``'rebuild'``
     command) so a vault rebuild leaves no ghost BM25 hits pointing at ep_ids

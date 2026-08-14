@@ -1,20 +1,20 @@
-"""``read_sidecar_status`` — read-only sidecar snapshot for ``seahorse inspect`` (#3).
+"""``read_sidecar_status`` — read-only sidecar snapshot for ``seahorse inspect``.
 
-Guards the #6-owned SQL that backs the CLI ``inspect`` command (commit 5). The
+Guards the persistence-owned SQL that backs the CLI ``inspect`` command. The
 snapshot reports schema_version + episode/episode_index counts + the two
-bi-temporal predicates (vigente vs activo-ahora) + the last known file mtime.
+bi-temporal predicates (currently valid vs active now) + the last known file mtime.
 
 The predicates mirror the engine's bi-temporal definitions verbatim:
-- vigente      = ``invalid_at IS NULL AND expired_at IS NULL``
+- currently valid = ``invalid_at IS NULL AND expired_at IS NULL``
   (``SqliteEpisodeIndexRepository.find_vigent_row_by_fact_id``)
-- activo-ahora = ``(valid_at IS NULL OR valid_at <= now)
-                  AND (invalid_at IS NULL OR invalid_at > now)``
-  (``_pit_predicate("state_at", now)``); CC-2 (C8.6): ``valid_at IS NULL``
+- active now = ``(valid_at IS NULL OR valid_at <= now)
+                AND (invalid_at IS NULL OR invalid_at > now)``
+  (``_pit_predicate("state_at", now)``); ``valid_at IS NULL``
   ("from forever") is valid at any ``t`` and is INCLUDED.
 
-The two measure DIFFERENT axes (vigente = both axes open; activo-ahora =
-valid-time active now, ignoring decay), so a row can be activo-ahora but NOT
-vigente (e.g. a future-scheduled invalidation, or a decayed-but-valid row).
+The two measure DIFFERENT axes (currently valid = both axes open; active now =
+valid-time active now, ignoring decay), so a row can be active now but NOT
+currently valid (e.g. a future-scheduled invalidation, or a decayed-but-valid row).
 """
 
 from __future__ import annotations
@@ -130,12 +130,12 @@ def test_empty_db_snapshot_is_all_zeros(conn):
 
 
 # ---------------------------------------------------------------------------
-# vigente vs activo-ahora — the two predicates measure different axes.
+# currently valid vs active now — the two predicates measure different axes.
 # ---------------------------------------------------------------------------
 
 
 def test_vigente_and_activos_ahora_distinguish_the_two_axes(conn):
-    # ep1: valid now, no invalidation, no decay -> vigente AND activo-ahora.
+    # ep1: valid now, no invalidation, no decay -> currently valid AND active now.
     _insert_index(
         conn,
         "ep1",
@@ -143,7 +143,7 @@ def test_vigente_and_activos_ahora_distinguish_the_two_axes(conn):
         invalid_at=None,
         expired_at=None,
     )
-    # ep2: valid in the future -> vigente but NOT activo-ahora (valid_at > now).
+    # ep2: valid in the future -> currently valid but NOT active now (valid_at > now).
     _insert_index(
         conn,
         "ep2",
@@ -151,7 +151,7 @@ def test_vigente_and_activos_ahora_distinguish_the_two_axes(conn):
         invalid_at=None,
         expired_at=None,
     )
-    # ep3: invalidated in the past -> NOT vigente, NOT activo-ahora.
+    # ep3: invalidated in the past -> NOT currently valid, NOT active now.
     _insert_index(
         conn,
         "ep3",
@@ -159,8 +159,8 @@ def test_vigente_and_activos_ahora_distinguish_the_two_axes(conn):
         invalid_at=datetime(2026, 6, 15, tzinfo=UTC),
         expired_at=None,
     )
-    # ep4: decayed (expired_at set) but valid-time still open -> NOT vigente,
-    # but activo-ahora (state_at ignores the transaction-time decay axis).
+    # ep4: decayed (expired_at set) but valid-time still open -> NOT currently valid,
+    # but active now (state_at ignores the transaction-time decay axis).
     _insert_index(
         conn,
         "ep4",
@@ -168,8 +168,8 @@ def test_vigente_and_activos_ahora_distinguish_the_two_axes(conn):
         invalid_at=None,
         expired_at=datetime(2026, 6, 15, tzinfo=UTC),
     )
-    # ep5: invalidation scheduled in the future -> NOT vigente (invalid_at set),
-    # but activo-ahora (invalid_at > now).
+    # ep5: invalidation scheduled in the future -> NOT currently valid (invalid_at set),
+    # but active now (invalid_at > now).
     _insert_index(
         conn,
         "ep5",
@@ -185,10 +185,10 @@ def test_vigente_and_activos_ahora_distinguish_the_two_axes(conn):
 
 
 def test_activos_ahora_includes_valid_at_none_from_forever(conn):
-    # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid at
-    # ANY t, so it is activo-ahora (and vigente). The previous predicate excluded
+    # valid_at IS NULL = "from forever" — valid at
+    # ANY t, so it is active now (and currently valid). The previous predicate excluded
     # NULL, mis-treating "from forever" as PENDING. Pins the sidecar SQL mirrors
-    # _pit_predicate("state_at") verbatim after the CC-2 alignment.
+    # _pit_predicate("state_at") verbatim.
     _insert_index(
         conn,
         "ep_forever",
@@ -206,7 +206,7 @@ def test_activos_ahora_includes_valid_at_none_from_forever(conn):
     conn.commit()
     snap = read_sidecar_status(conn, now=_NOW)
     assert snap.activos_ahora == 1  # ep_forever only; ep_pending (future) excluded
-    assert snap.vigentes == 2  # both vigente (invalid_at NULL, expired_at NULL)
+    assert snap.vigentes == 2  # both currently valid (invalid_at NULL, expired_at NULL)
 
 
 # ---------------------------------------------------------------------------

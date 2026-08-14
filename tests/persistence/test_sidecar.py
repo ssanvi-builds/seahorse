@@ -1,4 +1,4 @@
-"""SqliteSidecarIndexRepository tests (Phase 5b). episode_paths upsert + reindex ctx."""
+"""SqliteSidecarIndexRepository tests. episode_paths upsert + reindex ctx."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def _index_rows(sidecar: SqliteSidecarIndexRepository) -> list[dict]:
 
 def test_structurally_satisfies_protocol(sidecar: SqliteSidecarIndexRepository) -> None:
     assert isinstance(sidecar, SidecarIndexRepository)
-    assert not hasattr(sidecar, "atomic")  # SO-7a.6
+    assert not hasattr(sidecar, "atomic")
 
 
 def test_put_then_get_path(sidecar: SqliteSidecarIndexRepository) -> None:
@@ -111,7 +111,7 @@ def test_reindex_success_persists(sidecar: SqliteSidecarIndexRepository) -> None
     assert sidecar.get_path("e1") == ("notes/e1.md", 5, 50)
 
 
-# --- rebuild_all (clear-then-rebuild, ruamel-free, B3=(i) austere) ------------
+# --- rebuild_all (clear-then-rebuild, ruamel-free) ------------
 
 
 def test_rebuild_all_populates_index_and_paths(sidecar: SqliteSidecarIndexRepository) -> None:
@@ -120,7 +120,7 @@ def test_rebuild_all_populates_index_and_paths(sidecar: SqliteSidecarIndexReposi
     assert report.skipped == []
     rows = {r["ep_id"]: r for r in _index_rows(sidecar)}
     assert set(rows) == {"e1", "e2"}
-    # file metadata + title/summary denormalized into episode_index (003 SO-1).
+    # file metadata + title/summary denormalized into episode_index (migration 003).
     assert rows["e1"]["file_path"] == "notes/e1.md"
     assert rows["e1"]["mtime_ms"] == 1000
     assert rows["e1"]["size"] == 42
@@ -145,7 +145,7 @@ def test_rebuild_all_clear_then_rebuild_replaces(sidecar: SqliteSidecarIndexRepo
 def test_rebuild_all_derives_skip_extraction_from_provenance(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
-    # extraction_mode=skip (migrator default) -> skip_extraction=1 (ADR-09).
+    # extraction_mode=skip (migrator default) -> skip_extraction=1 (the skip path).
     # extraction_mode=llm -> skip_extraction=0.
     sidecar.rebuild_all(
         [_note("e1", fact_id="f1", extraction_mode="skip"),
@@ -158,9 +158,10 @@ def test_rebuild_all_derives_skip_extraction_from_provenance(
 def test_rebuild_all_reports_duplicate_vigent_fact_id_conflict(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
-    # two vigent notes with the same fact_id violate I11. Rebuild does NOT
+    # two currently valid notes with the same fact_id violate the unique
+    # constraint. Rebuild does NOT
     # auto-pick a winner: ALL members of the conflict group are skipped + reported
-    # (ADR-10 honesty). The index stays empty for that fact_id.
+    # (fail-loud honesty). The index stays empty for that fact_id.
     report = sidecar.rebuild_all(
         [_note("e1", fact_id="dup"), _note("e2", fact_id="dup")]
     )
@@ -176,7 +177,8 @@ def test_rebuild_all_reports_duplicate_vigent_fact_id_conflict(
 def test_rebuild_all_vigent_and_invalidated_same_fact_id_no_conflict(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
-    # I11 only fires when BOTH rows are vigent. A vigent successor + an
+    # The unique constraint only fires when BOTH rows are currently valid. A
+    # currently valid successor + an
     # invalidated predecessor sharing a fact_id is a legitimate supersession,
     # not a conflict — both land in the index.
     report = sidecar.rebuild_all(
@@ -193,7 +195,7 @@ def test_rebuild_all_vigent_and_invalidated_same_fact_id_no_conflict(
 def test_rebuild_all_does_not_touch_episodes(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
-    # B3=(i) austere: rebuild populates the index cache only; it NEVER writes the
+    # Rebuild populates the index cache only; it NEVER writes the
     # append-only episodes table (that is the engine's hot-path cache via remember).
     sidecar.rebuild_all([_note("e1", fact_id="f1")])
     count = sidecar._cm.writer.execute(  # noqa: SLF001
@@ -222,8 +224,8 @@ def test_rebuild_all_null_fact_id_notes_never_conflict(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
     # a note with fact_id=None (no derivable subject) is not indexed by fact_id;
-    # two such vigent notes coexist (SQLite treats NULLs as distinct under the
-    # I11 partial unique index), so neither is a conflict.
+    # two such currently valid notes coexist (SQLite treats NULLs as distinct under the
+    # partial unique index), so neither is a conflict.
     sidecar.rebuild_all([_note("e1", fact_id=None), _note("e2", fact_id=None)])
     rows = {r["ep_id"] for r in _index_rows(sidecar)}
     assert rows == {"e1", "e2"}  # both landed, no conflict group
@@ -248,7 +250,7 @@ def test_rebuild_all_reports_duplicate_ep_id_conflict(
 ) -> None:
     # two notes carrying the SAME ep_id (duplicate id in the vault) would hit the
     # PRIMARY KEY mid-rebuild. The pre-pass screens it and reports a structured
-    # RebuildConflict instead of raising an opaque IntegrityError (ADR-10: the
+    # RebuildConflict instead of raising an opaque IntegrityError (fail-loud honesty: the
     # operator gets a report, not a crash). Both are skipped.
     report = sidecar.rebuild_all(
         [
@@ -329,16 +331,17 @@ def test_rebuild_all_atomic_rollback_on_failure(
     assert _index_rows(sidecar) == pre  # prior state preserved (DELETE rolled back)
 
 
-# --- rebuild_all secondary-index wipe seam (C8.8 / #9 forward-compat) --------
+# --- rebuild_all secondary-index wipe extension point (forward-compat) --------
 #
 # rebuild_all clears episode_index + episode_paths but NOT the FTS5/vec0 tables.
-# Once #6 materializes them (MVP-1), a vault rebuild would leave the FTS/vec
-# indexes pointing at ep_ids deleted from episode_index = ghost hits. The seam:
+# Once persistence materializes them (a later release), a vault rebuild would leave the FTS/vec
+# indexes pointing at ep_ids deleted from episode_index = ghost hits. The extension point:
 # rebuild_all runs caller-supplied secondary-index wipe hooks inside the SAME
 # atomic (clear phase, after the two DELETEs, before repopulate), so the
 # secondary indexes are cleared in the same transaction — no half-wiped ghost
-# state. MVP-0 passes no hooks (the FTS5/vec0 tables do not exist yet, so there
-# is nothing to wipe and no ghost hits); the seam is in place for MVP-1 to plug.
+# state. The first release passes no hooks (the FTS5/vec0 tables do not exist
+# yet, so there is nothing to wipe and no ghost hits); the extension point is
+# in place for a later release to plug.
 
 
 def test_rebuild_all_runs_secondary_wipes_inside_atomic(
@@ -347,7 +350,7 @@ def test_rebuild_all_runs_secondary_wipes_inside_atomic(
     # the wipe hook receives the writer connection and observes episode_index
     # ALREADY cleared (the clear phase runs the wipe after the two DELETEs, so
     # the secondary index wipe sees the same empty episode_index the repopulate
-    # is about to refill). Pins the seam: the hook is called once, with a
+    # is about to refill). Pins the extension point: the hook is called once, with a
     # connection, inside the atomic, in the clear phase.
     sidecar.rebuild_all([_note("e1", fact_id="f1")])  # seed a prior row
     seen: dict[str, object] = {}
@@ -367,7 +370,7 @@ def test_rebuild_all_runs_secondary_wipes_inside_atomic(
 def test_rebuild_all_secondary_wipe_failure_rolls_back_clear(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
-    # C8.8 correctness core: the secondary-index wipe shares the rebuild atomic.
+    # The secondary-index wipe shares the rebuild atomic.
     # If a wipe raises, the episode_index/episode_paths DELETE rolls back too —
     # the prior index is preserved (not half-wiped with FTS/vec stale). This is
     # the property that makes the coordinated wipe safe: a failed secondary
@@ -388,7 +391,7 @@ def test_rebuild_all_secondary_wipe_failure_rolls_back_clear(
 def test_rebuild_all_multiple_secondary_wipes_run_in_order_before_repopulate(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
-    # multiple wipe hooks (FTS + vec in MVP-1) run in sequence, all in the clear
+    # multiple wipe hooks (FTS + vec in a later release) run in sequence, all in the clear
     # phase (before the repopulate loop). The second wipe still sees episode_index
     # empty, proving both wipes ran before any repopulate INSERT.
     order: list[str] = []
@@ -411,10 +414,10 @@ def test_rebuild_all_multiple_secondary_wipes_run_in_order_before_repopulate(
 def test_rebuild_all_default_no_secondary_wipes_is_noop(
     sidecar: SqliteSidecarIndexRepository,
 ) -> None:
-    # MVP-0 contract: the default (no wipes) is a pure no-op — rebuild_all behaves
+    # The first release contract: the default (no wipes) is a pure no-op — rebuild_all behaves
     # exactly as before. A sentinel wipe that would raise if called proves the
     # default path never invokes it (the FTS5/vec0 tables do not exist yet, so
-    # there is genuinely nothing to wipe in MVP-0).
+    # there is genuinely nothing to wipe in the first release).
     def must_not_be_called(_conn: sqlite3.Connection) -> None:
         raise AssertionError("secondary wipe must not run when none are passed")
 

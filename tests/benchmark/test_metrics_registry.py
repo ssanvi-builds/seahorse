@@ -1,4 +1,4 @@
-"""Tests for the ``MetricRegistry`` (f5-16 §2.3 pluggable registration)."""
+"""Tests for the ``MetricRegistry`` (pluggable registration)."""
 
 from __future__ import annotations
 

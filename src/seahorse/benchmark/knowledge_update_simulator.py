@@ -1,13 +1,13 @@
-"""``KnowledgeUpdateSimulator`` — materializes ``supersedes`` chains (f5-16 §4.6).
+"""``KnowledgeUpdateSimulator`` — materializes ``supersedes`` chains.
 
-Without an explicit step that creates ``supersedes`` chains via #12.improve,
-there are no invalidated episodes to retrieve, and ``knowledge_update_accuracy``
-+ FAMA are not computable.
+Without an explicit step that creates ``supersedes`` chains via
+``MemoryFacade.improve``, there are no invalidated episodes to retrieve, and
+``knowledge_update_accuracy`` + FAMA are not computable.
 
-OQ-16-13 (closed): the simulator DERIVES the ``(fact_key, old_version, new_version)``
-pairs from the haystack when the adapter does not expose them explicitly — turns
-sharing a ``fact_key`` across sessions, ordered by date, form update pairs. The
-old version's ep_id is resolved from the SUT's ``fact_key_to_ep_id`` map (the
+The simulator DERIVES the ``(fact_key, old_version, new_version)`` pairs from
+the haystack when the adapter does not expose them explicitly — turns sharing a
+``fact_key`` across sessions, ordered by date, form update pairs. The old
+version's ep_id is resolved from the SUT's ``fact_key_to_ep_id`` map (the
 first ingested version); if absent, the old version is ingested fresh.
 """
 
@@ -31,7 +31,7 @@ class KnowledgeUpdateSimulator:
         """For each knowledge-update question, produce the update pairs.
 
         Uses the adapter-provided ``knowledge_updates`` when present; otherwise
-        derives them from the haystack (OQ-16-13). Each pair carries
+        derives them from the haystack. Each pair carries
         ``(fact_key, old_ep_id, old_body, new_body, session_id, date)``.
         """
         updates: dict[str, list[dict]] = {}
@@ -54,7 +54,7 @@ class KnowledgeUpdateSimulator:
         """Derive update pairs from turns sharing a fact_key across sessions.
 
         Turns with the same ``fact_key`` are grouped; the earliest version is
-        the old one, the latest is the new one (OQ-16-13).
+        the old one, the latest is the new one.
         """
         by_key: dict[str, list[dict]] = {}
         for session in inst.haystack:
@@ -86,11 +86,11 @@ class KnowledgeUpdateSimulator:
         return pairs
 
     def apply(self, sut: MemorySystemSUT, updates: dict[str, list[dict]]) -> dict[str, list[str]]:
-        """Apply the updates via #12.improve; return {instance_id: [new_ep_ids]}.
+        """Apply the updates via ``MemoryFacade.improve``; return {instance_id: [new_ep_ids]}.
 
         When ``old_ep_id`` is None, the old version is ingested fresh first
         (a session with the old body). The new ep_ids are tracked for
-        ``knowledge_update_accuracy`` (f5-16 §4.5).
+        ``knowledge_update_accuracy``.
         """
         result: dict[str, list[str]] = {}
         for inst_id, inst_updates in updates.items():

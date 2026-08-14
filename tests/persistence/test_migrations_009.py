@@ -1,6 +1,6 @@
-"""Migration 009 — supersedes_reason column lands in storage (f5-03 §12.3, 5.3=(a)).
+"""Migration 009 — supersedes_reason column lands in storage.
 
-The Episode model has carried ``supersedes_reason`` since commit 1 (model+wire
+The Episode model has carried ``supersedes_reason`` from the start (model+wire
 only). Migration 009 persists it: ``ALTER TABLE episodes ADD COLUMN
 supersedes_reason TEXT`` + the same on ``episode_index``. These tests guard the
 column landing and the migration's idempotency model.
@@ -8,7 +8,7 @@ column landing and the migration's idempotency model.
 Idempotency note: SQLite ``ALTER TABLE ADD COLUMN`` has no ``IF NOT EXISTS`` and
 cannot be made conditional in raw SQL (``executescript`` is non-procedural). The
 PRIMARY idempotency mechanism is the migration runner's ``schema_version`` row
-(each NNN runs at most once per DB). Since C8.3 #8 the runner wraps EACH
+(each NNN runs at most once per DB). The runner wraps EACH
 migration (DDL + the ``schema_version`` INSERT) in a single ``BEGIN``/``COMMIT``
 transaction, so 009's two ALTERs are atomic WITH EACH OTHER AND with the version
 row: if either ALTER or the INSERT fails, nothing commits and re-running retries
@@ -59,7 +59,7 @@ def test_migration_009_idempotent_via_runner() -> None:
     second = apply_migrations(c)
     assert first > 0
     assert second == 0  # re-running applies nothing — no 'duplicate column' error
-    assert current_version(c) == 10  # 009 + 010 (M1-A.2)
+    assert current_version(c) == 10  # 009 + 010
     c.close()
 
 
@@ -68,7 +68,7 @@ def test_migration_009_on_legacy_db_v8() -> None:
     # supersedes_reason column), then apply 009 in isolation and verify both
     # columns land and the version row advances to 9. This exercises the path
     # existing deployments hit when upgrading — NOT the fresh-DB path the test
-    # above already covers. (apply_migrations(up_to=8) is the test seam.)
+    # above already covers. (apply_migrations(up_to=8) is the test hook.)
     c = sqlite3.connect(":memory:")
     _load_vec0(c)
     pre = apply_migrations(c, up_to=8)

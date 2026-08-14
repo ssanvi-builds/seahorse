@@ -1,13 +1,14 @@
-"""Vault discovery + ``seahorse.toml`` config for the CLI (#14).
+"""Vault discovery + ``seahorse.toml`` config for the CLI.
 
-MVP-0 vault discovery (f5-14 §6.2; the upward climb is deferred to MVP-1):
+Vault discovery in the current release (the upward climb is deferred to a
+later release):
 
 1. ``--vault`` explicit flag (must be an existing directory).
 2. ``SEAHORSE_VAULT`` environment variable.
 3. ``./.seahorse/seahorse.toml`` in the current working directory.
 4. ``CliVaultNotFound`` (exit 82) with a hint to ``seahorse init <vault>``.
 
-``seahorse.toml`` is intentionally minimal in MVP-0 (f5-14 §Pins / §6.2: modes
+``seahorse.toml`` is intentionally minimal in the current release (modes
 hardcoded as constants). Only three keys are read:
 
 .. code-block:: toml
@@ -34,13 +35,13 @@ from pathlib import Path
 
 from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
 
-# Layout constants (f5-14 §6.2). The Seahorse dir lives inside the vault.
+# Layout constants. The Seahorse dir lives inside the vault.
 SEAHORSE_DIR_NAME = ".seahorse"
 CONFIG_FILENAME = "seahorse.toml"
 DEFAULT_DB_FILENAME = "seahorse.db"
 
-# Default config values (MVP-0 austero, ADR-10). Modes are hardcoded constants
-# per f5-14 §Pins — no rung/phase/rich/default_format switches in MVP-0.
+# Default config values (austere in the current release). Modes are hardcoded
+# constants — no extra config switches in the current release.
 DEFAULT_EXTRACTION_MODE = "skip"
 DEFAULT_TOP_K = 10
 
@@ -50,16 +51,16 @@ DEFAULT_TOP_K = 10
 # low-end option offered by the wizard. Cloud providers are the quality lever
 # when a free-tier key is present.
 DEFAULT_LLM_PRIMARY = "ollama/qwen3:1.7b"
-DEFAULT_LLM_TIMEOUT_S = 20.0  # extraction role timeout (f5-04 §4.4)
+DEFAULT_LLM_TIMEOUT_S = 20.0  # extraction role timeout
 
 # Valid extraction modes the CLI accepts at the config level (the facade's
 # _resolve_mode is the authority for the remember primitive; this only guards
 # the config file).
 _VALID_CONFIG_MODES = frozenset({"skip", "llm"})
 
-# Observer defaults (obsiforge §4.3/§4.6). The observer is OPT-IN: a vault
-# without an ``[observe]`` section has ``observe=None`` until ``seahorse setup``
-# writes it. ``skip_tools`` / ``drop_tools`` mirror the threshold module.
+# Observer defaults. The observer is OPT-IN: a vault without an ``[observe]``
+# section has ``observe=None`` until ``seahorse setup`` writes it.
+# ``skip_tools`` / ``drop_tools`` mirror the threshold module.
 DEFAULT_SKIP_TOOLS: tuple[str, ...] = ("WebSearch", "WebFetch")
 DEFAULT_DROP_TOOLS: tuple[str, ...] = ("Read", "Bash")
 DEFAULT_OBSERVE_SOCKET = "observer/observer.sock"
@@ -69,7 +70,7 @@ _VAULT_ENV = "SEAHORSE_VAULT"
 
 @dataclass(frozen=True)
 class LlmConfig:
-    """The ``[llm]`` section — the extraction role route (f5-04 §2.5).
+    """The ``[llm]`` section — the extraction role route.
 
     ``primary`` / ``secondary`` / ``tertiary`` are LiteLLM ``provider/model``
     ids in fallback order; ``timeout_s`` is the per-call extraction timeout.
@@ -86,13 +87,13 @@ class LlmConfig:
 
 @dataclass(frozen=True)
 class ObserveConfig:
-    """The ``[observe]`` section — the observer capture policy (obsiforge §4).
+    """The ``[observe]`` section — the observer capture policy.
 
     ``enabled`` is True when the section is present (``seahorse setup`` writes
-    it). ``extraction`` is the write-path mode (skip-first default, ADR-09).
-    ``skip_tools`` / ``drop_tools`` are the threshold allowlists (§4.3).
+    it). ``extraction`` is the write-path mode (skip-first default).
+    ``skip_tools`` / ``drop_tools`` are the threshold allowlists.
     ``socket_path`` is relative to ``.seahorse/`` (the unix socket the hooks
-    POST to, §4.4). ``token`` is the optional auth token (§15.2 redesign 10).
+    POST to). ``token`` is the optional auth token.
     """
 
     enabled: bool = True
@@ -103,20 +104,20 @@ class ObserveConfig:
     token: str | None = None
 
 
-# Procedural skill defaults (L2c §6.1). The section is OPT-IN: a vault without
-# a ``[procedural]`` section has ``procedural=None`` and the CLI uses the
-# module defaults (min_trust=medium, empty loadout).
+# Procedural skill defaults. The section is OPT-IN: a vault without a
+# ``[procedural]`` section has ``procedural=None`` and the CLI uses the module
+# defaults (min_trust=medium, empty loadout).
 DEFAULT_MIN_TRUST = "medium"
 
 
 @dataclass(frozen=True)
 class ProceduralSection:
-    """The ``[procedural]`` section — skill defaults (L2c §6.1).
+    """The ``[procedural]`` section — skill defaults.
 
-    ``min_trust`` is the R5 trust-gate default (low | medium | high) applied by
+    ``min_trust`` is the trust-gate default (low | medium | high) applied by
     ``seahorse skill show`` when the caller does not pass ``--min-trust``.
-    ``loadout`` is the explicit per-agent skill loadout (Tencent pattern): the
-    agent declares which skills it equips; empty means no loadout is pinned.
+    ``loadout`` is the explicit per-agent skill loadout: the agent declares
+    which skills it equips; empty means no loadout is pinned.
     """
 
     min_trust: str = DEFAULT_MIN_TRUST
@@ -160,7 +161,7 @@ def is_initialized(vault: Path) -> bool:
 
 
 def resolve_vault(explicit: Path | None) -> Path:
-    """Resolve the vault directory per the MVP-0 discovery order.
+    """Resolve the vault directory per the current-release discovery order.
 
     Raises ``CliVaultNotFound`` (exit 82) if nothing resolves.
     """
@@ -236,16 +237,16 @@ def load_config(
 
     db_path = (seahorse_dir / db_rel).resolve()
 
-    # Optional [llm] section (M4-C.3). Missing → llm=None (no client wired,
-    # honest llm→skip degrade). Present → validate the role route.
+    # Optional [llm] section. Missing → llm=None (no client wired, honest
+    # llm→skip degrade). Present → validate the role route.
     llm = _parse_llm_section(data.get("llm"))
 
-    # Optional [observe] section (Sprint B). Missing → observe=None (the
-    # observer is opt-in until `seahorse setup` writes it).
+    # Optional [observe] section. Missing → observe=None (the observer is
+    # opt-in until `seahorse setup` writes it).
     observe = _parse_observe_section(data.get("observe"))
 
-    # Optional [procedural] section (Sprint C). Missing → procedural=None (the
-    # CLI uses the module defaults: min_trust=medium, empty loadout).
+    # Optional [procedural] section. Missing → procedural=None (the CLI uses
+    # the module defaults: min_trust=medium, empty loadout).
     procedural = _parse_procedural_section(data.get("procedural"))
 
     return SeahorseConfig(

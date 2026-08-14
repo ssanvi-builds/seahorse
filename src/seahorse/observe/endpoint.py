@@ -1,19 +1,15 @@
-"""Observer HTTP endpoint — the edge where envelopes arrive (obsiforge §4.4).
+"""Observer HTTP endpoint — the edge where envelopes arrive.
 
 The hooks POST envelopes to a unix socket (``{seahorse_dir}/observer.sock``,
-dir 0700, socket 0600). The endpoint validates auth (token, §15.2 redesign 10),
-parses the envelope tolerantly (caps, malformed → 400), REDACTS before enqueue
-(nothing raw persisted, §4.4), and applies ``drop_tools`` (Read/Bash never
-reach the queue — their content is entirely secret, §15.2 redesign 3).
+dir 0700, socket 0600). The endpoint validates auth (token), parses the
+envelope tolerantly (caps, malformed → 400), REDACTS before enqueue (nothing raw
+persisted), and applies ``drop_tools`` (Read/Bash never reach the queue — their
+content is entirely secret).
 
 The unix socket is the FS-level auth (only the owning user can connect); the
 token is the caller-level auth (a same-user process that can reach the socket
 but does not know the token cannot fabricate envelopes). No TCP surface — never
-non-loopback (obsiforge §4.4).
-
-References:
-- obsiforge-evolution-architecture.md §4.4 (unix socket, redaction at enqueue)
-- obsiforge-evolution-architecture.md §15.2 redesign 10 (auth token)
+non-loopback.
 """
 
 from __future__ import annotations
@@ -97,11 +93,10 @@ class ObserverEndpoint:
     def handle_event(self, raw: dict[str, Any], *, token: str | None = None) -> tuple[int, str]:
         """Process one envelope. Returns ``(status_code, message)``.
 
-        Auth first (token, §15.2 redesign 10), then tolerant parse (caps,
-        malformed → 400), then dispatch to the adapter functions — which REDACTS
-        before enqueue (nothing raw persisted, §4.4), applies ``drop_tools``
-        (Read/Bash never reach the queue, §15.2 redesign 3), and manages the
-        persisted ``prompt_number`` (turn boundary, §15.2 redesign 2).
+        Auth first (token), then tolerant parse (caps, malformed → 400), then
+        dispatch to the adapter functions — which REDACTS before enqueue (nothing
+        raw persisted), applies ``drop_tools`` (Read/Bash never reach the queue),
+        and manages the persisted ``prompt_number`` (turn boundary).
         """
         if self._token is not None and token != self._token:
             return 401, "unauthorized"
@@ -142,7 +137,7 @@ class ObserverEndpoint:
         """Bind the unix socket (socket 0600) and serve until shutdown.
 
         The parent dir is created by ``seahorse setup`` with 0700 (the observer
-        dir); the endpoint only chmods the socket to 0600 (FS-level auth, §4.4).
+        dir); the endpoint only chmods the socket to 0600 (FS-level auth).
         """
         self._socket_path.parent.mkdir(parents=True, exist_ok=True)
         if self._socket_path.exists():

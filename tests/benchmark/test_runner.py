@@ -1,4 +1,4 @@
-"""Tests for ``EvaluationRunner`` + ``LevelProbeRunner`` (f5-16 §3.6/§9.2)."""
+"""Tests for ``EvaluationRunner`` + ``LevelProbeRunner``."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def test_run_produces_manifest(tmp_path, synthetic_dataset):
     manifest = runner.run()
     assert manifest.fingerprint.dataset_hash == "abc123"
     assert manifest.fingerprint.embedding_batch_config == "batch_size=1_forced"
-    assert manifest.fingerprint.knn_completeness == 1.0  # OQ-16-12
+    assert manifest.fingerprint.knn_completeness == 1.0
     assert manifest.fingerprint.score_source == "mvp1_rrf"
     assert "recall@10" in manifest.metrics
     assert "knowledge_update_accuracy" in manifest.metrics
@@ -98,7 +98,7 @@ def test_run_renders_reports(tmp_path, synthetic_dataset):
 
 
 def test_run_handles_empty_query(tmp_path, synthetic_dataset):
-    """EmptyQueryError skips the instance and marks it as an error (f5-16 §8.3)."""
+    """EmptyQueryError skips the instance and marks it as an error."""
 
     class _EmptyReader:
         def generate(self, question, context, question_date=None) -> str:
@@ -134,7 +134,7 @@ def test_level_probe_runner_measures_p95(tmp_path, synthetic_dataset):
 
 def test_run_skip_ingest_uses_prepopulated_bridge(tmp_path, synthetic_dataset):
     """Warm-DB: ``skip_ingest=True`` runs the query/metrics phase over a SUT that
-    already carries the corpus bridge (f7 §5a) — no re-ingestion, no re-embed."""
+    already carries the corpus bridge — no re-ingestion, no re-embed."""
     # 1. Ingest once into a template facade, capture the bridge.
     facade, storage = build_facade(tmp_path / "template.db")
     template_sut = SeahorseSUT(

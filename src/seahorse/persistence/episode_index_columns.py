@@ -1,4 +1,4 @@
-"""Single source of truth for the ``episode_index`` column set + order (C8.3 [36]).
+"""Single source of truth for the ``episode_index`` column set + order.
 
 Migration 003 created the bridge table; 009 added ``supersedes_reason`` (ALTER
 appends it physically last, but the INSERTs group it with ``supersedes`` for
@@ -11,8 +11,8 @@ list independently:
   owning the file metadata (``.md`` is source of truth).
 
 A new column required touching both INSERT statements (and the DDL, and the
-``_row_to_index`` reader) in sync — a silent drift hazard the audit flagged as
-[36]. This module is the single source: both INSERT statements are derived from
+``_row_to_index`` reader) in sync — a silent drift hazard. This module is the
+single source: both INSERT statements are derived from
 ``EPISODE_INDEX_CORE_COLUMNS`` (+ ``EPISODE_INDEX_FILE_COLUMNS`` for the rebuild)
 via ``index_insert_sql``, so a column add is one place. ``tests/persistence/
 test_episode_index_columns.py`` guards that the canonical set matches the

@@ -1,18 +1,21 @@
 """Seahorse shared contracts — the stable typed frontier.
 
-Symbols that cross component boundaries (Protocols #6 implements against, frozen
-dataclasses owned by other components) live here. Components ship in order
-#6 -> #2 -> ... -> #16; later components IMPORT from here, they never relocate.
+Symbols that cross component boundaries (Protocols the persistence layer
+implements against, frozen dataclasses owned by other components) live here.
+Components ship in dependency order; later components IMPORT from here, they
+never relocate.
 
 Ownership:
-- Episode                -> #1 (contracts.episode)
-- EpisodeRepository      -> #2 (contracts.engine)
-- AuditEvent             -> #2 (contracts.engine)
-- freshness_of          -> #2 pure derivation (contracts.engine); shared with #8
-- IndexRowData, PITKind  -> #8 / #10 (contracts.index)
-- FusedCandidate         -> #11, materialized by #8 (contracts.retrieval)
-- QueryEmbedder          -> #11, materialized by #7 (contracts.embeddings)
-- 9 repository Protocols -> #6 (contracts.persistence)
+- Episode                -> the schema module (contracts.episode)
+- EpisodeRepository      -> the engine (contracts.engine)
+- AuditEvent             -> the engine (contracts.engine)
+- freshness_of           -> the engine's pure derivation (contracts.engine);
+                           shared with progressive disclosure
+- IndexRowData, PITKind  -> progressive disclosure / the BFS axis (contracts.index)
+- FusedCandidate         -> hybrid retrieval, materialized by progressive
+                           disclosure (contracts.retrieval)
+- QueryEmbedder          -> hybrid retrieval, materialized by the embedder (contracts.embeddings)
+- 9 repository Protocols -> the persistence layer (contracts.persistence)
 """
 
 from seahorse.contracts.embeddings import QueryEmbedder

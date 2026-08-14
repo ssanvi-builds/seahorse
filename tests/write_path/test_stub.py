@@ -1,12 +1,13 @@
-"""Tests for #5 ``StubWritePath`` — the MVP-0 write path (SO-5b).
+"""Tests for the write path's ``StubWritePath`` — the first-release write path.
 
-MVP-0 materializes the skip-path for real (it is the production skip path).
-The ``llm`` path degrades to skip with ``reason='llm_not_implemented_mvp0'``
-(the LLM path is MVP-1). ``run_skip_path`` is first-class: it runs the engine
-``is_valid_skip_path`` gate, falls back to ``deterministic_extract`` when the
-gate rejects, and owns ``confidence`` (1.0 gate-valid, None fallback).
-Gate-branch coverage lives in ``test_skip.py``; this file pins the provenance
-shape and the degrade/ingest wiring.
+The first release materializes the skip-path for real (it is the production
+skip path). The ``llm`` path degrades to skip with
+``reason='llm_not_implemented_mvp0'`` (the LLM path is a later release).
+``run_skip_path`` is first-class: it runs the engine ``is_valid_skip_path``
+gate, falls back to ``deterministic_extract`` when the gate rejects, and owns
+``confidence`` (1.0 gate-valid, None fallback). Gate-branch coverage lives in
+``test_skip.py``; this file pins the provenance shape and the degrade/ingest
+wiring.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ class TestRunSkipPath:
         assert by["prompt_hash"] is None
 
     def test_effective_provenance_has_four_added_keys(self, engine) -> None:
-        # First-class #5: confidence joins the 3 MVP-0 keys (spec sec 11.5).
+        # First-class write path: confidence joins the 3 first-release keys.
         p = _payload({"source_type": "agent", "agent_id": "a1"})
         run_skip_path(p, decide_path(p, "skip"), engine)
         by = engine.last_call.by
@@ -78,17 +79,17 @@ class TestRunSkipPath:
         assert run_skip_path(p, decide_path(p, "skip"), engine) is result
 
     def test_overwrites_caller_confidence_with_1_when_gate_valid(self, engine) -> None:
-        # First-class #5: #5 owns confidence (spec sec 11.5) and OVERWRITES the
-        # caller's value — 1.0 when the gate is valid (use-as-is), None on fallback.
+        # The write path owns confidence and OVERWRITES the caller's value —
+        # 1.0 when the gate is valid (use-as-is), None on fallback.
         p = _payload({"source_type": "agent", "confidence": 0.42})
         run_skip_path(p, decide_path(p, "skip"), engine)
         assert engine.last_call.by["confidence"] == 1.0
 
     def test_genuine_skip_carries_no_degrade_marker(self, engine) -> None:
-        # C8.7 [55] / ADR-10: a genuine skip (caller asked for skip) must NOT carry
-        # the degrade marker — the marker distinguishes a REAL skip from a degraded
-        # llm→skip. Without this, a degraded episode is indistinguishable from a
-        # genuine skip in stored provenance (the "permanent lie" C8.7 fixes).
+        # A genuine skip (caller asked for skip) must NOT carry the degrade
+        # marker — the marker distinguishes a REAL skip from a degraded llm→skip.
+        # Without this, a degraded episode is indistinguishable from a genuine
+        # skip in stored provenance (the "permanent lie" this fixes).
         p = _payload({"source_type": "agent"})
         run_skip_path(p, decide_path(p, "skip"), engine)
         by = engine.last_call.by
@@ -97,7 +98,7 @@ class TestRunSkipPath:
 
 
 class TestSummaryEnabler:
-    """OQ3 enabler (f5-09 §6.2): the write path always supplies a summary to
+    """The write path always supplies a summary to
     ``engine.remember`` — the caller's value or a deterministic zero-LLM
     fallback (first sentence of the body, skipping the H1). Covers 100% of
     episodes including the skip path."""
@@ -114,7 +115,7 @@ class TestSummaryEnabler:
 
     def test_fallback_skips_h1(self, engine) -> None:
         # The H1 is the subject; the summary must never be the tagged subject
-        # line (obsiforge §15.2 redesign 4).
+        # line.
         p = _payload(body="# [session_tag:prompt_number]\n\nReal content here.")
         run_skip_path(p, decide_path(p, "skip"), engine)
         assert engine.last_call.summary == "Real content here."
@@ -149,17 +150,17 @@ class TestDegradeToSkip:
         assert result.status == "ACTIVE"
 
     def test_degrade_does_not_call_llm(self, engine) -> None:
-        # MVP-0: the llm path degrades directly — it never reaches StubLLMClient.
+        # First release: the llm path degrades directly — it never reaches StubLLMClient.
         # Proven structurally: _degrade_to_skip takes no llm_client argument.
         p = _payload()
         _degrade_to_skip(p, decide_path(p, "llm"), engine)
         assert engine.remember_count == 1
 
     def test_degrade_marks_degraded_from_and_reason_in_provenance(self, engine) -> None:
-        # C8.7 [55] / ADR-10: the degrade is marked EXPLICITLY in provenance —
-        # ``degraded_from`` (the requested mode that was degraded) + ``degrade_reason``
-        # (why). This is the durable marker that distinguishes a degraded llm→skip
-        # from a genuine skip (logging alone is non-durable; logs rotate).
+        # The degrade is marked EXPLICITLY in provenance — ``degraded_from``
+        # (the requested mode that was degraded) + ``degrade_reason`` (why). This
+        # is the durable marker that distinguishes a degraded llm→skip from a
+        # genuine skip (logging alone is non-durable; logs rotate).
         p = _payload()
         _degrade_to_skip(p, decide_path(p, "llm"), engine, reason="llm_not_implemented_mvp0")
         by = engine.last_call.by
@@ -167,11 +168,11 @@ class TestDegradeToSkip:
         assert by["degrade_reason"] == "llm_not_implemented_mvp0"
 
     def test_degrade_core_model_used_and_prompt_hash_stay_none(self, engine) -> None:
-        # Spec f5-05 sec 5 line 111: on an llm→skip degrade the EFFECTIVE mode is
-        # skip, so provenance core carries ``model_used=None`` / ``prompt_hash=None``
-        # (no model ran on this episode). Even when the caller CLAIMED an LLM intent
-        # (model_used/prompt_hash in their by), #5 overwrites them to None — #5 does
-        # not lie about the effective mode. The claimed intent is LOGGED, not stored.
+        # On an llm→skip degrade the EFFECTIVE mode is skip, so provenance core
+        # carries ``model_used=None`` / ``prompt_hash=None`` (no model ran on this
+        # episode). Even when the caller CLAIMED an LLM intent (model_used/prompt_hash
+        # in their by), the write path overwrites them to None — it does not lie
+        # about the effective mode. The claimed intent is LOGGED, not stored.
         p = _payload({"source_type": "agent", "model_used": "gpt-test", "prompt_hash": "ph-1"})
         _degrade_to_skip(p, decide_path(p, "llm"), engine)
         by = engine.last_call.by
@@ -181,13 +182,13 @@ class TestDegradeToSkip:
     def test_degrade_logs_caller_llm_intent_for_traceability(
         self, engine, caplog
     ) -> None:
-        # Spec f5-05 sec 5 line 111: the caller's CLAIMED model_used/prompt_hash
-        # (the LLM intent that was degraded) are LOGUED at INFO for traceability of
-        # the failed intent — they do NOT go to provenance core. Pins the log seam.
+        # The caller's CLAIMED model_used/prompt_hash (the LLM intent that was
+        # degraded) are LOGGED at INFO for traceability of the failed intent —
+        # they do NOT go to provenance core. Pins the log.
         p = _payload({"source_type": "agent", "model_used": "gpt-test", "prompt_hash": "ph-1"})
         with caplog.at_level(logging.INFO, logger="seahorse.write_path.stub"):
             _degrade_to_skip(p, decide_path(p, "llm"), engine, reason="llm_not_implemented_mvp0")
-        # core stays None (spec line 111) — the intent is traced only in the log.
+        # core stays None — the intent is traced only in the log.
         assert engine.last_call.by["model_used"] is None
         assert engine.last_call.by["prompt_hash"] is None
         joined = " ".join(r.getMessage() for r in caplog.records)
@@ -211,14 +212,14 @@ class TestStubWritePathIngest:
         assert engine.remember_count == 1
         assert engine.last_call.by["extraction_mode"] == "skip"
         assert engine.last_call.by["model_used"] is None
-        # C8.7 [55]: the degrade is marked — ingest(llm) carries degraded_from.
+        # The degrade is marked — ingest(llm) carries degraded_from.
         assert engine.last_call.by["degraded_from"] == "llm"
         assert engine.last_call.by["degrade_reason"] == "llm_not_implemented_mvp0"
 
     def test_skip_ingest_carries_no_degrade_marker(self, engine) -> None:
-        # C8.7 [55] / ADR-10: ingest(skip) is a genuine skip — no degrade marker.
-        # The marker is degrade-only; its absence on genuine skip is what makes it
-        # a truthful signal (presence == degraded, absence == real skip).
+        # ingest(skip) is a genuine skip — no degrade marker. The marker is
+        # degrade-only; its absence on genuine skip is what makes it a truthful
+        # signal (presence == degraded, absence == real skip).
         wp = StubWritePath(engine)
         p = _payload()
         wp.ingest(p, "skip")

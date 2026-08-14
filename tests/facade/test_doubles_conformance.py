@@ -1,4 +1,4 @@
-"""C8.5 — recording doubles must structurally satisfy the facade Protocols.
+"""Recording doubles must structurally satisfy the facade Protocols.
 
 The facade's delegation invariants are pinned by recording doubles that assert
 WHICH downstream method was called (``tests/facade/conftest.py``). Those
@@ -6,8 +6,8 @@ doubles only carry weight if they actually conform to the ``@runtime_checkable``
 Protocols the real ``MemoryFacade`` types its collaborators against — otherwise a
 double could drift from the Protocol (a missing method) and the facade would
 accept it at construction (duck-typed) while the real impl would not, or vice
-versa. C8.5 pins the conformance with ``isinstance`` so a double that drops a
-method the Protocol requires fails loud here, not silently in an outcome test.
+versa. This test pins the conformance with ``isinstance`` so a double that drops
+a method the Protocol requires fails loud here, not silently in an outcome test.
 
 The Protocols are private to ``seahorse.facade.facade`` (``_EngineLike`` /
 ``_WritePathLike`` / ``_ShaperLike`` / ``_RetrieverLike``); importing them
@@ -49,9 +49,10 @@ def test_recording_shaper_satisfies_shaper_protocol() -> None:
 
 
 def test_vigente_retriever_satisfies_retriever_protocol() -> None:
-    # The MVP-0 retriever (default at build_facade) must satisfy the recall-policy
-    # seam — pins that swapping the real impl in MVP-1 keeps the facade delegate
-    # valid without a facade-side signature change.
+    # The first-release retriever (default at build_facade) must satisfy the
+    # recall-policy extension point — pins that swapping the real impl in a
+    # later release keeps the facade delegate valid without a facade-side
+    # signature change.
     retriever = VigenteListingRetriever(
         engine=RecordingEngine(), clock=_fixed_clock(), config=FacadeConfig()
     )

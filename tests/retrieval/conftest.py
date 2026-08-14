@@ -1,18 +1,19 @@
-"""Fakes for #11 Hybrid Retrieval tests.
+"""Fakes for the hybrid retrieval tests.
 
-Lightweight in-memory doubles of the injected Protocols (#6 vector/FTS/index
-repos, #2 episode repo, #7 query embedder). They RECORD call arguments so the
-tests can assert axis-isolation (R13: the SAME ``pit.kind`` fans to ALL sources;
-no source ever sees the other axis) and routing (vigent knn gets
-``cognitive_types`` pushdown; PIT knn + ALL BM25 do NOT — G1 client-side).
+Lightweight in-memory doubles of the injected Protocols (the persistence
+vector/FTS/index repos, the engine's episode repo, the embedder's query
+embedder). They RECORD call arguments so the tests can assert axis-isolation
+(the SAME ``pit.kind`` fans to ALL sources; no source ever sees the other axis)
+and routing (current-state knn gets ``cognitive_types`` pushdown; PIT knn + ALL
+BM25 do NOT — the filter is client-side).
 
-PIT predicates for the chain projection are MIRRORED from
-``tests/disclosure/conftest._pit_ok`` (ADR-03: axes never mixed). The fake repos
-themselves do NOT apply PIT — that is #6's job in production; here the fake just
-returns whatever the test configured, so the tests isolate #11's routing from
-#6's predicate. The chain projection (``_project_chain``) applies PIT itself
-(read-only projection of the supersedes chain), so ``FakeEpisodeRepo.chain_from``
-returns the WHOLE chain and #11 filters it.
+PIT predicates for the chain projection are MIRRORED from the shared disclosure
+test helper (axes never mixed). The fake repos themselves do NOT apply PIT —
+that is the persistence layer's job in production; here the fake just returns
+whatever the test configured, so the tests isolate the hybrid retrieval routing
+from the persistence predicate. The chain projection (``_project_chain``)
+applies PIT itself (read-only projection of the supersedes chain), so
+``FakeEpisodeRepo.chain_from`` returns the WHOLE chain and the engine filters it.
 """
 
 from __future__ import annotations
@@ -94,12 +95,13 @@ def _row(
 class FakeQueryEmbedder:
     """``QueryEmbedder`` double. Records the query; returns a sentinel vector.
 
-    C8.4 widened the Protocol (``embedding_dim`` + ``embed_queries``); the fake
-    carries both so it stays structurally conformant. #11's hot path only calls
-    ``embed_query``; ``embed_queries`` records for parity/forward-compat tests.
+    The Protocol was widened (``embedding_dim`` + ``embed_queries``); the fake
+    carries both so it stays structurally conformant. The engine's hot path only
+    calls ``embed_query``; ``embed_queries`` records for parity/forward-compat
+    tests.
     """
 
-    embedding_dim: int = 0  # sentinel — #11 never inspects the opaque vector
+    embedding_dim: int = 0  # sentinel — the engine never inspects the opaque vector
 
     def __init__(self, vec: Any = "VEC") -> None:
         self.calls: list[str] = []
@@ -235,7 +237,7 @@ class FakeEpisodeRepo:
             current = ep.supersedes
         # Match the real SqliteEpisodeRepository.chain_from contract: sorted by
         # created_at asc (oldest-first), so the LAST element is the newest/current
-        # version — which is what #11's _chain_active_now / _chain_vigent_at pick.
+        # version — which is what the engine's _chain_active_now / _chain_vigent_at pick.
         result.sort(key=lambda e: e.created_at)
         return result
 
@@ -271,7 +273,7 @@ class FakeEpisodeRepo:
 
 
 class FakeIndexRepo:
-    """``EpisodeIndexRepository`` double for the F1 recency batch ``created_at``
+    """``EpisodeIndexRepository`` double for the recency batch ``created_at``
     read. Records ``get_rows`` calls (assert one ``IN`` query, no N+1) and returns
     configurable rows keyed by ``ep_id``."""
 
@@ -286,7 +288,7 @@ class FakeIndexRepo:
     def add(self, row: IndexRowData) -> None:
         self.rows[row.ep_id] = row
 
-    # The remaining accessors are unused by #11; raise to fail loud if reached.
+    # The remaining accessors are unused by the engine; raise to fail loud if reached.
     def get_rows_state_at(
         self, ep_ids: Sequence[str], t: datetime
     ) -> list[IndexRowData]:  # pragma: no cover
@@ -329,7 +331,7 @@ class FakeIndexRepo:
 
 class FakeBfsIndexRepo:
     """``EpisodeIndexRepository`` double for the BFS axis. Records the
-    ``pit_kind``/``hops``/``t`` the engine passed (axis-isolation R13). Only
+    ``pit_kind``/``hops``/``t`` the engine passed (axis-isolation). Only
     ``bfs_neighbors_state_at`` is exercised; the rest raise."""
 
     def __init__(self) -> None:
@@ -356,7 +358,7 @@ class FakeBfsIndexRepo:
         )
         return self.rows
 
-    # The remaining 8 accessors are unused by #11; raise to fail loud if reached.
+    # The remaining 8 accessors are unused by the engine; raise to fail loud if reached.
     def get_rows(self, ep_ids: Sequence[str]) -> list[IndexRowData]:  # pragma: no cover
         raise NotImplementedError
 
@@ -432,7 +434,7 @@ def clock_now() -> datetime:
 
 @pytest.fixture()
 def fixed_clock(clock_now: datetime):
-    """Injectable clock returning ``clock_now`` for ADR-10 reproducibility."""
+    """Injectable clock returning ``clock_now`` for reproducibility."""
     return lambda: clock_now
 
 

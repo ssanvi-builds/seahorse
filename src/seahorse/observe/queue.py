@@ -1,23 +1,21 @@
-"""Observer SQLite queue — the durable capture buffer (obsiforge §4.5).
+"""Observer SQLite queue — the durable capture buffer.
 
 The queue is the observer's OWN SQLite DB (``{vault}/.seahorse/observer/
 observer.db``), NOT the engine sidecar. It reuses the ``ConnectionManager``
-pattern (single-writer, WAL + ack). Only already-redacted envelopes are stored
-— nothing raw is ever persisted (obsiforge §4.4).
+pattern (single-writer, WAL + ack). Only already-redacted envelopes are stored —
+nothing raw is ever persisted.
 
 Dedup layer 1 (queue-level): unique ``(session_id, prompt_number,
 event_fingerprint)`` with ``INSERT OR IGNORE`` → a re-emitted event is a no-op.
-``event_fingerprint = canonical_body_hash(redacted payload)`` (obsiforge §4.5).
-Layers 2 (store-level I11 backstop) and 3 (``deterministic_id`` NOT extended to
+``event_fingerprint = canonical_body_hash(redacted payload)``. Layers 2
+(store-level uniqueness backstop) and 3 (``deterministic_id`` NOT extended to
 agent) are the engine's job — the queue only owns layer 1.
 
-§15.2 redesign (load-bearing): ``prompt_number`` is PERSISTED in the DB (not
-memory) so a resumed session continues from the last prompt_number — a new
-byte-identical turn is never falsely deduped by ``INSERT OR IGNORE``.
+``prompt_number`` is PERSISTED in the DB (not memory) so a resumed session
+continues from the last prompt_number — a new byte-identical turn is never
+falsely deduped by ``INSERT OR IGNORE``.
 
 References:
-- obsiforge-evolution-architecture.md §4.5 (queue + dedup 3 layers)
-- obsiforge-evolution-architecture.md §15.2 redesign 2 (persist prompt_number)
 - seahorse/persistence/connection.py (ConnectionManager pattern)
 """
 
@@ -96,9 +94,8 @@ class ObserverQueue:
     def advance_prompt_number(self, session_id: str) -> int:
         """Increment the persisted prompt_number and return the new value.
 
-        §15.2: persisted, not in-memory — a resumed session continues from the
-        last prompt_number, so a new byte-identical turn is never falsely
-        deduped.
+        Persisted, not in-memory — a resumed session continues from the last
+        prompt_number, so a new byte-identical turn is never falsely deduped.
         """
         with self._cm.atomic() as conn:
             conn.execute(
@@ -118,7 +115,7 @@ class ObserverQueue:
         """Persist a redacted envelope. Returns True if inserted, False if dedup.
 
         Dedup layer 1: ``INSERT OR IGNORE`` on ``(session_id, prompt_number,
-        event_fingerprint)`` — a re-emitted event is a no-op (obsiforge §4.5).
+        event_fingerprint)`` — a re-emitted event is a no-op.
         """
         fingerprint = event_fingerprint(envelope.payload)
         created_at = envelope.ts or _now_iso()

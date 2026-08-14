@@ -2,18 +2,17 @@
 
 Migrations are plain ``.sql`` files in this package, named ``NNN_*.sql`` (zero-padded
 three-digit prefix). They are applied in lexical order. Each migration's DDL and
-its ``schema_version`` row commit as ONE transaction (C8.3 #8): the runner wraps
+its ``schema_version`` row commit as ONE transaction: the runner wraps
 the migration SQL in ``BEGIN; ... INSERT INTO schema_version ...; COMMIT;`` and
 runs it via a single ``executescript``. If any statement fails, the transaction
-rolls back — no half-applied migration (the gap 009's header documented: DDL that
-commits but a version INSERT that fails, leaving a re-run to raise "duplicate
-column"). The schema_version table itself is created here (not a numbered file)
-so it always exists before any migration is recorded.
+rolls back — no half-applied migration. The schema_version table itself is
+created here (not a numbered file) so it always exists before any migration is
+recorded.
 
-MVP-0 scope: only the relational tables + the three SO-7 lateral tables. From
-M1-A.2 (migration 010) the runner also creates the ``vec0`` virtual table and
-the FTS5 external-content tables; those require ``sqlite-vec`` loaded on the
-connection before ``apply_migrations`` runs (the ConnectionManager opts in via
+The current release ships only the relational tables. A later release
+(migration 010 onward) also creates the ``vec0`` virtual table and the FTS5
+external-content tables; those require ``sqlite-vec`` loaded on the connection
+before ``apply_migrations`` runs (the ConnectionManager opts in via
 ``extensions=("vec0",)`` at the composition root).
 """
 
@@ -25,8 +24,8 @@ from pathlib import Path
 
 # Concurrent first-migration on a fresh DB: two processes can both see a
 # version as "not present" and both try to insert it; the loser hits the UNIQUE
-# constraint. Retry a bounded number of times (matrix finding, concurrency
-# combo). A persistent conflict still fails loud.
+# constraint. Retry a bounded number of times. A persistent conflict still
+# fails loud.
 _MIGRATION_RETRIES = 5
 
 _SCHEMA_VERSION_DDL = """
@@ -53,12 +52,12 @@ def apply_migrations(conn: sqlite3.Connection, *, up_to: int | None = None) -> i
     already-migrated database applies zero migrations and returns 0.
 
     ``up_to`` caps the highest migration version to apply (inclusive). ``None``
-    (default) applies all pending migrations. This seam lets tests pin a
+    (default) applies all pending migrations. This extension point lets tests pin a
     database at an older schema version (e.g. ``up_to=8``) and then apply the
     next migration in isolation — exercising the real legacy upgrade path that
     existing deployments hit, rather than only the fresh-DB path.
 
-    C8.3 #8: each migration runs as a single transaction (DDL + version row). The
+    Each migration runs as a single transaction (DDL + version row). The
     migration SQL is wrapped in ``BEGIN; <sql>; INSERT INTO schema_version ...;
     COMMIT;`` and executed via one ``executescript`` (which issues a COMMIT first
     — a no-op with no pending tx — then runs the script). On any statement
@@ -90,7 +89,7 @@ def apply_migrations(conn: sqlite3.Connection, *, up_to: int | None = None) -> i
                 applied += 1
                 break
             except sqlite3.IntegrityError:
-                # Concurrent migration (matrix finding, concurrency combo): two
+                # Concurrent migration: two
                 # processes both saw "version N not present" and both tried to
                 # insert it; the loser hits the UNIQUE constraint. Roll back and
                 # re-check — the winner's version row is now visible.

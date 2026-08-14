@@ -1,11 +1,11 @@
-"""Vault note discovery (f5-03 §3.5/§6.3).
+"""Vault note discovery.
 
-Owned by #3, stdlib-only. Streams ``.md`` paths under a vault root via
-``os.scandir`` (not ``glob``/``walk`` loading everything into memory — f5-03
-§6.3: streaming for large vaults). Excludes Obsidian/plugin directories that are
-not user notes:
+Part of the frontmatter migrator, stdlib-only. Streams ``.md`` paths under a
+vault root via ``os.scandir`` (not ``glob``/``walk`` loading everything into
+memory — streaming matters for large vaults). Excludes Obsidian/plugin
+directories that are not user notes:
 
-- ``.obsidian`` — Obsidian config/plugins/workspace (f5-03 §3.6).
+- ``.obsidian`` — Obsidian config/plugins/workspace.
 - ``.trash`` — Obsidian's soft-delete bin.
 - ``.git`` and other VCS metadata.
 - ``.seahorse`` — the sidecar SQLite/index directory (engine-owned, not a note).
@@ -21,7 +21,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 # Directory basenames that are never note sources. Compared case-insensitively
-# because macOS HFS+/APFS is case-insensitive by default (f5-03 §6.3).
+# because macOS HFS+/APFS is case-insensitive by default.
 _EXCLUDED_DIRS: frozenset[str] = frozenset(
     {".obsidian", ".trash", ".git", ".seahorse", ".svn", ".hg", "_darcs"}
 )

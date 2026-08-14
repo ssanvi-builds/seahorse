@@ -1,11 +1,12 @@
 """End-to-end ``seahorse frontmatter migrate`` via the invoke harness.
 
-The frontmatter vault migrator (#3, F3.3) got its CLI surface late: the
-original ``migrate`` slot was taken by the SCHEMA DDL runner, so ``VaultMigrator``
-sat with no command (roadmap gap 2026-08-12). This file covers the new
-``seahorse frontmatter migrate`` group command — cases A/B/C/D, dry-run vs
-apply, idempotency, resume, exit 97 (Cat C ``CLI_MIGRATION_DEFERRED``) when
-apply meets incompatible notes, and migration-before-init.
+The frontmatter vault migrator got its CLI surface late: the original
+``migrate`` slot was taken by the SCHEMA DDL runner, so ``VaultMigrator`` sat
+with no command. This file covers the new ``seahorse frontmatter migrate``
+group command — plain, legacy, already-migrated, and incompatible notes,
+dry-run vs apply, idempotency, resume, exit 97 (CLI error
+``CLI_MIGRATION_DEFERRED``) when apply meets incompatible notes, and
+migration-before-init.
 
 The ``vault`` fixture is an init'd tmp vault (``seahorse.toml`` written, no db);
 ``invoke`` runs ``main(argv)`` with captured streams.
@@ -28,7 +29,8 @@ def _uuid7(suffix: str) -> str:
 
 
 def _write_f31_note(vault: Path, name: str, *, ep_id: str) -> Path:
-    """A note that is ALREADY valid F3.1 (case C on a later run)."""
+    """A note that is ALREADY valid in the canonical episode format (the
+    already-migrated case on a later run)."""
     ep = Episode(
         id=ep_id,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -47,7 +49,7 @@ def _write_f31_note(vault: Path, name: str, *, ep_id: str) -> Path:
 
 
 def _write_legacy_note(vault: Path, name: str) -> Path:
-    """Legacy Obsidian note — non-F3.1 frontmatter (case B)."""
+    """Legacy Obsidian note — non-canonical frontmatter (the legacy case)."""
     path = vault / f"{name}.md"
     path.write_text(
         "---\ntags: [viaje, espana]\ncreated: 2026-01-01\n---\n# "
@@ -59,14 +61,14 @@ def _write_legacy_note(vault: Path, name: str) -> Path:
 
 
 def _write_plain_note(vault: Path, name: str) -> Path:
-    """No frontmatter at all (case A)."""
+    """No frontmatter at all (the plain case)."""
     path = vault / f"{name}.md"
     path.write_text(f"# {name}\nbody plain.\n", encoding="utf-8")
     return path
 
 
 def _write_broken_note(vault: Path, name: str) -> Path:
-    """Malformed YAML frontmatter (case D — incompatible, refused)."""
+    """Malformed YAML frontmatter (the incompatible case — refused)."""
     path = vault / f"{name}.md"
     path.write_text("---\ntags: [unclosed\n---\n# broken\n", encoding="utf-8")
     return path
@@ -109,8 +111,8 @@ def test_frontmatter_migrate_dry_run_no_write(tmp_path, vault):
 
     code, out, err = invoke(["--vault", str(vault), "frontmatter", "migrate", "--dry-run"])
     assert code == 0, err
-    # beta's legacy `created:` collides with F3.1 `created_at` (COLLISION_MAP) —
-    # reported, never auto-resolved (f5-03 §3.8).
+    # beta's legacy `created:` collides with the canonical format's `created_at`
+    # (COLLISION_MAP) — reported, never auto-resolved.
     _assert_stats(out, total=4, migrated=2, already_f31=1, errors=1, collisions=1)
     assert "manifest" in out
 
@@ -124,7 +126,7 @@ def test_frontmatter_migrate_dry_run_no_write(tmp_path, vault):
 def test_frontmatter_migrate_dry_run_with_d_is_exit_0(tmp_path, vault):
     _write_broken_note(vault, "delta")
     code, out, err = invoke(["--vault", str(vault), "frontmatter", "migrate", "--dry-run"])
-    assert code == 0, err  # preview: case D is informational, never a failure
+    assert code == 0, err  # preview: the incompatible case is informational, never a failure
     _assert_stats(out, total=1, migrated=0, already_f31=0, errors=1, collisions=0)
 
 
@@ -136,7 +138,8 @@ def test_frontmatter_migrate_apply_writes_f31(tmp_path, vault):
     b = _write_legacy_note(vault, "beta")
     code, out, err = invoke(["--vault", str(vault), "frontmatter", "migrate"])
     assert code == 0, err
-    # beta's legacy `created:` collides with F3.1 `created_at` (reported, kept).
+    # beta's legacy `created:` collides with the canonical format's `created_at`
+    # (reported, kept).
     _assert_stats(out, total=2, migrated=2, already_f31=0, errors=0, collisions=1)
 
     for p in (a, b):
@@ -180,9 +183,10 @@ def test_frontmatter_migrate_resume_skips_unchanged(tmp_path, vault):
     assert code == 0, err
     # Resume: alpha unchanged → skipped (mtime hint, no re-hash); beta re-hashed
     # and re-processed. The manifest is ACCUMULATIVE: alpha keeps its migrated
-    # entry (skipped, untouched), beta's old B entry is replaced by a C entry
-    # (it already carries F3.1 frontmatter) — so migrated=1 (alpha), C=1 (beta),
-    # and the legacy `created:` collision is no longer reported (C has none).
+    # entry (skipped, untouched), beta's old legacy entry is replaced by an
+    # already-migrated entry (it already carries canonical frontmatter) — so
+    # migrated=1 (alpha), already-migrated=1 (beta), and the legacy `created:`
+    # collision is no longer reported (the migrated case has none).
     _assert_stats(out, total=2, migrated=1, already_f31=1, errors=0, collisions=0)
 
     # The manifest now records beta's NEW content hash (it WAS re-processed);
@@ -213,7 +217,7 @@ def test_frontmatter_migrate_resume_no_change_rehashes_nothing(tmp_path, vault):
     assert before["notes"] == after["notes"]
 
 
-# --- case D: exit 97 in apply, report on stdout first ------------------------
+# --- incompatible case: exit 97 in apply, report on stdout first ------------
 
 
 def test_frontmatter_migrate_deferred_exit_97(tmp_path, vault):

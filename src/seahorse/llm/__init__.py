@@ -1,11 +1,12 @@
-"""#4 Multi-LLM layer — the single frontier between the core and LLMs (ADR-05).
+"""Multi-LLM layer — the single frontier between the core and LLMs.
 
-The signed ``LLMClient`` seam + result/budget dataclasses (frozen MVP-0,
-SO-5a) plus the MVP-1 materialization: providers registry, role routing, cost
-cap, parser/validator, retry/fallback chain and the LiteLLM backend. #5 (write
-path) imports the ``LLMClient`` Protocol from here and never touches a vendor
-SDK; everything else is #4 internals or config surface (providers/routing/cost
-are also re-exported for the CLI wizard and `seahorse doctor`).
+The signed ``LLMClient`` contract plus the result/budget dataclasses (frozen
+from the first release), and the current materialization: providers registry,
+role routing, cost cap, parser/validator, retry/fallback chain and the LiteLLM
+backend. The write path imports the ``LLMClient`` Protocol from here and never
+touches a vendor SDK; everything else is the LLM layer's internals or config
+surface (providers/routing/cost are also re-exported for the CLI wizard and
+`seahorse doctor`).
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ from seahorse.llm.types import (
 )
 
 __all__ = [
-    # Contract (SO-5a).
+    # Contract.
     "LLMClient",
     "CompletionResult",
     "ExtractResult",

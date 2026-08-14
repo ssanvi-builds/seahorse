@@ -1,6 +1,6 @@
-"""Episode id generation (owned by #2).
+"""Episode id generation (owned by the engine).
 
-SO-4b: the default write path (``remember`` for ``agent``/``human``/``system``)
+The default write path (``remember`` for ``agent``/``human``/``system``)
 generates a UUIDv7 (RFC 9562 — timestamp-ordered, sortable, unique). The
 importer path (``source_type == "importer"`` with ``importer_vendor`` set) uses
 ``deterministic_id`` (UUIDv5 over NAMESPACE_URL) so re-import yields the same

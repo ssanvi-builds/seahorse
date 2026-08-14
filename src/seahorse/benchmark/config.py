@@ -1,19 +1,14 @@
-"""#16 ``BenchmarkConfig`` — frozen dataclass with all pinned parameters.
+"""``BenchmarkConfig`` — frozen dataclass with all pinned parameters.
 
-The config is the reproducibility contract (f5-16 §5.1): every parameter that
-affects a score lives here, and ``config_hash`` (SHA-256 of the canonical JSON)
-is part of the ``PinningFingerprint``. ``validate()`` is the startup gate that
-rejects ``reader_model == judge_model`` (self-preference mitigation, f5-16
-§6.3 R6) and other invalid combinations.
+The config is the reproducibility contract: every parameter that affects a
+score lives here, and ``config_hash`` (SHA-256 of the canonical JSON) is part
+of the ``PinningFingerprint``. ``validate()`` is the startup gate that rejects
+``reader_model == judge_model`` (self-preference mitigation) and other invalid
+combinations.
 
-``score_source`` is the experiment variant (f7-experimental-design §3):
-``mvp1_rrf`` | ``mvp1_rrf_recency`` | ``rrf_rerank``. The SUT reports the
-honest detected regime in the manifest (``fallback_g2`` when the hybrid
-retrieval is not wired).
-
-References:
-- f5-16 §5.1 (5-layer reproducibility stack), §6.3 (judge mitigations)
-- f7-experimental-design.md §3 (score_source variants)
+``score_source`` is the experiment variant: ``mvp1_rrf`` | ``mvp1_rrf_recency``
+| ``rrf_rerank``. The SUT reports the honest detected regime in the manifest
+(``fallback_g2`` when the hybrid retrieval is not wired).
 """
 
 from __future__ import annotations
@@ -23,12 +18,12 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-# The experiment variants the harness must support (f7 §3). ``fallback_g2`` is
-# the honest detected regime when the hybrid retrieval is not wired.
+# The experiment variants the harness must support. ``fallback_g2`` is the
+# honest detected regime when the hybrid retrieval is not wired.
 ScoreSource = Literal["mvp1_rrf", "mvp1_rrf_recency", "rrf_rerank", "fallback_g2"]
 
-# Reproducibility classes (f5-16 §5.2 F10): local is near-deterministic (95.6%
-# expected match), API is stochastic (22.1%).
+# Reproducibility classes: local is near-deterministic (95.6% expected match),
+# API is stochastic (22.1%).
 ReproducibilityClass = Literal["local_near_deterministic", "api_stochastic"]
 
 
@@ -55,11 +50,11 @@ class BenchmarkConfig:
     temporal_mode: bool = False  # source_type='human' + valid_at=session_date
     score_source: ScoreSource = "mvp1_rrf"
 
-    # Experiment variants (f7 §3 — harness requirements, not options)
+    # Experiment variants (harness requirements, not options)
     recency_config: dict | None = None  # {"gamma": 0.5, "half_life_days": 30} | None
     rerank_enabled: bool = False
     rerank_model: str = ""  # pinned cross-encoder identity ("" when rerank OFF)
-    embed_mode: str = "body+summary"  # "body" | "body+summary" — F3 flip default
+    embed_mode: str = "body+summary"  # "body" | "body+summary" — default embedding surface
 
     # Reproducibility
     repetitions: int = 1
@@ -72,17 +67,16 @@ class BenchmarkConfig:
     sample_size: int = 10  # LevelProbeRunner sample
 
     def validate(self) -> None:
-        """Startup gate: reject invalid parameter combinations (f5-16 §6.3 R6).
+        """Startup gate: reject invalid parameter combinations.
 
         The load-bearing check is ``reader_model == judge_model`` — a judge of
-        the same family as the reader inflates win-rate 10-25% (self-preference,
-        Mnemoverse). Also rejects a non-positive ``top_k`` and an unknown
-        ``score_source``.
+        the same family as the reader inflates win-rate 10-25% (self-preference).
+        Also rejects a non-positive ``top_k`` and an unknown ``score_source``.
         """
         if self.reader_model == self.judge_model:
             raise ValueError(
                 "reader_model and judge_model must be different families "
-                "(generator != judge, f5-16 §6.3 R6); got both "
+                "(generator != judge); got both "
                 f"{self.reader_model!r}"
             )
         if self.top_k <= 0:
@@ -96,7 +90,7 @@ class BenchmarkConfig:
         if self.rerank_enabled and not self.rerank_model:
             raise ValueError(
                 "rerank_enabled requires a pinned rerank_model (the cross-encoder "
-                "identity goes in the fingerprint, cerebras-f §4.4)"
+                "identity goes in the fingerprint)"
             )
 
     def config_hash(self) -> str:

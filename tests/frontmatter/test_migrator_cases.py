@@ -1,4 +1,4 @@
-"""Migrator case A/B/C/D classification + per-note migration (f5-03 §3.1/§3.4)."""
+"""Migrator case A/B/C/D classification + per-note migration."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ class TestClassifyCaseD:
         self, migrator: VaultMigrator, tmp_path: Path
     ) -> None:
         note = tmp_path / "badf31.md"
-        # schema_version present (F3.1 marker) but created_at is naive -> invalid.
+        # schema_version present (canonical-format marker) but created_at is naive -> invalid.
         note.write_text(
             "---\n"
             "schema_version: 0.1.0\n"
@@ -106,8 +106,8 @@ class TestClassifyCaseD:
     def test_f31_marker_without_valid_at_is_case_d(
         self, migrator: VaultMigrator, tmp_path: Path
     ) -> None:
-        # schema_version present + parse_file OK, but valid_at absent -> the F3.1
-        # marker is present yet incomplete -> case D (not silently treated as C).
+        # schema_version present + parse_file OK, but valid_at absent -> the canonical
+        # format marker is present yet incomplete -> case D (not silently treated as C).
         note = tmp_path / "novalidat.md"
         note.write_text(
             "---\n"
@@ -132,7 +132,7 @@ class TestMigrateNoteCaseA:
         entry = migrator.migrate_note(note)
         assert entry.case == CASE_A
         assert entry.post_hash != entry.pre_hash
-        # Re-parse: valid F3.1 episode with the body intact.
+        # Re-parse: valid canonical-format episode with the body intact.
         _cm, body, ep = parse_file(note)
         assert body == original
         assert ep.schema_version == "0.1.0"
@@ -164,11 +164,11 @@ class TestMigrateNoteCaseB:
         entry = migrator.migrate_note(note)
         assert entry.case == CASE_B
         assert "created vs created_at" in entry.collisions
-        # Legacy key preserved + F3.1 added.
+        # Legacy key preserved + the canonical format added.
         cm, body, ep = parse_file(note)
         assert "tags" in cm  # legacy preserved
         assert "created" in cm  # legacy preserved
-        assert ep.schema_version == "0.1.0"  # F3.1 added
+        assert ep.schema_version == "0.1.0"  # canonical format added
         assert body == "# Madrid\nbody\n"
 
 
@@ -193,9 +193,9 @@ class TestMigrateNoteCaseC:
     def test_consolidated_episode_is_case_c_idempotent(
         self, migrator: VaultMigrator, tmp_path: Path
     ) -> None:
-        # A batch-distilled note (``extraction_mode=consolidated``, obsiforge
-        # §5.2) is already valid F3.1 -> case C, untouched on re-run. The schema
-        # is freeform, so des-reserving consolidated must not disturb the
+        # A batch-distilled note (``extraction_mode=consolidated``) is already valid
+        # in the canonical format -> case C, untouched on re-run. The schema
+        # is freeform, so consolidated notes must not disturb the
         # migrator (it round-trips without a migration).
         from seahorse.frontmatter.adapter import serialize
         from tests.frontmatter.conftest import CREATED, make_episode

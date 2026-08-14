@@ -1,4 +1,4 @@
-"""stdio JSON-RPC 2.0 server for the ``io.seahorse.memory/v1`` profile (#13).
+"""stdio JSON-RPC 2.0 server for the ``io.seahorse.memory/v1`` profile.
 
 Stdlib-only framing (no ``mcp``/FastMCP SDK): newline-delimited JSON-RPC 2.0
 over stdio. The MCP protocol is JSON-RPC 2.0 standard and SDK-independent; the
@@ -6,10 +6,10 @@ code repo is stdlib-only (``dependencies = []``) and ``main`` is clone-and-run,
 so we hand-roll the framing with ``json`` + ``sys``. MCP spec pinned
 ``2025-11-25``.
 
-Methods handled (MVP-0): ``initialize``, ``notifications/initialized``,
-``tools/list``, ``tools/call``. Notifications (no ``id``) get NO response;
-EOF on stdin ends the loop. Unknown methods → ``-32601``; malformed JSON →
-``-32700``; non-object request → ``-32600``.
+Methods handled: ``initialize``, ``notifications/initialized``, ``tools/list``,
+``tools/call``. Notifications (no ``id``) get NO response; EOF on stdin ends
+the loop. Unknown methods → ``-32601``; malformed JSON → ``-32700``;
+non-object request → ``-32600``.
 """
 
 from __future__ import annotations
@@ -233,7 +233,7 @@ def main(
     subcommand are truly equivalent), and runs ``serve`` over stdio.
 
     Errors are translated through the shared ``seahorse.cli.exit_codes.translate``
-    seam, so a missing vault exits 82 (not a traceback). Argparse usage errors
+    module, so a missing vault exits 82 (not a traceback). Argparse usage errors
     (``--help`` → 0, bad flag → 2) are caught and returned as ints so the
     ``-> int`` contract holds for in-process/library callers (argparse raises
     ``SystemExit``, which is a ``BaseException`` and so escapes the
@@ -276,7 +276,7 @@ def main(
             cfg.db_path,
             config=FacadeConfig(default_extraction_mode=mode, top_k=cfg.top_k),
         )
-    except Exception as exc:  # noqa: BLE001 — translate is the fail-loud seam (cli-owned)
+    except Exception as exc:  # noqa: BLE001 — translate is the fail-loud boundary (cli-owned)
         code, info = translate(exc)
         label = (
             info.get("seahorse_code")

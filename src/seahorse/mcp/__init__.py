@@ -1,12 +1,13 @@
-"""#13 MCP Profile ``io.seahorse.memory/v1`` — JSON-RPC 2.0 over stdio.
+"""MCP Profile ``io.seahorse.memory/v1`` — JSON-RPC 2.0 over stdio.
 
-A thin translation layer: it exposes the 4 memory-native primitives of #12
-(plus the 3 progressive-disclosure reads) as MCP tools with IDENTICAL
+A thin translation layer: it exposes the 4 memory-native primitives of the
+facade (plus the 3 progressive-disclosure reads) as MCP tools with IDENTICAL
 semantics, and owns ONLY wire-shape validation + JSON↔Python translation. No
-domain logic lives here (R2 f5-13 §0): no fusion (#11), no projection (#8), no
-extraction (#5/#4), no subject/fact_id derivation, no supersedes construction,
-no effective-provenance synthesis in ``improve``, no ``now`` override in
-``forget``, no ``MAX_FULL_BATCH`` replication.
+domain logic lives here: no fusion (hybrid retrieval), no projection
+(progressive disclosure), no extraction (write path / LLM), no subject/fact_id
+derivation, no supersedes construction, no effective-provenance synthesis in
+``improve``, no ``now`` override in ``forget``, no ``MAX_FULL_BATCH``
+replication.
 
 Transport: stdlib JSON-RPC 2.0 over stdio (newline-delimited), NOT the
 ``mcp``/FastMCP SDK. The code repo is stdlib-only (``dependencies = []``) and
@@ -18,7 +19,7 @@ Tool surface (12 tools): the 7 memory primitives (``remember``, ``recall``,
 ``recall_timeline``, ``recall_full``, ``improve``, ``forget``, ``build_pit``)
 plus 5 procedural / read-only tools (``skill_add``, ``skill_show``,
 ``freshness_view``, ``audit_log``, ``follow_supersedes_chain``).
-``expire``/``revalidate`` remain deferred (MVP-1 / mediano).
+``expire``/``revalidate`` remain deferred (a later release).
 """
 
 from __future__ import annotations

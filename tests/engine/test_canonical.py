@@ -1,9 +1,9 @@
-"""Validate canonical_body_hash (Phase 2, OWNED BY #15, materialized by #2).
+"""Validate canonical_body_hash — the body-only digest used by the engine.
 
-SO-4 4d / f5-15 §3.4: body-only SHA-256 hex 64. Normalization = NFC + rstrip per
-line + collapse 3+ blank lines to 2 + strip trailing newlines. Frontmatter is
-EXCLUDED (the caller passes body only) so re-import is idempotent across runs
-where Engine-owned timestamps differ.
+Body-only SHA-256 hex 64. Normalization = NFC + rstrip per line + collapse 3+
+blank lines to 2 + strip trailing newlines. Frontmatter is EXCLUDED (the caller
+passes body only) so re-import is idempotent across runs where engine-owned
+timestamps differ.
 """
 
 from __future__ import annotations

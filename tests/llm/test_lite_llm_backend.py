@@ -1,4 +1,4 @@
-"""Tests for the #4 LiteLLM backend (f5-04 §2.1/§6.3) — no network.
+"""Tests for the LiteLLM backend — no network.
 
 ``litellm`` is a lazy optional import, so the tests install a fake module in
 ``sys.modules`` (the same trick CI relies on: ``uv sync --extra dev`` has no
@@ -129,7 +129,7 @@ class TestRepair:
         ctx = BudgetContext(repair_budget=1)
         res = backend.extract("body", _Frontmatter, budget=ctx)
         assert res.degraded_to_skip is True
-        assert res.model_used is None  # fix high Lens A: explicit None
+        assert res.model_used is None  # explicit None when degraded
         assert ctx.last_degradation_reason == "repair_exhausted"
 
 
@@ -209,7 +209,7 @@ class TestNativeStructuredOptIn:
         _install_litellm(monkeypatch, completion_fn)
         backend = LiteLLMBackend(route=_route("groq/llama-3.3-70b-versatile"))
         backend.extract("body", _Frontmatter)
-        assert "response_format" not in captured  # ADR-05 default: plain prompt
+        assert "response_format" not in captured  # plain prompt default
 
     def test_native_structured_only_when_opted_in(self, monkeypatch) -> None:
         captured: dict = {}

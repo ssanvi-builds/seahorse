@@ -1,22 +1,18 @@
-"""DisclosureShaper — the #8 shaper that projects #11's fused list into levels.
+"""DisclosureShaper — projects the fused ranked list into disclosure levels.
 
-#8 SHAPES; it does not fuse or rank (f5-08 §1.2). The shaper reads ONLY via the
-typed repository Protocols of #6 (``EpisodeIndexRepository`` — INDEX/TIMELINE,
-no body) and #2 (``EpisodeRepository`` — FULL, the only level that hydrates
-``body_md``). It never calls #7 and never emits raw SQL (ADR-04).
+The shaper SHAPES; it does not fuse or rank. It reads ONLY via the typed
+repository Protocols of the persistence layer (``EpisodeIndexRepository`` —
+INDEX/TIMELINE, no body) and the engine (``EpisodeRepository`` — FULL, the only
+level that hydrates ``body_md``). It never calls the embedder and never emits
+raw SQL.
 
-PIT composition (f5-08 §5.3): INDEX delegates to #6's PIT accessors
+PIT composition: INDEX delegates to the persistence layer's PIT accessors
 (``get_rows_state_at`` / ``get_rows_known_at``) so the bi-temporal predicate
 lives in one place. TIMELINE composes PIT **client-side over the rows returned
 by ``chain_rows_from`` / ``find_vigent_row_by_fact_id``** by delegating the
-PIT check back to #6's same accessors (no predicate drift, ADR-03 axes never
-mixed). FULL PIT is NOT supported in MVP-0 (``PitFullNotSupported``); INDEX and
-TIMELINE are PIT-aware by construction.
-
-References:
-- f5-08 §2 (three levels), §3 (DisclosureShaper Protocol), §5 (PIT composition)
-- contracts/engine.py freshness_of (FullDetail.freshness single source of truth)
-- contracts/persistence.py EpisodeIndexRepository (the typed accessor #6 owns)
+PIT check back to the same accessors (no predicate drift; the two bi-temporal
+axes are never mixed). FULL PIT is NOT supported in the current release
+(``PitFullNotSupported``); INDEX and TIMELINE are PIT-aware by construction.
 """
 
 from __future__ import annotations
@@ -50,7 +46,7 @@ from seahorse.disclosure.types import (
 
 
 def _trunc(value: str | None, limit: int) -> str | None:
-    """Deterministic truncation (ADR-10). None passes through."""
+    """Deterministic truncation. None passes through."""
     if value is None:
         return None
     return value[:limit]
@@ -75,7 +71,7 @@ def _row_to_index_row(row: IndexRowData, score: float, now: datetime) -> IndexRo
 
 
 def _row_to_timeline_entry(row: IndexRowData) -> TimelineEntry:
-    # score is ALWAYS None in MVP-0: timeline is anchor-based, not query-based.
+    # score is ALWAYS None in the current release: timeline is anchor-based, not query-based.
     return TimelineEntry(
         ep_id=row.ep_id,
         fact_id=row.fact_id,
@@ -92,7 +88,7 @@ def _row_to_timeline_entry(row: IndexRowData) -> TimelineEntry:
 
 
 def _provenance_of(episode: Episode) -> EpisodeProvenance:
-    """Typed provenance slice. ``source_type`` from the F3.1 field; the rest
+    """Typed provenance slice. ``source_type`` from the on-disk format; the rest
     from the provenance dict (agent_id/session_id/extraction_mode/model_used)."""
     p = episode.provenance or {}
     return EpisodeProvenance(
@@ -106,10 +102,11 @@ def _provenance_of(episode: Episode) -> EpisodeProvenance:
 
 @runtime_checkable
 class DisclosureShaper(Protocol):
-    """Materializes #11's fused ranked list into index/timeline/full levels.
+    """Materializes the fused ranked list into index/timeline/full levels.
 
-    #8 owns level materialization + the transition protocol; #11 owns fusion +
-    ranking. Reads ONLY via #2 + #6 typed repos; never raw SQL, never #7.
+    This module owns level materialization + the transition protocol; Hybrid
+    Retrieval owns fusion + ranking. Reads ONLY via the engine + persistence
+    typed repos; never raw SQL, never the embedder.
     """
 
     def materialize_index(
@@ -136,7 +133,7 @@ class DisclosureShaper(Protocol):
 
 
 class DisclosureShaperImpl:
-    """Default ``DisclosureShaper`` over #6 (index) + #2 (episode) repositories."""
+    """Default ``DisclosureShaper`` over the persistence (index) + engine (episode) repositories."""
 
     def __init__(
         self, index_repo: EpisodeIndexRepository, episode_repo: EpisodeRepository
@@ -148,7 +145,7 @@ class DisclosureShaperImpl:
     def _now(now: datetime | None) -> datetime:
         return now if now is not None else datetime.now(UTC)
 
-    # ---------- INDEX (1st call, within #11's 250ms budget) ------------------
+    # ---------- INDEX (1st call, within the 250ms budget) -------------------
 
     def materialize_index(
         self,
@@ -163,7 +160,7 @@ class DisclosureShaperImpl:
         ep_ids = [c.ep_id for c in candidates]
         rows = self._index_rows(ep_ids, pit)
         by_id = {r.ep_id: r for r in rows}
-        # Preserve #11's candidate order (ranked); do NOT reorder by ep_id.
+        # Preserve the candidate order (ranked); do NOT reorder by ep_id.
         # Candidates whose ep_id is not in the index (or filtered out by PIT)
         # are dropped — they have no row to project.
         return [
@@ -179,8 +176,8 @@ class DisclosureShaperImpl:
             return self._index.get_rows_state_at(ep_ids, pit.t)
         if pit.kind == "known_at":
             return self._index.get_rows_known_at(ep_ids, pit.t)
-        # ADR-03 fixes exactly two PIT kinds; the facade validates pit.kind BEFORE
-        # the shaper runs, so reaching here is an invariant violation — fail loud
+        # Only two PIT kinds exist; the facade validates pit.kind BEFORE the
+        # shaper runs, so reaching here is an invariant violation — fail loud
         # rather than silently misroute an unknown kind to known_at (mirror of
         # sqlite_episode_index._pit_predicate, which raises on the same guard).
         raise ValueError(f"pit.kind must be 'state_at' | 'known_at'; got {pit.kind!r}")
@@ -218,14 +215,14 @@ class DisclosureShaperImpl:
         hops: int,
         now: datetime | None,
     ) -> TimelineWindow:
-        """#10 MVP-1 BFS timeline (f5-10 §1.4/§2). PIT-aware by construction.
+        """BFS timeline (a later release). PIT-aware by construction.
 
-        Traversal projection over ``episode_index`` via #6's signed SO-8b method
-        ``bfs_neighbors_state_at`` (NO graph DB, NO edges, NO NER). ``hops`` is
-        capped to ``MAX_HOPS_MVP1`` — ``hops > 2`` raises ``HopsCapExceeded``
-        (fail-loud, no silent cap). ``pit=None`` resolves to ``state_at`` at the
-        injected ``now``. #10 supplies the ``cognitive_type=semantic`` filter
-        (G1 client-side over the returned rows).
+        Traversal projection over ``episode_index`` via the persistence layer's
+        ``bfs_neighbors_state_at`` method (NO graph DB, NO edges, NO NER).
+        ``hops`` is capped to ``MAX_HOPS_MVP1`` — ``hops > 2`` raises
+        ``HopsCapExceeded`` (fail-loud, no silent cap). ``pit=None`` resolves to
+        ``state_at`` at the injected ``now``. This timeline applies the
+        ``cognitive_type=semantic`` filter (client-side over the returned rows).
         """
         if hops > MAX_HOPS_MVP1:
             raise HopsCapExceeded(hops, MAX_HOPS_MVP1)
@@ -246,7 +243,7 @@ class DisclosureShaperImpl:
     def _timeline_rows(self, anchor_ep_id: str, axis: TimelineAxis) -> list[IndexRowData]:
         if axis == "supersedes_chain":
             return self._index.chain_rows_from(anchor_ep_id)
-        # fact_id_scope: the currently-vigent row for the anchor's fact_id.
+        # fact_id_scope: the currently-valid row for the anchor's fact_id.
         anchor_rows = self._index.get_rows([anchor_ep_id])
         if not anchor_rows:
             return []
@@ -254,12 +251,12 @@ class DisclosureShaperImpl:
         return [vigent] if vigent is not None else []
 
     def _pit_filter(self, rows: list[IndexRowData], pit: PITPoint) -> list[IndexRowData]:
-        """Client-side PIT composition by delegating to #6's typed accessors.
+        """Client-side PIT composition by delegating to the persistence layer's typed accessors.
 
-        Reuses #6's PIT predicate exactly (no drift, ADR-03 axes never mixed):
-        re-query the same ep_ids through ``get_rows_state_at`` / ``get_rows_known_at``
-        and keep only the rows that survive. This avoids re-implementing the
-        bi-temporal predicate in #8 (f5-08 §5.3).
+        Reuses the persistence layer's PIT predicate exactly (no drift; the two
+        bi-temporal axes are never mixed): re-query the same ep_ids through
+        ``get_rows_state_at`` / ``get_rows_known_at`` and keep only the rows that
+        survive. This avoids re-implementing the bi-temporal predicate here.
         """
         ep_ids = [r.ep_id for r in rows]
         if pit.kind == "state_at":
@@ -267,9 +264,9 @@ class DisclosureShaperImpl:
         elif pit.kind == "known_at":
             surviving = self._index.get_rows_known_at(ep_ids, pit.t)
         else:
-            # ADR-03 fixes exactly two PIT kinds; the facade validates pit.kind
-            # BEFORE the shaper runs, so reaching here is an invariant violation
-            # — fail loud rather than silently misroute (mirror of
+            # Only two PIT kinds exist; the facade validates pit.kind BEFORE
+            # the shaper runs, so reaching here is an invariant violation —
+            # fail loud rather than silently misroute (mirror of
             # sqlite_episode_index._pit_predicate).
             raise ValueError(
                 f"pit.kind must be 'state_at' | 'known_at'; got {pit.kind!r}"

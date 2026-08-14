@@ -1,12 +1,11 @@
 """Tests for ``seahorse.distill.distill`` — the ``distill_episodes`` primitive.
 
-The distillation is a write-path operation over existing seams (obsiforge §5.4):
+The distillation is a write-path operation over existing extension points:
 ``consolidated`` is schema-valid, ``cognitive_type=semantic`` exists, and the
 consolidated episode references its representative source via ``supersedes``
-(§5.2) WITHOUT invalidating it — the sources stay vigente (they are the
+WITHOUT invalidating it — the sources stay current-state (they are the
 evidence). The provenance carries ``extraction_mode=consolidated``. The subject
-is the stable clustering key (distinct from the per-turn stored subjects,
-§15.2 redesign 1).
+is the stable clustering key (distinct from the per-turn stored subjects).
 """
 
 from __future__ import annotations
@@ -113,7 +112,7 @@ def test_distill_subject_is_stable_clustering_key(engine) -> None:
     )
     ep = repo.get(wr.ep_id)
     # The subject is the clustering key (no [session_tag:n] suffix) — stable
-    # across turns, distinct from the per-turn stored subjects (§15.2 redesign 1).
+    # across turns, distinct from the per-turn stored subjects.
     assert ep.subject == cluster_key(rep.subject)
     assert "[sess" not in (ep.subject or "")
 
@@ -158,6 +157,6 @@ def test_distill_summary_skips_h1(engine) -> None:
     ep = repo.get(wr.ep_id)
     summary = ep.summary or ""
     # The summary is the first sentence of the CONTENT (skipping the H1) —
-    # never the tagged H1 (§15.2 redesign 4).
+    # never the tagged H1.
     assert "It fails intermittently on CI." in summary
     assert "[sess" not in summary

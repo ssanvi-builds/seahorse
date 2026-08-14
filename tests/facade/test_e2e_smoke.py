@@ -1,4 +1,5 @@
-"""End-to-end smoke for #12 MemoryFacade against the REAL #2 + #8 + #6 + #5.
+"""End-to-end smoke for the primitives facade against the REAL engine +
+disclosure shaper + persistence + write path.
 
 This is not a unit test of the facade's routing (the recording doubles cover
 that). It proves the wiring composes end-to-end: a single ``MemoryFacade`` over
@@ -95,7 +96,7 @@ class TestEndToEndLifecycle:
         assert new_ep.id != old_id
         assert new_ep.supersedes == old_id
 
-        # 4. recall shows the new one; the old one is no longer vigente
+        # 4. recall shows the new one; the old one is no longer the current version
         rows_after = facade.recall("barcelona")
         ids_after = [r.ep_id for r in rows_after]
         assert new_ep.id in ids_after

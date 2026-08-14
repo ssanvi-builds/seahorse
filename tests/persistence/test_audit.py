@@ -1,4 +1,4 @@
-"""SqliteAuditEventRepository tests (Phase 5a). Append-only, query by target/session/since."""
+"""SqliteAuditEventRepository tests. Append-only, query by target/session/since."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _event(
 
 def test_structurally_satisfies_protocol(audit: SqliteAuditEventRepository) -> None:
     assert isinstance(audit, AuditEventRepository)
-    assert not hasattr(audit, "atomic")  # SO-7a.6: no own atomic()
+    assert not hasattr(audit, "atomic")  # no own atomic()
 
 
 def test_append_then_query_by_target(audit: SqliteAuditEventRepository) -> None:

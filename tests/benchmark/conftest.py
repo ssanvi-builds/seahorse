@@ -1,10 +1,10 @@
-"""Shared fixtures for the #16 benchmark skeleton tests.
+"""Shared fixtures for the benchmark harness tests.
 
 The synthetic dataset is the canonical test corpus: no HuggingFace download in
-CI (f5-16 §4.1 — tests use a synthetic dataset). The fakes (reader LLM, judge)
+CI (tests use a synthetic dataset). The fakes (reader LLM, judge)
 are deterministic so the harness mechanics are testable without a real model.
 The dataset builder lives in the package (``benchmark.experiments.synthetic``)
-so the F7 experiment runner reuses the SAME corpus at runtime — no duplication.
+so the experiment runner reuses the SAME corpus at runtime — no duplication.
 """
 
 from __future__ import annotations

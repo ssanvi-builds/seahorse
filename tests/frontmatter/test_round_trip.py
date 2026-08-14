@@ -1,4 +1,4 @@
-"""Round-trip + parse/serialize tests (f5-03 §4.1/§4.3/§4.4/§5.8)."""
+"""Round-trip + parse/serialize tests."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class TestParseSerialize:
         assert ep2.title == ep.title
 
     def test_body_is_byte_a_byte_including_embedded_hr(self, vault: Path) -> None:
-        # f5-03 §4.3 edge case: a body containing '---' (markdown hr) survives
+        # Edge case: a body containing '---' (markdown hr) survives
         # because the split only breaks on the first two '---' lines.
         body = "# Title\n\n---\n\nA horizontal rule above.\n"
         ep = make_episode(body=body)
@@ -126,15 +126,15 @@ class TestMvpPhase:
     def test_mvp1_reparse_baseline_with_expired_at_does_not_crash(
         self, vault: Path
     ) -> None:
-        # Regression for B1: serialize() with baseline_cm=None re-parses the
-        # existing file with the MVP phase. An MVP-1 file with a non-null
+        # Regression: serialize() with baseline_cm=None re-parses the
+        # existing file with the MVP phase. A later-release file with a non-null
         # expired_at (decayed note) must not raise FrontmatterInvalid on the
         # re-parse when the caller passes mvp="1".
         ep = make_episode(expired_at=datetime(2026, 7, 17, 12, 0, 0, tzinfo=UTC))
         p = vault / "note.md"
-        # write the MVP-1 file (expired_at present) under mvp="1"
+        # write the later-release file (expired_at present) under mvp="1"
         serialize(ep, p, exclude_none=False, mvp="1")
-        # a second write (re-parse of the MVP-1 baseline) must not crash
+        # a second write (re-parse of the later-release baseline) must not crash
         ep2 = hydrate(p, mvp="1")
         serialize(ep2, p, exclude_none=False, mvp="1")
         # and the expired_at survives the round-trip
@@ -210,10 +210,10 @@ class TestParseRejection:
 
 class TestConsolidatedExtractionModeRoundTrip:
     def test_consolidated_round_trips_in_provenance(self, vault: Path) -> None:
-        # obsiforge §5.2: a batch-distilled "stable knowledge note" carries
+        # A batch-distilled "stable knowledge note" carries
         # ``extraction_mode=consolidated``. The schema is freeform, so this value
         # must round-trip idempotently — it is portable even though the engine
-        # does not produce it yet (ADR-10 honesty: schema-valid, not built).
+        # does not produce it yet (fail-loud honesty: schema-valid, not built).
         ep = make_episode(
             cognitive_type="semantic",
             provenance={
@@ -262,9 +262,9 @@ class TestSupersedesReasonRoundTrip:
 
 
 class TestProceduralCognitiveTypeRoundTrip:
-    """Un-reserve ``procedural`` (L2c §6.1): the wire enum and COGNITIVE_TYPES
-    already accept it; the frontmatter round-trip must preserve it idempotently
-    (a skill is a portable F3.1 .md)."""
+    """The ``procedural`` cognitive type is no longer reserved: the wire enum and
+    COGNITIVE_TYPES already accept it; the frontmatter round-trip must preserve it
+    idempotently (a skill is a portable canonical-format .md)."""
 
     def test_procedural_round_trips_in_frontmatter(self, vault: Path) -> None:
         ep = make_episode(

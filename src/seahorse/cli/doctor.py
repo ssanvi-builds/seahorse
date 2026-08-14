@@ -1,10 +1,10 @@
-"""`seahorse doctor` — vault + LLM provider health diagnostics (M4-C.3).
+"""`seahorse doctor` — vault + LLM provider health diagnostics.
 
-The onboarding backlog command: report the extraction regime, the installed
-``llm`` extra, missing API keys (names only, never values), a live provider
-self-test when possible, and the extraction mode. WARN/FAIL items are the
-actionable list; a vault running pure ``skip`` (no ``[llm]``) is a valid state
-and reports WARN, not FAIL.
+The onboarding command: report the extraction regime, the installed ``llm``
+extra, missing API keys (names only, never values), a live provider self-test
+when possible, and the extraction mode. WARN/FAIL items are the actionable
+list; a vault running pure ``skip`` (no ``[llm]``) is a valid state and reports
+WARN, not FAIL.
 
 Exit codes: the command itself reports health in the payload (exit 0 always —
 diagnosis, not a gate). Config failures already surface as ``CliConfigInvalid``

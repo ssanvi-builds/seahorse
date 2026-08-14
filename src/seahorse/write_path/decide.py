@@ -1,27 +1,23 @@
-"""#5 ``decide_path`` — the pure, LLM-free write-path decision (SO-5b).
+"""``decide_path`` — the pure, LLM-free write-path decision.
 
 The decision of which ingestion path to take (``skip`` vs ``llm``) is a pure
 function of deterministic inputs. It NEVER spends an LLM call: using an LLM to
-decide whether to use an LLM would be paradoxical and non-reproducible
-(f5-05 section 2).
+decide whether to use an LLM would be paradoxical and non-reproducible.
 
-First-class #5 (MVP-1) authoritativeness:
+Authoritative decision rules:
 - ``extraction_mode`` flag (caller) — authoritative for ``source_type == 'agent'``.
 - ``source_type`` guard — authoritative: ONLY ``agent`` may spend an LLM call.
   Every non-agent value (``human`` / ``importer`` / ``system``, and any
-  unknown/missing value as defense-in-depth) forces ``skip`` (f5-05 sec 2.2
-  rule 1). The facade rejects out-of-vocabulary ``source_type`` at its boundary;
-  decide_path's unknown->skip is a belt-and-braces backstop, never the primary
-  enforcement.
+  unknown/missing value as defense-in-depth) forces ``skip``. The facade rejects
+  out-of-vocabulary ``source_type`` at its boundary; decide_path's unknown->skip
+  is a belt-and-braces backstop, never the primary enforcement.
 - ``cognitive_type`` + size/density heuristics — advisory, logged only, NEVER
-  override the flag (f5-05 sec 2.2 rule 4).
+  override the flag.
 
 The ``is_valid_skip_path`` formal gate + ``deterministic_extract`` fallback
-land in commit 3 (``run_skip_path``); this commit owns the decision only.
+land in ``run_skip_path``; this module owns the decision only.
 
 References:
-- f6-signoffs.md SO-5b (decide_path + run_skip_path real from MVP-0)
-- f5-05-skip-extraction.md section 2 (decision inputs), section 4.2 (authoritativeness)
 - seahorse/facade/types.py (RememberPayload — the decision input shape)
 """
 
@@ -36,19 +32,18 @@ from seahorse.facade.types import ExtractionMode, RememberPayload
 Path = Literal["skip", "llm"]
 
 _VALID_MODES: frozenset[str] = frozenset({"skip", "llm"})
-# Reserved for the single-episode write path (over-reach vs ADR-09; f5-05
-# section 4.2). ``llm_partial`` is fully reserved (not schema-valid).
-# ``consolidated`` IS schema-valid and round-trippable (batch-distillation
-# marker, obsiforge §5.2) but NOT routable here: the batch distillation
-# (``distill_episodes``, Sprint B) writes via ``engine.remember`` directly,
-# bypassing ``decide_path`` (obsiforge §5.4). Refusing both loud is ADR-10
-# honesty — a single-episode ingest can never honor them.
+# Reserved for the single-episode write path. ``llm_partial`` is fully reserved
+# (not schema-valid). ``consolidated`` IS schema-valid and round-trippable
+# (batch-distillation marker) but NOT routable here: the batch distillation
+# (``distill_episodes``, a later milestone) writes via ``engine.remember``
+# directly, bypassing ``decide_path``. Refusing both loudly is fail-loud honesty
+# — a single-episode ingest can never honor them.
 _RESERVED_MODES: frozenset[str] = frozenset({"llm_partial", "consolidated"})
 
-# Non-agent source_types force skip (f5-05 sec 2.2 rule 1). Only ``agent`` may
-# take the llm path. Each known non-agent value carries a distinct reason for
-# observability; any unknown/missing value falls back to ``non_agent_skip_guard``
-# (defense-in-depth — the facade is the primary source_type-vocabulary enforcer).
+# Non-agent source_types force skip. Only ``agent`` may take the llm path. Each
+# known non-agent value carries a distinct reason for observability; any
+# unknown/missing value falls back to ``non_agent_skip_guard`` (defense-in-depth
+# — the facade is the primary source_type-vocabulary enforcer).
 _SOURCE_GUARD_REASONS: dict[str, str] = {
     "importer": "importer_skip_guard",
     "human": "human_skip_guard",
@@ -56,7 +51,7 @@ _SOURCE_GUARD_REASONS: dict[str, str] = {
 }
 _NON_AGENT_FALLBACK_REASON = "non_agent_skip_guard"
 
-# ADR-09 LLM cost target for the skip-vs-llm advisory (f5-05 sec 2.2 rule 4).
+# Near-zero-cost LLM target for the skip-vs-llm advisory.
 _LLM_COST_TARGET_BYTES = 5120  # 5 KB
 
 _logger = logging.getLogger("seahorse.write_path.decide")
@@ -68,8 +63,8 @@ class InvalidExtractionMode(ValueError):
     ``llm_partial`` is fully reserved; ``consolidated`` is schema-valid
     (round-trippable) but NOT routable by the single-episode write path — the
     batch distillation writes via ``engine.remember`` directly, bypassing
-    ``decide_path`` (obsiforge §5.4). Both are refused loud rather than
-    silently dropped to skip (ADR-10 honesty).
+    ``decide_path``. Both are refused loudly rather than silently dropped to
+    skip (fail-loud honesty).
     """
 
     def __init__(self, mode: str) -> None:
@@ -88,7 +83,8 @@ class PathDecision:
     ``path`` is the chosen ingestion path (``skip`` | ``llm``); ``requested_mode``
     is the caller's flag (preserved even when an authoritative guard overrides
     the path, e.g. importer->skip with ``requested_mode='llm'``); ``reason``
-    explains why the path was chosen / degraded (observability for #5/#13).
+    explains why the path was chosen / degraded (observability for the write
+    path and the MCP server).
     """
 
     path: Path
@@ -114,7 +110,7 @@ def _looks_technical(line: str) -> bool:
 
 
 def _density_proxy(body: str) -> Literal["dense", "prose"]:
-    """Advisory density proxy: >50% technical lines => ``dense`` (f5-05 sec 2.2)."""
+    """Advisory density proxy: >50% technical lines => ``dense``."""
     if not body:
         return "prose"
     lines = [ln for ln in body.splitlines() if ln.strip()]
@@ -129,19 +125,19 @@ def _advise_heuristics(payload: RememberPayload) -> None:
 
     Fires only when the caller reached this point (``source_type == 'agent'``
     and ``mode == 'llm'``). The heuristics are reproducible (deterministic over
-    ``payload.body``); they emit ``logging.warning`` only (f5-05 sec 2.2 rule 4).
+    ``payload.body``); they emit ``logging.warning`` only.
     """
     body = payload.body
     if len(body) > _LLM_COST_TARGET_BYTES:
         _logger.warning(
             "skip recommended: body is %d bytes (>5KB), exceeds the $0.002/ep "
-            "LLM cost target (f5-05 sec 2.2)",
+            "LLM cost target",
             len(body),
         )
     if _density_proxy(body) == "dense":
         _logger.warning(
             "skip recommended: body looks dense (code/config/ADR), LLM "
-            "extraction likely low-value (f5-05 sec 2.2)"
+            "extraction likely low-value"
         )
 
 

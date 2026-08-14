@@ -1,16 +1,17 @@
-"""FastEmbed ONNX backend (#7, f5-07 §3.2.2 + OQ-7-12).
+"""FastEmbed ONNX backend.
 
 Wraps fastembed's sync ``TextEmbedding`` behind the async ``Embedder`` Protocol
 via ``asyncio.to_thread``. fastembed + onnxruntime live in the optional
 ``embeddings`` extra; ``build_fastembed_embedder`` imports ``fastembed`` lazily
-so the default ``uv sync --extra dev`` (G2 mode) never pulls the heavy stack.
+so the default ``uv sync --extra dev`` (the listing regime) never pulls the
+heavy stack.
 
-OQ-7-12 (verified live 2026-08-03 via the HF API): ``intfloat/multilingual-e5-small``
+Verified live 2026-08-03 via the HuggingFace API: ``intfloat/multilingual-e5-small``
 publishes ``model.onnx`` (fp32, 470MB), ``model_O4.onnx`` (fp32-O4, 235MB) and
 ``model_qint8_avx512_vnni.onnx`` (int8, x86-only — unusable on Apple Silicon).
 There is NO int8 or fp16 artifact portable to arm64, so the bundle defaults to
 ``model_O4.onnx`` (fp32-O4) — portable across Windows/Linux/macOS, which is the
-standpoint for an open standard. The size deviation vs the SO-7c int8 claim
+standpoint for an open standard. The size deviation vs a portable int8 bundle
 (~235MB vs ~113MB) is documented; a portable int8 bundle is a measured
 follow-up (Optimum quantization + per-platform benchmark).
 """
@@ -25,7 +26,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-import numpy as np  # core dep since M1-B.1
+import numpy as np  # core dependency
 
 from seahorse.embeddings.types import ModelIdentity, Role, _l2_normalize
 
@@ -33,7 +34,7 @@ _logger = logging.getLogger("seahorse.embeddings.fastembed")
 
 # Bundle pin (single source for model_file + the ModelIdentity stamp).
 MODEL_NAME = "intfloat/multilingual-e5-small"
-MODEL_FILE = "onnx/model_O4.onnx"  # OQ-7-12: fp32-O4 (portable), not int8
+MODEL_FILE = "onnx/model_O4.onnx"  # fp32-O4 (portable), not int8
 DIM = 384
 _QUANTIZATION = "fp32"
 
@@ -97,7 +98,7 @@ def _prefix_drift_cosine(embedder: FastEmbedEmbedder) -> float:
     Measured through ``_embed_sync`` (role prefixes applied): if the e5
     ``query: `` / ``passage: `` wiring is missing, query == passage and the
     cosine is ~1.0 (the drift). Separated roles land strictly inside
-    (0.5, 0.999). Duck-typed for tests via the embedder's sync seam.
+    (0.5, 0.999). Duck-typed for tests via the embedder's sync method.
     """
     q = embedder._embed_sync([_SELF_TEST_TEXT], "query")[0]
     p = embedder._embed_sync([_SELF_TEST_TEXT], "passage")[0]
@@ -112,12 +113,12 @@ def build_fastembed_embedder(
     revision_sha: str | None = None,
     quantization: str = _QUANTIZATION,
 ) -> FastEmbedEmbedder:
-    """Build the FastEmbed ONNX embedder for mE5-small (OQ-7-12 bundle).
+    """Build the FastEmbed ONNX embedder for mE5-small.
 
     Requires the ``embeddings`` extra (``fastembed`` + ``onnxruntime``); the
     model downloads lazily on the first embed (not at build). Runs the startup
-    prefix-drift self-test as a WARNING — never fail-loud (the G2 fallback
-    covers a broken embedder).
+    prefix-drift self-test as a WARNING — never fail-loud (the current-state
+    listing regime covers a broken embedder).
     """
     from fastembed import (  # type: ignore[import-not-found]  # lazy: extra 'embeddings'
         TextEmbedding,
@@ -132,10 +133,11 @@ def build_fastembed_embedder(
     # the same shape across the declared >=0.6.0 range.
     #
     # Idempotent registration: ``add_custom_model`` raises "already registered"
-    # on a second call in the same process. The F7 warm-DB experiment builds a
+    # on a second call in the same process. A warm-database experiment builds a
     # facade per variant (each calls this), so the second+ calls must reuse the
     # registered model instead of failing (which would silently degrade the
-    # hybrid regime to G2 via ``_build_passage_embedder``'s swallow).
+    # hybrid regime to the listing regime via ``_build_passage_embedder``'s
+    # swallow).
     try:
         TextEmbedding.add_custom_model(
             model=MODEL_NAME,
@@ -163,11 +165,11 @@ def build_fastembed_embedder(
 
 
 def _self_test(embedder: FastEmbedEmbedder) -> None:
-    """Startup prefix-drift check (f5-07 §3.4) — warning, never fail-loud.
+    """Startup prefix-drift check — warning, never fail-loud.
 
     A broken self-test (or a model that fails to load) must not block boot: the
-    facade falls back to G2 and the retrieval mode reports the embedder as
-    unavailable.
+    facade falls back to the listing regime and the retrieval mode reports the
+    embedder as unavailable.
     """
     try:
         cos = _prefix_drift_cosine(embedder)
@@ -208,12 +210,13 @@ def retrieval_status() -> str:
     """Human-readable retrieval regime, without building the embedder.
 
     Lightweight probe for ``seahorse status``: the ``embeddings`` extra decides
-    hybrid vs G2; the cache decides whether the first embed will download.
+    hybrid vs the listing regime; the cache decides whether the first embed will
+    download.
     """
     try:
         import fastembed  # type: ignore[import-not-found]  # noqa: F401  # the 'embeddings' extra
     except ImportError:
-        return "G2 listing (install seahorse[embeddings] for semantic recall)"
+        return "current-state listing (install seahorse[embeddings] for semantic recall)"
     if model_cached():
         return "hybrid RRF (model cached)"
     return "hybrid RRF (model downloads on first embed)"

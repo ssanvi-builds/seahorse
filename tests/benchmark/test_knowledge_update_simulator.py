@@ -1,4 +1,4 @@
-"""Tests for ``KnowledgeUpdateSimulator`` (f5-16 §4.6, OQ-16-13)."""
+"""Tests for ``KnowledgeUpdateSimulator``."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def test_derive_updates_from_explicit_pairs(sut, synthetic_dataset):
 
 
 def test_derive_updates_from_haystack(sut):
-    """OQ-16-13: derive pairs from turns sharing a fact_key across sessions."""
+    """Derive pairs from turns sharing a fact_key across sessions."""
     d1 = datetime(2026, 1, 1, tzinfo=UTC)
     d2 = datetime(2026, 1, 2, tzinfo=UTC)
     from seahorse.benchmark.contracts import BenchmarkDataset, BenchmarkInstance

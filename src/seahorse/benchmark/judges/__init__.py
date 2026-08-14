@@ -1,4 +1,4 @@
-"""#16 benchmark judges — LLM-as-judge with bias mitigations (f5-16 §6.3)."""
+"""Benchmark judges — LLM-as-judge with bias mitigations."""
 
 from __future__ import annotations
 

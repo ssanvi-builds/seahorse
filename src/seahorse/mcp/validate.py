@@ -1,11 +1,11 @@
-"""Minimal JSON Schema validator (subset) for the MCP profile (#13).
+"""Minimal JSON Schema validator (subset) for the MCP profile.
 
-#13 owns wire-shape validation (R2 f5-13: wire-shape only; #12 owns semantic).
-This validates the tool ``arguments`` against the tool's ``inputSchema`` so
-caps, enums, required fields, ``additionalProperties: false``, and the
-``date-time`` format are enforced BEFORE the facade is touched (a wire-shape
-failure raises ``WireShapeError`` → JSON-RPC ``-32602`` with no ``seahorse_code``
-— the request never reached #12).
+Wire-shape validation only (semantic validation belongs to the facade). This
+validates the tool ``arguments`` against the tool's ``inputSchema`` so caps,
+enums, required fields, ``additionalProperties: false``, and the ``date-time``
+format are enforced BEFORE the facade is touched (a wire-shape failure raises
+``WireShapeError`` → JSON-RPC ``-32602`` with no ``seahorse_code`` — the
+request never reached the facade).
 
 Subset supported (enough for the 7 tool schemas in wire_schema.py):
 - ``type``: a string OR a list of strings (union, e.g. ``["string","null"]``)

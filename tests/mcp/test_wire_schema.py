@@ -1,13 +1,13 @@
-"""Tests for the 7 tool wire schemas (#13) — drift detector vs f5-13/f5-05.
+"""Tests for the 7 tool wire schemas (the MCP server) — drift detector.
 
 Locks the reconciled drift:
-- ``cognitive_type`` enum = the 6 F3.1 values + null (NOT f5-13's divergent
-  ``["semantic","episodic","procedural",null]``; NOT f5-05's ``preference``).
+- ``cognitive_type`` enum = the 6 canonical values + null (NOT the divergent
+  ``["semantic","episodic","procedural",null]``; NOT ``preference``).
 - ``source_type`` enum = 4 values. ``extraction_mode`` = skip|llm|consolidated|
   null (``consolidated`` schema-valid, single-sourced from the facade Literal;
   rejects reserved ``llm_partial``). ``reason`` has no ``decay``.
-- ``recall`` has no ``anchor_ep_id``/``hops`` (MVP-0). ``forget`` has no ``now``
-  (OQ #13 DECIDIDA — not exposed to MCP agents).
+- ``recall`` has no ``anchor_ep_id``/``hops`` (the first release). ``forget``
+  has no ``now`` (not exposed to MCP agents).
 - ``recall_full.ep_ids`` ``maxItems == MAX_FULL_BATCH`` (wire-level REJECT).
 """
 
@@ -42,8 +42,8 @@ from seahorse.mcp.wire_schema import (
 
 class TestToolRoster:
     def test_exactly_twelve_tools(self) -> None:
-        # Sprint C debt closure: + skill_add, skill_show, and the deferred
-        # read-only facade tools (freshness_view, audit_log, follow_supersedes_chain).
+        # + skill_add, skill_show, and the deferred read-only facade tools
+        # (freshness_view, audit_log, follow_supersedes_chain).
         assert set(TOOL_SCHEMAS) == {
             "remember",
             "recall",
@@ -75,7 +75,7 @@ class TestToolRoster:
 
 
 class TestCognitiveTypeEnum:
-    """SO-14-03 alignment — 6 F3.1 values + null, single source from constants."""
+    """6 canonical values + null, single source from constants."""
 
     def _cog_enum(self) -> list:
         return REMEMBER_SCHEMA["properties"]["cognitive_type"]["enum"]
@@ -128,7 +128,7 @@ class TestProvenanceDef:
         assert "llm_partial" not in enum
 
     def test_extraction_mode_enum_single_sourced_from_facade_literal(self) -> None:
-        # Parity #13/#14: the wire enum is single-sourced from the facade
+        # The wire enum is single-sourced from the facade
         # ``ExtractionMode`` Literal (+ None for nullability), so a schema-value
         # change lives in one place — the two sister projections cannot drift.
         from typing import get_args
@@ -144,11 +144,10 @@ class TestPITPointDef:
         assert set(DEFS["PITPoint"]["required"]) == {"kind", "t"}
 
     def test_kind_enum_only_two_axes(self) -> None:
-        # C8.6 [23]: the ``PITPoint.kind`` enum is single-sourced from
-        # ``PIT_KIND_VALUES`` (the ADR-03 PITKind Literal), NOT hardcoded — a
-        # future ADR-03 axis change lives in one place. ``kind`` is required, so
-        # the enum carries no ``None`` (unlike the nullable loose ``pit_kind``
-        # input field).
+        # The ``PITPoint.kind`` enum is single-sourced from ``PIT_KIND_VALUES``
+        # (the PITKind Literal), NOT hardcoded — a future axis change lives in
+        # one place. ``kind`` is required, so the enum carries no ``None``
+        # (unlike the nullable loose ``pit_kind`` input field).
         assert DEFS["PITPoint"]["properties"]["kind"]["enum"] == sorted(PIT_KIND_VALUES)
         assert set(DEFS["PITPoint"]["properties"]["kind"]["enum"]) == set(PIT_KIND_VALUES)
         assert None not in DEFS["PITPoint"]["properties"]["kind"]["enum"]
@@ -216,8 +215,9 @@ class TestRecallTimelineSchema:
         assert RECALL_TIMELINE_SCHEMA["required"] == ["anchor_ep_id"]
 
     def test_axis_enum_mvp0_plus_graph_bfs(self) -> None:
-        # Sprint C: graph_bfs (#10 MVP-1 BFS) is materialized; created_at/valid_at
-        # stay out of the wire enum until their own MVP-1 materialization.
+        # graph_bfs (the BFS axis, a later-release feature) is materialized;
+        # created_at/valid_at stay out of the wire enum until their own
+        # later-release materialization.
         enum = RECALL_TIMELINE_SCHEMA["properties"]["axis"]["enum"]
         assert set(enum) == {"supersedes_chain", "fact_id_scope", "graph_bfs"}
 
@@ -272,7 +272,7 @@ class TestForgetSchema:
         assert set(FORGET_SCHEMA["required"]) == {"ep_id", "reason", "by"}
 
     def test_no_now_property(self) -> None:
-        # OQ #13 DECIDIDA — backdating risk; not exposed to MCP agents
+        # Backdating risk; not exposed to MCP agents
         assert "now" not in FORGET_SCHEMA["properties"]
 
     def test_reason_required_and_capped(self) -> None:
@@ -306,8 +306,8 @@ class TestBuildPitSchema:
 
     def test_pit_kind_enum_derived_from_contract(self) -> None:
         # Single-source: the wire enum (minus null) == the PITKind Literal args.
-        # A future ADR-03 change to PITKind must flow here automatically —
-        # hardcoding would silently drift.
+        # A future change to PITKind must flow here automatically — hardcoding
+        # would silently drift.
         enum = BUILD_PIT_SCHEMA["properties"]["pit_kind"]["enum"]
         assert {v for v in enum if v is not None} == set(get_args(PITKind))
 

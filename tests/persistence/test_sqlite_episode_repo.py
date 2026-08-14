@@ -1,10 +1,10 @@
-"""SqliteEpisodeRepository load-bearing tests (Phase 4).
+"""SqliteEpisodeRepository load-bearing tests.
 
 Guards: structural conformance to the EpisodeRepository Protocol, append +
 episode_index propagation, set_invalid_at idempotency with NotFound vs
 InvalidationConflictError disambiguation, the bi-temporal PIT axes (never mixed,
 NULL-safe), chain_from transitive closure over supersedes, atomic reentrant
-rollback, and the fact_id bridge equality (SO-8c: fact_id stored == requested).
+rollback, and the fact_id bridge equality (fact_id stored == requested).
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def test_append_two_vigente_same_fact_id_raises_integrity(
 def test_append_after_invalidation_allowed(repo: SqliteEpisodeRepository) -> None:
     repo.append(_episode("e1", fact_id="fact-1"))
     repo.set_invalid_at("e1", datetime(2026, 1, 5, tzinfo=UTC))
-    # a new vigente row for the same fact_id is now legitimate (supersession)
+    # a new currently valid row for the same fact_id is now legitimate (supersession)
     repo.append(_episode("e2", fact_id="fact-1", supersedes="e1"))
     assert repo.get("e2") is not None
 
@@ -170,7 +170,7 @@ def _seed_timeline(repo: SqliteEpisodeRepository) -> None:
 def test_state_at_includes_from_forever_excludes_real_pending(
     repo: SqliteEpisodeRepository,
 ) -> None:
-    # CC-2 (C8.6): valid_at IS NULL = "from forever" (f5-02 §2 line 85) — valid at
+    # valid_at IS NULL = "from forever" — valid at
     # ANY t, so state_at INCLUDES it (mirrors get_vigente / is_valid_at, which
     # already include NULL). Real PENDING is valid_at in the FUTURE (not yet valid
     # at t), which state_at EXCLUDES. The previous predicate excluded NULL,
@@ -187,10 +187,10 @@ def test_state_at_includes_from_forever_excludes_real_pending(
 def test_known_at_includes_by_creation_regardless_of_valid_at(
     repo: SqliteEpisodeRepository,
 ) -> None:
-    # CC-2 (C8.6): known_at is the transaction_time axis (created_at/expired_at) —
-    # valid_at is irrelevant (ADR-03 axes are independent). Both "from forever"
+    # known_at is the transaction_time axis (created_at/expired_at) —
+    # valid_at is irrelevant (the axes are independent). Both "from forever"
     # (valid_at NULL) and real PENDING (valid_at future) are known_at-included by
-    # creation time. Distinct fact_ids so all three can be vigente simultaneously.
+    # creation time. Distinct fact_ids so all three can be currently valid simultaneously.
     t0 = datetime(2026, 1, 1, tzinfo=UTC)
     repo.append(_episode("e_active", fact_id="fa", valid_at=t0, created_at=t0))
     repo.append(_episode("e_forever", fact_id="ff", valid_at=None, created_at=t0))
@@ -210,7 +210,7 @@ def test_known_at_includes_by_creation_regardless_of_valid_at(
 
 
 def test_state_at_respects_invalidation_window(repo: SqliteEpisodeRepository) -> None:
-    # CC-2 (C8.6): use a concrete valid_at window — valid_at=None is "from forever"
+    # Use a concrete valid_at window — valid_at=None is "from forever"
     # (valid at ANY t) and would not demonstrate the window edges.
     t0 = datetime(2026, 1, 1, tzinfo=UTC)
     repo.append(
@@ -227,7 +227,7 @@ def test_state_at_respects_invalidation_window(repo: SqliteEpisodeRepository) ->
 def test_query_vigent_returns_only_vigente(repo: SqliteEpisodeRepository) -> None:
     _seed_timeline(repo)
     ids = {e.id for e in repo.query_vigent()}
-    assert ids == {"e2"}  # e1 has invalid_at set, e2 is vigente (invalid_at NULL)
+    assert ids == {"e2"}  # e1 has invalid_at set, e2 is currently valid (invalid_at NULL)
 
 
 def test_query_vigent_subject_filter(repo: SqliteEpisodeRepository) -> None:
@@ -275,9 +275,9 @@ def test_atomic_rolls_back_on_exception(repo: SqliteEpisodeRepository) -> None:
 def test_atomic_reentrant_single_tx_for_improve_pattern(
     repo: SqliteEpisodeRepository,
 ) -> None:
-    # improve = invalidate(old) + append(new) inside ONE atomic. The I11 partial
+    # improve = invalidate(old) + append(new) inside ONE atomic. The partial
     # unique on fact_id WHERE invalid_at IS NULL forces this order: the successor
-    # cannot coexist with a still-vigente predecessor.
+    # cannot coexist with a still-currently-valid predecessor.
     repo.append(_episode("e1", fact_id="f1"))
     with repo.atomic():
         repo.set_invalid_at("e1", datetime(2026, 1, 5, tzinfo=UTC))
@@ -290,9 +290,9 @@ def test_atomic_reentrant_single_tx_for_improve_pattern(
 
 
 def test_supersedes_reason_round_trip(repo: SqliteEpisodeRepository) -> None:
-    # The portable supersedes_reason (f5-03 §12.3) lands in storage via migration 009
+    # The portable supersedes_reason lands in storage via migration 009
     # and round-trips through append → get. The successor carries the taxonomy of
-    # the replacement; the predecessor only receives invalid_at (I3).
+    # the replacement; the predecessor only receives invalid_at.
     repo.append(_episode("e0", fact_id="f0"))
     repo.set_invalid_at("e0", datetime(2026, 1, 5, tzinfo=UTC))
     repo.append(
@@ -314,13 +314,13 @@ def test_supersedes_reason_none_round_trips(repo: SqliteEpisodeRepository) -> No
 def test_append_still_raises_on_duplicate_vigent_fact_id_after_009(
     repo: SqliteEpisodeRepository,
 ) -> None:
-    # Regression: the new column must not break the I11 partial unique index.
+    # Regression: the new column must not break the partial unique index.
     repo.append(_episode("e1", fact_id="fact-1"))
     with pytest.raises(sqlite3.IntegrityError):
         repo.append(_episode("e2", fact_id="fact-1"))
 
 
-# --- fact_id bridge equality (SO-8c) ---------------------------------------
+# --- fact_id bridge equality ---------------------------------------
 
 
 def test_fact_id_stored_equals_requested(repo: SqliteEpisodeRepository) -> None:

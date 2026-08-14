@@ -1,9 +1,9 @@
-"""Tests for ``MemoryFacade.forget`` — soft-delete via #2.
+"""Tests for ``MemoryFacade.forget`` — soft-delete via the engine.
 
-``forget`` delegates to #2 ``engine.forget`` directly. ``EngineError(
+``forget`` delegates to ``engine.forget`` directly. ``EngineError(
 E_PENDING_CANNOT_INVALIDATE)``, ``InvalidationConflictError``, and ``NotFound``
-are propagated verbatim. #12 does NOT call ``write_path.ingest`` and does NOT
-touch ``expired_at`` (I7).
+are propagated verbatim. The primitives facade does NOT call
+``write_path.ingest`` and does NOT touch ``expired_at``.
 """
 
 from __future__ import annotations

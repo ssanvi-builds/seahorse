@@ -1,9 +1,9 @@
-"""``seahorse view`` — read-only viewer (ADR-012 l.74).
+"""``seahorse view`` — read-only viewer.
 
-The viewer is a client of #12 (MemoryFacade): it only calls the read
+The viewer is a client of the facade (MemoryFacade): it only calls the read
 primitives (``recall`` / ``recall_timeline`` / ``get_vigente``) and NEVER
-writes. It degrades honestly on an empty vault (ADR-10). The interaction loop
-is driven by an injected input stream for testability.
+writes. It degrades honestly on an empty vault. The interaction loop is driven
+by an injected input stream for testability.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class TestViewer:
     def test_empty_vault_honest_degrade(self, recording: RecordingFacade):
         out = _out()
         run_view(recording, out=out, input_stream=_inputs("q"))
-        assert "vault vacío / no inicializado" in out.getvalue()
+        assert "vault empty / not initialized" in out.getvalue()
         # No write primitives were called.
         assert recording.remember_calls == []
         assert recording.improve_calls == []

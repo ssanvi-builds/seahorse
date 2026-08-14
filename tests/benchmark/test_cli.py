@@ -1,4 +1,4 @@
-"""Tests for the benchmark CLI (f5-16 §2.1)."""
+"""Tests for the benchmark CLI."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def test_recency_config_partial_flags_rejected():
 
 
 def test_run_benchmark_wires_recency_to_facade(tmp_path, monkeypatch):
-    """The composition root receives a real ``RecencyConfig`` (F7 enabler (a))."""
+    """The composition root receives a real ``RecencyConfig``."""
     import seahorse.benchmark.cli as bcli
 
     captured: dict = {}
@@ -132,7 +132,7 @@ def test_run_benchmark_default_recency_off(tmp_path, monkeypatch):
 
 
 def test_run_benchmark_recency_variant_reported(tmp_path):
-    """The manifest fingerprint carries the experiment variant (f7 §3).
+    """The manifest fingerprint carries the experiment variant.
 
     ``score_source`` is ``mvp1_rrf_recency`` and the ``config_hash`` bakes in
     the recency config (``BenchmarkConfig.recency_config`` is in the canonical
@@ -156,10 +156,10 @@ def test_run_benchmark_recency_variant_reported(tmp_path):
     assert manifest["fingerprint"]["sut_name"] == "seahorse"
 
 
-# ---------------------------------------------------------------- embed mode (c)
+# ---------------------------------------------------------------- embed mode
 
 def test_run_benchmark_wires_embed_mode_to_facade(tmp_path, monkeypatch):
-    """The composition root receives ``embed_mode`` (F7 enabler (c))."""
+    """The composition root receives ``embed_mode``."""
     import seahorse.benchmark.cli as bcli
 
     captured: dict = {}
@@ -183,7 +183,7 @@ def test_run_benchmark_wires_embed_mode_to_facade(tmp_path, monkeypatch):
 
 
 def test_run_benchmark_default_embed_mode_body_summary(tmp_path, monkeypatch):
-    """F3 flip: the benchmark CLI defaults to the flipped product default."""
+    """The benchmark CLI defaults to the current product default."""
     import seahorse.benchmark.cli as bcli
 
     captured: dict = {}

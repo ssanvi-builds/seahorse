@@ -1,14 +1,14 @@
-"""Tests for #5 ``decide_path`` — the pure, LLM-free path decision (SO-5b).
+"""Tests for the write path's ``decide_path`` — the pure, LLM-free path decision.
 
-``decide_path`` is a pure function of ``(payload, extraction_mode)``. In MVP-0
-the ``extraction_mode`` flag and the ``source_type == 'importer'`` guard are
-authoritative; size/density heuristics are advisory (MVP-1). The decision never
-spends an LLM call (using an LLM to decide whether to use an LLM would be
-paradoxical and non-reproducible).
+``decide_path`` is a pure function of ``(payload, extraction_mode)``. In the
+first release the ``extraction_mode`` flag and the ``source_type == 'importer'``
+guard are authoritative; size/density heuristics are advisory (a later release).
+The decision never spends an LLM call (using an LLM to decide whether to use an
+LLM would be paradoxical and non-reproducible).
 
-First-class #5 (commit 1) extends the source-type guard to human/system (all
-non-agent source_types force skip) and wires the advisory heuristics (logged
-only, no override) for the agent+llm case (f5-05 section 2.2 rules 1, 4).
+The write path extends the source-type guard to human/system (all non-agent
+source_types force skip) and wires the advisory heuristics (logged only, no
+override) for the agent+llm case.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ class TestDecidePathFlag:
 
 class TestDecidePathImporterGuard:
     def test_importer_forces_skip_even_with_llm_flag(self) -> None:
-        # The importer guard is authoritative: importers carry F3.3-migrated
+        # The importer guard is authoritative: importers carry migrated
         # frontmatter, so they never need LLM extraction.
         d = decide_path(_payload({"source_type": "importer"}), "llm")
         assert d.path == "skip"
@@ -53,8 +53,8 @@ class TestDecidePathImporterGuard:
 
 
 class TestDecidePathSourceTypeGuard:
-    """First-class #5: all non-agent source_types force skip (f5-05 sec 2.2
-    rule 1). human/importer/system never spend an LLM call."""
+    """All non-agent source_types force skip. human/importer/system never spend
+    an LLM call."""
 
     def test_human_with_llm_flag_forces_skip(self) -> None:
         d = decide_path(_payload({"source_type": "human"}), "llm")
@@ -113,15 +113,15 @@ class TestDecidePathSourceTypeGuard:
 class TestDecidePathValidation:
     def test_llm_partial_rejected(self) -> None:
         # ``llm_partial`` is fully reserved (not schema-valid): refused loud,
-        # not silently dropped to skip (ADR-10).
+        # not silently dropped to skip.
         with pytest.raises(InvalidExtractionMode):
             decide_path(_payload(), "llm_partial")  # type: ignore[arg-type]
 
     def test_consolidated_rejected(self) -> None:
         # ``consolidated`` IS schema-valid and round-trippable (batch-distillation
-        # marker, obsiforge §5.2), but NOT routable by the single-episode write
-        # path — the batch distillation writes via ``engine.remember`` directly,
-        # bypassing ``decide_path`` (obsiforge §5.4). Refusing loud keeps the
+        # marker), but NOT routable by the single-episode write path — the batch
+        # distillation writes via ``engine.remember`` directly, bypassing
+        # ``decide_path``. Refusing loud keeps the
         # write path honest: a single-episode ingest can never honor it.
         with pytest.raises(InvalidExtractionMode):
             decide_path(_payload(), "consolidated")
@@ -131,10 +131,10 @@ class TestDecidePathValidation:
 
 
 class TestDecidePathAdvisoryHeuristics:
-    """First-class #5: size/density heuristics are advisory — logged only, they
-    NEVER override the flag (f5-05 sec 2.2 rule 4). They fire only when
-    ``source_type == 'agent'`` AND ``mode == 'llm'`` (the only case that reaches
-    the heuristics; non-agent guards short-circuit first)."""
+    """Size/density heuristics are advisory — logged only, they NEVER override
+    the flag. They fire only when ``source_type == 'agent'`` AND
+    ``mode == 'llm'`` (the only case that reaches the heuristics; non-agent
+    guards short-circuit first)."""
 
     def test_size_over_5kb_with_llm_warns_but_keeps_llm(self, caplog) -> None:
         body = "This is a sentence. " * 300  # ~5.7KB of prose (not dense)

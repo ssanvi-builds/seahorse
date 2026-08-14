@@ -1,15 +1,15 @@
-"""Degradation tests (f5-11 §11, §16: robustness to partial/empty sources).
+"""Degradation tests (robustness to partial/empty sources).
 
-RRF fuses whatever each source returned; it NEVER pads with invented scores
-(ADR-10). A missing source (empty list) simply contributes nothing — the fused
-result is the union of whatever the present sources returned.
+RRF fuses whatever each source returned; it NEVER pads with invented scores. A
+missing source (empty list) simply contributes nothing — the fused result is the
+union of whatever the present sources returned.
 
 Signals:
-- D1: vector empty, BM25 returns -> result from BM25 only.
-- D2: BM25 empty, vector returns -> result from vector only.
-- D4: stage 1 empty but ``anchor_ep_id`` given -> stage 2 (chain) still runs.
-- D5: stage 1 empty AND no anchor -> stage 2 skipped, result empty.
-- D7: every source empty -> empty result (no padding).
+- vector empty, BM25 returns -> result from BM25 only.
+- BM25 empty, vector returns -> result from vector only.
+- stage 1 empty but ``anchor_ep_id`` given -> stage 2 (chain) still runs.
+- stage 1 empty AND no anchor -> stage 2 skipped, result empty.
+- every source empty -> empty result (no padding).
 - Partial ``< k`` from a source -> no padding, no crash.
 """
 

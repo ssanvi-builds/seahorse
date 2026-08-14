@@ -1,10 +1,11 @@
-"""Tests for #5 ``run_llm_path`` (f5-05 §4.1) over the C8.7 seam.
+"""Tests for the write path's ``run_llm_path`` over the extension point.
 
 The real LLM path: ``StubWritePath.ingest`` routes an ``llm`` decision to
-``run_llm_path`` when a client is wired, otherwise it degrades (MVP-0
+``run_llm_path`` when a client is wired, otherwise it degrades (first-release
 behaviour). Every failure degrades HONESTLY with the durable marker
-(``degraded_from``/``degrade_reason``, ADR-10); success builds the effective
-LLM provenance and delegates to ``engine.remember`` with the validated fields.
+(``degraded_from``/``degrade_reason``, fail-loud honesty); success builds the
+effective LLM provenance and delegates to ``engine.remember`` with the validated
+fields.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from seahorse.write_path.stub import StubWritePath
 
 
 class _RecordingLLMClient:
-    """Recording double for the ``LLMClient`` Protocol (M4-C.3)."""
+    """Recording double for the ``LLMClient`` Protocol."""
 
     def __init__(
         self,
@@ -114,10 +115,10 @@ class TestRunLlmPathSuccess:
         assert call["content"] == p.body
         assert call["schema_hint"] is EpisodeFrontmatter
         assert isinstance(call["budget"], BudgetContext)
-        assert call["budget"].cap_usd == 0.002  # ADR-09 per-episode cap
+        assert call["budget"].cap_usd == 0.002  # per-episode cost cap
 
     def test_missing_subject_degrades_final_validation(self, engine) -> None:
-        # subject is REQUIRED (smoke 2026-08-04): a model that omits it fails
+        # subject is REQUIRED: a model that omits it fails
         # the final validation → honest degrade to skip (the skip path derives
         # from title/H1 instead).
         client = _RecordingLLMClient(result=_ok_result(subject=None))
@@ -134,13 +135,15 @@ class TestRunLlmPathSuccess:
         p = _payload(valid_at=now, cognitive_type="semantic")
         run_llm_path(p, _llm_decision(p), engine, client)
         call = engine.last_call
-        assert call.valid_at == now  # caller's explicit value wins (I2)
+        assert call.valid_at == now  # caller's explicit value wins
         assert call.cognitive_type == "semantic"
 
 
 class TestRunLlmPathDegrades:
     def test_stub_client_degrades_not_implemented(self, engine) -> None:
-        client = _RecordingLLMClient(error=NotImplementedError("MVP-0"))
+        client = _RecordingLLMClient(
+            error=NotImplementedError("not implemented in the first release")
+        )
         p = _payload()
         run_llm_path(p, _llm_decision(p), engine, client)
         by = engine.last_call.by
