@@ -69,12 +69,12 @@ COMBO_SLUGS=(happy_full core_min embeddings_only llm_only vault_legacy uv_sync_d
 describe_combo() {
   case "$1" in
     happy_full)      echo "uv tool install + all extras + Obsidian + Ollama + online + empty vault" ;;
-    core_min)        echo "uv tool install core + no Obsidian + offline + empty vault → G2 + llm→skip" ;;
+    core_min)        echo "uv tool install core + no Obsidian + offline + empty vault → listing regime + llm→skip" ;;
     embeddings_only) echo "uv tool install embeddings + no Obsidian + online → hybrid RRF" ;;
-    llm_only)        echo "uv tool install llm + no Obsidian + online → real LLM path (G2 recall)" ;;
+    llm_only)        echo "uv tool install llm + no Obsidian + online → real LLM path (listing recall)" ;;
     vault_legacy)    echo "uv tool install all + Obsidian + legacy frontmatter → migration" ;;
-    uv_sync_dev)     echo "uv sync --extra dev + core + offline → G2 (dev workflow)" ;;
-    pipx)            echo "pipx install core + offline → G2 (alternate installer)" ;;
+    uv_sync_dev)     echo "uv sync --extra dev + core + offline → listing regime (dev workflow)" ;;
+    pipx)            echo "pipx install core + offline → listing regime (alternate installer)" ;;
     concurrency)     echo "uv tool install all + 2 parallel remember → single-writer" ;;
     *) echo "unknown" ;;
   esac
@@ -253,7 +253,7 @@ m_verify_core() {  # m_verify_core <regime: hybrid|g2> [skip_index_rebuild]
   if [[ "$expect_regime" == "hybrid" ]]; then
     m_check "status → hybrid RRF" grep -q "hybrid RRF" <<<"$status_out"
   else
-    m_check "status → G2 listing (honest)" grep -q "G2 listing" <<<"$status_out"
+    m_check "status → current-state listing (honest)" grep -q "current-state listing" <<<"$status_out"
   fi
   m_run "remember #1 (Madrid)" "$SEAHORSE" remember "Sergio lives in Madrid" --title home
   EP1="$(last_ep_id)"; m_check "ep_id #1 captured" test -n "$EP1"
@@ -286,7 +286,7 @@ m_verify_llm() {  # m_verify_llm <has_llm_extra: 1|0> — real path if up, else 
   fi
 }
 
-m_verify_import() {  # claude-mem bridge on a synthetic DB (B8 subset)
+m_verify_import() {  # claude-mem bridge on a synthetic DB (import subset)
   local copy="$COMBO_DIR/claude-mem-copy.db"
   python3 - "$copy" <<'PY'
 import sqlite3, sys
@@ -308,7 +308,7 @@ PY
   m_run "recall imported term" "$SEAHORSE" recall "extraction_mode" --top-k 3
 }
 
-m_verify_setup_observer() {  # B7 subset in the isolated HOME
+m_verify_setup_observer() {  # setup/observer subset in the isolated HOME
   m_run "seahorse setup" "$SEAHORSE" setup
   m_check "hooks written to isolated settings" test -f "$HOME/.claude/settings.json"
   m_run "observe start" "$SEAHORSE" observe start
@@ -446,7 +446,7 @@ combo_llm_only() {
   m_online
   m_install_uvtool "llm"
   m_prepare_vault empty
-  m_verify_core g2          # no embeddings extra → honest G2 recall
+  m_verify_core g2          # no embeddings extra → honest listing recall
   m_verify_llm 1            # real LLM path when Ollama is up
   combo_end
 }
@@ -456,20 +456,19 @@ combo_vault_legacy() {
   m_online
   m_install_uvtool "embeddings,llm,benchmark"
   m_prepare_vault obsidian-legacy
-  # index rebuild is skipped in the core pass: a legacy note is not valid F3.1,
-  # so rebuild must fail honestly (ADR-10) — verified below.
+  # index rebuild is skipped in the core pass: a legacy note is not valid
+  # frontmatter, so rebuild must fail honestly — verified below.
   m_verify_core hybrid 1
   m_verify_llm 1
-  # The frontmatter migrator (#3) is NOT wired into any CLI command yet
-  # (roadmap item), so a legacy note is not auto-migrated. Verify the honest
-  # ADR-10 behavior instead: rebuild fails with an actionable error and the
-  # note is preserved untouched.
+  # The frontmatter migrator is not wired into every CLI command yet, so a
+  # legacy note is not auto-migrated. Verify the honest behavior instead:
+  # rebuild fails with an actionable error and the note is preserved untouched.
   if "$SEAHORSE" index rebuild >"$COMBO_DIR/rebuild.log" 2>&1; then
     fail "index rebuild on legacy vault (expected honest E_FRONTMATTER_INVALID)"
   else
     ok "index rebuild on legacy vault fails honestly (E_FRONTMATTER_INVALID)"
   fi
-  m_check "rebuild error is actionable" grep -q "not valid F3.1" "$COMBO_DIR/rebuild.log"
+  m_check "rebuild error is actionable" grep -q "not valid frontmatter" "$COMBO_DIR/rebuild.log"
   m_check "legacy note preserved" test -f "$VAULT/notes/legacy.md"
   m_check "legacy keys preserved" grep -q "tags:" "$VAULT/notes/legacy.md"
   combo_end

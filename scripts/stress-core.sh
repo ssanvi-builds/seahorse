@@ -14,7 +14,7 @@
 # Uses the same isolation strategy as e2e-fresh-user.sh (sandboxed HOME,
 # isolated SEAHORSE_VAULT, shared FASTEMBED_CACHE_PATH). Installs with the
 # `embeddings` extra by default (hybrid regime); `--core` installs core-only
-# (honest G2 regime) for a lighter run.
+# (honest listing regime) for a lighter run.
 #
 # Usage:
 #   scripts/stress-core.sh [--episodes N] [--samples N] [--import-rows N]
@@ -112,7 +112,7 @@ export FASTEMBED_CACHE_PATH="$SHARED_FASTEMBED_CACHE"
 
 info "stress sandbox: $SANDBOX"
 info "episodes=$EPISODES samples=$RECALL_SAMPLES import_rows=$IMPORT_ROWS chain=$CHAIN_LEN"
-info "regime: $([ "$CORE_ONLY" -eq 1 ] && echo 'core (G2)' || echo 'embeddings (hybrid)')"
+info "regime: $([ "$CORE_ONLY" -eq 1 ] && echo 'core (listing)' || echo 'embeddings (hybrid)')"
 
 # --- install + init ----------------------------------------------------------
 if (( CORE_ONLY )); then

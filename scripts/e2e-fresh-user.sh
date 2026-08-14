@@ -104,7 +104,7 @@ last_ep_id() {  # most recent `ep_id:` line in the log (human remember/improve)
   sed -n 's/^[[:space:]]*ep_id:[[:space:]]*\([0-9a-f-]*\).*/\1/p' "$LOG" | tail -1
 }
 
-# --- B0 pre-flight -----------------------------------------------------------
+# --- pre-flight --------------------------------------------------------------
 REAL_HOME="$HOME"
 START_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 mkdir -p "$SANDBOX"
@@ -134,7 +134,7 @@ done
 info "  snapshot (real files, before):"
 cat "$SNAP" | tee -a "$LOG" >&2
 
-# --- B1 sandbox --------------------------------------------------------------
+# --- sandbox -----------------------------------------------------------------
 step 1 "Sandbox: isolated HOME + env"
 mkdir -p "$SANDBOX/home" "$VAULT" "/private/tmp/seahorse-e2e-cache"
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_BIN_HOME XDG_STATE_HOME
@@ -167,8 +167,8 @@ check "seahorse-mcp binary present" test -x "$SEAHORSE_MCP"
 run "seahorse --help" "$SEAHORSE" --help
 run "seahorse-mcp --help" "$SEAHORSE_MCP" --help
 
-# --- B3 init + notes ---------------------------------------------------------
-step 3 "Init vault + a valid F3.1 episode note (Obsidian layer)"
+# --- init + notes ------------------------------------------------------------
+step 3 "Init vault + a valid canonical episode note (Obsidian layer)"
 run_critical "seahorse init" "$SEAHORSE" init "$VAULT"
 check "config written" test -f "$VAULT/.seahorse/seahorse.toml"
 check "no .obsidian created (Obsidian not required)" test ! -d "$VAULT/.obsidian"
@@ -183,9 +183,9 @@ provenance: {}
 # Madrid
 Sergio lives in Madrid.
 EOF
-ok "created a valid F3.1 episode note"
+ok "created a valid canonical episode note"
 
-# --- B4 core CLI -------------------------------------------------------------
+# --- core CLI ----------------------------------------------------------------
 step 4 "Core CLI: status / remember / recall / improve / forget / doctor / inspect / migrate / uuid7 / index rebuild"
 run "status" "$SEAHORSE" status
 run "remember #1 (Madrid) — first embed downloads mE5-small" \
@@ -210,7 +210,7 @@ run "migrate --up-to 10" "$SEAHORSE" migrate --up-to 10
 run "uuid7" "$SEAHORSE" uuid7
 run "index rebuild" "$SEAHORSE" index rebuild
 
-# --- B5 embeddings ------------------------------------------------------------
+# --- embeddings --------------------------------------------------------------
 step 5 "Embeddings: hybrid semantic retrieval"
 run "status (retrieval regime)" "$SEAHORSE" status
 if "$SEAHORSE" status 2>&1 | grep -q "hybrid RRF"; then
@@ -220,7 +220,7 @@ else
 fi
 run "recall 'hybrid' (ranked)" "$SEAHORSE" recall "hybrid" --top-k 3
 
-# --- B6 LLM with Ollama ------------------------------------------------------
+# --- LLM with Ollama ---------------------------------------------------------
 step 6 "LLM extraction (Ollama, honest degrade if down)"
 if [[ "$OLLAMA_UP" -eq 1 ]]; then
   run "remember --extraction-mode llm" \
@@ -233,7 +233,7 @@ else
     --title llm --extraction-mode llm
 fi
 
-# --- B7 setup + observer -----------------------------------------------------
+# --- setup + observer --------------------------------------------------------
 step 7 "Setup + observer (isolated HOME)"
 run "seahorse setup" "$SEAHORSE" setup
 check "hooks written to isolated settings" test -f "$SANDBOX/home/.claude/settings.json"
@@ -259,7 +259,7 @@ else
   ok "hooks removed after setup --uninstall"
 fi
 
-# --- B8 import ---------------------------------------------------------------
+# --- import ------------------------------------------------------------------
 step 8 "Import (claude-mem bridge, read-only copy)"
 REAL_DB="$REAL_HOME/.claude-mem/claude-mem.db"
 COPY="$SANDBOX/claude-mem-copy.db"
@@ -358,7 +358,7 @@ except Exception as exc:
     sys.exit(1)
 PY
 
-# --- B10 post-flight ---------------------------------------------------------
+# --- post-flight -------------------------------------------------------------
 step 10 "Post-flight: no-corruption verification"
 SNAP_AFTER="$SANDBOX/snapshot-after.txt"
 : > "$SNAP_AFTER"
