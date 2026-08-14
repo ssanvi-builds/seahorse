@@ -230,7 +230,8 @@ def test_rebuild_from_vault_no_title_no_h1_note_gets_null_fact_id(
 
 def test_rebuild_from_vault_raises_on_unparseable_note(tmp_path: Path, sidecar) -> None:
     # a non-migrated note (no frontmatter) raises FrontmatterInvalid — the
-    # operator must run `seahorse migrate` first. NOT silently skipped (ADR-10).
+    # operator must run `seahorse frontmatter migrate` first. NOT silently
+    # skipped (ADR-10).
     vault = tmp_path / "vault"
     vault.mkdir()
     (vault / "raw.md").write_text("# no frontmatter here\njust body.\n", encoding="utf-8")

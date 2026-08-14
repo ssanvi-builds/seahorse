@@ -38,7 +38,9 @@ class FrontmatterInvalid(Exception):
         # F3.1 shape. Name the required fields so the fix is discoverable.
         super().__init__(
             f"{self.code}: {path}: {cause} — note is not valid F3.1 frontmatter; "
-            "correct it (id, created_at, schema_version, provenance) or remove the note"
+            "correct it (id, created_at, schema_version, provenance) or remove the "
+            "note; for legacy Obsidian notes without F3.1 frontmatter, run "
+            "`seahorse frontmatter migrate`"
         )
 
 

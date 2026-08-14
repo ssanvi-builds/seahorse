@@ -15,9 +15,10 @@ stdlib-only subimports). The CLI (commit 5) imports it directly::
     from seahorse.frontmatter.rebuild import rebuild_from_vault
 
 Parse failures raise ``FrontmatterInvalid`` (ADR-10 honesty: a note that does
-not parse is a real error — run ``seahorse migrate`` first, then rebuild). The
-orchestrator does NOT silently skip unparseable notes; it surfaces the first
-failure so the operator fixes the vault rather than shipping a partial index.
+not parse is a real error — run ``seahorse frontmatter migrate`` first, then
+rebuild). The orchestrator does NOT silently skip unparseable notes; it
+surfaces the first failure so the operator fixes the vault rather than shipping
+a partial index.
 """
 
 from __future__ import annotations
