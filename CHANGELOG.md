@@ -6,6 +6,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — frontmatter migrate CLI (gap closure, 2026-08-13)
+
+- **`seahorse frontmatter migrate`** — the frontmatter vault migrator (#3,
+  `VaultMigrator`) finally has a CLI surface. The original `migrate` slot went
+  to the schema DDL runner, so a user with a legacy Obsidian vault had no
+  migration path (`index rebuild` failed honestly on legacy notes). New
+  `frontmatter` Typer group: `--dry-run` (classify + manifest, never writes,
+  always exit 0), `--resume` (skip notes unchanged since the last manifest),
+  `--batch-size` (manifest checkpoint cadence). Works before `seahorse init`.
+- **Exit `97` `CLI_MIGRATION_DEFERRED`** (Cat C) — apply meeting incompatible
+  notes (case D) renders the manifest summary to stdout first, then fails loud so
+  scripts see the vault is not fully migrated (ADR-10 honesty, index-rebuild
+  pattern).
+
+### Fixed
+
+- **Actionable `FrontmatterInvalid` hint** — the message now names the migration
+  command (`seahorse frontmatter migrate`) for legacy Obsidian notes, and the
+  `rebuild.py` docstring points at the real command instead of the schema DDL
+  runner.
+
 ## [0.5.1] - 2026-08-12
 
 ### Added — exhaustive review sprint (2026-08-12)

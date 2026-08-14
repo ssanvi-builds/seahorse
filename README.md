@@ -87,6 +87,27 @@ The `seahorse` console script is for humans and shell scripts; `seahorse-mcp` is
 for agents. The `seahorse mcp` subcommand invokes the same stdio server as
 `seahorse-mcp`, so both agent entry points are equivalent.
 
+## Migrating a legacy Obsidian vault
+
+A vault of pre-existing Obsidian notes (no frontmatter, or legacy `tags`/`created`
+frontmatter) is not F3.1 yet — `seahorse index rebuild` fails honestly on those
+notes. `seahorse frontmatter migrate` converts them to F3.1 (cases A/B/C/D):
+
+```bash
+# Preview: classify every note, write nothing (always exit 0):
+seahorse frontmatter migrate --vault myvault --dry-run
+# Apply: convert A/B notes, leave C (already F3.1) untouched, refuse D (incompatible):
+seahorse frontmatter migrate --vault myvault
+# Rebuild the sidecar index from the now-F3.1 notes:
+seahorse index rebuild --vault myvault
+```
+
+Apply exits `97` (`CLI_MIGRATION_DEFERRED`) when incompatible notes (case D) block
+a full migration — the manifest summary is printed first so the operator sees
+which notes need manual resolution. `--resume` skips notes unchanged since the
+last manifest; `--batch-size` sets the manifest checkpoint cadence. Migration
+works before `seahorse init` (it only touches `.md` files + the manifest).
+
 > **First run**: the semantic-embedding model (mE5-small, ~235MB) downloads
 > lazily on the first `remember`/`recall` — the CLI announces it so the first
 > call doesn't look hung. `seahorse status` shows the active retrieval regime
@@ -155,6 +176,11 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
   consolidated` is a schema-valid, round-trippable batch-distillation marker
   (the value parses and round-trips today; the distillation engine is not built
   yet — see [Reserved](#reserved)).
+- **Legacy-vault migration**: `seahorse frontmatter migrate` converts legacy
+  Obsidian notes to F3.1 (cases A/B/C/D) with a `--dry-run` preview, `--resume`,
+  and honest exit `97` when incompatible notes (case D) block a full migration —
+  the manifest summary is printed first so the operator sees what needs manual
+  resolution.
 - Honest exit codes and a structured `{"error": {...}}` envelope on stderr, so
   agents and scripts can branch on `seahorse_code` / `cli_code` deterministically.
 

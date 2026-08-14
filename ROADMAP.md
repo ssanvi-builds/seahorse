@@ -6,6 +6,22 @@
 
 **Fase 6 — Implementation** (in progress).
 
+- **Frontmatter migrate CLI COMPLETE (2026-08-14)**: closes the gap documented
+  in the exhaustive review sprint (2026-08-12) — the frontmatter vault migrator
+  (#3, `VaultMigrator`) had no CLI surface. New `seahorse frontmatter migrate`
+  (Typer group `frontmatter`, no collision with the schema DDL `migrate`):
+  `--dry-run` (classify A/B/C/D + manifest, never writes, always exit 0),
+  `--resume` (skip notes unchanged since the last manifest), `--batch-size`
+  (manifest checkpoint cadence). Works before `seahorse init` (only touches
+  `.md` files + the manifest). **Exit Cat C `CLI_MIGRATION_DEFERRED` = 97** when
+  apply meets incompatible notes (case D): the manifest summary renders to
+  stdout FIRST, then fails loud (ADR-10 index-rebuild pattern). `VaultMigrator`
+  lazily imported inside `run_frontmatter_migrate` (ruamel-confinement guard
+  preserved). `FrontmatterInvalid` message + `rebuild.py` docstring now name the
+  real migration command. **2186 tests / coverage 94.4% / ruff+mypy clean.**
+  3 commits on `main` (`731dfef` feat(cli) + `cb03bee` fix(frontmatter) + docs),
+  not pushed. See vault `session-2026-08-14-frontmatter-migrate.md`.
+
 - **Sprint C COMPLETE (2026-08-10)**: skills L2c determinista (`seahorse/procedural/`)
   + #10 MVP-1 BFS (`graph_bfs`) + viewer TUI mínimo + `[procedural]` config.
   **4 commits TDD** (`934fd6d`→`e5759ad`, 140 accumulated, not pushed). **2156
@@ -71,6 +87,7 @@
   the frontmatter migrator (#3) is NOT wired into any CLI command — a user with
   a legacy Obsidian vault has no migration path (`index rebuild` fails honestly
   on legacy notes). See vault `session-2026-08-12-review-sprint.md`.
+  **RESOLVED 2026-08-14** — `seahorse frontmatter migrate` (entry above).
 
 - **E2E fresh-user COMPLETE (2026-08-10)**: `scripts/e2e-fresh-user.sh` validates
   the clone-and-run promise from a fresh user's perspective in an isolated
