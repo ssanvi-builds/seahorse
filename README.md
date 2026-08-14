@@ -5,6 +5,8 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/seahorse)](https://pypi.org/project/seahorse)
 [![PyPI version](https://img.shields.io/pypi/v/seahorse)](https://pypi.org/project/seahorse)
 
+<img width="1280" height="512" alt="HMpWfZYWsAArgz7" src="https://github.com/user-attachments/assets/4fdde9b5-b49d-4caf-96a7-fb0c575cff63" />
+
 Open standard for persistent, self-evolving LLM agent memory.
 
 > Status: **v0.5.1**. The memory engine works end-to-end from a clean install:
