@@ -1,27 +1,30 @@
 # Seahorse
 
-Open standard for persistent, self-evolving LLM agent memory. Monetized open-core:
-an Apache-2.0 reference standard plus a proprietary SaaS and an enterprise self-host
-BSL track. The acquisition-by-a-lab path is explicitly **not** a goal (ADR-011).
+[![CI](https://img.shields.io/github/actions/workflow/status/ssanvi-builds/seahorse/ci.yml)](https://github.com/ssanvi-builds/seahorse/actions)
+[![License](https://img.shields.io/github/license/ssanvi-builds/seahorse)](LICENSE)
+[![Python versions](https://img.shields.io/pypi/pyversions/seahorse)](https://pypi.org/project/seahorse)
+[![PyPI version](https://img.shields.io/pypi/v/seahorse)](https://pypi.org/project/seahorse)
 
-> Status: **v0.5.1 — exhaustive review sprint (e2e matrix + core stress + fixes)**.
-> The memory engine works end-to-end from a clean install: write episodes, recall
-> them with hybrid semantic retrieval (sqlite-vec kNN + FTS5 BM25 fused by RRF),
-> extract with a real multi-LLM path (local-first, CI-gated), improve and forget
-> them, and serve an agent over stdio MCP. Recall ranks by relevance when vectors
-> are populated and the embedder is wired, and honestly degrades to a vigente
-> listing otherwise. `remember` accepts an optional `--summary` (deterministic
-> fallback when omitted); `seahorse import` migrates claude-mem observations to
-> F3.1 episodes; and a recency ranking signal is available as a default-OFF seam.
+Open standard for persistent, self-evolving LLM agent memory.
+
+> Status: **v0.5.1**. The memory engine works end-to-end from a clean install:
+> write episodes, recall them with hybrid semantic retrieval (sqlite-vec kNN +
+> FTS5 BM25 fused by RRF), extract with a real multi-LLM path (local-first,
+> CI-gated), improve and forget them, and serve an agent over stdio MCP. Recall
+> ranks by relevance when vectors are populated and the embedder is wired, and
+> honestly degrades to a current-state listing otherwise. `remember` accepts an
+> optional `--summary` (deterministic fallback when omitted); `seahorse import`
+> migrates claude-mem observations to episodes; and an opt-in recency ranking
+> signal is available.
 > See [What works](#what-works) and [Reserved](#reserved).
 
 ## What it is
 
 A bi-temporal, append-only memory engine for LLM agents that turns episodic notes
 into a queryable, conflict-aware, point-in-time-reproducible knowledge base. It is
-built so an agent can write thousands of episodes at near-zero cost (skip extraction
-is a first-class citizen, ADR-09) and reserve LLM extraction for the few episodes
-that justify it.
+built so an agent can write thousands of episodes at near-zero cost (the
+deterministic skip path is a first-class citizen) and reserve LLM extraction for
+the few episodes that justify it.
 
 Every episode is recorded with two time axes — when it became true (`valid_time`)
 and when it was recorded (`recording_time`) — so the knowledge base is reproducible
@@ -62,7 +65,7 @@ seahorse recall "madrid"
 seahorse improve <ep_id> "Sergio lives in Barcelona" --reason correction
 seahorse forget <ep_id> --reason done
 
-# The todo-en-uno (Sprint B): capture, context, consolidate.
+# Session capture, context, and consolidation:
 # Install the observer (writes [observe] + merges the Claude Code hooks into
 # ~/.claude/settings.json, coexisting with claude-mem):
 seahorse setup
@@ -90,15 +93,16 @@ for agents. The `seahorse mcp` subcommand invokes the same stdio server as
 ## Migrating a legacy Obsidian vault
 
 A vault of pre-existing Obsidian notes (no frontmatter, or legacy `tags`/`created`
-frontmatter) is not F3.1 yet — `seahorse index rebuild` fails honestly on those
-notes. `seahorse frontmatter migrate` converts them to F3.1 (cases A/B/C/D):
+frontmatter) is not yet in the canonical format — `seahorse index rebuild` fails
+honestly on those notes. `seahorse frontmatter migrate` converts them (cases
+A/B/C/D):
 
 ```bash
 # Preview: classify every note, write nothing (always exit 0):
 seahorse frontmatter migrate --vault myvault --dry-run
-# Apply: convert A/B notes, leave C (already F3.1) untouched, refuse D (incompatible):
+# Apply: convert A/B notes, leave C (already canonical) untouched, refuse D (incompatible):
 seahorse frontmatter migrate --vault myvault
-# Rebuild the sidecar index from the now-F3.1 notes:
+# Rebuild the sidecar index from the converted notes:
 seahorse index rebuild --vault myvault
 ```
 
@@ -111,8 +115,8 @@ works before `seahorse init` (it only touches `.md` files + the manifest).
 > **First run**: the semantic-embedding model (mE5-small, ~235MB) downloads
 > lazily on the first `remember`/`recall` — the CLI announces it so the first
 > call doesn't look hung. `seahorse status` shows the active retrieval regime
-> (`hybrid RRF (model cached)` vs `G2 listing — install seahorse[embeddings]
-> for semantic recall`).
+> (`hybrid RRF (model cached)` vs `current-state listing — install
+> seahorse[embeddings] for semantic recall`).
 
 ## The agent surface — 7 memory-native primitives + 5 procedural/read-only tools
 
@@ -125,19 +129,19 @@ The 7 primitives (write + retrieve):
 | Primitive | What it does |
 |-----------|--------------|
 | `remember` | Record an episode (body, source, optional title/subject). |
-| `recall` | INDEX level — the current vigente listing, clamped to `top_k`. |
+| `recall` | INDEX level — the current-state listing, clamped to `top_k`. |
 | `recall_timeline` | TIMELINE level — the supersedes chain around an anchor episode. |
 | `recall_full` | FULL level — the hydrated episode with all provenance. |
 | `improve` | Supersede an episode with a corrected one (append-only). |
 | `forget` | Soft-delete an episode (append-only; history preserved). |
 | `build_pit` | Build a point-in-time projection (all-None → current state). |
 
-Plus 5 procedural / read-only tools (L2c skills + facade introspection):
+Plus 5 procedural / read-only tools (skills + facade introspection):
 
 | Tool | What it does |
 |------|--------------|
-| `skill_add` | Create a procedural skill (deterministic, ADR-09 skip). |
-| `skill_show` | Show a skill's gated body (R5 trust gate). |
+| `skill_add` | Create a procedural skill (deterministic, near-zero cost). |
+| `skill_show` | Show a skill's gated body (trust gate). |
 | `freshness_view` | Freshness snapshot of an episode (age, stale, pending_ingest). |
 | `audit_log` | Audit events for an episode (write-path history). |
 | `follow_supersedes_chain` | The supersedes closure for an episode (version history). |
@@ -153,15 +157,15 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 - The 7 memory-native primitives plus 5 procedural / read-only tools, on both
   the CLI and stdio MCP (12 tools total).
 - Progressive disclosure (INDEX / TIMELINE / FULL) and point-in-time projection.
-- **Hybrid semantic retrieval (MVP-1)**: `recall` ranks by relevance — sqlite-vec
+- **Hybrid semantic retrieval**: `recall` ranks by relevance — sqlite-vec
   kNN + FTS5 BM25 fused with Reciprocal Rank Fusion (`RRF_K=60`), with PIT
   routing (`state_at` / `known_at`) when a real embedder is wired. The write path
   and `seahorse index rebuild` populate vec0/FTS (best-effort — an embedder
-  failure never fails the episode write, ADR-10).
-- **Honest G2 degrade**: without the `embeddings` extra (or with no vectors
-  populated), `recall` falls back to the vigente listing (score 0.0, no ranking)
-  and PIT recall is refused — the motor keeps working without ranking.
-- **LLM extraction (`#4`/`#5`)**: a real multi-LLM path (ollama / gemini / groq /
+  failure never fails the episode write).
+- **Honest degrade**: without the `embeddings` extra (or with no vectors
+  populated), `recall` falls back to the current-state listing (score 0.0, no
+  ranking) and PIT recall is refused — the engine keeps working without ranking.
+- **LLM extraction**: a real multi-LLM path (ollama / gemini / groq /
   openrouter / openai / anthropic / deepseek / vllm, local-first) with a strict
   schema validator + repair loop, retry/fallback chain, and an operative cost cap
   (local and free-tier models price at $0). `seahorse init --llm` bootstraps it;
@@ -169,15 +173,15 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 - **Local-first CI gate**: the real extraction path runs in CI against the
   weakest model of the family (`ollama/qwen3:0.6b`) so the validator + repair
   must carry the load — the path does not silently depend on native structured
-  outputs (ADR-05) or a strong model.
+  outputs or a strong model.
 - Supersession (`improve`) and soft-delete (`forget`) with full history preserved.
 - Frontmatter import/export for the Obsidian vault layer (markdown as the
-  human-readable, portable on-disk contract — ADR-02). `extraction_mode=
-  consolidated` is a schema-valid, round-trippable batch-distillation marker
-  (the value parses and round-trips today; the distillation engine is not built
-  yet — see [Reserved](#reserved)).
+  human-readable, portable on-disk contract). `extraction_mode=consolidated` is a
+  schema-valid, round-trippable batch-distillation marker (the value parses and
+  round-trips today; the distillation engine is not built yet — see
+  [Reserved](#reserved)).
 - **Legacy-vault migration**: `seahorse frontmatter migrate` converts legacy
-  Obsidian notes to F3.1 (cases A/B/C/D) with a `--dry-run` preview, `--resume`,
+  Obsidian notes (cases A/B/C/D) with a `--dry-run` preview, `--resume`,
   and honest exit `97` when incompatible notes (case D) block a full migration —
   the manifest summary is printed first so the operator sees what needs manual
   resolution.
@@ -194,12 +198,12 @@ implemented yet rather than silently no-op'ing:
 
 Batch distillation (`consolidated`) is **schema-valid but not built**: the wire
 and frontmatter round-trip the value, but the single-episode write path refuses
-it loud and the `distill_episodes` primitive lands in Sprint B (post-F7) — it
+it loud and the `distill_episodes` primitive lands in a later milestone — it
 writes via `engine.remember` directly, not through `remember`. `llm_partial`
 stays fully reserved.
 
-The BFS-as-INDEX axis of retrieval (graph expansion into the fusion) is mediano —
-`recall` fuses vector + BM25 + supersedes chain today.
+The graph-expansion axis of retrieval (BFS into the fusion) is a medium-term
+goal — `recall` fuses vector + BM25 + supersedes chain today.
 
 ## Architecture (three memory layers)
 
@@ -209,7 +213,7 @@ The BFS-as-INDEX axis of retrieval (graph expansion into the fusion) is mediano 
 | 2. Obsidian vault | Project knowledge, decisions, preferences | human-readable markdown |
 | 3. Native pointer | Pointer only, never duplicated knowledge | per-session |
 
-## Stack (v0.2.0)
+## Stack
 
 - Python ≥ 3.11. stdlib `sqlite3` + sqlite-vec for storage (zero-infra single
   file; the `vec0` virtual table + FTS5 in migration 010).
@@ -220,10 +224,9 @@ The BFS-as-INDEX axis of retrieval (graph expansion into the fusion) is mediano 
   `seahorse.mcp` package — `import seahorse.mcp` does not load Typer).
 - `ruamel.yaml` + `python-frontmatter`, confined to the frontmatter adapter.
 - **FastEmbed ONNX + onnxruntime** (`embeddings` extra, NOT in the default
-  install): the mE5-small bundle defaults to `model_O4.onnx` (fp32, ~235MB) —
-  OQ-7-12 verified that no int8/fp16 artifact is portable to Apple Silicon, and
-  an open standard must run on Windows/Linux/macOS. A portable int8 bundle is a
-  measured follow-up.
+  install): the mE5-small bundle defaults to `model_O4.onnx` (fp32, ~235MB) — no
+  int8/fp16 artifact is portable to Apple Silicon, and an open standard must run
+  on Windows/Linux/macOS. A portable int8 bundle is a measured follow-up.
 - **LiteLLM** (`llm` extra, NOT in the default install): unifies the 100+
   provider surface for the LLM extraction path. Without the extra, `seahorse.llm`
   still imports (contract + `StubLLMClient`) and the real path degrades llm→skip
@@ -235,7 +238,7 @@ The BFS-as-INDEX axis of retrieval (graph expansion into the fusion) is mediano 
 
 ## Testing
 
-- **Unit + integration**: `uv run pytest` (2170+ tests, coverage ≥ 80% gate).
+- **Unit + integration**: `uv run pytest` (coverage ≥ 80% gate).
 - **Fresh-user e2e**: `scripts/e2e-fresh-user.sh` — the full
   install → init → core CLI → embeddings → LLM → import → MCP flow from a clean,
   isolated HOME (never touches the real `~/.claude` / `~/.claude-mem`).
@@ -247,12 +250,11 @@ The BFS-as-INDEX axis of retrieval (graph expansion into the fusion) is mediano 
   `--top-k 100` p95 ≤ 250ms (in-process INDEX budget), concurrent single-writer,
   reindex, idempotent import, improve/forget chain.
 
-## Design & decisions
+## Contributing
 
-Authoritative design lives in the Seahorse Obsidian vault (Fase 5 detailed-design
-docs `f5-01` through `f5-16`, plus the F6 open-questions & sign-off register). The
-8 blocking contract decisions are signed; ranks 9–15 close inline during F6. See
-[CHANGELOG.md](CHANGELOG.md) for release history.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development setup, test/lint commands, and pull request workflow. Release history
+lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
