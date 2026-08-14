@@ -9,7 +9,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 What works today (v0.5.1):
 
 - **Bi-temporal, append-only memory engine** — every episode carries both when it
-  became true (`valid_time`) and when it was recorded (`recording_time`), so the
+  became true (`valid_at`) and when it was recorded (`created_at`), so the
   knowledge base is reproducible at any past point in time. Supersession
   (`improve`) and soft-delete (`forget`) are append-only: history is never
   destroyed.
