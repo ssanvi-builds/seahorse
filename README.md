@@ -90,6 +90,52 @@ Obsidian**. Every episode is a markdown file with YAML frontmatter — readable,
 editable, diffable in git, and auditable by a human. The agent's memory is not a
 black box; it is your notes.
 
+## Use it from an agent (MCP)
+
+Seahorse is built for agents: the memory surface is a stdio MCP server
+(`io.seahorse.memory/v1`) that any agent that speaks MCP can connect to. The
+CLI is for humans and scripts; agents talk to `seahorse-mcp`.
+
+**Register the server in Claude Code** (local scope, default):
+
+```bash
+claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"
+```
+
+The `--` is required — it separates Claude's own flags from the server command.
+Use `--scope project` to share the server with a team via `.mcp.json` (checked
+into git). Verify with `claude mcp list` (should show `✔ Connected`) and
+`claude mcp get seahorse-mcp`.
+
+**Or configure it in `.mcp.json`** at the project root (works with any MCP
+client):
+
+```json
+{
+  "mcpServers": {
+    "seahorse-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "seahorse-memory", "seahorse-mcp", "--vault", "${HOME}/myvault"]
+    }
+  }
+}
+```
+
+Note: `~` is not expanded in `.mcp.json` — use `${HOME}` or an absolute path.
+(`mcpServers` in `settings.json` is silently ignored; MCP servers live in
+`~/.claude.json` for user/local scope and in `.mcp.json` for project scope.)
+
+Once connected, the agent sees the 12 memory tools — `remember`, `recall`,
+`recall_timeline`, `recall_full`, `improve`, `forget`, `build_pit`,
+`skill_add`, `skill_show`, `freshness_view`, `audit_log`,
+`follow_supersedes_chain` (see [The agent
+surface](#the-agent-surface--7-memory-native-primitives--5-proceduralread-only-tools)).
+
+The observer (`seahorse setup`) is a separate piece: it captures Claude Code
+sessions into episodes. The MCP server is how the agent *reads and writes*
+memory. Both work together — capture sessions, then recall across them.
+
 ## How it works
 
 ```mermaid
@@ -150,7 +196,8 @@ seahorse mcp --vault myvault
 
 The `seahorse` console script is for humans and shell scripts; `seahorse-mcp` is
 for agents. The `seahorse mcp` subcommand invokes the same stdio server as
-`seahorse-mcp`, so both agent entry points are equivalent.
+`seahorse-mcp`, so both agent entry points are equivalent. To connect an agent,
+see [Use it from an agent](#use-it-from-an-agent-mcp).
 
 ### Prerequisites
 
@@ -234,6 +281,11 @@ it measures **retrieval only**, not the agent's final answer. A cross-encoder
 rerank was tested and **rejected** — it degraded recall@10 to 0.11 with 1.2s
 latency. Full methodology and reproduction commands in
 [docs/benchmark.md](docs/benchmark.md).
+
+> These numbers measure **retrieval ranking only** on a subsample with a small
+> judge — they are **not comparable** to the end-to-end accuracy scores other
+> memory systems publish (e.g. Graphiti 63.8%, Mem0 94.8, Hindsight 91.4%).
+> See [docs/benchmark.md](docs/benchmark.md) for how not to compare.
 
 ## FAQ
 

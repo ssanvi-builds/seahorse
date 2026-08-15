@@ -56,6 +56,36 @@ retrieval-only pass — the engine ranks by relevance, it does not reason.
    (`score_source: rrf_rerank`) and **rejected**: it degraded recall@10 to
    0.1057 with 1243 ms p95 latency. The RRF fusion stays the default.
 
+## How not to compare these numbers
+
+These numbers are **not comparable** to the scores other memory systems
+publish, and reading them side by side is misleading. The published scores are
+a different metric:
+
+| System | Published score | What it actually measures |
+|---|---|---|
+| Graphiti (Zep) | 63.8% LongMemEval | end-to-end accuracy, full dataset, strong reader |
+| Mem0 | 94.8 LongMemEval (self-reported) | end-to-end accuracy, full dataset |
+| Hindsight (Vectorize) | 91.4% LongMemEval (self-reported) | end-to-end accuracy, Gemini-3 Pro reader |
+| MemPalace | 96.6% R@5 LongMemEval | verbatim exact-match retrieval, no LLM |
+| **Seahorse** | **recall@10 0.13** | **retrieval ranking only, subsample, small judge** |
+
+The differences that make a direct comparison invalid:
+
+1. **Metric.** Seahorse measures the *ranking* of the retrieval stage
+   (recall@10 / ndcg@10). The others measure the *final answer* of a full
+   agent (reader LLM + retrieval). A system can score high end-to-end with a
+   mediocre retriever if its reader is strong — and vice versa.
+2. **Coverage.** Seahorse runs on a subsample (n≈470–500) of `longmemeval-s-s`;
+   the others report on the full dataset.
+3. **Judge.** Seahorse's relevance scores come from a small, unvalidated LLM
+   judge. The others use validated judges and strong readers.
+
+A fair comparison would require running the same harness in the same
+configuration — retrieval-only, same subsample, same judge — for each system.
+Nobody publishes that baseline today. That is exactly why Seahorse ships the
+harness in the repo: so the measurement can be checked, not trusted.
+
 ## Reproduce
 
 ```bash
