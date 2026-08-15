@@ -6,6 +6,8 @@
 [![PyPI version](https://img.shields.io/pypi/v/seahorse-memory)](https://pypi.org/project/seahorse-memory)
 [![Release](https://img.shields.io/github/v/release/ssanvi-builds/seahorse)](https://github.com/ssanvi-builds/seahorse/releases)
 
+<img width="1280" height="512" alt="HMpWfZYWsAArgz7" src="https://github.com/user-attachments/assets/4fdde9b5-b49d-4caf-96a7-fb0c575cff63" />
+
 Persistent, bi-temporal memory for LLM agents — local-first, MCP-native,
 Obsidian-readable.
 
