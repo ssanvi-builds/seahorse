@@ -6,8 +6,14 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.5.1):
+What works today (v0.6.0):
 
+- **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
+  by an unrelated project, so the distribution is published as `seahorse-memory`
+  (`pip install seahorse-memory`). The import package and the `seahorse` /
+  `seahorse-mcp` console scripts are unchanged.
+- **Agent-first MCP surface** — register the server in any MCP agent
+  (`claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"` or `.mcp.json`); the agent sees 12 memory tools.
 - **Bi-temporal, append-only memory engine** — every episode carries both when it
   became true (`valid_at`) and when it was recorded (`created_at`), so the
   knowledge base is reproducible at any past point in time. Supersession
@@ -35,16 +41,19 @@ What works today (v0.5.1):
 - **Procedural skills, graph retrieval, and a read-only viewer** — deterministic
   skill authoring, a BFS timeline axis, and an interactive TUI.
 - **Benchmark harness** — a reproducible retrieval/QA harness (LMEB-S) with
-  fingerprint-pinned runs, used to make retrieval decisions with data.
+  fingerprint-pinned runs, used to make retrieval decisions with data. The
+  current numbers and methodology are published in
+  [docs/benchmark.md](docs/benchmark.md), with caveats and reproduction commands.
 
 CI runs the full test suite with a coverage gate (≥80%), plus lint and type
 checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally.
 
 ## Roadmap
 
-- **Near term** — hardening, documentation, and community onboarding. The engine
-  is feature-complete for a single-user memory store; the focus is reliability,
-  edge cases, and making external contribution straightforward.
+- **Near term** — public launch and community onboarding. The engine is
+  feature-complete for a single-user memory store; the focus is the launch
+  (Show HN, blog, X, MCP registry, Obsidian community), reliability, edge
+  cases, and making external contribution straightforward.
 - **Medium term** — distillation synthesis, cross-project sync, and a web
   viewer.
 - **Long term** — a managed cloud offering as a later phase, and wider adoption
