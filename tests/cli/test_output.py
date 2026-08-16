@@ -12,10 +12,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from seahorse.cli.output import (
+    render_audit_log,
     render_episode,
+    render_freshness_view,
     render_full_details,
     render_index_rows,
     render_message,
+    render_supersedes_chain,
     render_timeline,
     render_write_result,
     to_json,
@@ -23,7 +26,9 @@ from seahorse.cli.output import (
 )
 from seahorse.contracts.engine import WriteResult
 from tests.cli.builders import (
+    make_audit_event,
     make_episode,
+    make_freshness_view,
     make_full_detail,
     make_index_row,
     make_timeline_window,
@@ -262,6 +267,70 @@ def test_render_message_json():
     out = []
     render_message({"x": 1}, fmt="json", out=_Sink(out), human_text="ignored")
     assert json.loads("".join(out)) == {"x": 1}
+
+
+# ---------------------------------------------------------------------------
+# render_freshness_view / render_audit_log / render_supersedes_chain.
+# ---------------------------------------------------------------------------
+
+
+def test_render_freshness_view_human():
+    out = []
+    render_freshness_view(make_freshness_view(), fmt="human", out=_Sink(out))
+    text = "".join(out)
+    assert "fact-1" in text
+    assert "age_days:       3" in text
+    assert "stale:          yes" in text
+
+
+def test_render_freshness_view_json():
+    out = []
+    render_freshness_view(make_freshness_view(), fmt="json", out=_Sink(out))
+    assert json.loads("".join(out))["fact_id"] == "fact-1"
+
+
+def test_render_audit_log_human():
+    out = []
+    render_audit_log(
+        [make_audit_event(), make_audit_event(primitive="forget", result="invalidated")],
+        fmt="human",
+        out=_Sink(out),
+    )
+    text = "".join(out)
+    assert "2 events" in text
+    assert "apply" in text
+    assert "forget" in text
+
+
+def test_render_audit_log_jsonl():
+    out = []
+    render_audit_log(
+        [make_audit_event(), make_audit_event(primitive="forget")],
+        fmt="jsonl",
+        out=_Sink(out),
+    )
+    lines = "".join(out).strip().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0])["primitive"] == "apply"
+
+
+def test_render_supersedes_chain_human():
+    out = []
+    render_supersedes_chain(
+        [make_episode("ep-1"), make_episode("ep-2", supersedes="ep-1")],
+        fmt="human",
+        out=_Sink(out),
+    )
+    text = "".join(out)
+    assert "2 episodes" in text
+    assert "ep-1" in text
+    assert "ep-2" in text
+
+
+def test_render_supersedes_chain_json():
+    out = []
+    render_supersedes_chain([make_episode("ep-1")], fmt="json", out=_Sink(out))
+    assert json.loads("".join(out))[0]["id"] == "ep-1"
 
 
 # ---------------------------------------------------------------------------

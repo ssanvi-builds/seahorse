@@ -47,10 +47,13 @@ from seahorse.cli.importer import run_import
 from seahorse.cli.management import run_init, run_reserved, run_status, run_uuid7
 from seahorse.cli.output import OutputFormat
 from seahorse.cli.primitives import (
+    run_audit_log,
     run_consolidate,
     run_context,
     run_expire_revalidate,
+    run_follow_supersedes_chain,
     run_forget,
+    run_freshness_view,
     run_improve,
     run_recall,
     run_recall_full,
@@ -435,6 +438,37 @@ def forget(
         now=now,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+    )
+
+
+@app.command(name="freshness-view")
+def freshness_view_cmd(
+    ctx: typer.Context,
+    ep_id: str = typer.Argument(..., help="Episode id."),
+) -> None:
+    """Freshness snapshot of an episode (age, stale, pending_ingest)."""
+    run_freshness_view(
+        ctx.obj.facade(), ep_id=ep_id, fmt=ctx.obj.fmt, out=_out(ctx)
+    )
+
+
+@app.command(name="audit-log")
+def audit_log_cmd(
+    ctx: typer.Context,
+    ep_id: str = typer.Argument(..., help="Episode id."),
+) -> None:
+    """The write-path history of an episode (audit events)."""
+    run_audit_log(ctx.obj.facade(), ep_id=ep_id, fmt=ctx.obj.fmt, out=_out(ctx))
+
+
+@app.command(name="follow-supersedes-chain")
+def follow_supersedes_chain_cmd(
+    ctx: typer.Context,
+    ep_id: str = typer.Argument(..., help="Episode id."),
+) -> None:
+    """The version history of an episode (supersedes closure)."""
+    run_follow_supersedes_chain(
+        ctx.obj.facade(), ep_id=ep_id, fmt=ctx.obj.fmt, out=_out(ctx)
     )
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from seahorse.contracts.engine import Episode, FreshnessView, WriteResult
+from seahorse.contracts.engine import AuditEvent, Episode, FreshnessView, WriteResult
 from seahorse.disclosure.types import (
     EpisodeProvenance,
     FullDetail,
@@ -25,6 +25,26 @@ T0 = datetime(2026, 7, 16, 12, 0, 0, tzinfo=UTC)
 
 def make_write_result(status: str = "ACTIVE") -> WriteResult:
     return WriteResult(ep_id="ep-1", fact_id="fact-1", status=status, collisions_detected=[])
+
+
+def make_freshness_view() -> FreshnessView:
+    return FreshnessView(
+        fact_id="fact-1", age_days=3, stale=True, pending_ingest=False, regime="agent"
+    )
+
+
+def make_audit_event(
+    primitive: str = "apply", result: str = "added", reason: str | None = None
+) -> AuditEvent:
+    return AuditEvent(
+        primitive=primitive,
+        target_id="ep-1",
+        transaction_time=T0,
+        result=result,
+        agent_id="a1",
+        session_id="s1",
+        reason=reason,
+    )
 
 
 def make_episode(
@@ -125,6 +145,9 @@ class RecordingFacade:
         self.forget_calls: list[dict[str, Any]] = []
         self.build_pit_calls: list[dict[str, Any]] = []
         self.get_vigente_calls: list[dict[str, Any]] = []
+        self.freshness_calls: list[dict[str, Any]] = []
+        self.audit_calls: list[dict[str, Any]] = []
+        self.chain_calls: list[dict[str, Any]] = []
 
         self.remember_result = make_write_result()
         self.recall_result: list = [make_index_row()]
@@ -135,6 +158,9 @@ class RecordingFacade:
         self.build_pit_result: PITPoint | None = None
         self.build_pit_raise: Exception | None = None
         self.vigente_result: list = []
+        self.freshness_result = make_freshness_view()
+        self.audit_result: list = []
+        self.chain_result: list = []
 
     def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
         self.remember_calls.append(
@@ -177,6 +203,18 @@ class RecordingFacade:
     def get_vigente(self, subject=None, *, now=None):
         self.get_vigente_calls.append({"subject": subject, "now": now})
         return list(self.vigente_result)
+
+    def freshness_view(self, ep_id, *, now=None):
+        self.freshness_calls.append({"ep_id": ep_id, "now": now})
+        return self.freshness_result
+
+    def audit_log(self, ep_id):
+        self.audit_calls.append({"ep_id": ep_id})
+        return list(self.audit_result)
+
+    def follow_supersedes_chain(self, ep_id):
+        self.chain_calls.append({"ep_id": ep_id})
+        return list(self.chain_result)
 
 
 __all__ = [

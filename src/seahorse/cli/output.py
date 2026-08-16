@@ -33,7 +33,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from seahorse.contracts.engine import WriteResult
+from seahorse.contracts.engine import AuditEvent, FreshnessView, WriteResult
 from seahorse.contracts.episode import Episode
 from seahorse.facade import FullDetail, IndexRow, TimelineWindow
 
@@ -239,6 +239,66 @@ def render_message(
         out.write("\n")
 
 
+def render_freshness_view(
+    view: FreshnessView, *, fmt: OutputFormat, out: TextIO
+) -> None:
+    """``freshness-view`` output: ``FreshnessView``."""
+    if fmt in ("json", "jsonl"):
+        out.write(to_json(view) + "\n")
+        return
+    out.write("Freshness\n")
+    out.write(f"  fact_id:        {view.fact_id or '-'}\n")
+    out.write(f"  age_days:       {view.age_days}\n")
+    out.write(f"  stale:          {'yes' if view.stale else 'no'}\n")
+    out.write(f"  pending_ingest: {'yes' if view.pending_ingest else 'no'}\n")
+    out.write(f"  regime:         {view.regime}\n")
+
+
+def render_audit_log(
+    events: list[AuditEvent], *, fmt: OutputFormat, out: TextIO
+) -> None:
+    """``audit-log`` output: ``list[AuditEvent]``."""
+    if fmt == "json":
+        out.write(to_json(events) + "\n")
+        return
+    if fmt == "jsonl":
+        for event in events:
+            out.write(to_json(event) + "\n")
+        return
+    out.write(f"Audit log ({len(events)} events)\n\n")
+    if not events:
+        out.write("  (no audit events)\n")
+        return
+    for event in events:
+        out.write(
+            f"  {event.primitive:<10} {_fmt_dt(event.transaction_time):<28} "
+            f"{event.result:<12} {_truncate(event.reason or '-', 40)}\n"
+        )
+
+
+def render_supersedes_chain(
+    episodes: list[Episode], *, fmt: OutputFormat, out: TextIO
+) -> None:
+    """``follow-supersedes-chain`` output: ``list[Episode]`` (version history)."""
+    if fmt == "json":
+        out.write(to_json(episodes) + "\n")
+        return
+    if fmt == "jsonl":
+        for ep in episodes:
+            out.write(to_json(ep) + "\n")
+        return
+    out.write(f"Supersedes chain ({len(episodes)} episodes)\n\n")
+    if not episodes:
+        out.write("  (no episodes)\n")
+        return
+    for ep in episodes:
+        marker = "↳ " if ep.supersedes else "  "
+        out.write(
+            f"  {marker}{ep.id[:36]:<36} {_truncate(ep.subject or '-', 28):<28} "
+            f"valid={_fmt_dt(ep.valid_at)} invalid={_fmt_dt(ep.invalid_at)}\n"
+        )
+
+
 __all__ = [
     "OutputFormat",
     "to_jsonable",
@@ -249,4 +309,7 @@ __all__ = [
     "render_timeline",
     "render_full_details",
     "render_message",
+    "render_freshness_view",
+    "render_audit_log",
+    "render_supersedes_chain",
 ]

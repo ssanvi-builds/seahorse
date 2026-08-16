@@ -33,9 +33,12 @@ from typing import Any, TextIO
 from seahorse.cli.errors import CliNotInMVP0, CliUsageError
 from seahorse.cli.output import (
     OutputFormat,
+    render_audit_log,
     render_episode,
+    render_freshness_view,
     render_full_details,
     render_index_rows,
+    render_supersedes_chain,
     render_timeline,
     render_write_result,
 )
@@ -414,6 +417,50 @@ def run_forget(
 
 
 # ---------------------------------------------------------------------------
+# freshness-view / audit-log / follow-supersedes-chain — read-only facade tools.
+# ---------------------------------------------------------------------------
+
+
+def run_freshness_view(
+    facade: MemoryFacade,
+    *,
+    ep_id: str,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+) -> None:
+    """``seahorse freshness-view`` — freshness snapshot of an episode."""
+    _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
+    view = facade.freshness_view(ep_id)
+    render_freshness_view(view, fmt=fmt, out=out)
+
+
+def run_audit_log(
+    facade: MemoryFacade,
+    *,
+    ep_id: str,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+) -> None:
+    """``seahorse audit-log`` — the write-path history of an episode."""
+    _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
+    events = facade.audit_log(ep_id)
+    render_audit_log(events, fmt=fmt, out=out)
+
+
+def run_follow_supersedes_chain(
+    facade: MemoryFacade,
+    *,
+    ep_id: str,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+) -> None:
+    """``seahorse follow-supersedes-chain`` — the version history of an episode."""
+    _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
+    episodes = facade.follow_supersedes_chain(ep_id)
+    render_supersedes_chain(episodes, fmt=fmt, out=out)
+
+
+# ---------------------------------------------------------------------------
 # expire / revalidate — CLI-intercepted, Cat C CLI_NOT_IN_MVP_0 (75).
 # ---------------------------------------------------------------------------
 
@@ -437,5 +484,8 @@ __all__ = [
     "run_recall_full",
     "run_improve",
     "run_forget",
+    "run_freshness_view",
+    "run_audit_log",
+    "run_follow_supersedes_chain",
     "run_expire_revalidate",
 ]
