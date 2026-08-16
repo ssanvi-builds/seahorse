@@ -21,7 +21,13 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import cast
 
-from seahorse.contracts.index import MAX_HOPS_MVP1, HopsCapExceeded, IndexRowData, PITKind
+from seahorse.contracts.index import (
+    MAX_BFS_NODES,
+    MAX_HOPS_MVP1,
+    HopsCapExceeded,
+    IndexRowData,
+    PITKind,
+)
 from seahorse.persistence.connection import ConnectionManager
 
 
@@ -262,6 +268,15 @@ class SqliteEpisodeIndexRepository:
                 ).fetchall()
                 next_layer = {row["ep_id"] for row in newer} | {row["supersedes"] for row in older}
                 next_layer -= seen
+                # Node budget: bound the total visited nodes. Truncation is
+                # deterministic (sorted) so the result is reproducible (ADR-10);
+                # beyond the budget, expansion stops (documented truncation,
+                # matching MAX_TIMELINE_WINDOW).
+                remaining = MAX_BFS_NODES - len(seen)
+                if len(next_layer) > remaining:
+                    next_layer = set(sorted(next_layer)[:remaining])
+                if not next_layer:
+                    break
                 seen |= next_layer
                 current_layer = next_layer
         result = [_row_to_index(row) for row in collected]

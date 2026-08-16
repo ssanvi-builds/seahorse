@@ -29,6 +29,14 @@ sort it."""
 MAX_HOPS_MVP1: int = 2
 """BFS hop cap for a later release. ``hops > MAX_HOPS_MVP1`` raises HopsCapExceeded."""
 
+MAX_BFS_NODES: int = 1000
+"""BFS node budget: the max total nodes visited by ``bfs_neighbors_state_at``.
+
+Bounds the worst-case cost of the layer-by-layer traversal on a large graph
+(the BFS does N+1 queries per layer). Beyond the budget, expansion stops —
+a documented truncation matching ``MAX_TIMELINE_WINDOW`` (deterministic, not
+fail-loud: a resource bound, not a user error)."""
+
 
 @dataclass(frozen=True)
 class IndexRowData:

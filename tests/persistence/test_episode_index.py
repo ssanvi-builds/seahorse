@@ -386,3 +386,32 @@ def test_bfs_cycle_does_not_infinite_loop(index: SqliteEpisodeIndexRepository) -
         include_tags_soft=False,
     )
     assert {r.ep_id for r in rows} == {"e1"}
+
+
+def test_bfs_node_budget_truncates(monkeypatch, index: SqliteEpisodeIndexRepository) -> None:
+    # A star graph (one anchor, many children) would visit > budget nodes in a
+    # single hop. The budget truncates deterministically (sorted) so the result
+    # stays reproducible (ADR-10) and the traversal cannot blow up on a large
+    # graph. Monkeypatch the budget small so the test is fast.
+    from seahorse.persistence import sqlite_episode_index as sei
+
+    monkeypatch.setattr(sei, "MAX_BFS_NODES", 5)
+    mgr = index._cm  # noqa: SLF001
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    with mgr.atomic():
+        _row(mgr, "e0", fact_id="f0", created_at=base)
+        for i in range(1, 10):
+            _row(
+                mgr,
+                f"e{i}",
+                fact_id=f"f{i}",
+                supersedes="e0",
+                created_at=base + timedelta(days=i),
+            )
+    pit = base + timedelta(days=20)
+    rows = index.bfs_neighbors_state_at(
+        "e0", pit, pit_kind="known_at", hops=1, include_tags_soft=False
+    )
+    assert len(rows) <= 5
+    # Deterministic truncation: the first 4 children (sorted by ep_id) survive.
+    assert {r.ep_id for r in rows} == {"e0", "e1", "e2", "e3", "e4"}
