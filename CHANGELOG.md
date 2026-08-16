@@ -6,6 +6,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **MCP `skill_list` / `skill_search` tools** — the MCP server now exposes the
+  two Discovery-level skill tools (14 tools total), closing the parity gap with
+  the CLI (which had `skill add|list|search|show` but no MCP listing/search).
+- **CLI `freshness-view` / `audit-log` / `follow-supersedes-chain`** — the three
+  read-only facade tools are now available on the terminal (parity with the MCP
+  server, which already had them).
+- **Timeline axes `created_at` / `valid_at`** — `recall-timeline` can now range
+  over the transaction-time (`created_at`) and valid-time (`valid_at`) axes
+  around an anchor's timestamp (±7 days), in addition to the supersedes chain
+  and fact-id scope.
+- **`--verbose` / `-v` flag** — per-operation timing on stderr
+  (`[verbose] <label> took <X>ms`) for the memory primitives and skill commands.
+- **BFS node budget** — the graph traversal is bounded to 1000 visited nodes,
+  keeping exploration fast on large graphs (deterministic truncation).
+
+## [0.6.0] - 2026-08-16
+
 ### Changed
 
 - **Distribution renamed to `seahorse-memory`** — the PyPI name `seahorse` is

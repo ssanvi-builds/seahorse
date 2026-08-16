@@ -440,11 +440,14 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ## Current status
 
-**v0.6.0.** The memory engine works end-to-end from a clean install: write
+**v0.7.0.** The memory engine works end-to-end from a clean install: write
 episodes, recall them with hybrid semantic retrieval, extract with a real
 multi-LLM path (local-first, CI-gated), improve and forget them, and serve an
 agent over stdio MCP. Recall ranks by relevance when vectors are populated and
 the embedder is wired, and honestly degrades to a current-state listing
 otherwise. `seahorse import` migrates claude-mem observations to episodes, and
-an opt-in recency ranking signal is available. See [What works](#what-works)
-and [ROADMAP.md](ROADMAP.md) for what is next.
+an opt-in recency ranking signal is available. The MCP server and the CLI now
+expose the same skill and read-only surfaces (14 MCP tools), timelines can be
+ranged by `created_at`/`valid_at`, and `--verbose` reports per-operation
+timing. See [What works](#what-works) and [ROADMAP.md](ROADMAP.md) for what is
+next.
