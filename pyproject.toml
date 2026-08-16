@@ -1,6 +1,6 @@
 [project]
 name = "seahorse-memory"
-version = "0.6.0"
+version = "0.7.0"
 description = "Persistent, bi-temporal memory for LLM agents — local-first, MCP-native, Obsidian-readable."
 readme = "README.md"
 license = "Apache-2.0"
