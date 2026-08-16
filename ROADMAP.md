@@ -6,23 +6,23 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.6.0):
+What works today (v0.7.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
   (`pip install seahorse-memory`). The import package and the `seahorse` /
   `seahorse-mcp` console scripts are unchanged.
 - **Agent-first MCP surface** — register the server in any MCP agent
-  (`claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"` or `.mcp.json`); the agent sees 12 memory tools.
+  (`claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"` or `.mcp.json`); the agent sees 14 memory tools.
 - **Bi-temporal, append-only memory engine** — every episode carries both when it
   became true (`valid_at`) and when it was recorded (`created_at`), so the
   knowledge base is reproducible at any past point in time. Supersession
   (`improve`) and soft-delete (`forget`) are append-only: history is never
   destroyed.
 - **CLI + MCP agent surface** — 7 memory-native primitives (`remember`, `recall`,
-  `recall_timeline`, `recall_full`, `improve`, `forget`, `build_pit`) plus 5
+  `recall_timeline`, `recall_full`, `improve`, `forget`, `build_pit`) plus 7
   procedural/read-only tools, served over stdio MCP (`io.seahorse.memory/v1`) and
-  mirrored on the CLI.
+  mirrored on the CLI (the same skill and read-only surfaces on both sides).
 - **Hybrid semantic retrieval** — `recall` ranks by relevance (sqlite-vec kNN +
   FTS5 BM25 fused with Reciprocal Rank Fusion) with point-in-time routing, and
   honestly degrades to a current-state listing when no embeddings are available.
@@ -39,7 +39,9 @@ What works today (v0.6.0):
   Obsidian notes, and `seahorse import` migrates claude-mem observations into
   episodes.
 - **Procedural skills, graph retrieval, and a read-only viewer** — deterministic
-  skill authoring, a BFS timeline axis, and an interactive TUI.
+  skill authoring, a BFS timeline axis, and an interactive TUI. Timelines can
+  also be ranged by `created_at`/`valid_at` around an anchor, and `--verbose`
+  reports per-operation timing.
 - **Benchmark harness** — a reproducible retrieval/QA harness (LMEB-S) with
   fingerprint-pinned runs, used to make retrieval decisions with data. The
   current numbers and methodology are published in
