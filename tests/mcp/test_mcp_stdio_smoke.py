@@ -95,11 +95,11 @@ def test_stdio_full_session(vault: Path) -> None:
             expected_version = "0.0.0"
         assert init["result"]["serverInfo"]["version"] == expected_version
 
-        # tools/list → exactly 12
+        # tools/list → exactly 14
         _send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         listing = _recv(proc)
         names = {t["name"] for t in listing["result"]["tools"]}
-        assert len(names) == 12
+        assert len(names) == 14
 
         # remember → ep_id
         _send(
@@ -194,7 +194,7 @@ def test_stdio_full_session(vault: Path) -> None:
         _send(proc, {"jsonrpc": "2.0", "id": 8, "method": "tools/list"})
         nt_reply = _recv(proc)
         assert nt_reply["id"] == 8
-        assert len(nt_reply["result"]["tools"]) == 12
+        assert len(nt_reply["result"]["tools"]) == 14
 
         # unknown tool → -32601 (expire is still outside the MCP surface)
         _send(

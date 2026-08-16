@@ -256,6 +256,25 @@ SKILL_SHOW_SCHEMA: dict[str, Any] = {
     },
 }
 
+SKILL_LIST_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [],
+    "properties": {
+        "top_k": {"type": "integer", "minimum": 1},
+    },
+}
+
+SKILL_SEARCH_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["query"],
+    "properties": {
+        "query": {"type": "string", "minLength": 1, "maxLength": QUERY_MAX_CHARS},
+        "top_k": {"type": "integer", "minimum": 1},
+    },
+}
+
 FRESHNESS_VIEW_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -294,6 +313,8 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "build_pit": BUILD_PIT_SCHEMA,
     "skill_add": SKILL_ADD_SCHEMA,
     "skill_show": SKILL_SHOW_SCHEMA,
+    "skill_list": SKILL_LIST_SCHEMA,
+    "skill_search": SKILL_SEARCH_SCHEMA,
     "freshness_view": FRESHNESS_VIEW_SCHEMA,
     "audit_log": AUDIT_LOG_SCHEMA,
     "follow_supersedes_chain": FOLLOW_SUPERSEDES_CHAIN_SCHEMA,
@@ -320,6 +341,8 @@ __all__ = [
     "BUILD_PIT_SCHEMA",
     "SKILL_ADD_SCHEMA",
     "SKILL_SHOW_SCHEMA",
+    "SKILL_LIST_SCHEMA",
+    "SKILL_SEARCH_SCHEMA",
     "FRESHNESS_VIEW_SCHEMA",
     "AUDIT_LOG_SCHEMA",
     "FOLLOW_SUPERSEDES_CHAIN_SCHEMA",

@@ -41,9 +41,10 @@ from seahorse.mcp.wire_schema import (
 
 
 class TestToolRoster:
-    def test_exactly_twelve_tools(self) -> None:
-        # + skill_add, skill_show, and the deferred read-only facade tools
-        # (freshness_view, audit_log, follow_supersedes_chain).
+    def test_exactly_fourteen_tools(self) -> None:
+        # + skill_add, skill_show, skill_list, skill_search, and the deferred
+        # read-only facade tools (freshness_view, audit_log,
+        # follow_supersedes_chain).
         assert set(TOOL_SCHEMAS) == {
             "remember",
             "recall",
@@ -54,6 +55,8 @@ class TestToolRoster:
             "build_pit",
             "skill_add",
             "skill_show",
+            "skill_list",
+            "skill_search",
             "freshness_view",
             "audit_log",
             "follow_supersedes_chain",

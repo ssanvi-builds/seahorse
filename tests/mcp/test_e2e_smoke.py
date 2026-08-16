@@ -3,7 +3,7 @@ disclosure shaper + persistence + write path stack.
 
 Drives the stdio JSON-RPC loop in-process (``io.StringIO`` for stdin/stdout)
 against a real ``MemoryFacade`` built by the conftest ``real_facade`` fixture.
-Lifecycle: initialize → tools/list (12 tools) → remember → recall (shows it) →
+Lifecycle: initialize → tools/list (14 tools) → remember → recall (shows it) →
 improve → recall (new present, old gone) → forget → recall (gone) →
 notification (no response) → EOF (loop ends).
 """
@@ -38,7 +38,7 @@ class TestStdioProtocol:
         assert len(resps) == 2
         assert resps[0]["result"]["protocolVersion"] == "2025-11-25"
         names = {t["name"] for t in resps[1]["result"]["tools"]}
-        assert len(names) == 12
+        assert len(names) == 14
         assert "remember" in names
 
     def test_notification_produces_no_response(self, real_facade) -> None:
@@ -65,7 +65,7 @@ class TestStdioProtocol:
         serve(real_facade, stdin=stdin, stdout=stdout)
         resps = _responses(stdout)
         assert len(resps) == 1
-        assert len(resps[0]["result"]["tools"]) == 12
+        assert len(resps[0]["result"]["tools"]) == 14
 
     def test_eof_ends_loop_cleanly(self, real_facade) -> None:
         # No exception; serve returns when stdin is exhausted.
@@ -212,7 +212,7 @@ class TestFullLifecycle:
         # ordered: handshake → list → remember → recall → build_pit
         assert resps[0]["id"] == 1
         assert resps[0]["result"]["protocolVersion"] == "2025-11-25"
-        assert len(resps[1]["result"]["tools"]) == 12
+        assert len(resps[1]["result"]["tools"]) == 14
         wr = self._content(resps[2])
         assert wr["status"] == "ACTIVE"
         old_id = wr["ep_id"]

@@ -229,6 +229,7 @@ class RecordingFacade:
         self.freshness_calls: list[dict[str, Any]] = []
         self.audit_calls: list[dict[str, Any]] = []
         self.chain_calls: list[dict[str, Any]] = []
+        self.get_vigente_calls: list[dict[str, Any]] = []
 
         # configurable returns
         self.remember_result = make_write_result()
@@ -247,6 +248,7 @@ class RecordingFacade:
         self.freshness_result = make_freshness_view()
         self.audit_result: list = []
         self.chain_result: list = []
+        self.vigente_result: list = []
 
     # The facade method names + signatures the MCP server calls.
     def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
@@ -321,6 +323,10 @@ class RecordingFacade:
     def follow_supersedes_chain(self, ep_id):
         self.chain_calls.append({"ep_id": ep_id})
         return list(self.chain_result)
+
+    def get_vigente(self, subject=None, *, now=None):
+        self.get_vigente_calls.append({"subject": subject, "now": now})
+        return list(self.vigente_result)
 
 
 __all__ = [

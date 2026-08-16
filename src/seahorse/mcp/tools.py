@@ -187,6 +187,40 @@ def handle_skill_show(
     )
 
 
+def handle_skill_list(
+    facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
+) -> dict:
+    validate(args, schema_for("skill_list"))
+    # Discovery level: the procedural filter + created_at desc + top_k truncation
+    # mirror the CLI's run_skill_list (the wire projects the same listing).
+    top_k = args.get("top_k", 10)
+    eps = [e for e in facade.get_vigente() if e.cognitive_type == "procedural"]
+    eps = sorted(eps, key=lambda e: e.created_at, reverse=True)[:top_k]
+    result = [
+        {
+            "ep_id": e.id,
+            "subject": e.subject,
+            "summary": e.summary,
+            "created_at": e.created_at.isoformat(),
+        }
+        for e in eps
+    ]
+    return success_response(request_id, result)
+
+
+def handle_skill_search(
+    facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
+) -> dict:
+    validate(args, schema_for("skill_search"))
+    # Hybrid recall with the procedural filter (Discovery level). k defaults to
+    # TOP_K in the facade — only override when the caller set top_k.
+    kwargs: dict[str, Any] = {"query": args["query"], "cognitive_type": "procedural"}
+    if args.get("top_k") is not None:
+        kwargs["k"] = args["top_k"]
+    result = facade.recall(**kwargs)
+    return success_response(request_id, result)
+
+
 def handle_freshness_view(
     facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId
 ) -> dict:
@@ -225,6 +259,8 @@ TOOL_HANDLERS: dict[str, Callable[[MemoryFacade, dict[str, Any], _RequestId], di
     "build_pit": handle_build_pit,
     "skill_add": handle_skill_add,
     "skill_show": handle_skill_show,
+    "skill_list": handle_skill_list,
+    "skill_search": handle_skill_search,
     "freshness_view": handle_freshness_view,
     "audit_log": handle_audit_log,
     "follow_supersedes_chain": handle_follow_supersedes_chain,
@@ -286,6 +322,18 @@ TOOL_LIST: list[dict[str, Any]] = [
         "inputSchema": schema_for("skill_show"),
     },
     {
+        "name": "skill_list",
+        "description": "List procedural skills (Discovery level): current-state "
+        "episodes with cognitive_type=procedural, newest first.",
+        "inputSchema": schema_for("skill_list"),
+    },
+    {
+        "name": "skill_search",
+        "description": "Search procedural skills (Discovery level): hybrid recall "
+        "with the procedural filter.",
+        "inputSchema": schema_for("skill_search"),
+    },
+    {
         "name": "freshness_view",
         "description": "Freshness snapshot of an episode (age, stale, pending_ingest).",
         "inputSchema": schema_for("freshness_view"),
@@ -342,6 +390,8 @@ __all__ = [
     "handle_build_pit",
     "handle_skill_add",
     "handle_skill_show",
+    "handle_skill_list",
+    "handle_skill_search",
     "handle_freshness_view",
     "handle_audit_log",
     "handle_follow_supersedes_chain",

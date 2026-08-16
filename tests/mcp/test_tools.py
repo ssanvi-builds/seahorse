@@ -541,6 +541,8 @@ class TestHandlerDirectCall:
             ("build_pit", {}, "build_pit_calls"),
             ("skill_add", {"body": _CANONICAL_BODY, "by": _by()}, "remember_calls"),
             ("skill_show", {"ep_id": "ep-1"}, "recall_full_calls"),
+            ("skill_list", {}, "get_vigente_calls"),
+            ("skill_search", {"query": "x"}, "recall_calls"),
             ("freshness_view", {"ep_id": "ep-1"}, "freshness_calls"),
             ("audit_log", {"ep_id": "ep-1"}, "audit_calls"),
             ("follow_supersedes_chain", {"ep_id": "ep-1"}, "chain_calls"),
@@ -624,6 +626,75 @@ class TestSkillShowHandler:
         )
         out = json.loads(resp["result"]["content"][0]["text"])
         assert out["as_instruction"] is False
+
+
+class TestSkillListHandler:
+    def test_delegates_get_vigente_filters_procedural_sorted_desc(self) -> None:
+        facade = RecordingFacade()
+        facade.vigente_result = [
+            make_episode(
+                "ep-old",
+                cognitive_type="procedural",
+                created_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
+            ),
+            make_episode(
+                "ep-new",
+                cognitive_type="procedural",
+                created_at=datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+            ),
+            make_episode("ep-semantic", cognitive_type="semantic"),
+        ]
+        resp = dispatch("skill_list", {}, facade, 1)
+        assert resp["result"]["isError"] is False
+        assert len(facade.get_vigente_calls) == 1
+        out = json.loads(resp["result"]["content"][0]["text"])
+        # Only procedural, newest first, projected to the CLI shape.
+        assert [e["ep_id"] for e in out] == ["ep-new", "ep-old"]
+        assert set(out[0]) == {"ep_id", "subject", "summary", "created_at"}
+
+    def test_truncates_to_top_k(self) -> None:
+        facade = RecordingFacade()
+        facade.vigente_result = [
+            make_episode(
+                f"ep-{i}",
+                cognitive_type="procedural",
+                created_at=datetime(2026, 7, i + 1, 12, 0, tzinfo=UTC),
+            )
+            for i in range(5)
+        ]
+        resp = dispatch("skill_list", {"top_k": 2}, facade, 1)
+        out = json.loads(resp["result"]["content"][0]["text"])
+        assert len(out) == 2
+
+    def test_wire_rejects_top_k_zero_before_any_read(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("skill_list", {"top_k": 0}, facade, 1)
+        assert resp["error"]["code"] == -32602
+        assert len(facade.get_vigente_calls) == 0
+
+
+class TestSkillSearchHandler:
+    def test_delegates_recall_with_procedural_filter(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("skill_search", {"query": "how to"}, facade, 1)
+        assert resp["result"]["isError"] is False
+        assert len(facade.recall_calls) == 1
+        call = facade.recall_calls[0]
+        assert call["query"] == "how to"
+        assert call["cognitive_type"] == "procedural"
+        # k is NOT forwarded when top_k absent (facade default TOP_K applies).
+        assert "k" not in call
+
+    def test_forwards_k_only_when_top_k_present(self) -> None:
+        facade = RecordingFacade()
+        dispatch("skill_search", {"query": "how to", "top_k": 5}, facade, 1)
+        assert facade.recall_calls[0]["k"] == 5
+
+    def test_wire_rejects_empty_query_before_any_read(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("skill_search", {"query": ""}, facade, 1)
+        assert resp["error"]["code"] == -32602
+        assert len(facade.recall_calls) == 0
 
 
 class TestReadOnlyTools:
