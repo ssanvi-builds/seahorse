@@ -335,13 +335,47 @@ def test_timeline_fact_id_scope_returns_anchor_when_vigent(index, repo):
     assert [e.ep_id for e in win.entries] == ["e1"]
 
 
-def test_timeline_mvp1_axis_raises_not_in_mvp0(index, repo):
-    # graph_bfs is a later-release axis; created_at/valid_at stay
-    # NotInMVP0 until their own later-release materialization.
-    for axis in ("created_at", "valid_at"):
-        with pytest.raises(NotInMVP0) as exc:
-            _shaper(index, repo).materialize_timeline("e1", axis=axis)  # type: ignore[arg-type]
-        assert exc.value.axis == axis
+def test_timeline_created_at_returns_rows_in_window(index, repo):
+    # Anchor e1 created at NOW; e2/e3 created within ±Δt → returned; e4 created
+    # far outside the window → excluded.
+    index.add(_idx_row("e1", created_at=NOW))
+    index.add(_idx_row("e2", created_at=NOW - timedelta(days=3)))
+    index.add(_idx_row("e3", created_at=NOW + timedelta(days=2)))
+    index.add(_idx_row("e4", created_at=NOW - timedelta(days=30)))
+    win = _shaper(index, repo).materialize_timeline("e1", axis="created_at")
+    assert win.axis == "created_at"
+    assert {e.ep_id for e in win.entries} == {"e1", "e2", "e3"}
+
+
+def test_timeline_created_at_unknown_anchor_returns_empty(index, repo):
+    win = _shaper(index, repo).materialize_timeline("missing", axis="created_at")
+    assert win.entries == ()
+
+
+def test_timeline_valid_at_returns_rows_in_window(index, repo):
+    # Anchor e1 valid at NOW; e2/e3 valid within ±Δt → returned; e4 valid far
+    # outside → excluded.
+    index.add(_idx_row("e1", valid_at=NOW))
+    index.add(_idx_row("e2", valid_at=NOW - timedelta(days=3)))
+    index.add(_idx_row("e3", valid_at=NOW + timedelta(days=2)))
+    index.add(_idx_row("e4", valid_at=NOW - timedelta(days=30)))
+    win = _shaper(index, repo).materialize_timeline("e1", axis="valid_at")
+    assert win.axis == "valid_at"
+    assert {e.ep_id for e in win.entries} == {"e1", "e2", "e3"}
+
+
+def test_timeline_valid_at_anchor_without_valid_at_returns_empty(index, repo):
+    # An anchor with valid_at=None ("valid from forever") has no window to
+    # center — the axis returns empty honestly.
+    index.add(_idx_row("e1", valid_at=None))
+    index.add(_idx_row("e2", valid_at=NOW))
+    win = _shaper(index, repo).materialize_timeline("e1", axis="valid_at")
+    assert win.entries == ()
+
+
+def test_timeline_valid_at_unknown_anchor_returns_empty(index, repo):
+    win = _shaper(index, repo).materialize_timeline("missing", axis="valid_at")
+    assert win.entries == ()
 
 
 def test_timeline_pit_state_at_composes_client_side(index, repo):
@@ -686,8 +720,8 @@ def test_full_pit_raises_before_any_fetch(index, counting_repo):
     assert counting_repo.get_calls == 0
 
 
-def test_timeline_mvp1_axis_raises_before_any_fetch(rec_index, repo):
+def test_timeline_unknown_axis_raises_before_any_fetch(rec_index, repo):
     rec_index.add(_idx_row("e1"))
     with pytest.raises(NotInMVP0):
-        _shaper(rec_index, repo).materialize_timeline("e1", axis="created_at")  # type: ignore[arg-type]
+        _shaper(rec_index, repo).materialize_timeline("e1", axis="procedure")  # type: ignore[arg-type]
     assert sum(rec_index.calls.values()) == 0

@@ -47,16 +47,23 @@ SUMMARY_MAX_CHARS: int = 200
 SUBJECT_MAX_CHARS: int = 160
 """Deterministic truncation of the subject in the INDEX payload."""
 
+TIMELINE_RANGE_DELTA_DAYS: int = 7
+"""Half-window (±Δt) of the ``created_at``/``valid_at`` range axes, centered on
+the anchor's timestamp. A fixed constant in the current release (configurable
+window is a follow-up)."""
+
 TimelineAxis = Literal[
     "supersedes_chain",  # current release — chain_rows_from(anchor)
     "fact_id_scope",  # current release — find_vigent_row_by_fact_id(anchor.fact_id)
-    "created_at",  # later release — range_rows_* around anchor (±Δt)
-    "valid_at",  # later release — range over valid_at (PIT)
-    "graph_bfs",  # later release — 1-2 hop temporal graph via the BFS axis
+    "created_at",  # current release — range_rows_known_at around anchor.created_at (±Δt)
+    "valid_at",  # current release — range_rows_state_at around anchor.valid_at (±Δt)
+    "graph_bfs",  # current release — 1-2 hop temporal graph via the BFS axis
 ]
 """Timeline axis (Literal, extensible for procedural axes)."""
 
-MVP0_AXES: frozenset[str] = frozenset({"supersedes_chain", "fact_id_scope"})
+MVP0_AXES: frozenset[str] = frozenset(
+    {"supersedes_chain", "fact_id_scope", "created_at", "valid_at"}
+)
 """Current-release timeline axes. Others raise NotInMVP0."""
 
 

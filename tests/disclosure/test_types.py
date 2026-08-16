@@ -50,10 +50,11 @@ def test_constant_pins_match_signed_contract():
     assert SUBJECT_MAX_CHARS == 160
 
 
-def test_mvp0_axes_exactly_two_and_mvp1_axes_excluded():
-    assert frozenset({"supersedes_chain", "fact_id_scope"}) == MVP0_AXES
-    for mv1 in ("created_at", "valid_at", "graph_bfs"):
-        assert mv1 not in MVP0_AXES
+def test_mvp0_axes_four_and_graph_bfs_excluded():
+    assert frozenset(
+        {"supersedes_chain", "fact_id_scope", "created_at", "valid_at"}
+    ) == MVP0_AXES
+    assert "graph_bfs" not in MVP0_AXES
 
 
 # ---------------------------------------------------------------------------

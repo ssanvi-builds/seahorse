@@ -217,17 +217,21 @@ class TestRecallTimelineSchema:
     def test_required_anchor_ep_id(self) -> None:
         assert RECALL_TIMELINE_SCHEMA["required"] == ["anchor_ep_id"]
 
-    def test_axis_enum_mvp0_plus_graph_bfs(self) -> None:
-        # graph_bfs (the BFS axis, a later-release feature) is materialized;
-        # created_at/valid_at stay out of the wire enum until their own
-        # later-release materialization.
+    def test_axis_enum_all_materialized_axes(self) -> None:
+        # All five timeline axes are materialized in the current release
+        # (supersedes_chain, fact_id_scope, created_at, valid_at, graph_bfs).
         enum = RECALL_TIMELINE_SCHEMA["properties"]["axis"]["enum"]
-        assert set(enum) == {"supersedes_chain", "fact_id_scope", "graph_bfs"}
+        assert set(enum) == {
+            "supersedes_chain",
+            "fact_id_scope",
+            "created_at",
+            "valid_at",
+            "graph_bfs",
+        }
 
-    def test_axis_no_unmaterialized_mvp1_values(self) -> None:
+    def test_axis_no_unknown_values(self) -> None:
         enum = RECALL_TIMELINE_SCHEMA["properties"]["axis"]["enum"]
-        assert "created_at" not in enum
-        assert "valid_at" not in enum
+        assert "procedure" not in enum
 
     def test_hops_capped_to_max(self) -> None:
         hops = RECALL_TIMELINE_SCHEMA["properties"]["hops"]

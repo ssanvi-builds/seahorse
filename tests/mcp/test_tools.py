@@ -260,10 +260,10 @@ class TestRecallTimelineHandler:
         dispatch("recall_timeline", {"anchor_ep_id": "ep-1"}, facade, 1)
         assert facade.recall_timeline_calls[0]["axis"] == "supersedes_chain"
 
-    def test_rejects_mvp1_axis_at_wire(self) -> None:
+    def test_rejects_unknown_axis_at_wire(self) -> None:
         facade = RecordingFacade()
         resp = dispatch(
-            "recall_timeline", {"anchor_ep_id": "ep-1", "axis": "created_at"}, facade, 1
+            "recall_timeline", {"anchor_ep_id": "ep-1", "axis": "procedure"}, facade, 1
         )
         assert resp["error"]["code"] == -32602
         assert len(facade.recall_timeline_calls) == 0

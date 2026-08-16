@@ -344,7 +344,7 @@ def test_bad_timeline_axis_exit_86(vault):
     """recall-timeline with a non-materialized axis → NotInMVP0 (disclosure error 86)."""
     _, out, _ = invoke(["--vault", str(vault), "--json", "remember", "x"])
     ep = json.loads(out)["ep_id"]
-    code, out, err = invoke(["--vault", str(vault), "recall-timeline", ep, "--axis", "created_at"])
+    code, out, err = invoke(["--vault", str(vault), "recall-timeline", ep, "--axis", "procedure"])
     assert code == 86, err
     assert "NotInMVP0" in err
     assert "component: #8" in err

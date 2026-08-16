@@ -63,7 +63,13 @@ _PIT_KIND_REQUIRED_ENUM: list[Any] = sorted(PIT_KIND_VALUES)
 # single-episode ingestion; ``llm_partial`` stays reserved.
 _EXTRACTION_MODE_ENUM: list[Any] = sorted(get_args(ExtractionMode)) + [None]
 _REASON_ENUM: list[Any] = ["contradiction", "correction", "merge", "revalidation"]
-_AXIS_ENUM: list[Any] = ["supersedes_chain", "fact_id_scope", "graph_bfs"]
+_AXIS_ENUM: list[Any] = [
+    "supersedes_chain",
+    "fact_id_scope",
+    "created_at",
+    "valid_at",
+    "graph_bfs",
+]
 
 # ---------------------------------------------------------------------------
 # $defs — shared JSON Schema reusables.

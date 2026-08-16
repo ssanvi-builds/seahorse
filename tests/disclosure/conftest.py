@@ -108,16 +108,31 @@ class FakeIndexRepo:
                 return row
         return None
 
-    # TIMELINE later-release axes — not exercised by the first release (raise if called).
+    # TIMELINE range axes — mirror of the SQLite _range_rows (inclusive window,
+    # NULL-excluded, optional subject filter, ordered by the axis column).
     def range_rows_state_at(
         self, t_start: datetime, t_end: datetime, *, subject: str | None = None
     ) -> list[IndexRowData]:
-        raise NotImplementedError
+        rows = [
+            r
+            for r in self.rows.values()
+            if r.valid_at is not None and t_start <= r.valid_at <= t_end
+        ]
+        if subject is not None:
+            rows = [r for r in rows if r.subject == subject]
+        return sorted(rows, key=lambda r: r.valid_at)
 
     def range_rows_known_at(
         self, t_start: datetime, t_end: datetime, *, subject: str | None = None
     ) -> list[IndexRowData]:
-        raise NotImplementedError
+        rows = [
+            r
+            for r in self.rows.values()
+            if r.created_at is not None and t_start <= r.created_at <= t_end
+        ]
+        if subject is not None:
+            rows = [r for r in rows if r.subject == subject]
+        return sorted(rows, key=lambda r: r.created_at)
 
     def bfs_neighbors_state_at(
         self, ep_id: str, pit: datetime, *, pit_kind: PITKind, hops: int, include_tags_soft: bool

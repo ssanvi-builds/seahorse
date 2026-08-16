@@ -18,7 +18,7 @@ axes are never mixed). FULL PIT is NOT supported in the current release
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
 from seahorse.contracts.engine import EpisodeRepository, freshness_of
@@ -32,6 +32,7 @@ from seahorse.disclosure.types import (
     MVP0_AXES,
     SUBJECT_MAX_CHARS,
     SUMMARY_MAX_CHARS,
+    TIMELINE_RANGE_DELTA_DAYS,
     EpisodeProvenance,
     FullBatchTooLarge,
     FullDetail,
@@ -243,12 +244,35 @@ class DisclosureShaperImpl:
     def _timeline_rows(self, anchor_ep_id: str, axis: TimelineAxis) -> list[IndexRowData]:
         if axis == "supersedes_chain":
             return self._index.chain_rows_from(anchor_ep_id)
-        # fact_id_scope: the currently-valid row for the anchor's fact_id.
         anchor_rows = self._index.get_rows([anchor_ep_id])
         if not anchor_rows:
             return []
-        vigent = self._index.find_vigent_row_by_fact_id(anchor_rows[0].fact_id)
-        return [vigent] if vigent is not None else []
+        anchor = anchor_rows[0]
+        if axis == "fact_id_scope":
+            # The currently-valid row for the anchor's fact_id.
+            vigent = self._index.find_vigent_row_by_fact_id(anchor.fact_id)
+            return [vigent] if vigent is not None else []
+        if axis == "created_at":
+            # Range over the transaction_time axis (created_at) around the
+            # anchor's created_at (±Δt). The anchor itself is included (its
+            # created_at is the window center).
+            delta = timedelta(days=TIMELINE_RANGE_DELTA_DAYS)
+            return self._index.range_rows_known_at(
+                anchor.created_at - delta, anchor.created_at + delta
+            )
+        if axis == "valid_at":
+            # Range over the valid_time axis (valid_at) around the anchor's
+            # valid_at (±Δt). An anchor with no valid_at ("valid from forever")
+            # has no window to center — return empty honestly.
+            if anchor.valid_at is None:
+                return []
+            delta = timedelta(days=TIMELINE_RANGE_DELTA_DAYS)
+            return self._index.range_rows_state_at(
+                anchor.valid_at - delta, anchor.valid_at + delta
+            )
+        # graph_bfs is materialized by _materialize_graph_bfs before this
+        # method runs; reaching here is an unknown axis — fail loud.
+        raise NotInMVP0(axis)
 
     def _pit_filter(self, rows: list[IndexRowData], pit: PITPoint) -> list[IndexRowData]:
         """Client-side PIT composition by delegating to the persistence layer's typed accessors.
