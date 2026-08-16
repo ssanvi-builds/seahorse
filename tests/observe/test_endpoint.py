@@ -137,6 +137,25 @@ def _post(socket_path, body: dict, *, token: str | None = None) -> int:
         conn.close()
 
 
+def _wait_for_socket(socket_path, timeout_s: float = 5.0) -> None:
+    """Wait until the unix socket accepts connections (not just exists).
+
+    ``os.path.exists`` is true as soon as the file is bound, but the endpoint
+    thread may not be accepting yet under load — a connect probe is the only
+    reliable readiness signal.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(0.1)
+                s.connect(str(socket_path))
+            return
+        except (ConnectionRefusedError, FileNotFoundError, OSError):
+            time.sleep(0.05)
+    raise AssertionError(f"socket {socket_path} did not accept connections within {timeout_s}s")
+
+
 def test_serve_forever_accepts_post(tmp_path) -> None:
     queue = ObserverQueue(tmp_path / "observer.db")
     socket_path = _short_socket_path()
@@ -144,12 +163,8 @@ def test_serve_forever_accepts_post(tmp_path) -> None:
     thread = threading.Thread(target=ep.serve_forever, daemon=True)
     thread.start()
     try:
-        # Wait for the socket to appear.
-        for _ in range(50):
-            if os.path.exists(socket_path):
-                break
-            time.sleep(0.05)
-        assert os.path.exists(socket_path)
+        # Wait for the socket to accept connections (not just exist).
+        _wait_for_socket(socket_path)
         # Socket permissions: 0600 (FS-level auth).
         assert os.stat(socket_path).st_mode & 0o777 == 0o600
         status = _post(socket_path, _raw_event())
@@ -168,10 +183,7 @@ def test_serve_forever_rejects_bad_token(tmp_path) -> None:
     thread = threading.Thread(target=ep.serve_forever, daemon=True)
     thread.start()
     try:
-        for _ in range(50):
-            if os.path.exists(socket_path):
-                break
-            time.sleep(0.05)
+        _wait_for_socket(socket_path)
         assert _post(socket_path, _raw_event()) == 401
         assert queue.pending_count() == 0
         assert _post(socket_path, _raw_event(), token="secret") == 200

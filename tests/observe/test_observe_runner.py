@@ -55,6 +55,25 @@ def _post(socket_path, body: dict) -> int:
         conn.close()
 
 
+def _wait_for_socket(socket_path, timeout_s: float = 5.0) -> None:
+    """Wait until the unix socket accepts connections (not just exists).
+
+    ``os.path.exists`` is true as soon as the file is bound, but the endpoint
+    thread may not be accepting yet under load — a connect probe is the only
+    reliable readiness signal.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(0.1)
+                s.connect(str(socket_path))
+            return
+        except (ConnectionRefusedError, FileNotFoundError, OSError):
+            time.sleep(0.05)
+    raise AssertionError(f"socket {socket_path} did not accept connections within {timeout_s}s")
+
+
 def test_run_observer_drains_and_writes_episode(tmp_path) -> None:
     facade, storage = build_facade(tmp_path / "seahorse.db")
     queue = ObserverQueue(tmp_path / "observer.db")
@@ -75,10 +94,7 @@ def test_run_observer_drains_and_writes_episode(tmp_path) -> None:
         )
         thread.start()
         try:
-            for _ in range(50):
-                if os.path.exists(socket_path):
-                    break
-                time.sleep(0.05)
+            _wait_for_socket(socket_path)
             # POST a full turn: prompt + stop.
             prompt_event = {
                 "session_id": "sess-1",
