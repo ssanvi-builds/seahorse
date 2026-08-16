@@ -27,8 +27,11 @@ Delegation purity (load-bearing):
 
 from __future__ import annotations
 
+import sys
+import time
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, TextIO
+from typing import Any, TextIO, TypeVar
 
 from seahorse.cli.errors import CliNotInMVP0, CliUsageError
 from seahorse.cli.output import (
@@ -59,6 +62,24 @@ from seahorse.facade.types import Provenance, RememberPayload
 # ---------------------------------------------------------------------------
 # CLI-shape helpers (caps + vocabulary + datetime parsing).
 # ---------------------------------------------------------------------------
+
+_T = TypeVar("_T")
+
+
+def _timed(label: str, fn: Callable[[], _T], *, verbose: bool) -> _T:
+    """Run ``fn`` and, when ``--verbose``, write its wall-clock to stderr.
+
+    Timing is diagnostic output — it goes to stderr (never stdout, which is
+    the structured output channel). ``verbose=False`` is a zero-cost passthrough
+    (no perf_counter call).
+    """
+    if not verbose:
+        return fn()
+    start = time.perf_counter()
+    result = fn()
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    sys.stderr.write(f"[verbose] {label} took {elapsed_ms:.1f}ms\n")
+    return result
 
 
 def _require_le(value: str, *, limit: int, field: str) -> None:
@@ -133,6 +154,7 @@ def run_remember(
     extraction_mode: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse remember`` — clean creation via the write path (near-zero cost).
 
@@ -160,10 +182,14 @@ def run_remember(
         title=title,
         summary=summary,
     )
-    result = facade.remember(
-        payload,
-        skip_extraction=skip_extraction,
-        extraction_mode=extraction_mode,  # type: ignore[arg-type]
+    result = _timed(
+        "remember",
+        lambda: facade.remember(
+            payload,
+            skip_extraction=skip_extraction,
+            extraction_mode=extraction_mode,  # type: ignore[arg-type]
+        ),
+        verbose=verbose,
     )
     render_write_result(result, fmt, out)
 
@@ -184,6 +210,7 @@ def run_recall(
     pit_t: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse recall`` — INDEX level (current-state listing)."""
     _require_le(query, limit=QUERY_MAX_CHARS, field="query")
@@ -208,7 +235,9 @@ def run_recall(
         recall_kwargs["cognitive_type"] = cognitive_type
     if subject_filter is not None:
         recall_kwargs["subject_filter"] = subject_filter
-    rows = facade.recall(query, **recall_kwargs)
+    rows = _timed(
+        "recall", lambda: facade.recall(query, **recall_kwargs), verbose=verbose
+    )
     render_index_rows(rows, fmt=fmt, out=out, query=query)
 
 
@@ -222,6 +251,7 @@ def run_context(
     *,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse context`` — the memory bootstrap (SessionStart hook).
 
@@ -232,7 +262,7 @@ def run_context(
     """
     from seahorse.context.assembler import render_context
 
-    data = facade.context()
+    data = _timed("context", facade.context, verbose=verbose)
     out.write(render_context(data) + "\n")
 
 
@@ -246,6 +276,7 @@ def run_consolidate(
     *,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse consolidate`` — distill recurrent episodes.
 
@@ -255,7 +286,7 @@ def run_consolidate(
     """
     from seahorse.distill.consolidate import consolidate
 
-    report = consolidate(facade)
+    report = _timed("consolidate", lambda: consolidate(facade), verbose=verbose)
     if fmt == "human":
         if report.items:
             for item in report.items:
@@ -303,6 +334,7 @@ def run_recall_timeline(
     pit_t: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse recall-timeline`` — TIMELINE level (anchor-based, no body).
 
@@ -318,7 +350,11 @@ def run_recall_timeline(
         t = _parse_dt(pit_t, field="pit-t") if pit_t is not None else None
         pit = facade.build_pit(pit_kind=pit_kind, t=t)
 
-    window = facade.recall_timeline(anchor_ep_id, axis=axis, hops=hops, pit=pit)
+    window = _timed(
+        "recall_timeline",
+        lambda: facade.recall_timeline(anchor_ep_id, axis=axis, hops=hops, pit=pit),
+        verbose=verbose,
+    )
     render_timeline(window, fmt=fmt, out=out)
 
 
@@ -335,6 +371,7 @@ def run_recall_full(
     pit_t: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse recall-full`` — FULL level (hydrates body, cap MAX_FULL_BATCH=5).
 
@@ -351,7 +388,9 @@ def run_recall_full(
         t = _parse_dt(pit_t, field="pit-t") if pit_t is not None else None
         pit = facade.build_pit(pit_kind=pit_kind, t=t)
 
-    details = facade.recall_full(ep_ids, pit=pit)
+    details = _timed(
+        "recall_full", lambda: facade.recall_full(ep_ids, pit=pit), verbose=verbose
+    )
     render_full_details(details, fmt=fmt, out=out)
 
 
@@ -371,6 +410,7 @@ def run_improve(
     valid_at: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse improve`` — editorial correction (invalidate + append)."""
 
@@ -380,7 +420,11 @@ def run_improve(
     by = _build_provenance(source_type=source_type, agent_id=agent_id, session_id=None)
     va = _parse_dt(valid_at, field="valid-at") if valid_at is not None else None
 
-    episode = facade.improve(ep_id, new_body, by=by, valid_at=va, reason=reason)
+    episode = _timed(
+        "improve",
+        lambda: facade.improve(ep_id, new_body, by=by, valid_at=va, reason=reason),
+        verbose=verbose,
+    )
     render_episode(episode, fmt=fmt, out=out, verb="Improved")
 
 
@@ -399,6 +443,7 @@ def run_forget(
     now: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse forget`` — bi-temporal soft-delete.
 
@@ -412,7 +457,11 @@ def run_forget(
     by = _build_provenance(source_type=source_type, agent_id=agent_id, session_id=None)
     now_dt = _parse_dt(now, field="now") if now is not None else None
 
-    episode = facade.forget(ep_id, reason=reason, by=by, now=now_dt)
+    episode = _timed(
+        "forget",
+        lambda: facade.forget(ep_id, reason=reason, by=by, now=now_dt),
+        verbose=verbose,
+    )
     render_episode(episode, fmt=fmt, out=out, verb="Forgotten")
 
 
@@ -427,10 +476,13 @@ def run_freshness_view(
     ep_id: str,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse freshness-view`` — freshness snapshot of an episode."""
     _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
-    view = facade.freshness_view(ep_id)
+    view = _timed(
+        "freshness_view", lambda: facade.freshness_view(ep_id), verbose=verbose
+    )
     render_freshness_view(view, fmt=fmt, out=out)
 
 
@@ -440,10 +492,11 @@ def run_audit_log(
     ep_id: str,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse audit-log`` — the write-path history of an episode."""
     _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
-    events = facade.audit_log(ep_id)
+    events = _timed("audit_log", lambda: facade.audit_log(ep_id), verbose=verbose)
     render_audit_log(events, fmt=fmt, out=out)
 
 
@@ -453,10 +506,15 @@ def run_follow_supersedes_chain(
     ep_id: str,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse follow-supersedes-chain`` — the version history of an episode."""
     _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
-    episodes = facade.follow_supersedes_chain(ep_id)
+    episodes = _timed(
+        "follow_supersedes_chain",
+        lambda: facade.follow_supersedes_chain(ep_id),
+        verbose=verbose,
+    )
     render_supersedes_chain(episodes, fmt=fmt, out=out)
 
 

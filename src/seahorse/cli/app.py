@@ -99,6 +99,7 @@ class CliContext:
     config: Path | None = None
     fmt: OutputFormat = "human"
     quiet: bool = False
+    verbose: bool = False
     _facade: MemoryFacade | None = field(default=None, repr=False)
     _storage: Storage | None = field(default=None, repr=False)
     _resolved_config: SeahorseConfig | None = field(default=None, repr=False)
@@ -258,6 +259,9 @@ def _callback(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress stdout (errors still on stderr)."
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Human output with per-operation timing (stderr)."
+    ),
 ) -> None:
     """Seahorse CLI — memory primitives + vault management."""
     ctx.obj = CliContext(
@@ -265,6 +269,7 @@ def _callback(
         config=config,
         fmt=_fmt_from(format, json, jsonl),
         quiet=quiet,
+        verbose=verbose,
     )
     _STATE_STACK.append(ctx.obj)
     _announce_model_download(ctx.obj)
@@ -310,6 +315,7 @@ def remember(
         extraction_mode=extraction_mode,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -336,19 +342,24 @@ def recall_cmd(
         pit_t=pit_t,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
 @app.command()
 def context(ctx: typer.Context) -> None:
     """Render the memory bootstrap context (SessionStart hook)."""
-    run_context(ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx))
+    run_context(
+        ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx), verbose=ctx.obj.verbose
+    )
 
 
 @app.command()
 def consolidate(ctx: typer.Context) -> None:
     """Distill recurrent episodes into semantic knowledge notes."""
-    run_consolidate(ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx))
+    run_consolidate(
+        ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx), verbose=ctx.obj.verbose
+    )
 
 
 @app.command(name="recall-timeline")
@@ -372,6 +383,7 @@ def recall_timeline_cmd(
         pit_t=pit_t,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -392,6 +404,7 @@ def recall_full_cmd(
         pit_t=pit_t,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -416,6 +429,7 @@ def improve(
         valid_at=valid_at,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -438,6 +452,7 @@ def forget(
         now=now,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -448,7 +463,11 @@ def freshness_view_cmd(
 ) -> None:
     """Freshness snapshot of an episode (age, stale, pending_ingest)."""
     run_freshness_view(
-        ctx.obj.facade(), ep_id=ep_id, fmt=ctx.obj.fmt, out=_out(ctx)
+        ctx.obj.facade(),
+        ep_id=ep_id,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -458,7 +477,9 @@ def audit_log_cmd(
     ep_id: str = typer.Argument(..., help="Episode id."),
 ) -> None:
     """The write-path history of an episode (audit events)."""
-    run_audit_log(ctx.obj.facade(), ep_id=ep_id, fmt=ctx.obj.fmt, out=_out(ctx))
+    run_audit_log(
+        ctx.obj.facade(), ep_id=ep_id, fmt=ctx.obj.fmt, out=_out(ctx), verbose=ctx.obj.verbose
+    )
 
 
 @app.command(name="follow-supersedes-chain")
@@ -468,7 +489,11 @@ def follow_supersedes_chain_cmd(
 ) -> None:
     """The version history of an episode (supersedes closure)."""
     run_follow_supersedes_chain(
-        ctx.obj.facade(), ep_id=ep_id, fmt=ctx.obj.fmt, out=_out(ctx)
+        ctx.obj.facade(),
+        ep_id=ep_id,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -907,6 +932,7 @@ def skill_add_cmd(
         session_id=session_id,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -916,7 +942,9 @@ def skill_list_cmd(
     top_k: int = typer.Option(10, "--top-k"),
 ) -> None:
     """List procedural skills (Discovery level)."""
-    run_skill_list(ctx.obj.facade(), top_k=top_k, fmt=ctx.obj.fmt, out=_out(ctx))
+    run_skill_list(
+        ctx.obj.facade(), top_k=top_k, fmt=ctx.obj.fmt, out=_out(ctx), verbose=ctx.obj.verbose
+    )
 
 
 @skill_app.command(name="search")
@@ -927,7 +955,12 @@ def skill_search_cmd(
 ) -> None:
     """Search procedural skills (hybrid recall, procedural filter)."""
     run_skill_search(
-        ctx.obj.facade(), query=query, top_k=top_k, fmt=ctx.obj.fmt, out=_out(ctx)
+        ctx.obj.facade(),
+        query=query,
+        top_k=top_k,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 
@@ -948,6 +981,7 @@ def skill_show_cmd(
         min_trust=min_trust or default_trust,
         fmt=ctx.obj.fmt,
         out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 

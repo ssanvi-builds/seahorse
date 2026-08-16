@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TextIO
 
 from seahorse.cli.output import OutputFormat, render_index_rows, render_message
-from seahorse.cli.primitives import _build_provenance, _require_le
+from seahorse.cli.primitives import _build_provenance, _require_le, _timed
 from seahorse.facade.facade import MemoryFacade
 from seahorse.procedural.operations import record_procedure
 from seahorse.procedural.trust import SkillDelivery, TrustLevel, gate_skill
@@ -35,6 +35,7 @@ def run_skill_add(
     version: str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse skill add`` — deterministic skill creation (skip path).
 
@@ -44,14 +45,18 @@ def run_skill_add(
     """
     _require_le(body, limit=32_768, field="body")
     by = _build_provenance(source_type=source_type, agent_id=agent_id, session_id=session_id)
-    result = record_procedure(
-        facade,
-        body=body,
-        by=by,
-        title=title,
-        trigger=trigger,
-        scope=scope,
-        version=version,
+    result = _timed(
+        "skill_add",
+        lambda: record_procedure(
+            facade,
+            body=body,
+            by=by,
+            title=title,
+            trigger=trigger,
+            scope=scope,
+            version=version,
+        ),
+        verbose=verbose,
     )
     render_message(
         {"ep_id": result.ep_id, "status": "added", "cognitive_type": "procedural"},
@@ -67,6 +72,7 @@ def run_skill_list(
     top_k: int = 10,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse skill list`` — Discovery level (procedural filter).
 
@@ -74,7 +80,11 @@ def run_skill_list(
     ``cognitive_type=procedural`` — an honest listing, not a fake query. The
     Discovery row is the episode's summary (≤ 280 chars, no body).
     """
-    eps = [e for e in facade.get_vigente() if e.cognitive_type == PROCEDURAL]
+    eps = [
+        e
+        for e in _timed("skill_list", facade.get_vigente, verbose=verbose)
+        if e.cognitive_type == PROCEDURAL
+    ]
     eps = sorted(eps, key=lambda e: e.created_at, reverse=True)[:top_k]
     if fmt == "json":
         import json
@@ -117,10 +127,15 @@ def run_skill_search(
     top_k: int = 10,
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse skill search`` — Discovery level (hybrid recall, procedural)."""
     _require_le(query, limit=512, field="query")
-    rows = facade.recall(query, k=top_k, cognitive_type=PROCEDURAL)
+    rows = _timed(
+        "skill_search",
+        lambda: facade.recall(query, k=top_k, cognitive_type=PROCEDURAL),
+        verbose=verbose,
+    )
     render_index_rows(rows, fmt=fmt, out=out, query=query)
 
 
@@ -131,6 +146,7 @@ def run_skill_show(
     min_trust: str = "medium",
     fmt: OutputFormat = "human",
     out: TextIO,
+    verbose: bool = False,
 ) -> None:
     """``seahorse skill show`` — Execution level (FULL, trust gate).
 
@@ -142,7 +158,9 @@ def run_skill_show(
     """
     _require_le(ep_id, limit=64, field="ep-id")
     trust = _parse_trust(min_trust)
-    details = facade.recall_full([ep_id])
+    details = _timed(
+        "skill_show", lambda: facade.recall_full([ep_id]), verbose=verbose
+    )
     if not details:
         out.write("  (no skill found)\n")
         return
