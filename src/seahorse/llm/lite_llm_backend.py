@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, NoReturn
 
 from pydantic import BaseModel
@@ -50,7 +50,7 @@ from seahorse.llm.parser import (
 )
 from seahorse.llm.providers import resolve_provider
 from seahorse.llm.routing import RoleRoute
-from seahorse.llm.types import BudgetContext, CompletionResult, ExtractResult
+from seahorse.llm.types import BudgetContext, CompletionResult, ExtractResult, Messages
 
 _logger = logging.getLogger("seahorse.llm.litellm")
 
@@ -150,8 +150,14 @@ class LiteLLMBackend:
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
+        prompt_builder: Callable[[str, type[BaseModel]], Messages] | None = None,
     ) -> ExtractResult:
         """Structured extraction: pre-flight budget → prompt → validate → repair.
+
+        ``prompt_builder`` is an optional custom prompt builder (default: the
+        extraction prompt). It lets callers reuse the full pipeline — schema
+        hint + repair + degrade + fallback chain + cost cap — with a different
+        prompt (e.g. the distillation synthesis prompt).
 
         Never raises for a failed extraction — returns ``degraded_to_skip=True``
         with ``model_used=None`` so the write path degrades honestly instead of
@@ -179,7 +185,7 @@ class LiteLLMBackend:
                         data={}, prompt_hash="", degraded_to_skip=True
                     )
             return self._extract_with_repair(
-                content, schema_hint, ctx, max_tokens, timeout
+                content, schema_hint, ctx, max_tokens, timeout, prompt_builder
             )
         except LLMError as exc:  # chain exhausted / pricing unknown / setup
             ctx.last_degradation_reason = f"llm_exception: {exc}"
@@ -198,8 +204,10 @@ class LiteLLMBackend:
         ctx: BudgetContext,
         max_tokens: int | None,
         timeout_s: float,
+        prompt_builder: Callable[[str, type[BaseModel]], Messages] | None = None,
     ) -> ExtractResult:
-        first_messages = build_extract_prompt(content, schema_hint)
+        builder = prompt_builder or build_extract_prompt
+        first_messages = builder(content, schema_hint)
         messages = first_messages
         retries_total = 0
         for round in range(ctx.repair_budget + 1):  # 1 initial + repairs

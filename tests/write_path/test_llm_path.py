@@ -41,6 +41,7 @@ class _RecordingLLMClient:
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
+        prompt_builder=None,
     ) -> ExtractResult:
         self.calls.append(
             {"content": content, "schema_hint": schema_hint, "role": role, "budget": budget}

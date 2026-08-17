@@ -38,11 +38,14 @@ refactor.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel
+
+# The message shape the prompt builders produce (system/user turns).
+Messages = Sequence[Mapping[str, str]]
 
 
 @dataclass(frozen=True)
@@ -137,6 +140,7 @@ class LLMClient(Protocol):
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
+        prompt_builder: Callable[[str, type[BaseModel]], Messages] | None = None,
     ) -> ExtractResult: ...
 
 
@@ -173,6 +177,7 @@ class StubLLMClient:
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
+        prompt_builder: Callable[[str, type[BaseModel]], Messages] | None = None,
     ) -> ExtractResult:
         raise NotImplementedError(
             "LLM extraction not implemented in the current release. "

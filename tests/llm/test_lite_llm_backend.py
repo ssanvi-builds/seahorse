@@ -227,6 +227,41 @@ class TestNativeStructuredOptIn:
         assert captured["response_format"]["type"] == "json_schema"
 
 
+class TestPromptBuilder:
+    def test_custom_prompt_builder_is_used(self, monkeypatch) -> None:
+        captured: list[list[dict]] = []
+
+        def completion_fn(**kw) -> _FakeResp:
+            captured.append(kw["messages"])
+            return _FakeResp('{"subject": "x", "tags": []}')
+
+        _install_litellm(monkeypatch, completion_fn)
+
+        def custom_builder(content: str, schema_hint: type) -> list[dict]:
+            return [
+                {"role": "system", "content": "CUSTOM SYSTEM"},
+                {"role": "user", "content": f"CUSTOM USER: {content}"},
+            ]
+
+        backend = LiteLLMBackend(route=_route("ollama/qwen3:1.7b"))
+        res = backend.extract("body", _Frontmatter, prompt_builder=custom_builder)
+        assert res.degraded_to_skip is False
+        assert captured[0][0]["content"] == "CUSTOM SYSTEM"
+        assert captured[0][1]["content"] == "CUSTOM USER: body"
+
+    def test_default_prompt_builder_when_none(self, monkeypatch) -> None:
+        captured: list[list[dict]] = []
+
+        def completion_fn(**kw) -> _FakeResp:
+            captured.append(kw["messages"])
+            return _FakeResp('{"subject": "x", "tags": []}')
+
+        _install_litellm(monkeypatch, completion_fn)
+        backend = LiteLLMBackend(route=_route("ollama/qwen3:1.7b"))
+        backend.extract("body", _Frontmatter)
+        assert "SCHEMA" in captured[0][1]["content"]  # default extract prompt
+
+
 class TestProtocolConformance:
     def test_backend_satisfies_llmclient_protocol(self) -> None:
         assert isinstance(
