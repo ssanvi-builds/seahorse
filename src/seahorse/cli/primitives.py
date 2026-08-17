@@ -58,6 +58,7 @@ from seahorse.constants import (
 from seahorse.disclosure.types import SUMMARY_MAX_CHARS
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import Provenance, RememberPayload
+from seahorse.llm import LLMClient
 
 # ---------------------------------------------------------------------------
 # CLI-shape helpers (caps + vocabulary + datetime parsing).
@@ -277,22 +278,35 @@ def run_consolidate(
     fmt: OutputFormat = "human",
     out: TextIO,
     verbose: bool = False,
+    synthesis: str = "skip",
+    llm_client: LLMClient | None = None,
 ) -> None:
     """``seahorse consolidate`` — distill recurrent episodes.
 
     Reads the current-state set, clusters by subject recurrence (N≥3), and
     distills each cluster into a consolidated semantic knowledge note.
     Idempotent: a cluster whose key already has a consolidated note is skipped.
+    ``synthesis="llm"`` (with a wired ``llm_client``) adds the off-path LLM
+    synthesis; a failed synthesis degrades honestly to the deterministic body.
     """
     from seahorse.distill.consolidate import consolidate
 
-    report = _timed("consolidate", lambda: consolidate(facade), verbose=verbose)
+    report = _timed(
+        "consolidate",
+        lambda: consolidate(facade, synthesis=synthesis, llm_client=llm_client),
+        verbose=verbose,
+    )
     if fmt == "human":
         if report.items:
             for item in report.items:
+                suffix = ""
+                if item.synthesis == "llm":
+                    suffix = " [llm]"
+                elif item.synthesis == "degraded":
+                    suffix = " [degraded]"
                 out.write(
                     f"consolidated: {item.key} ({item.source_count} sources) "
-                    f"-> {item.status}\n"
+                    f"-> {item.status}{suffix}\n"
                 )
         else:
             out.write(f"consolidate: no clusters to distill ({report.clusters_found} found)\n")
@@ -309,6 +323,7 @@ def run_consolidate(
                             "source_count": i.source_count,
                             "status": i.status,
                             "ep_id": i.ep_id,
+                            "synthesis": i.synthesis,
                         }
                         for i in report.items
                     ],

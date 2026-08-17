@@ -103,12 +103,25 @@ class CliContext:
     _facade: MemoryFacade | None = field(default=None, repr=False)
     _storage: Storage | None = field(default=None, repr=False)
     _resolved_config: SeahorseConfig | None = field(default=None, repr=False)
+    _llm_client: LLMClient | None = field(default=None, repr=False)
+    _llm_client_ready: bool = field(default=False, repr=False)
 
     def resolved_config(self) -> SeahorseConfig:
         if self._resolved_config is None:
             vault = resolve_vault(self.vault)
             self._resolved_config = load_config(vault, explicit_config=self.config)
         return self._resolved_config
+
+    def llm_client(self) -> LLMClient | None:
+        """The write-path LLM client (built once from the ``[llm]`` config).
+
+        ``None`` (no ``[llm]`` section) keeps the honest llm→skip degrade. The
+        facade and the ``consolidate --synthesis llm`` path share this client.
+        """
+        if not self._llm_client_ready:
+            self._llm_client = self._build_llm_client(self.resolved_config())
+            self._llm_client_ready = True
+        return self._llm_client
 
     def facade(self) -> MemoryFacade:
         if self._facade is None:
@@ -118,7 +131,7 @@ class CliContext:
             facade, storage = build_facade(
                 cfg.db_path,
                 config=FacadeConfig(default_extraction_mode=mode, top_k=cfg.top_k),
-                llm_client=self._build_llm_client(cfg),
+                llm_client=self.llm_client(),
             )
             self._facade = facade
             self._storage = storage
@@ -355,10 +368,18 @@ def context(ctx: typer.Context) -> None:
 
 
 @app.command()
-def consolidate(ctx: typer.Context) -> None:
+def consolidate(
+    ctx: typer.Context,
+    synthesis: str = typer.Option("skip", "--synthesis", help="skip | llm."),
+) -> None:
     """Distill recurrent episodes into semantic knowledge notes."""
     run_consolidate(
-        ctx.obj.facade(), fmt=ctx.obj.fmt, out=_out(ctx), verbose=ctx.obj.verbose
+        ctx.obj.facade(),
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+        verbose=ctx.obj.verbose,
+        synthesis=synthesis,
+        llm_client=ctx.obj.llm_client(),
     )
 
 

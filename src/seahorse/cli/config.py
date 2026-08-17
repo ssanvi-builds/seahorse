@@ -125,6 +125,18 @@ class ProceduralSection:
 
 
 @dataclass(frozen=True)
+class DistillConfig:
+    """The ``[distill]`` section — distillation synthesis policy.
+
+    ``synthesis`` is the body provenance mode for ``seahorse consolidate``:
+    ``"skip"`` (deterministic, the default) or ``"llm"`` (off-path LLM
+    synthesis, opt-in — requires the ``[llm]`` section for a wired client).
+    """
+
+    synthesis: str = "skip"
+
+
+@dataclass(frozen=True)
 class SeahorseConfig:
     """Resolved Seahorse configuration for a vault.
 
@@ -143,6 +155,7 @@ class SeahorseConfig:
     llm: LlmConfig | None = None
     observe: ObserveConfig | None = None
     procedural: ProceduralSection | None = None
+    distill: DistillConfig | None = None
 
     def with_overrides(
         self, *, extraction_mode: str | None = None, top_k: int | None = None
@@ -249,6 +262,10 @@ def load_config(
     # the module defaults: min_trust=medium, empty loadout).
     procedural = _parse_procedural_section(data.get("procedural"))
 
+    # Optional [distill] section. Missing → distill=None (the LLM synthesis is
+    # opt-in; the deterministic distillation is the default).
+    distill = _parse_distill_section(data.get("distill"))
+
     return SeahorseConfig(
         vault=vault,
         seahorse_dir=seahorse_dir,
@@ -258,6 +275,7 @@ def load_config(
         llm=llm,
         observe=observe,
         procedural=procedural,
+        distill=distill,
     )
 
 
@@ -371,6 +389,28 @@ def _parse_procedural_section(raw: object) -> ProceduralSection | None:
         raise CliConfigInvalid("procedural.loadout must be a list of non-empty strings")
 
     return ProceduralSection(min_trust=min_trust, loadout=tuple(loadout))
+
+
+def _parse_distill_section(raw: object) -> DistillConfig | None:
+    """Validate an optional ``[distill]`` section into a ``DistillConfig``.
+
+    ``None`` input (no section) → ``None`` (the LLM synthesis is opt-in — the
+    deterministic distillation is the default). Any structurally wrong value is
+    a ``CliConfigInvalid`` (Cat C, exit 83) — a config typo fails loud, not as a
+    silent degrade at runtime.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise CliConfigInvalid("distill must be a [distill] table")
+
+    synthesis = raw.get("synthesis", "skip")
+    if not isinstance(synthesis, str) or synthesis not in _VALID_CONFIG_MODES:
+        raise CliConfigInvalid(
+            f"distill.synthesis={synthesis!r}; expected 'skip' or 'llm'"
+        )
+
+    return DistillConfig(synthesis=synthesis)
 
 
 def write_default_config(vault: Path) -> Path:
