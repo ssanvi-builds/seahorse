@@ -144,6 +144,54 @@ def test_distill_representative_must_be_in_sources(engine) -> None:
         )
 
 
+def test_distill_respects_llm_provenance(engine) -> None:
+    eng, repo, audit = engine
+    ids, rep = _cluster(eng)
+    wr = distill_episodes(
+        eng,
+        source_ep_ids=ids,
+        representative=rep,
+        consolidated_body="# Fix the flaky recall test\n\nSynthesized.",
+        by={
+            "source_type": "system",
+            "agent_id": "consolidator",
+            "model_used": "ollama/qwen3:1.7b",
+            "prompt_hash": "h" * 64,
+            "confidence": 0.9,
+        },
+    )
+    ep = repo.get(wr.ep_id)
+    # The LLM provenance from `by` is respected (not forced to None/1.0).
+    assert ep.provenance["extraction_mode"] == "consolidated"
+    assert ep.provenance["model_used"] == "ollama/qwen3:1.7b"
+    assert ep.provenance["prompt_hash"] == "h" * 64
+    assert ep.provenance["confidence"] == 0.9
+
+
+def test_distill_respects_degrade_marker(engine) -> None:
+    eng, repo, audit = engine
+    ids, rep = _cluster(eng)
+    wr = distill_episodes(
+        eng,
+        source_ep_ids=ids,
+        representative=rep,
+        consolidated_body="# Fix the flaky recall test\n\nFallback.",
+        by={
+            "source_type": "system",
+            "agent_id": "consolidator",
+            "model_used": None,
+            "prompt_hash": None,
+            "confidence": 1.0,
+            "degraded_from": "llm",
+            "degrade_reason": "llm_degraded",
+        },
+    )
+    ep = repo.get(wr.ep_id)
+    # The honest degrade marker (C8.7) passes through from `by`.
+    assert ep.provenance["degraded_from"] == "llm"
+    assert ep.provenance["degrade_reason"] == "llm_degraded"
+
+
 def test_distill_summary_skips_h1(engine) -> None:
     eng, repo, audit = engine
     ids, rep = _cluster(eng)

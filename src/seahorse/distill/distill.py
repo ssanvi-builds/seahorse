@@ -45,12 +45,16 @@ def distill_episodes(
     """
     if representative.id not in source_ep_ids:
         raise ValueError("representative must be one of source_ep_ids")
+    # The provenance from ``by`` is respected: a caller that synthesized the
+    # body (LLM) or degraded honestly (C8.7) passes ``model_used`` /
+    # ``prompt_hash`` / ``confidence`` / ``degraded_from`` / ``degrade_reason``
+    # through. Without them, the deterministic defaults apply (None/None/1.0).
     effective_by: dict[str, Any] = {
         **by,
         "extraction_mode": "consolidated",
-        "model_used": None,
-        "prompt_hash": None,
-        "confidence": 1.0,
+        "model_used": by.get("model_used"),
+        "prompt_hash": by.get("prompt_hash"),
+        "confidence": by.get("confidence", 1.0),
     }
     if not effective_by.get("session_id"):
         effective_by["session_id"] = f"consolidate-{new_uuid7()}"
