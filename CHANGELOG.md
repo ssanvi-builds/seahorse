@@ -8,6 +8,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **LLM synthesis for distillation (`seahorse consolidate --synthesis llm`)** —
+  the off-path F7+ block: 1 LLM call per recurrent cluster (N episodes → 1
+  fact), reusing the extractor seam (schema hint + repair + honest degrade).
+  A failed synthesis degrades to the deterministic fallback with a durable
+  `degraded_from="llm"` marker (ADR-10). Opt-in via the `[distill]` config
+  section (`synthesis = "llm"`) or the CLI flag; the deterministic distillation
+  remains the default.
+- **`LLMClient.extract` `prompt_builder` seam** — an optional custom prompt
+  builder lets callers reuse the full extraction pipeline (schema validation,
+  repair loop, fallback chain, cost cap) with a different prompt. Additive and
+  non-breaking.
 - **MCP `skill_list` / `skill_search` tools** — the MCP server now exposes the
   two Discovery-level skill tools (14 tools total), closing the parity gap with
   the CLI (which had `skill add|list|search|show` but no MCP listing/search).

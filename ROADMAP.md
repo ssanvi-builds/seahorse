@@ -34,7 +34,10 @@ What works today (v0.7.0):
 - **Session capture and distillation** — `seahorse setup` installs a session
   observer (Claude Code), `seahorse context` bootstraps context for the next
   session, and `seahorse consolidate` distills recurrent episodes into semantic
-  knowledge notes.
+  knowledge notes. With `--synthesis llm` (or the `[distill]` config section),
+  the distillation is LLM-synthesized: 1 call per cluster turns N episodes into
+  one coherent fact, degrading honestly to the deterministic fallback on
+  failure.
 - **Vault migration and import** — `seahorse frontmatter migrate` converts legacy
   Obsidian notes, and `seahorse import` migrates claude-mem observations into
   episodes.
