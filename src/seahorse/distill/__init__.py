@@ -14,6 +14,13 @@ from seahorse.distill.consolidate import (
     consolidate,
 )
 from seahorse.distill.distill import distill_episodes
+from seahorse.distill.synthesis import (
+    ConsolidatedFrontmatter,
+    SynthesisResult,
+    build_cluster_content,
+    build_synthesis_prompt,
+    synthesize_cluster,
+)
 
 __all__ = [
     "Cluster",
@@ -23,4 +30,9 @@ __all__ = [
     "ConsolidateItem",
     "ConsolidateReport",
     "distill_episodes",
+    "ConsolidatedFrontmatter",
+    "SynthesisResult",
+    "build_cluster_content",
+    "build_synthesis_prompt",
+    "synthesize_cluster",
 ]
