@@ -28,7 +28,19 @@ RECENCY_SWEEP_HALF_LIVES_DAYS = (7, 30, 90)
 RERANK_OVERFETCH_K = 20
 
 # Experiment kinds the runner understands.
-EXPERIMENTS = ("recency", "rerank", "embed", "batch")
+EXPERIMENTS = (
+    "recency",
+    "rerank",
+    "embed",
+    "batch",
+    "multi_hop",
+    "entity_centric",
+    "decay",
+    "skills",
+    "rrf_k",
+    "rerank_body",
+    "end_to_end",
+)
 
 # Corpora: synthetic (mechanical CI verification), the real LMEB-S haystack,
 # or the real claude-mem corpus (per-turn batching).

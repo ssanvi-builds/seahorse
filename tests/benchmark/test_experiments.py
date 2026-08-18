@@ -411,5 +411,17 @@ def test_clock_delta_spans_real_date_range(synthetic_dataset):
 
 
 def test_experiments_and_corpora_constants():
-    assert set(EXPERIMENTS) == {"recency", "rerank", "embed", "batch"}
+    assert set(EXPERIMENTS) == {
+        "recency",
+        "rerank",
+        "embed",
+        "batch",
+        "multi_hop",
+        "entity_centric",
+        "decay",
+        "skills",
+        "rrf_k",
+        "rerank_body",
+        "end_to_end",
+    }
     assert set(CORPORA) == {"synthetic", "lmeb-s", "claude-mem"}

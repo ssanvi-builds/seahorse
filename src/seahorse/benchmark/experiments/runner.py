@@ -321,6 +321,69 @@ def render_experiment_report(report: ExperimentReport) -> str:
         return render_batch_report(
             cast(BatchExperimentResult, report.batch_result), report.decision
         )
+    if report.experiment == "entity_centric":
+        from seahorse.benchmark.experiments.entity_centric import (
+            EntityCentricResult,
+            render_entity_centric_report,
+        )
+
+        return render_entity_centric_report(
+            cast(EntityCentricResult, report.batch_result), report.decision
+        )
+    if report.experiment == "multi_hop":
+        from seahorse.benchmark.experiments.multi_hop import (
+            MultiHopExperimentResult,
+            render_multi_hop_report,
+        )
+
+        return render_multi_hop_report(
+            cast(MultiHopExperimentResult, report.batch_result), report.decision
+        )
+    if report.experiment == "decay":
+        from seahorse.benchmark.experiments.decay import (
+            DecayExperimentResult,
+            render_decay_report,
+        )
+
+        return render_decay_report(
+            cast(DecayExperimentResult, report.batch_result), report.decision
+        )
+    if report.experiment == "skills":
+        from seahorse.benchmark.experiments.skills import (
+            SkillsExperimentResult,
+            render_skills_report,
+        )
+
+        return render_skills_report(
+            cast(SkillsExperimentResult, report.batch_result), report.decision
+        )
+    if report.experiment == "rrf_k":
+        from seahorse.benchmark.experiments.rrf_k import (
+            RrfKExperimentResult,
+            render_rrf_k_report,
+        )
+
+        return render_rrf_k_report(
+            cast(RrfKExperimentResult, report.batch_result), report.decision
+        )
+    if report.experiment == "rerank_body":
+        from seahorse.benchmark.experiments.rerank_body import (
+            RerankBodyExperimentResult,
+            render_rerank_body_report,
+        )
+
+        return render_rerank_body_report(
+            cast(RerankBodyExperimentResult, report.batch_result), report.decision
+        )
+    if report.experiment == "end_to_end":
+        from seahorse.benchmark.experiments.end_to_end import (
+            EndToEndExperimentResult,
+            render_end_to_end_report,
+        )
+
+        return render_end_to_end_report(
+            cast(EndToEndExperimentResult, report.batch_result), report.decision
+        )
     lines = [
         f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
@@ -412,6 +475,191 @@ def run_experiment(
             results=(),
             decision=decide_batch(batch_result),
             batch_result=batch_result,
+        )
+
+    if experiment == "entity_centric":
+        # (f) entity-centric recall is a standalone measurement: no
+        # EvaluationRunner, no BenchmarkDataset — the corpus is the synthetic
+        # entity-centric facts (or the authoritative LMEB-S run, not yet wired)
+        # and the metric is the entity recall@k. Delegates to the entity_centric
+        # module. The standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.entity_centric import (
+            decide_entity_centric,
+            run_entity_centric_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"entity_centric experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        entity_result = run_entity_centric_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="entity_centric",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_entity_centric(entity_result),
+            batch_result=entity_result,
+        )
+
+    if experiment == "multi_hop":
+        # (e) multi-hop recall is a standalone measurement: no EvaluationRunner,
+        # no BenchmarkDataset — the corpus is the synthetic entity chains (or the
+        # authoritative LMEB-S multi-session run, not yet built) and the metric
+        # is the 1-hop vs 2-hop recall@k delta. Delegates to the multi_hop
+        # module. The standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.multi_hop import (
+            decide_multi_hop,
+            run_multi_hop_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"multi_hop experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        multi_hop_result = run_multi_hop_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="multi_hop",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_multi_hop(multi_hop_result),
+            batch_result=multi_hop_result,
+        )
+
+    if experiment == "decay":
+        # (g) decay FAMA-style is a standalone measurement: no EvaluationRunner,
+        # no BenchmarkDataset — the corpus is the synthetic knowledge-update
+        # facts (or the authoritative LMEB-S knowledge-update run, not yet built)
+        # and the metric is the FAMA-style / MPA A/B over the S sweep. Delegates
+        # to the decay module. The standalone result reuses the ``batch_result``
+        # slot.
+        from seahorse.benchmark.experiments.decay import (
+            decide_decay,
+            run_decay_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"decay experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        decay_result = run_decay_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="decay",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_decay(decay_result),
+            batch_result=decay_result,
+        )
+
+    if experiment == "skills":
+        # (h) skills retrieval is a standalone measurement: no EvaluationRunner,
+        # no BenchmarkDataset — the corpus is the synthetic procedural episodes
+        # (or the authoritative LMEB-S procedural run, not yet built) and the
+        # metric is the procedural recall@k. Delegates to the skills module. The
+        # standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.skills import (
+            decide_skills,
+            run_skills_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"skills experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        skills_result = run_skills_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="skills",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_skills(skills_result),
+            batch_result=skills_result,
+        )
+
+    if experiment == "rrf_k":
+        # (A5) RRF_K sweep is a standalone measurement: no EvaluationRunner, no
+        # BenchmarkDataset — the corpus is the synthetic golden-answer episodes
+        # (or the authoritative LMEB-S run, not yet built) and the metric is the
+        # recall@10 per RRF_K value. Delegates to the rrf_k module. The
+        # standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.rrf_k import (
+            decide_rrf_k,
+            run_rrf_k_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"rrf_k experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        rrf_k_result = run_rrf_k_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="rrf_k",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_rrf_k(rrf_k_result),
+            batch_result=rrf_k_result,
+        )
+
+    if experiment == "rerank_body":
+        # (A6) rerank-with-body re-test is a standalone measurement: no
+        # EvaluationRunner, no BenchmarkDataset — the corpus is the synthetic
+        # mid-turn-answer episodes (or the authoritative LMEB-S run, not yet
+        # built) and the metric is the recall@10 across baseline / rerank
+        # summary / rerank body. Delegates to the rerank_body module. The
+        # standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.rerank_body import (
+            decide_rerank_body,
+            run_rerank_body_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"rerank_body experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        rerank_body_result = run_rerank_body_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="rerank_body",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_rerank_body(rerank_body_result),
+            batch_result=rerank_body_result,
+        )
+
+    if experiment == "end_to_end":
+        # (A4) end-to-end measurement is a standalone measurement: no
+        # EvaluationRunner, no BenchmarkDataset — the corpus is the synthetic
+        # retrievable/unretrievable episodes (or the authoritative LMEB-S run,
+        # not yet built) and the metric is recall@10 (the ceiling) vs the
+        # reader's end-to-end accuracy. Delegates to the end_to_end module. The
+        # standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.end_to_end import (
+            decide_end_to_end,
+            run_end_to_end_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"end_to_end experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        end_to_end_result = run_end_to_end_experiment(corpus=corpus, top_k=top_k)
+        return ExperimentReport(
+            experiment="end_to_end",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_end_to_end(end_to_end_result),
+            batch_result=end_to_end_result,
         )
 
     base_config = BenchmarkConfig(

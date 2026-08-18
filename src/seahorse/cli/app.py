@@ -371,6 +371,9 @@ def context(ctx: typer.Context) -> None:
 def consolidate(
     ctx: typer.Context,
     synthesis: str = typer.Option("skip", "--synthesis", help="skip | llm."),
+    supersede: bool = typer.Option(
+        False, "--supersede", help="Update existing notes when new episodes arrive (opt-in)."
+    ),
 ) -> None:
     """Distill recurrent episodes into semantic knowledge notes."""
     run_consolidate(
@@ -380,6 +383,8 @@ def consolidate(
         verbose=ctx.obj.verbose,
         synthesis=synthesis,
         llm_client=ctx.obj.llm_client(),
+        vault_path=ctx.obj.resolved_config().vault,
+        supersede=supersede,
     )
 
 
@@ -678,7 +683,12 @@ def benchmark_run_cmd(
 def benchmark_experiment_cmd(
     ctx: typer.Context,
     experiment: str = typer.Argument(
-        ..., help="recency | rerank | embed | batch (which experiment to run)."
+        ...,
+        help=(
+            "recency | rerank | embed | batch | entity_centric | multi_hop | "
+            "decay | skills | rrf_k | rerank_body | end_to_end "
+            "(which experiment to run)."
+        ),
     ),
     corpus: str = typer.Option(
         "synthetic",
