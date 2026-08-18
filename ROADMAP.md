@@ -61,9 +61,11 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   contribution straightforward. On the product side: **supersession** (the
   consolidated knowledge notes update themselves via `improve` instead of
   duplicating) and **retrieval quality** as a first-class workstream — the
-  published benchmark is the public face of the product, and the F7 experiments
-  (multi-hop, entity-centric, decay, skills) are being run to inform the
-  roadmap.
+  published benchmark is the public face of the product. The F7 experiments
+  (multi-hop, entity-centric, decay, skills) and the roadmap-review experiments
+  (RRF_K sweep, rerank-with-body, end-to-end measurement) are wired into the
+  harness (`seahorse benchmark experiment`); the synthetic runs validate the
+  mechanics, and the authoritative LMEB-S runs inform the roadmap.
 - **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
   HTTP) as a standard expansion that also serves the local free tier, with the
   web dashboard and managed sync deferred until the adoption gate produces data.
