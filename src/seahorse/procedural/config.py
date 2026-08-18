@@ -41,7 +41,7 @@ class ProceduralConfig:
 
     Not a runtime config — it documents the canonical format so the CLI and the
     agent share one definition of what a skill is. ``record_procedure`` and
-    ``ProceduralShaper`` read these constants directly.
+    ``gate_skill`` reads these constants directly.
     """
 
     canonical_sections: tuple[str, ...] = CANONICAL_SECTIONS

@@ -1,15 +1,16 @@
 """Tests for role routing — the fallback chain shape.
 
-The extraction route is primary→secondary→tertiary. Only the ``extraction``
-role is materialized in the first release; other roles are rejected loudly so
-they are added deliberately.
+The extraction route is primary→secondary→tertiary. The per-role
+``RoutingConfig`` / ``route_for`` seam was removed (the backend never read the
+``role`` argument); the fallback chain is the single ``RoleRoute`` the backend
+walks.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from seahorse.llm import RoleRoute, RoutingConfig, route_for
+from seahorse.llm import RoleRoute
 
 
 class TestRoleRoute:
@@ -35,14 +36,3 @@ class TestRoleRoute:
         r = RoleRoute(primary="x")
         with pytest.raises(FrozenInstanceError):
             r.primary = "y"  # type: ignore[misc]
-
-
-class TestRoutingConfig:
-    def test_route_for_extraction(self) -> None:
-        cfg = RoutingConfig(extraction=RoleRoute(primary="ollama/qwen3:1.7b"))
-        assert route_for("extraction", cfg) == cfg.extraction
-
-    def test_non_extraction_role_rejected_for_mvp(self) -> None:
-        cfg = RoutingConfig(extraction=RoleRoute(primary="ollama/qwen3:1.7b"))
-        with pytest.raises(ValueError, match="Unknown role"):
-            route_for("consolidation", cfg)

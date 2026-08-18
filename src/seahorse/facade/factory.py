@@ -131,7 +131,7 @@ def build_facade(
             vector_repo=vector,
             fts_repo=fts,
             episode_repo=own_storage.episodes,
-            graph_repo=own_storage.episode_index,
+            index_repo=own_storage.episode_index,
             clock=clk,
             config=cfg,
             fallback=fallback,
@@ -143,7 +143,7 @@ def build_facade(
             vector,
             fts,
             own_storage.episodes,
-            own_storage._cm,  # noqa: SLF001 — composition root owns Storage
+            own_storage.connection_manager,
             embed_mode=embed_mode,
         )
         write_path = StubWritePath(engine=engine, indexer=indexer, llm_client=llm_client)
@@ -152,12 +152,12 @@ def build_facade(
         retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
         write_path = StubWritePath(engine=engine, llm_client=llm_client)
         facade_embedder = embedder
-    # The hybrid composition root indexes the improve successor. improve
-    # bypasses the write path, so without this hook the new version never
-    # reaches vec0/FTS. The listing regime wires nothing.
-    on_improve: Callable[[str], None] | None = None
+    # The hybrid composition root indexes the successors of writes that bypass
+    # the write path (improve + distill). Without this hook the new versions
+    # never reach vec0/FTS. The listing regime wires nothing.
+    on_indexed: Callable[[str], None] | None = None
     if retrieval is not None:
-        on_improve = indexer.index_episode
+        on_indexed = indexer.index_episode
     facade = MemoryFacade(
         engine=engine,
         write_path=write_path,
@@ -166,7 +166,7 @@ def build_facade(
         clock=clk,
         config=cfg,
         embedder=facade_embedder,
-        on_episode_improved=on_improve,
+        on_episode_indexed=on_indexed,
     )
     return facade, own_storage
 
@@ -198,12 +198,18 @@ def _resolve_retrieval(
 
 
 def _build_passage_embedder() -> Any | None:
-    """Build the async embedder if the ``embeddings`` extra is present."""
+    """Build the async embedder if the ``embeddings`` extra is present.
+
+    ``ImportError`` (the extra not installed) → ``None`` (honest listing
+    regime). Any OTHER failure — a broken model bundle, a fastembed version
+    break — is a REAL error and fails loud: swallowing it would silently degrade
+    retrieval to the listing regime with zero observability.
+    """
     try:
         from seahorse.embeddings.fastembed_backend import build_fastembed_embedder
 
         return build_fastembed_embedder()
-    except Exception:  # noqa: BLE001 — embedder absence is an honest listing
+    except ImportError:
         return None
 
 

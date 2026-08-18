@@ -26,8 +26,6 @@ from seahorse.contracts.persistence import FullTextHit, VectorHit
 from seahorse.disclosure.types import PITPoint
 from seahorse.retrieval import RetrievalInvalidPITKind, recall
 
-from .conftest import _row
-
 
 def _pit(kind: str, t: datetime) -> PITPoint:
     return PITPoint(kind=kind, t=t)  # type: ignore[arg-type]
@@ -159,74 +157,6 @@ class TestSubjectFilterRouting:
             k=10,
         )
         assert "subject_filter" not in fts_repo.calls["search_state_at"][0]
-
-
-class TestPitNoneBfsUsesStateAtNow:
-    def test_bfs_gets_state_at_and_clock_now(
-        self, embedder, vector_repo, fts_repo, episode_repo, bfs_repo, clock_now, fixed_clock
-    ):
-        vector_repo.knn_hits = [_v("e1")]
-        bfs_repo.rows = [_row("eB", created_at=clock_now)]
-        recall(
-            "q",
-            pit=None,
-            embedder=embedder,
-            vector_repo=vector_repo,
-            fts_repo=fts_repo,
-            episode_repo=episode_repo,
-            graph_repo=bfs_repo,
-            k=10,
-            bfs_as_index_enabled=True,
-            clock=fixed_clock,
-        )
-        assert bfs_repo.calls[0]["pit_kind"] == "state_at"
-        assert bfs_repo.calls[0]["pit"] == clock_now
-
-
-class TestKnownAtBfsDropped:
-    def test_known_at_bfs_raised_and_caught_bfs_axis_dropped(
-        self, embedder, vector_repo, fts_repo, episode_repo, bfs_repo, clock_now
-    ):
-        # known_at + bfs enabled + not signed off -> BfsKnownAtUnsupported raised
-        # by _bfs and caught by the engine; the BFS axis is dropped (rows=[]).
-        # Seed known_at kNN hits so stage 1 has an anchor (pit=known_at routes to
-        # knn_known_at, not the current-state knn).
-        vector_repo.knn_known_at_hits = [_v("e1")]
-        result = recall(
-            "q",
-            pit=_pit("known_at", clock_now),
-            embedder=embedder,
-            vector_repo=vector_repo,
-            fts_repo=fts_repo,
-            episode_repo=episode_repo,
-            graph_repo=bfs_repo,
-            k=10,
-            bfs_as_index_enabled=True,
-            bfs_known_at_supported=False,
-        )
-        # BFS repo never called (the engine raised before calling).
-        assert bfs_repo.calls == []
-        # No BFS source contributed; e1 still returned from vector.
-        assert [c.ep_id for c in result] == ["e1"]
-
-    def test_known_at_bfs_supported_calls_repo(
-        self, embedder, vector_repo, fts_repo, episode_repo, bfs_repo, clock_now
-    ):
-        vector_repo.knn_known_at_hits = [_v("e1")]
-        bfs_repo.rows = [_row("eB", created_at=clock_now)]
-        recall(
-            "q",
-            pit=_pit("known_at", clock_now),
-            embedder=embedder,
-            vector_repo=vector_repo,
-            fts_repo=fts_repo,
-            episode_repo=episode_repo,
-            graph_repo=bfs_repo,
-            k=10,
-            bfs_as_index_enabled=True,
-            bfs_known_at_supported=True,
-        )
-        assert bfs_repo.calls[0]["pit_kind"] == "known_at"
 
 
 class TestRetrievalInvalidPITKindAttribution:

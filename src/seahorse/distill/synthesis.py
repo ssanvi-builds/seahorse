@@ -21,12 +21,13 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from seahorse.distill.cluster import Cluster
 from seahorse.llm import BudgetContext, LLMClient
-from seahorse.llm.types import Messages
+from seahorse.llm.types import EPISODE_COST_CAP_USD, Messages
 
-# Amortized cost target: ≤ $0.002 per source episode (ADR-09). The per-cluster
-# cap scales with the cluster size so a large cluster can afford a longer
-# synthesis without breaching the per-episode budget.
-SYNTHESIS_CAP_USD_PER_EPISODE = 0.002
+# Amortized cost target: ≤ $0.002 per source episode (ADR-09, single-sourced
+# from ``EPISODE_COST_CAP_USD``). The per-cluster cap scales with the cluster
+# size so a large cluster can afford a longer synthesis without breaching the
+# per-episode budget.
+SYNTHESIS_CAP_USD_PER_EPISODE = EPISODE_COST_CAP_USD
 
 
 class ConsolidatedFrontmatter(BaseModel):
@@ -120,7 +121,6 @@ def synthesize_cluster(
     result = llm_client.extract(
         content=build_cluster_content(cluster),
         schema_hint=ConsolidatedFrontmatter,
-        role="synthesis",
         budget=ctx,
         prompt_builder=build_synthesis_prompt,
     )

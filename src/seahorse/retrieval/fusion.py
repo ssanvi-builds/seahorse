@@ -60,7 +60,9 @@ class SourceList:
     key: Callable[[Any], str]
 
 
-def rrf_fuse(sources: Sequence[SourceList], *, k: int) -> list[FusedCandidate]:
+def rrf_fuse(
+    sources: Sequence[SourceList], *, k: int, rrf_k: int | None = None
+) -> list[FusedCandidate]:
     """Pure-Python Reciprocal Rank Fusion over 1-based ranks.
 
     Steps (semantics preserved):
@@ -68,7 +70,7 @@ def rrf_fuse(sources: Sequence[SourceList], *, k: int) -> list[FusedCandidate]:
          wins (best rank); subsequent duplicates in the same source are ignored
          (defensive — the source repositories should not return duplicates, but
          if they do, the best rank counts, never the worst).
-      2. Accumulate ``score[ep] += 1/(RRF_K + rank)`` and ``provenance[ep].add(name)``
+      2. Accumulate ``score[ep] += 1/(rrf_k + rank)`` and ``provenance[ep].add(name)``
          for every (source, rank) where ``ep`` appears.
       3. Build ``FusedCandidate(ep, score, sources=tuple(sorted(provenance)))`` —
          ``sources`` is the sorted-union provenance, a read-only audit field
@@ -79,10 +81,13 @@ def rrf_fuse(sources: Sequence[SourceList], *, k: int) -> list[FusedCandidate]:
       5. Truncate to ``k``. Robust to ``< k`` and empty sources: returns fewer than
          ``k`` (or ``[]``); NEVER pads with invented scores.
 
-    ``k <= 0`` returns ``[]`` (truncate-to-0). No validation of ``k`` — the
-    caller owns wire-shape validation (the MCP server and the CLI); this module
-    is robust to whatever it gets.
+    ``rrf_k`` overrides the module constant ``RRF_K`` (the benchmark sweep
+    A5 measures the fusion across ``{10, 20, 40, 60}``); ``None`` keeps the
+    production default. ``k <= 0`` returns ``[]`` (truncate-to-0). No validation
+    of ``k`` — the caller owns wire-shape validation (the MCP server and the
+    CLI); this module is robust to whatever it gets.
     """
+    k_eff = RRF_K if rrf_k is None else rrf_k
     scores: dict[str, float] = defaultdict(float)
     provenance: dict[str, set[str]] = defaultdict(set)
 
@@ -93,7 +98,7 @@ def rrf_fuse(sources: Sequence[SourceList], *, k: int) -> list[FusedCandidate]:
             if ep_id in seen_in_src:
                 continue  # first occurrence wins (best rank) within a source
             seen_in_src.add(ep_id)
-            scores[ep_id] += 1.0 / (RRF_K + rank)
+            scores[ep_id] += 1.0 / (k_eff + rank)
             provenance[ep_id].add(src.name)
 
     candidates = [

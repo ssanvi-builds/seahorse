@@ -119,7 +119,7 @@ class TestStubLLMClient:
     def test_extract_raises_not_implemented_with_skip_hint(self) -> None:
         client = StubLLMClient()
         with pytest.raises(NotImplementedError, match="skip"):
-            client.extract("content", _FakeSchema, role="extraction", budget=BudgetContext())
+            client.extract("content", _FakeSchema, budget=BudgetContext())
 
     def test_complete_raises_not_implemented(self) -> None:
         client = StubLLMClient()

@@ -29,7 +29,7 @@ from seahorse.llm.errors import (
 )
 from seahorse.llm.lite_llm_backend import LiteLLMBackend
 from seahorse.llm.providers import PROVIDERS, ProviderConfig, resolve_provider
-from seahorse.llm.routing import RoleRoute, RoutingConfig, route_for
+from seahorse.llm.routing import RoleRoute
 from seahorse.llm.types import (
     BudgetContext,
     CompletionResult,
@@ -59,8 +59,6 @@ __all__ = [
     "PROVIDERS",
     "resolve_provider",
     "RoleRoute",
-    "RoutingConfig",
-    "route_for",
     "PricePerMTok",
     "PRICING",
     "estimate_cost",

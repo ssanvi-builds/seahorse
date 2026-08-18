@@ -45,7 +45,7 @@ class HybridRetriever:
         vector_repo: VectorIndexRepository,
         fts_repo: FullTextIndexRepository,
         episode_repo: EpisodeRepository,
-        graph_repo: EpisodeIndexRepository | None,
+        index_repo: EpisodeIndexRepository | None,
         clock: Callable[[], datetime],
         config: FacadeConfig,
         fallback: VigenteListingRetriever,
@@ -56,7 +56,7 @@ class HybridRetriever:
         self._vector_repo = vector_repo
         self._fts_repo = fts_repo
         self._episode_repo = episode_repo
-        self._graph_repo = graph_repo
+        self._index_repo = index_repo
         self._clock = clock
         self._config = config
         self._fallback = fallback
@@ -123,15 +123,11 @@ class HybridRetriever:
             vector_repo=self._vector_repo,
             fts_repo=self._fts_repo,
             episode_repo=self._episode_repo,
-            graph_repo=self._graph_repo,
-            index_repo=self._graph_repo,  # same episode_index repo (batch created_at)
+            index_repo=self._index_repo,  # episode_index repo (batch created_at)
             k=k,
             cognitive_type=cognitive_type,
             subject_filter=subject_filter,
             anchor_ep_id=None,
-            hops=1,
-            bfs_as_index_enabled=False,
-            bfs_known_at_supported=False,
             clock=self._clock,
             recency=self._recency,
             reranker=self._reranker,

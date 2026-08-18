@@ -105,7 +105,7 @@ class TestD5Stage1EmptyNoAnchor:
 
 class TestD7AllEmpty:
     def test_all_sources_empty(
-        self, embedder, vector_repo, fts_repo, episode_repo, bfs_repo, fixed_clock
+        self, embedder, vector_repo, fts_repo, episode_repo, fixed_clock
     ):
         result = recall(
             "q",
@@ -114,9 +114,7 @@ class TestD7AllEmpty:
             vector_repo=vector_repo,
             fts_repo=fts_repo,
             episode_repo=episode_repo,
-            graph_repo=bfs_repo,
             k=10,
-            bfs_as_index_enabled=True,
             clock=fixed_clock,
         )
         assert result == []

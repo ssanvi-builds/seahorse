@@ -7,10 +7,9 @@ The onboarding wizard builds an ``extraction`` route from the provider the
 user picks + a fallback; the factory default for a user with nothing is a
 single local Ollama model (2026-08-04 decision).
 
-Scope: only the ``extraction`` role is materialized. ``consolidation`` /
-``reflexion`` (cold-path, a medium-term goal) and ``gate`` (CI) are reserved
-in the design but not delivered here — ``route_for`` rejects them so a future
-role is added explicitly, not silently defaulted.
+The per-role ``RoutingConfig`` / ``route_for`` seam was never adopted by the
+backend (the ``role`` argument is not read) and was removed — the fallback
+chain is the single ``RoleRoute`` the backend walks.
 """
 
 from __future__ import annotations
@@ -36,26 +35,4 @@ class RoleRoute:
         return tuple(m for m in (self.primary, self.secondary, self.tertiary) if m)
 
 
-@dataclass(frozen=True)
-class RoutingConfig:
-    """Per-role routing for the episode. Extraction only.
-
-    ``consolidation`` / ``reflexion`` (a medium-term goal, cold path) and
-    ``gate`` (CI) are roles reserved for later — they are NOT fields here yet.
-    """
-
-    extraction: RoleRoute
-
-
-def route_for(role: str, cfg: RoutingConfig) -> RoleRoute:
-    """Resolve the route for ``role``.
-
-    Only ``extraction`` is materialized; any other role is rejected loudly so
-    it is added deliberately when its feature lands.
-    """
-    if role != "extraction":
-        raise ValueError(f"Unknown role for this release: {role}")
-    return cfg.extraction
-
-
-__all__ = ["RoleRoute", "RoutingConfig", "route_for"]
+__all__ = ["RoleRoute"]

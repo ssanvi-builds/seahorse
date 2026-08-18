@@ -1,17 +1,16 @@
 """Hybrid Retrieval Engine.
 
-RRF fusion of vector + BM25 (+ optional chain / BFS as a medium-term extension)
-over 1-based ranks, with reproducible ranking and NO LLM in the query path. This
-module owns fusion + final ranking + PIT routing; it does NOT own storage,
-embeddings, or the BFS axis — those are injected as typed Protocols. The
-query-embedding extension point (``QueryEmbedder``) lives in
-``seahorse.contracts.embeddings``.
+RRF fusion of vector + BM25 (+ optional chain) over 1-based ranks, with
+reproducible ranking and NO LLM in the query path. This module owns fusion +
+final ranking + PIT routing; it does NOT own storage, embeddings, or the BFS
+axis — those are injected as typed Protocols. The query-embedding extension
+point (``QueryEmbedder``) lives in ``seahorse.contracts.embeddings``.
 
 This module ships RRF over vector + BM25 (stage 1) with chain as an optional
-anchor-driven 3rd source (stage 2). BFS is timeline-only by default
-(``bfs_as_index_enabled=False``); using it as an index fusion source is a
-medium-term extension pending sign-off. ``known_at`` BFS raises
-``BfsKnownAtUnsupported`` unless ``bfs_known_at_supported=True``.
+anchor-driven 3rd source (stage 2). The BFS-as-index axis was removed
+(unreachable dead code; the F7 (e) multi-hop experiment recommends a physical
+graph with typed edge traversal — a different construct — and the ``graph_bfs``
+timeline axis already covers the user-facing graph traversal).
 
 Honest deviations from the spec (documented in ``engine.py``):
 - Stage 1 runs SEQUENTIALLY (no ``asyncio.gather``). The spec's parallelism is a
@@ -30,12 +29,11 @@ from seahorse.retrieval.constants import (
     RRF_K,
 )
 from seahorse.retrieval.engine import recall
-from seahorse.retrieval.errors import BfsKnownAtUnsupported, RetrievalInvalidPITKind
+from seahorse.retrieval.errors import RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
 from seahorse.retrieval.recency import RecencyConfig, apply_recency_boost
 
 __all__ = [
-    "BfsKnownAtUnsupported",
     "INDEX_P95_MS",
     "RECENCY_GAMMA",
     "RECENCY_HALF_LIFE_DAYS",

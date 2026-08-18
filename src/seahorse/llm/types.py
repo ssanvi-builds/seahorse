@@ -78,6 +78,11 @@ class ExtractResult:
     retries: int = 0
 
 
+# The ADR-09 cost cap: ≤ $0.002 per episode (single-source — the write path and
+# the distillation synthesis both build a ``BudgetContext`` from it).
+EPISODE_COST_CAP_USD = 0.002
+
+
 @dataclass
 class BudgetContext:
     """Execution-time budget accumulator (mutable — documented exception).
@@ -87,7 +92,7 @@ class BudgetContext:
     is exhausted (no silent overspend).
     """
 
-    cap_usd: float = 0.002
+    cap_usd: float = EPISODE_COST_CAP_USD
     spent_usd: float = 0.0
     token_budget: int = 8000
     tokens_spent: int = 0
@@ -125,7 +130,6 @@ class LLMClient(Protocol):
         self,
         messages: Sequence[Mapping[str, str]],
         *,
-        role: str = "extraction",
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
@@ -136,7 +140,6 @@ class LLMClient(Protocol):
         content: str,
         schema_hint: type[BaseModel],
         *,
-        role: str = "extraction",
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
@@ -158,7 +161,6 @@ class StubLLMClient:
         self,
         messages: Sequence[Mapping[str, str]],
         *,
-        role: str = "extraction",
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
@@ -173,7 +175,6 @@ class StubLLMClient:
         content: str,
         schema_hint: type[BaseModel],
         *,
-        role: str = "extraction",
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,

@@ -44,7 +44,6 @@ class _FakeLLMClient:
         content: str,
         schema_hint: type,
         *,
-        role: str = "extraction",
         budget: BudgetContext | None = None,
         max_tokens: int | None = None,
         timeout_s: float | None = None,
@@ -54,7 +53,6 @@ class _FakeLLMClient:
             {
                 "content": content,
                 "schema_hint": schema_hint,
-                "role": role,
                 "budget": budget,
                 "prompt_builder": prompt_builder,
             }
@@ -142,7 +140,7 @@ class TestSynthesizeCluster:
         assert result.prompt_hash == "h" * 64
         assert result.confidence == 0.9
 
-    def test_uses_synthesis_role_and_prompt_builder(self) -> None:
+    def test_uses_synthesis_prompt_builder(self) -> None:
         client = _FakeLLMClient(_ok_result())
         cluster = _cluster(
             "# Topic [sess-1:1]\n\nA.",
@@ -151,7 +149,6 @@ class TestSynthesizeCluster:
         )
         synthesize_cluster(client, cluster)
         call = client.calls[0]
-        assert call["role"] == "synthesis"
         assert call["prompt_builder"] is build_synthesis_prompt
         assert call["schema_hint"] is ConsolidatedFrontmatter
 

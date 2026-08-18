@@ -7,8 +7,10 @@ the engine directly (delegation purity).
 
 - ``config`` — the canonical skill format (sections, ``x-*`` metadata, caps).
 - ``operations`` — ``record_procedure`` (deterministic creation, skip-first).
-- ``trust`` — the trust gate (prompt-injection mitigation).
-- ``shaper`` — ``ProceduralShaper`` (3-level progressive disclosure).
+- ``trust`` — the trust gate (prompt-injection mitigation). The consumers
+  (``mcp/tools.py``, ``cli/skills.py``) call ``gate_skill`` directly; the
+  ``ProceduralShaper`` wrapper was removed (dead code with a return type
+  incompatible with the facade's ``_ShaperLike`` protocol).
 """
 
 from seahorse.procedural.config import (
@@ -18,7 +20,6 @@ from seahorse.procedural.config import (
     ProceduralConfig,
 )
 from seahorse.procedural.operations import ProceduralError, record_procedure
-from seahorse.procedural.shaper import ProceduralShaper, SkillDetail
 from seahorse.procedural.trust import SkillDelivery, TrustLevel, gate_skill, trust_level_of
 
 __all__ = [
@@ -28,8 +29,6 @@ __all__ = [
     "ProceduralConfig",
     "ProceduralError",
     "record_procedure",
-    "ProceduralShaper",
-    "SkillDetail",
     "SkillDelivery",
     "TrustLevel",
     "gate_skill",

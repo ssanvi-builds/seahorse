@@ -14,11 +14,6 @@
   (owned by the facade); this one is a plain ``Exception`` raised by the
   retrieval engine's recall entrypoint. The distinct ``__name__`` lets the
   tables attribute each to its real owner (the engine here, the facade's).
-- ``BfsKnownAtUnsupported``: raised by ``_bfs`` when ``pit=known_at`` is requested
-  for the BFS axis but the ``pit_kind`` refinement is not yet supported. A
-  declared limitation, NOT a silent fallback to ``state_at`` (a silent fallback
-  would mix the two bi-temporal axes). The recall degrades to vector + bm25 +
-  chain (the BFS axis is dropped), decided by the engine.
 """
 
 from __future__ import annotations
@@ -37,20 +32,4 @@ class RetrievalInvalidPITKind(Exception):
         super().__init__(f"pit.kind must be 'state_at' | 'known_at'; got {kind!r}")
 
 
-class BfsKnownAtUnsupported(Exception):
-    """Raised when BFS ``known_at`` is requested but not yet supported.
-
-    The ``neighbors_state_at`` refinement (``pit_kind``) is not yet supported.
-    Without it, the BFS axis serves only the implicit ``state_at`` axis. A
-    ``known_at`` BFS is therefore refused loudly, NOT silently routed to
-    ``state_at`` (that would mix the two bi-temporal axes). The engine catches
-    this and drops the BFS axis, degrading to vector + bm25 + chain.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(
-            "BFS known_at not supported; use state_at or omit the BFS axis"
-        )
-
-
-__all__ = ["BfsKnownAtUnsupported", "RetrievalInvalidPITKind"]
+__all__ = ["RetrievalInvalidPITKind"]

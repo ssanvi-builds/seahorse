@@ -2,10 +2,9 @@
 
 ``recall`` takes a ``query`` and optional ``PITPoint`` / ``cognitive_type`` /
 ``anchor_ep_id``, invokes the query-driven sources (kNN + BM25), optionally
-expands with the anchor-driven stage-2 sources (the ``supersedes`` chain; the
-BFS axis as a medium-term extension), and fuses everything with ``rrf_fuse``
-producing ``list[FusedCandidate]`` (no body) — the extension point the
-disclosure layer's ``materialize_index`` consumes.
+expands with the anchor-driven stage-2 source (the ``supersedes`` chain), and
+fuses everything with ``rrf_fuse`` producing ``list[FusedCandidate]`` (no body)
+— the extension point the disclosure layer's ``materialize_index`` consumes.
 
 2-STAGE model:
 
@@ -19,12 +18,12 @@ disclosure layer's ``materialize_index`` consumes.
   list regardless of call order. The ~30ms stage-1 budget is a benchmark
   concern, not part of this module's control flow.
 
-- **Stage 2** (anchor-driven, optional, hops=1): the top-1 anchor of stage 1
-  (or an explicit ``anchor_ep_id``) drives the chain (``chain_from``) and, only
-  when ``bfs_as_index_enabled`` (a medium-term extension, pending sign-off), the
-  BFS (via ``EpisodeIndexRepository.bfs_neighbors_state_at``). The cap is ONE
-  anchor + hops=1 to fit the 250ms budget; otherwise the BFS flag stays False
-  and stage 2 is chain-only (BFS stays timeline-only).
+- **Stage 2** (anchor-driven, optional): the top-1 anchor of stage 1 (or an
+  explicit ``anchor_ep_id``) drives the chain (``chain_from``). The BFS-as-index
+  axis was removed (unreachable dead code; the F7 (e) multi-hop experiment
+  recommends a physical graph with typed edge traversal — a different construct
+  — and the ``graph_bfs`` timeline axis already covers the user-facing graph
+  traversal).
 
 - **Fusion:** ``rrf_fuse`` over the union of stage 1 + stage 2.
 
@@ -63,10 +62,8 @@ from typing import Any, TypeVar
 from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.contracts.engine import Episode, EpisodeRepository
 from seahorse.contracts.index import (
-    MAX_HOPS_MVP1,
     PIT_KIND_VALUES,
     IndexRowData,
-    PITKind,
 )
 from seahorse.contracts.persistence import (
     EpisodeIndexRepository,
@@ -79,7 +76,7 @@ from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
 from seahorse.retrieval.constants import RERANK_OVERFETCH_K
-from seahorse.retrieval.errors import BfsKnownAtUnsupported, RetrievalInvalidPITKind
+from seahorse.retrieval.errors import RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
 from seahorse.retrieval.recency import RecencyConfig, apply_recency_boost
 from seahorse.retrieval.rerank import apply_rerank
@@ -104,24 +101,22 @@ def recall(
     vector_repo: VectorIndexRepository,
     fts_repo: FullTextIndexRepository,
     episode_repo: EpisodeRepository,
-    graph_repo: EpisodeIndexRepository | None = None,
     index_repo: EpisodeIndexRepository | None = None,
     k: int = TOP_K,
     cognitive_type: str | None = None,
     subject_filter: str | None = None,
     anchor_ep_id: str | None = None,
-    hops: int = 1,
-    bfs_as_index_enabled: bool = False,
-    bfs_known_at_supported: bool = False,
     clock: Callable[[], datetime] | None = None,
     recency: RecencyConfig | None = None,
     reranker: QueryReranker | None = None,
     k_rerank: int = RERANK_OVERFETCH_K,
+    rrf_k: int | None = None,
+    rerank_text: str = "summary",
 ) -> list[FusedCandidate]:
     """Hybrid retrieval entrypoint — 2-stage RRF fusion + optional stage-3 rerank.
 
-    Stage 1 = kNN + BM25 (query-driven). Stage 2 = chain [+ BFS if enabled] over
-    the stage-1 top-1 anchor (or ``anchor_ep_id``), hops=1. RRF over the union.
+    Stage 1 = kNN + BM25 (query-driven). Stage 2 = chain over the stage-1 top-1
+    anchor (or ``anchor_ep_id``). RRF over the union.
     The two bi-temporal axes NEVER mix within one recall: ``pit.kind`` is
     validated ONCE and the same kind fans to ALL sources.
 
@@ -154,8 +149,12 @@ def recall(
 
     # --- Stage 1: query-driven kNN + BM25 -------------------------------
     query_vec = embedder.embed_query(query)
-    vec_hits = _knn(query_vec, k_fuse, pit, cognitive_type, vector_repo, episode_repo)
-    fts_hits = _bm25(query, k_fuse, pit, subject_filter, cognitive_type, fts_repo, episode_repo)
+    vec_hits = _knn(
+        query_vec, k_fuse, pit, cognitive_type, vector_repo, episode_repo, index_repo
+    )
+    fts_hits = _bm25(
+        query, k_fuse, pit, subject_filter, cognitive_type, fts_repo, episode_repo, index_repo
+    )
 
     stage1 = rrf_fuse(
         [
@@ -163,29 +162,15 @@ def recall(
             SourceList("bm25", fts_hits, _hit_ep_id),
         ],
         k=k_fuse,
+        rrf_k=rrf_k,
     )
 
-    # --- Stage 2: anchor-driven chain [+ BFS if enabled] -----------------
+    # --- Stage 2: anchor-driven chain ------------------------------------
     chain_eps: list[Episode] = []
-    bfs_rows: list[IndexRowData] = []
     anchor = anchor_ep_id or (stage1[0].ep_id if stage1 else None)
     if anchor is not None:
         chain = episode_repo.chain_from(anchor)
         chain_eps = _project_chain(chain, pit, cognitive_type, now)
-        if bfs_as_index_enabled and graph_repo is not None:
-            try:
-                bfs_rows = _bfs(
-                    graph_repo,
-                    anchor,
-                    pit,
-                    hops,
-                    cognitive_type,
-                    bfs_known_at_supported,
-                    now,
-                )
-            except BfsKnownAtUnsupported:
-                # known_at BFS unsupported: drop the BFS axis, keep vector+bm25+chain.
-                bfs_rows = []
 
     # --- Fusion over the union of stage 1 + stage 2 ---------------------
     fused = rrf_fuse(
@@ -193,9 +178,9 @@ def recall(
             SourceList("vector", vec_hits, _hit_ep_id),
             SourceList("bm25", fts_hits, _hit_ep_id),
             SourceList("chain", chain_eps, _episode_id),
-            SourceList("bfs", bfs_rows, _row_ep_id),
         ],
         k=k_fuse,
+        rrf_k=rrf_k,
     )
     # Recency (default-OFF): boost ONLY in the "now" regime (pit is None); PIT
     # queries reproduce state as-of-t with pure RRF. The boost is folded into
@@ -227,25 +212,36 @@ def recall(
     # (NOT body_md). Honest degrade: no index_repo or a reranker failure keeps
     # the RRF order truncated to k.
     if reranker is not None:
-        if index_repo is None:
-            _logger.warning(
-                "rerank requested but index_repo is None; keeping RRF order (k)"
-            )
-            fused = fused[:k]
-        else:
-            try:
-                rows = index_repo.get_rows([c.ep_id for c in fused])
-                text_by_ep = {r.ep_id: _rerank_text(r) for r in rows}
-                docs = [text_by_ep.get(c.ep_id, "") for c in fused]
-                scores = reranker.rerank(query, docs)
-                fused = apply_rerank(fused, scores, k=k)
-            except Exception:  # noqa: BLE001 — a failure in the OPTIONAL rerank
-                # must not kill the whole ranking (which would degrade the hybrid
-                # path to the listing regime). Keep the RRF order truncated to k.
+        try:
+            if rerank_text == "body":
+                # A6 re-test: score the FULL body (the answer often sits mid-turn,
+                # not in the ~200-char summary/subject). Per-episode ``get`` is
+                # N+1 — acceptable for the synthetic measurement; a production
+                # body-rerank would batch-read via a dedicated method.
+                text_by_ep = {}
+                for c in fused:
+                    ep = episode_repo.get(c.ep_id)
+                    if ep is not None:
+                        text_by_ep[c.ep_id] = ep.body or ""
+            elif index_repo is None:
                 _logger.warning(
-                    "rerank failed; keeping RRF order", exc_info=True
+                    "rerank requested but index_repo is None; keeping RRF order (k)"
                 )
                 fused = fused[:k]
+                return fused
+            else:
+                rows = index_repo.get_rows([c.ep_id for c in fused])
+                text_by_ep = {r.ep_id: _rerank_text(r) for r in rows}
+            docs = [text_by_ep.get(c.ep_id, "") for c in fused]
+            scores = reranker.rerank(query, docs)
+            fused = apply_rerank(fused, scores, k=k)
+        except Exception:  # noqa: BLE001 — a failure in the OPTIONAL rerank
+            # must not kill the whole ranking (which would degrade the hybrid
+            # path to the listing regime). Keep the RRF order truncated to k.
+            _logger.warning(
+                "rerank failed; keeping RRF order", exc_info=True
+            )
+            fused = fused[:k]
     return fused
 
 
@@ -303,9 +299,11 @@ def _knn(
     cognitive_type: str | None,
     vector_repo: VectorIndexRepository,
     episode_repo: EpisodeRepository,
+    index_repo: EpisodeIndexRepository | None = None,
 ) -> list[VectorHit]:
     """Route kNN by pit. ``cognitive_type`` is push-down for current-state knn
-    (the ONLY method with ``cognitive_types``); client-side for the PIT variants."""
+    (the ONLY method with ``cognitive_types``); client-side for the PIT variants
+    (via ``index_repo`` when available — one IN query, no body)."""
     if pit is None:
         return vector_repo.knn(
             query_vec,
@@ -320,7 +318,9 @@ def _knn(
     else:  # _validate_pit already rejected unknown kinds; defensive
         raise RetrievalInvalidPITKind(pit.kind)
     if cognitive_type:  # client-side (PIT knn has no cognitive_types)
-        hits = _filter_hits_by_cognitive_type(hits, cognitive_type, episode_repo)
+        hits = _filter_hits_by_cognitive_type(
+            hits, cognitive_type, episode_repo, index_repo
+        )
     return hits
 
 
@@ -332,11 +332,13 @@ def _bm25(
     cognitive_type: str | None,
     fts_repo: FullTextIndexRepository,
     episode_repo: EpisodeRepository,
+    index_repo: EpisodeIndexRepository | None = None,
 ) -> list[FullTextHit]:
     """Route BM25 by pit. ``subject_filter`` ONLY for current-state search (PIT
     variants do not accept it — a medium-term extension). ``cognitive_type`` is
     ALWAYS client-side: no BM25 method (current-state or PIT) exposes
-    ``cognitive_types``."""
+    ``cognitive_types`` (filtered via ``index_repo`` when available — one IN
+    query, no body)."""
     if pit is None:
         hits = fts_repo.search(query, k, vigent_only=True, subject_filter=subject_filter)
     elif pit.kind == "state_at":
@@ -346,7 +348,9 @@ def _bm25(
     else:  # _validate_pit already rejected unknown kinds; defensive
         raise RetrievalInvalidPITKind(pit.kind)
     if cognitive_type:  # client-side for ALL BM25
-        hits = _filter_hits_by_cognitive_type(hits, cognitive_type, episode_repo)
+        hits = _filter_hits_by_cognitive_type(
+            hits, cognitive_type, episode_repo, index_repo
+        )
     return hits
 
 
@@ -354,15 +358,25 @@ def _filter_hits_by_cognitive_type(
     hits: Sequence[_HitT],
     cognitive_type: str,
     episode_repo: EpisodeRepository,
+    index_repo: EpisodeIndexRepository | None = None,
 ) -> list[_HitT]:
     """Client-side filter. The ``search`` method and ALL PIT variants lack
     ``cognitive_types`` (only current-state ``knn`` has it). Robust to ``< k``
     after filtering: returns what matches, NO padding.
 
-    Reads ``cognitive_type`` via ``episode_repo.get``. The cheaper no-body read
-    from ``episode_index`` is a medium-term addition (an ``index_repo`` param),
-    not in this standalone signature.
+    Reads ``cognitive_type`` via ``index_repo.get_rows`` (ONE ``IN`` query, no
+    body) when the index repo is available; falls back to ``episode_repo.get``
+    per hit (N+1) when it is not.
     """
+    if index_repo is not None:
+        rows = index_repo.get_rows([h.ep_id for h in hits])
+        by_id = {r.ep_id: r for r in rows}
+        return [
+            h
+            for h in hits
+            if by_id.get(h.ep_id) is not None
+            and by_id[h.ep_id].cognitive_type == cognitive_type
+        ]
     out: list[_HitT] = []
     for h in hits:
         ep = episode_repo.get(h.ep_id)
@@ -439,36 +453,6 @@ def _chain_known_at(chain: Sequence[Episode], t: datetime) -> list[Episode]:
     return [e for e in chain if e.created_at <= t and (e.expired_at is None or e.expired_at > t)]
 
 
-def _bfs(
-    graph_repo: EpisodeIndexRepository,
-    anchor: str,
-    pit: PITPoint | None,
-    hops: int,
-    cognitive_type: str | None,
-    bfs_known_at_supported: bool,
-    now: datetime,
-) -> list[IndexRowData]:
-    """BFS-as-index medium-term extension. Uses the signed
-    ``EpisodeIndexRepository.bfs_neighbors_state_at`` method. ``pit=None``
-    resolves to ``state_at`` at the injected ``now``. ``known_at`` without
-    support raises ``BfsKnownAtUnsupported`` (NO silent ``state_at`` fallback —
-    the two bi-temporal axes would mix). Hops are capped to ``MAX_HOPS_MVP1``
-    BEFORE the call; no dead try/except retry."""
-    if pit is None:
-        t_bfs = now
-        kind_bfs: PITKind = "state_at"
-    else:
-        t_bfs = pit.t
-        kind_bfs = pit.kind
-        if kind_bfs == "known_at" and not bfs_known_at_supported:
-            raise BfsKnownAtUnsupported()
-    safe_hops = min(hops, MAX_HOPS_MVP1)
-    rows = graph_repo.bfs_neighbors_state_at(
-        anchor, t_bfs, pit_kind=kind_bfs, hops=safe_hops, include_tags_soft=False
-    )
-    if cognitive_type:  # client-side filter over IndexRowData.cognitive_type
-        rows = [r for r in rows if r.cognitive_type == cognitive_type]
-    return rows
 
 
 __all__ = ["recall"]

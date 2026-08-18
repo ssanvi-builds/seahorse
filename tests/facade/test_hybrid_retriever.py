@@ -71,7 +71,7 @@ def _make(*, vec_count=3, fts_count=3, dim=384, fallback=None, config=None) -> H
         vector_repo=_Vec(vec_count),
         fts_repo=_Fts(fts_count),
         episode_repo=_Ep(),
-        graph_repo=_Graph(),
+        index_repo=_Graph(),
         clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
         config=config or FacadeConfig(),
         fallback=fallback or _Fallback(),
@@ -110,9 +110,6 @@ def test_hybrid_recall_delegates_to_retrieval_engine(monkeypatch) -> None:
     assert kw["cognitive_type"] == "semantic"
     assert kw["subject_filter"] == "S"
     assert kw["anchor_ep_id"] is None
-    assert kw["hops"] == 1
-    assert kw["bfs_as_index_enabled"] is False
-    assert kw["bfs_known_at_supported"] is False
 
 
 def test_hybrid_recall_caps_k_at_config_top_k(monkeypatch) -> None:
