@@ -65,9 +65,9 @@ def test_apply_migrations_retries_on_concurrent_integrity_error(tmp_path) -> Non
     )
     calls = {"n": 0}
     applied = apply_migrations(_FlakyConn(c, calls))  # type: ignore[arg-type]
-    assert applied == 10  # all migrations eventually applied
-    assert calls["n"] >= 11  # 10 migrations + at least one retry
-    assert current_version(c) == 10
+    assert applied == 11  # all migrations eventually applied
+    assert calls["n"] >= 12  # 11 migrations + at least one retry
+    assert current_version(c) == 11
     c.close()
 
 
@@ -211,8 +211,8 @@ def test_current_version_tracks_migrations() -> None:
     assert current_version(c) == 0  # before schema_version table exists
     _load_vec0(c)
     apply_migrations(c)
-    # 010_vec_fts.sql is the highest-numbered migration.
-    assert current_version(c) == 10
+    # 011_fts_subject_stemming.sql is the highest-numbered migration.
+    assert current_version(c) == 11
     c.close()
 
 
@@ -220,7 +220,7 @@ def test_all_migrations_recorded(conn: sqlite3.Connection) -> None:
     versions = [
         row[0] for row in conn.execute("SELECT version FROM schema_version ORDER BY version")
     ]
-    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert versions == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 
 # --- vec0 / FTS5 CREATED by migration 010 -------------------
