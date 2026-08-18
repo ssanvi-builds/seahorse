@@ -252,7 +252,7 @@ def make_facade(
     shaper: RecordingShaper | None = None,
     retriever: object | None = None,
     clock: Callable[[], datetime] | None = None,
-    on_episode_improved: Callable[[str], None] | None = None,
+    on_episode_indexed: Callable[[str], None] | None = None,
 ):
     from seahorse.facade.facade import MemoryFacade
     from seahorse.facade.types import FacadeConfig
@@ -277,7 +277,7 @@ def make_facade(
         clock=clk,
         config=config,
         primitive_log=log_fn,
-        on_episode_improved=on_episode_improved,
+        on_episode_indexed=on_episode_indexed,
     )
     return facade, log
 

@@ -126,14 +126,18 @@ class ProceduralSection:
 
 @dataclass(frozen=True)
 class DistillConfig:
-    """The ``[distill]`` section — distillation synthesis policy.
+    """The ``[distill]`` section — distillation synthesis + supersession policy.
 
     ``synthesis`` is the body provenance mode for ``seahorse consolidate``:
     ``"skip"`` (deterministic, the default) or ``"llm"`` (off-path LLM
     synthesis, opt-in — requires the ``[llm]`` section for a wired client).
+    ``supersede`` (default False) enables F7+ supersession: an existing note is
+    UPDATED via improve when the cluster gains new episodes (opt-in, ADR-10
+    honesty — the human-edit guard is the vault mtime check).
     """
 
     synthesis: str = "skip"
+    supersede: bool = False
 
 
 @dataclass(frozen=True)
@@ -410,7 +414,11 @@ def _parse_distill_section(raw: object) -> DistillConfig | None:
             f"distill.synthesis={synthesis!r}; expected 'skip' or 'llm'"
         )
 
-    return DistillConfig(synthesis=synthesis)
+    supersede = raw.get("supersede", False)
+    if not isinstance(supersede, bool):
+        raise CliConfigInvalid("distill.supersede must be a boolean")
+
+    return DistillConfig(synthesis=synthesis, supersede=supersede)
 
 
 def write_default_config(vault: Path) -> Path:

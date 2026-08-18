@@ -31,6 +31,7 @@ import sys
 import time
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any, TextIO, TypeVar
 
 from seahorse.cli.errors import CliNotInMVP0, CliUsageError
@@ -272,6 +273,52 @@ def run_context(
 # ---------------------------------------------------------------------------
 
 
+def _vault_human_edited(vault_path: Path | None) -> Callable[[Any], bool] | None:
+    """The editorial-authority predicate: a note whose vault ``.md`` was edited
+    after its creation is human-touched → never superseded.
+
+    Scans the vault once (clustering key → ``.md`` mtime) and returns a
+    predicate over an existing note. ``None`` when no vault path is available
+    (the supersession proceeds without the human-edit guard).
+    """
+    if vault_path is None:
+        return None
+    from seahorse.distill.cluster import cluster_key
+
+    key_to_mtime: dict[str, float] = {}
+    for path in vault_path.rglob("*.md"):
+        try:
+            subject = _md_subject(path)
+        except OSError:
+            continue
+        if subject:
+            key_to_mtime[cluster_key(subject)] = path.stat().st_mtime
+
+    def _human_edited(note: Any) -> bool:
+        mtime = key_to_mtime.get(cluster_key(note.subject or ""))
+        if mtime is None:
+            return False  # no vault .md for this note → not human-touched
+        created = note.created_at
+        if created is None:
+            return False
+        return mtime > created.timestamp()
+
+    return _human_edited
+
+
+def _md_subject(path: Path) -> str:
+    """The subject of a vault ``.md``: the first H1 (no frontmatter parsing).
+
+    The consolidated notes are written with ``# {clustering key}`` as H1, so the
+    H1 extraction matches the note's subject without parsing frontmatter.
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    for line in text.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
 def run_consolidate(
     facade: MemoryFacade,
     *,
@@ -280,6 +327,8 @@ def run_consolidate(
     verbose: bool = False,
     synthesis: str = "skip",
     llm_client: LLMClient | None = None,
+    vault_path: Path | None = None,
+    supersede: bool = False,
 ) -> None:
     """``seahorse consolidate`` — distill recurrent episodes.
 
@@ -288,12 +337,21 @@ def run_consolidate(
     Idempotent: a cluster whose key already has a consolidated note is skipped.
     ``synthesis="llm"`` (with a wired ``llm_client``) adds the off-path LLM
     synthesis; a failed synthesis degrades honestly to the deterministic body.
+    ``supersede=True`` (F7+ supersession, opt-in) UPDATES an existing note when
+    the cluster gains new episodes, guarded by the editorial authority
+    (``vault_path`` mtime check — a human-edited note is never superseded).
     """
     from seahorse.distill.consolidate import consolidate
 
     report = _timed(
         "consolidate",
-        lambda: consolidate(facade, synthesis=synthesis, llm_client=llm_client),
+        lambda: consolidate(
+            facade,
+            synthesis=synthesis,
+            llm_client=llm_client,
+            supersede=supersede,
+            human_edited=_vault_human_edited(vault_path),
+        ),
         verbose=verbose,
     )
     if fmt == "human":

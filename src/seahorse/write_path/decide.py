@@ -25,13 +25,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 from seahorse.facade.types import ExtractionMode, RememberPayload
 
 Path = Literal["skip", "llm"]
 
-_VALID_MODES: frozenset[str] = frozenset({"skip", "llm"})
 # Reserved for the single-episode write path. ``llm_partial`` is fully reserved
 # (not schema-valid). ``consolidated`` IS schema-valid and round-trippable
 # (batch-distillation marker) but NOT routable here: the batch distillation
@@ -39,6 +38,9 @@ _VALID_MODES: frozenset[str] = frozenset({"skip", "llm"})
 # directly, bypassing ``decide_path``. Refusing both loudly is fail-loud honesty
 # — a single-episode ingest can never honor them.
 _RESERVED_MODES: frozenset[str] = frozenset({"llm_partial", "consolidated"})
+# Routable modes, single-sourced from the ``ExtractionMode`` Literal (the same
+# derivation as the facade) minus the reserved set.
+_VALID_MODES: frozenset[str] = frozenset(get_args(ExtractionMode)) - _RESERVED_MODES
 
 # Non-agent source_types force skip. Only ``agent`` may take the llm path. Each
 # known non-agent value carries a distinct reason for observability; any

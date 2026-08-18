@@ -119,6 +119,85 @@ def test_consolidate_synthesis_llm_human_output(tmp_path) -> None:
         storage.close()
 
 
+def test_consolidate_supersede_updates_note(tmp_path) -> None:
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            facade.remember(
+                RememberPayload(
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+                )
+            )
+        run_consolidate(facade, fmt="human", out=_out())
+        # A new episode arrives (the representative changes).
+        facade.remember(
+            RememberPayload(
+                body="# Topic [sess-1:4]\n\nDetail 4.",
+                by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+            )
+        )
+        out = _out()
+        run_consolidate(facade, fmt="human", out=out, supersede=True)
+        assert "consolidated: topic (4 sources)" in out.getvalue()
+        # The note was updated (superseded), not duplicated.
+        eps = facade.get_vigente()
+        consolidated = [e for e in eps if e.cognitive_type == "semantic"]
+        assert len(consolidated) == 1
+    finally:
+        storage.close()
+
+
+def test_consolidate_supersede_respects_vault_mtime(tmp_path) -> None:
+    # Editorial authority: a note whose vault .md was edited after its creation
+    # is human-touched → the supersession skips it (the human prevails).
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            facade.remember(
+                RememberPayload(
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+                )
+            )
+        run_consolidate(facade, fmt="human", out=_out())
+        # A new episode arrives.
+        facade.remember(
+            RememberPayload(
+                body="# Topic [sess-1:4]\n\nDetail 4.",
+                by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+            )
+        )
+        # The human edited the note's .md in the vault (mtime in the future).
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        note_md = vault / "topic.md"
+        note_md.write_text("# Topic\n\nHuman-edited.", encoding="utf-8")
+        import os
+        import time
+
+        future = time.time() + 3600
+        os.utime(note_md, (future, future))
+        out = _out()
+        run_consolidate(facade, fmt="human", out=out, supersede=True, vault_path=vault)
+        assert "no clusters to distill" in out.getvalue()  # human prevails → skip
+        eps = facade.get_vigente()
+        consolidated = [e for e in eps if e.cognitive_type == "semantic"]
+        assert len(consolidated) == 1
+    finally:
+        storage.close()
+
+
+def test_consolidate_supersede_option_accepted(vault) -> None:
+    """``--supersede`` is accepted by the Typer parser (no clusters → no-op)."""
+    from tests.cli.conftest import invoke
+
+    code, out, err = invoke(["--vault", str(vault), "consolidate", "--supersede"])
+    assert code == 0
+    assert "no clusters to distill" in out
+    assert err == ""
+
+
 def test_consolidate_synthesis_option_accepted(vault) -> None:
     """``--synthesis llm`` is accepted by the Typer parser (no clusters → no-op)."""
     from tests.cli.conftest import invoke

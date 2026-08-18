@@ -19,6 +19,8 @@ The engine never sees a hook — only ``RememberPayload`` (delegation purity).
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from seahorse.observe.protocol import (
     EVENT_POST_TOOL_USE,
     EVENT_STOP,
@@ -27,7 +29,7 @@ from seahorse.observe.protocol import (
 )
 from seahorse.observe.queue import ObserverQueue
 from seahorse.observe.redact import redact_payload
-from seahorse.observe.threshold import should_drop_event
+from seahorse.observe.threshold import DEFAULT_DROP_TOOLS, should_drop_event
 
 _HARNESS_ID = "claude-code"
 
@@ -91,14 +93,15 @@ def handle_post_tool_use(
     tool_input: str,
     tool_response: str,
     agent_id: str | None = None,
+    drop_tools: Collection[str] = DEFAULT_DROP_TOOLS,
 ) -> None:
     """PostToolUse hook: redact + enqueue the tool event.
 
-    ``drop_tools`` (Read/Bash) are dropped BEFORE enqueue — their content is
-    entirely secret and redaction cannot guarantee it is clean. Nothing raw is
-    ever persisted.
+    ``drop_tools`` (default Read/Bash, configurable via ``[observe].drop_tools``)
+    are dropped BEFORE enqueue — their content is entirely secret and redaction
+    cannot guarantee it is clean. Nothing raw is ever persisted.
     """
-    if should_drop_event(tool_name):
+    if should_drop_event(tool_name, drop_tools=drop_tools):
         return
     payload = redact_payload(
         {

@@ -32,6 +32,7 @@ from seahorse.constants import COGNITIVE_TYPES
 from seahorse.contracts.engine import WriteResult
 from seahorse.facade.types import RememberPayload
 from seahorse.llm import BudgetContext, LLMClient
+from seahorse.llm.types import EPISODE_COST_CAP_USD
 from seahorse.write_path.decide import PathDecision
 from seahorse.write_path.extract import derive_summary
 from seahorse.write_path.stub import _degrade_to_skip, _EngineLike
@@ -98,12 +99,11 @@ def run_llm_path(
        the extractor's ``model_used`` / ``prompt_hash`` / ``confidence``) and
        delegate to ``engine.remember`` with the validated fields.
     """
-    budget = BudgetContext(cap_usd=0.002)  # near-zero-cost: ≤ $0.002/episode
+    budget = BudgetContext(cap_usd=EPISODE_COST_CAP_USD)  # near-zero-cost: ≤ $0.002/episode
     try:
         result = llm_client.extract(
             content=payload.body,
             schema_hint=EpisodeFrontmatter,
-            role="extraction",
             budget=budget,
         )
     except NotImplementedError:

@@ -177,6 +177,109 @@ def test_consolidate_is_idempotent(tmp_path) -> None:
         storage.close()
 
 
+def test_consolidate_supersedes_when_new_episodes_arrive(tmp_path) -> None:
+    # F7+ supersession: when a cluster whose key already has a consolidated note
+    # gains NEW valid episodes, the note is UPDATED via improve (not duplicated).
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        first = consolidate(facade)
+        assert first.clusters_found == 1
+        # A new episode arrives (the representative changes).
+        _remember(
+            facade,
+            body="# Topic [sess-1:4]\n\nDetail 4.",
+            now=T0 + timedelta(minutes=3),
+        )
+        second = consolidate(facade, supersede=True)
+        assert second.clusters_found == 1
+        assert second.items[0].status == "ACTIVE"
+        # The note was updated (superseded), not duplicated.
+        eps = facade.get_vigente()
+        consolidated = [e for e in eps if e.cognitive_type == "semantic"]
+        assert len(consolidated) == 1
+        assert consolidated[0].supersedes is not None
+    finally:
+        storage.close()
+
+
+def test_consolidate_supersede_skips_when_no_new_episodes(tmp_path) -> None:
+    # supersede=True with no new episodes → still idempotent (skip).
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        consolidate(facade)
+        second = consolidate(facade, supersede=True)
+        assert second.items == []
+        eps = facade.get_vigente()
+        consolidated = [e for e in eps if e.cognitive_type == "semantic"]
+        assert len(consolidated) == 1
+    finally:
+        storage.close()
+
+
+def test_consolidate_supersede_respects_human_edits(tmp_path) -> None:
+    # Editorial authority: a human-edited note is NEVER superseded (the human
+    # prevails — the distiller does not silently overwrite a human-authored fact).
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        consolidate(facade)
+        _remember(
+            facade,
+            body="# Topic [sess-1:4]\n\nDetail 4.",
+            now=T0 + timedelta(minutes=3),
+        )
+        # The human edited the note → skip (no supersession).
+        second = consolidate(facade, supersede=True, human_edited=lambda ep: True)
+        assert second.items == []
+        eps = facade.get_vigente()
+        consolidated = [e for e in eps if e.cognitive_type == "semantic"]
+        assert len(consolidated) == 1
+    finally:
+        storage.close()
+
+
+def test_consolidate_supersede_default_off_is_idempotent(tmp_path) -> None:
+    # supersede defaults to False → the existing behavior (skip) is preserved.
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        consolidate(facade)
+        _remember(
+            facade,
+            body="# Topic [sess-1:4]\n\nDetail 4.",
+            now=T0 + timedelta(minutes=3),
+        )
+        second = consolidate(facade)  # supersede=False (default)
+        assert second.items == []  # skipped, not superseded
+        eps = facade.get_vigente()
+        consolidated = [e for e in eps if e.cognitive_type == "semantic"]
+        assert len(consolidated) == 1
+    finally:
+        storage.close()
+
+
 def test_consolidate_synthesis_llm_uses_synthesized_body(tmp_path) -> None:
     facade, storage = _facade(tmp_path / "seahorse.db")
     try:

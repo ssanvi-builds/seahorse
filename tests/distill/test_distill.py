@@ -192,6 +192,44 @@ def test_distill_respects_degrade_marker(engine) -> None:
     assert ep.provenance["degrade_reason"] == "llm_degraded"
 
 
+def test_distill_supersedes_existing_note(engine) -> None:
+    # F7+ supersession: when a cluster whose key already has a consolidated note
+    # gains NEW valid episodes, the note is UPDATED via improve (invalidate +
+    # atomic append) instead of duplicating.
+    eng, repo, audit = engine
+    ids, rep = _cluster(eng)
+    wr1 = distill_episodes(
+        eng,
+        source_ep_ids=ids,
+        representative=rep,
+        consolidated_body="# Fix the flaky recall test\n\nConsolidated v1.",
+        by={"source_type": "system", "agent_id": "consolidator"},
+    )
+    # A new episode arrives (the representative changes).
+    new_id = _remember(
+        eng,
+        body="# Fix the flaky recall test [sess-1:4]\n\nNewest.",
+        now=NOW + timedelta(minutes=3),
+    )
+    new_rep = _episode(eng, new_id)
+    wr2 = distill_episodes(
+        eng,
+        source_ep_ids=ids + [new_id],
+        representative=new_rep,
+        consolidated_body="# Fix the flaky recall test\n\nConsolidated v2.",
+        by={"source_type": "system", "agent_id": "consolidator"},
+        supersede_ep_id=wr1.ep_id,
+    )
+    # The old note is invalidated; the new one supersedes it (CORRECTION).
+    old = repo.get(wr1.ep_id)
+    assert old.invalid_at is not None
+    new = repo.get(wr2.ep_id)
+    assert new.supersedes == wr1.ep_id
+    assert new.supersedes_reason == "correction"
+    assert new.cognitive_type == "semantic"
+    assert new.provenance["extraction_mode"] == "consolidated"
+
+
 def test_distill_summary_skips_h1(engine) -> None:
     eng, repo, audit = engine
     ids, rep = _cluster(eng)

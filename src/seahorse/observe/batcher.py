@@ -82,15 +82,19 @@ def render_turn_body(
     session_tag: str,
     prompt_number: int,
     max_chars: int = BODY_MAX_CHARS,
+    title: str | None = None,
 ) -> str:
     """Deterministic render of a turn into an episode body. Pure.
 
     ``events`` are the already-redacted tool events in arrival order. The body
     starts with the H1 title, then the user prompt, then each tool event. No
     ``ts`` / ``session_id`` / ``prompt_number`` / ``cwd`` fields (reprocess
-    stability). Byte-truncated deterministically.
+    stability). Byte-truncated deterministically. ``title`` is the pre-derived
+    H1 (the worker computes it once and reuses it for the ``RememberPayload``);
+    when None it is derived here (backward compat).
     """
-    title = build_title(prompt, session_tag, prompt_number)
+    if title is None:
+        title = build_title(prompt, session_tag, prompt_number)
     lines: list[str] = [f"# {title}", "", "## User prompt", "", prompt]
     for event in events:
         tool_name = event.get("tool_name", "unknown")

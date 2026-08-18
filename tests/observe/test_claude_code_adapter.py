@@ -108,6 +108,26 @@ def test_handle_post_tool_use_drops_read_bash(queue: ObserverQueue) -> None:
     assert tool_envs == []
 
 
+def test_handle_post_tool_use_drops_configured_tools(queue: ObserverQueue) -> None:
+    # D2: a tool added to [observe].drop_tools must be dropped BEFORE enqueue —
+    # the configured set, not just the DEFAULT_DROP_TOOLS (Read/Bash).
+    handle_session_start(queue, session_id=SESSION)
+    handle_user_prompt_submit(queue, session_id=SESSION, prompt="A prompt")
+    handle_post_tool_use(
+        queue,
+        session_id=SESSION,
+        tool_name="Edit",
+        tool_use_id="tu-1",
+        tool_input="secret.txt",
+        tool_response="SECRET CONTENT",
+        drop_tools=frozenset({"Edit"}),
+    )
+    # Edit is in the configured drop_tools → never enqueued (nothing raw persisted).
+    pending = queue.pending()
+    tool_envs = [env for _, env in pending if env.event_type == EVENT_POST_TOOL_USE]
+    assert tool_envs == []
+
+
 def test_handle_post_tool_use_uses_current_prompt_number(queue: ObserverQueue) -> None:
     handle_session_start(queue, session_id=SESSION)
     handle_user_prompt_submit(queue, session_id=SESSION, prompt="A prompt")

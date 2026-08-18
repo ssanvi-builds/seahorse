@@ -13,6 +13,7 @@ conditioned on real budget pressure).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -106,6 +107,8 @@ def consolidate(
     by: dict[str, Any] | None = None,
     synthesis: str = "skip",
     llm_client: LLMClient | None = None,
+    supersede: bool = False,
+    human_edited: Callable[[Any], bool] | None = None,
 ) -> ConsolidateReport:
     """Consolidate recurrent currently-valid episodes into semantic knowledge notes.
 
@@ -116,18 +119,40 @@ def consolidate(
     not re-distilled. ``synthesis="llm"`` (with a wired ``llm_client``) adds the
     off-path LLM synthesis: 1 call per cluster, honest degrade to the
     deterministic fallback on failure. Returns a report (deterministic order).
+
+    ``supersede=True`` (F7+ supersession, opt-in) UPDATES an existing note when
+    the cluster gains NEW valid episodes: the note supersedes the representative
+    at consolidation time, so a changed representative means new episodes → the
+    note is re-distilled via ``facade.distill(supersede_ep_id=...)`` (improve:
+    invalidate + atomic append) instead of skipped. Default False keeps the
+    idempotent skip.
+
+    ``human_edited`` (editorial authority — the human prevails) is a predicate
+    over an existing note: when it returns True, the note is NEVER superseded
+    (the distiller does not silently overwrite a human-authored fact). The CLI
+    wires it to the vault mtime check (a note whose ``.md`` was edited after its
+    creation is human-touched).
     """
     effective_by = by or {"source_type": "system", "agent_id": CONSOLIDATOR_AGENT}
     eps = facade.get_vigente()
     # Cluster only EPISODIC sources — consolidated notes are the OUTPUT, not
     # the input (idempotency).
     sources = [e for e in eps if not _is_consolidated(e)]
-    existing_keys = {e.subject for e in eps if _is_consolidated(e)}
+    existing_notes = {e.subject: e for e in eps if _is_consolidated(e)}
     clusters = cluster_episodes(sources)
     items: list[ConsolidateItem] = []
     for cluster in clusters:
-        if cluster.key in existing_keys:
-            continue  # the knowledge note already exists — skip (idempotent)
+        existing = existing_notes.get(cluster.key)
+        supersede_ep_id: str | None = None
+        if existing is not None:
+            if not supersede:
+                continue  # the knowledge note already exists — skip (idempotent)
+            if existing.supersedes == cluster.representative.id:
+                continue  # no new episodes — the note is current
+            if human_edited is not None and human_edited(existing):
+                continue  # the human prevails — never supersede a human edit
+            # New episodes → supersession: update the note via improve.
+            supersede_ep_id = existing.id
         consolidated_body, llm_by = _synthesize_or_fallback(
             cluster, synthesis, llm_client
         )
@@ -136,6 +161,7 @@ def consolidate(
             representative=cluster.representative,
             consolidated_body=consolidated_body,
             by={**effective_by, **llm_by},
+            supersede_ep_id=supersede_ep_id,
         )
         items.append(
             ConsolidateItem(

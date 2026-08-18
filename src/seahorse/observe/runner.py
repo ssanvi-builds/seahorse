@@ -41,7 +41,9 @@ def run_observer(
     drains the queue every ``interval_s`` seconds. Exits on ``stop_event``,
     ``max_drains`` (test control), or KeyboardInterrupt.
     """
-    endpoint = ObserverEndpoint(queue, socket_path=socket_path, token=token)
+    endpoint = ObserverEndpoint(
+        queue, socket_path=socket_path, token=token, drop_tools=config.drop_tools
+    )
     worker = ObserverWorker(facade, queue, config=config)
     thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
     thread.start()

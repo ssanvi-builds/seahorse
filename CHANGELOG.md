@@ -8,6 +8,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Distillation supersession (`seahorse consolidate --supersede`)** — a cluster
+  whose key already has a consolidated note gains NEW valid episodes → the note
+  is UPDATED via `improve` (invalidate + atomic append) instead of duplicating.
+  Editorial authority: a note whose vault `.md` was edited after its creation is
+  human-touched and never superseded (the human prevails). Opt-in via the
+  `[distill]` config section (`supersede = true`) or the CLI flag; the
+  idempotent skip remains the default.
+- **BM25 OR-of-terms query** — the FTS5 query is now built from the question's
+  tokens (OR-of-terms) instead of phrase-quoting the whole query, so a
+  natural-language question matches episodes containing any of its terms (the
+  hybrid RRF was effectively kNN-only before).
+- **Distillation indexes the consolidated note** — `facade.distill` now fires
+  the write-path index hook, so the consolidated knowledge note is recoverable
+  by hybrid recall (it was invisible to vec0/FTS before).
+- **`[observe].drop_tools` applied at enqueue** — a tool added to the configured
+  drop set never reaches the observer queue (previously it was only dropped at
+  drain, so its redacted content persisted on disk).
+
+## [0.8.0] - 2026-08-17
+
+### Added
+
 - **LLM synthesis for distillation (`seahorse consolidate --synthesis llm`)** —
   the off-path F7+ block: 1 LLM call per recurrent cluster (N episodes → 1
   fact), reusing the extractor seam (schema hint + repair + honest degrade).
@@ -19,6 +41,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   builder lets callers reuse the full extraction pipeline (schema validation,
   repair loop, fallback chain, cost cap) with a different prompt. Additive and
   non-breaking.
+
+## [0.7.0] - 2026-08-16
+
+### Added
+
 - **MCP `skill_list` / `skill_search` tools** — the MCP server now exposes the
   two Discovery-level skill tools (14 tools total), closing the parity gap with
   the CLI (which had `skill add|list|search|show` but no MCP listing/search).

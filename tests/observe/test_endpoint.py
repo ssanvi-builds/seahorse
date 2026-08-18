@@ -96,6 +96,22 @@ def test_handle_event_drops_read_bash(queue: ObserverQueue, tmp_path) -> None:
     assert queue.pending_count() == 0  # never enqueued
 
 
+def test_handle_event_drops_configured_tools(queue: ObserverQueue, tmp_path) -> None:
+    # D2: the endpoint must apply the CONFIGURED drop_tools at enqueue, not just
+    # the DEFAULT_DROP_TOOLS — a tool added to [observe].drop_tools must never
+    # persist in the queue (its content is entirely secret).
+    ep = ObserverEndpoint(
+        queue, socket_path=tmp_path / "observer.sock", drop_tools=frozenset({"Edit"})
+    )
+    raw = _raw_event(
+        event_type=EVENT_POST_TOOL_USE,
+        payload={"tool_name": "Edit", "tool_input": "secret.txt", "tool_response": "SECRET"},
+    )
+    status, _ = ep.handle_event(raw)
+    assert status == 200
+    assert queue.pending_count() == 0  # never enqueued
+
+
 # ---------------------------------------------------------------------------
 # serve_forever — the unix socket HTTP server
 # ---------------------------------------------------------------------------

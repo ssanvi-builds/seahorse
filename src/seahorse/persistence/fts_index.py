@@ -9,10 +9,14 @@ the same rowid, and deletes by the ``'delete'`` command; the
 
 - ``score = exp(-bm25(episode_fts))`` — bm25 is lower=better, exp(-x) makes it
   higher=better in (0,1] (reproducible, no min-max).
-- Baseline tokenizer ``unicode61 remove_diacritics 2`` (accent/case-insensitive,
-  no stemming — Snowball Spanish is a medium-term goal).
-- Query escaping: default phrase-literal (double-quote the whole
-  query); the signed contract has no advanced-syntax flag.
+- Tokenizer ``porter unicode61 remove_diacritics 2`` (migration 011): English
+  stemming (porter) wrapping accent/case-insensitive unicode61. The subject
+  column is indexed (the short high-signal field). Spanish stemming is a
+  medium-term goal (FTS5 has no built-in Snowball Spanish stemmer).
+- Query escaping: OR-of-terms (each token quoted, joined with ``OR``) — a
+  natural-language question almost never appears as a contiguous phrase in a
+  turn, so phrase-quoting the whole query made BM25 return zero hits for most
+  questions. BM25 scoring still ranks docs with more query terms higher.
 - The current-state / PIT variants JOIN ``episode_index`` via
   ``_pit_predicate``; the BM25 scan is capped at ``FTS_OVERFETCH_FACTOR * k`` so
   the JOIN drop and re-cap to ``k`` stay cheap.
@@ -20,6 +24,7 @@ the same rowid, and deletes by the ``'delete'`` command; the
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import datetime
 
@@ -33,8 +38,18 @@ FTS_OVERFETCH_FACTOR = 5
 
 
 def _escape_query(query: str) -> str:
-    """Phrase-literal default: quote the whole query as a phrase."""
-    return f'"{query}"'
+    """Build an FTS5 OR-of-terms query from the query's tokens.
+
+    Each token is quoted (a one-word phrase) and joined with ``OR``, so a doc
+    matching ANY query term is a candidate; BM25 ranks docs with more terms
+    higher. A query with no tokens (empty / all punctuation) becomes an empty
+    phrase, which matches nothing.
+    """
+    terms = [t for t in re.split(r"[\s\W_]+", query) if t]
+    if not terms:
+        return '""'
+    quoted = [f'"{t.replace(chr(34), chr(34) * 2)}"' for t in terms]
+    return " OR ".join(quoted)
 
 
 def _tags(doc: FtsDoc) -> str:

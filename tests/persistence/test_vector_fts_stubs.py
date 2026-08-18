@@ -331,6 +331,35 @@ def test_fts_search_returns_matching_hits_with_exp_bm25(
     assert hits[0].score == pytest.approx(exp(-hits[0].bm25_score))  # score = exp(-bm25)
 
 
+def test_fts_search_multiword_query_matches_non_contiguous_terms(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    # The core regression: a natural-language question almost never appears as
+    # a contiguous phrase in a turn. Phrase-quoting the whole query returned
+    # zero hits for most questions (the hybrid RRF was effectively kNN-only);
+    # OR-of-terms must match a doc containing any of the query terms.
+    _insert_index_row(mgr, "e1")
+    _insert_index_row(mgr, "e2")
+    _upsert_fts(fts, "e1", "the user loves programming in python")
+    _upsert_fts(fts, "e2", "cooking pasta with tomatoes")
+    hits = fts.search("what is the user's favorite programming language", 5)
+    assert [h.ep_id for h in hits] == ["e1"]
+
+
+def test_fts_search_or_of_terms_matches_any_term(
+    fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
+) -> None:
+    # OR-of-terms: a doc matching ANY query term is a candidate (BM25 ranks
+    # docs with more terms higher). Phrase-quoting "madrid france" matched
+    # nothing; OR-of-terms matches both docs.
+    _insert_index_row(mgr, "e1")
+    _insert_index_row(mgr, "e2")
+    _upsert_fts(fts, "e1", "madrid spain")
+    _upsert_fts(fts, "e2", "paris france")
+    hits = fts.search("madrid france", 5)
+    assert {h.ep_id for h in hits} == {"e1", "e2"}
+
+
 def test_fts_search_vigent_only_excludes_invalidated(
     fts: SqliteFullTextIndexRepository, mgr: ConnectionManager
 ) -> None:

@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, get_args, runtime_checkable
 
 from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.contracts.engine import (
@@ -70,11 +70,14 @@ from seahorse.facade.types import (
 _logger = logging.getLogger("seahorse.facade")
 
 _VALID_PIT_KINDS: frozenset[str] = PIT_KIND_VALUES  # single-source from PITKind Literal
-# Modes routable by the single-episode ``remember`` primitive. ``consolidated``
+# Modes routable by the single-episode ``remember`` primitive, single-sourced
+# from the ``ExtractionMode`` Literal minus the reserved modes. ``consolidated``
 # is schema-valid (the wire round-trips it) but NOT routed here — the batch
 # distillation writes via ``engine.remember`` directly, bypassing the write
 # path's ``decide_path``; ``llm_partial`` stays fully reserved.
-_VALID_MODES: frozenset[str] = frozenset({"skip", "llm"})
+_VALID_MODES: frozenset[str] = frozenset(get_args(ExtractionMode)) - frozenset(
+    {"consolidated", "llm_partial"}
+)
 
 
 def _default_clock() -> datetime:
@@ -195,7 +198,7 @@ class MemoryFacade:
         config: FacadeConfig | None = None,
         primitive_log: Callable[[str, str], None] | None = None,
         embedder: QueryEmbedder | None = None,
-        on_episode_improved: Callable[[str], None] | None = None,
+        on_episode_indexed: Callable[[str], None] | None = None,
     ) -> None:
         self._engine = engine
         self._write_path = write_path
@@ -210,12 +213,12 @@ class MemoryFacade:
         # invokes it. A later release swaps in the real embedder adapter here —
         # a single-point change.
         self._embedder: QueryEmbedder = embedder if embedder is not None else StubQueryEmbedder()
-        # Post-``improve`` index hook (dependency injection, the facade never
-        # knows the indexer). ``improve`` bypasses the write path (manual
-        # supersede edit), so the successor would never reach vec0/FTS and the
-        # hybrid recall could not recover it. The composition root wires this to
-        # the write-path indexer.
-        self._on_episode_improved = on_episode_improved
+        # Post-write index hook (dependency injection, the facade never knows
+        # the indexer). ``improve`` (manual supersede edit) and ``distill``
+        # (batch distillation) both bypass the write path, so their successors
+        # would never reach vec0/FTS and the hybrid recall could not recover
+        # them. The composition root wires this to the write-path indexer.
+        self._on_episode_indexed = on_episode_indexed
 
     # ------------------------------------------------------------------ now
 
@@ -404,8 +407,8 @@ class MemoryFacade:
         # Index the successor so the hybrid recall can recover the new version
         # (fires ONLY on success — a collision raises above). The listing
         # regime wires no hook → honest no-op.
-        if self._on_episode_improved is not None:
-            self._on_episode_improved(result.id)
+        if self._on_episode_indexed is not None:
+            self._on_episode_indexed(result.id)
         self._log("improve", "updated")
         return result
 
@@ -469,6 +472,7 @@ class MemoryFacade:
         representative: Episode,
         consolidated_body: str,
         by: Provenance,
+        supersede_ep_id: str | None = None,
     ) -> WriteResult:
         """Distill source episodes into a consolidated semantic episode.
 
@@ -476,16 +480,26 @@ class MemoryFacade:
         — the facade is the extension point so the CLI never reaches the engine
         directly (delegation purity). The consolidated episode references its
         representative via ``supersedes`` WITHOUT invalidating the sources.
+        With ``supersede_ep_id`` (F7+ supersession) the existing note is
+        UPDATED via improve instead of a fresh write.
         """
         from seahorse.distill.distill import distill_episodes
 
-        return distill_episodes(
+        result = distill_episodes(
             self._engine,
             source_ep_ids,
             representative,
             consolidated_body,
             dict(by),
+            supersede_ep_id=supersede_ep_id,
         )
+        # Index the consolidated note so the hybrid recall can recover it — the
+        # same bypass-the-write-path pattern as improve (the note is the most
+        # valuable memory the distillation exists to produce). The listing
+        # regime wires no hook → honest no-op.
+        if self._on_episode_indexed is not None:
+            self._on_episode_indexed(result.ep_id)
+        return result
 
     def freshness_view(self, ep_id: str) -> FreshnessView:
         """Freshness snapshot (delegates to ``engine.freshness_view``)."""

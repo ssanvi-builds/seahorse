@@ -311,20 +311,15 @@ class StubWritePath:
     def __init__(
         self,
         engine: _EngineLike,
-        repo: object | None = None,
         indexer: _IndexerLike | None = None,
         llm_client: LLMClient | None = None,
     ) -> None:
-        # ``repo`` is accepted for forward-compat (a later release's
-        # deterministic_extract may use the frontmatter adapter's derive_subject
-        # with a path). Unused in the first-release skip-path-only mode.
         # ``indexer``: when wired, an ACTIVE write triggers the best-effort
         # retrieval index (vec0 + FTS) — never fails the write.
         # ``llm_client``: when wired, ``ingest`` routes the ``llm`` decision to
         # ``run_llm_path`` instead of degrading. ``None`` keeps the first-release
         # behaviour (degrade with ``llm_not_implemented_mvp0``).
         self._engine = engine
-        self._repo = repo
         self._indexer = indexer
         self._llm_client = llm_client
 

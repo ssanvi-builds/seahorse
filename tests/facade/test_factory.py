@@ -334,7 +334,7 @@ class TestImproveIndexesSuccessor:
     ``improve`` writes the new version via ``engine.improve`` (NOT the write
     path); without an index hook the successor never reaches vec0/FTS, so hybrid
     recall cannot recover it and ``knowledge_update_accuracy`` would be 0. The
-    factory wires ``on_episode_improved`` to the write-path indexer.
+    factory wires ``on_episode_indexed`` to the write-path indexer.
     """
 
     def test_hybrid_facade_indexes_improve_successor(self, monkeypatch, tmp_path) -> None:
@@ -359,6 +359,53 @@ class TestImproveIndexesSuccessor:
             rows = facade.recall("capital of France", k=5)
             assert any(r.ep_id == new_ep.id for r in rows), (
                 "the improve successor must be retrievable post-index"
+            )
+        finally:
+            storage.close()
+
+
+class TestDistillIndexesConsolidatedNote:
+    """D1 — the consolidated note must be retrievable by hybrid recall.
+
+    ``facade.distill`` writes via ``distill_episodes`` → ``engine.remember``
+    directly (NOT the write path), so without an index hook the consolidated
+    note — the most valuable memory the distillation exists to produce — never
+    reaches vec0/FTS and the hybrid recall cannot recover it. The factory wires
+    ``on_episode_indexed`` to the write-path indexer.
+    """
+
+    def test_hybrid_facade_indexes_distilled_note(self, monkeypatch, tmp_path) -> None:
+        import seahorse.facade.factory as factory
+
+        monkeypatch.setattr(factory, "_build_passage_embedder", lambda: _FakeAsyncEmbedder())
+        clock, _ = _controllable_clock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
+        facade, storage = build_facade(
+            tmp_path / "f.db",
+            embedder=_QueryEmbedder384(),
+            retrieval_available=True,
+            clock=clock,
+        )
+        try:
+            ids = [
+                facade.remember(
+                    RememberPayload(
+                        body=f"# The capital of France [s1:{i}]\n\nParis is the capital.",
+                        by=_agent_by(),
+                    )
+                ).ep_id
+                for i in range(1, 4)
+            ]
+            rep = storage.episodes.get(ids[-1])
+            wr = facade.distill(
+                source_ep_ids=ids,
+                representative=rep,
+                consolidated_body="# The capital of France\n\nThe capital of France is Paris.",
+                by={"source_type": "system", "agent_id": "consolidator"},
+            )
+            # The consolidated note is now retrievable via the hybrid path (indexed).
+            rows = facade.recall("capital of France", k=5)
+            assert any(r.ep_id == wr.ep_id for r in rows), (
+                "the consolidated note must be retrievable post-index"
             )
         finally:
             storage.close()

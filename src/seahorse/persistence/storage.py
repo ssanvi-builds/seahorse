@@ -91,6 +91,13 @@ class Storage:
         with self._cm.atomic():
             yield
 
+    @property
+    def connection_manager(self) -> ConnectionManager:
+        """The shared ``ConnectionManager`` (the composition root's indexer needs
+        it for the atomic upsert; a public accessor avoids reaching the private
+        field)."""
+        return self._cm
+
     # -- repository accessors --------------------------------------------------
 
     @property

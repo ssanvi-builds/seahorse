@@ -139,7 +139,7 @@ class TestImproveIndexesSuccessor:
     post-``improve`` is in top-k. In the hybrid regime the new version is only
     retrievable if the composition root indexes it — a pure ``engine.improve``
     write leaves it in the ``episodes`` table but not in vec0/FTS. The facade
-    exposes an optional ``on_episode_improved`` callback (dependency injection —
+    exposes an optional ``on_episode_indexed`` callback (dependency injection —
     the facade never knows the indexer); the composition root wires it.
     """
 
@@ -147,7 +147,7 @@ class TestImproveIndexesSuccessor:
         from tests.facade.conftest import make_facade as _mf
 
         fired: list[str] = []
-        f, _log = _mf(on_episode_improved=fired.append)
+        f, _log = _mf(on_episode_indexed=fired.append)
         f._engine.improve_result = make_episode("e2")
         f.improve("e1", "new body", by=_by())
         assert fired == ["e2"]
@@ -160,7 +160,7 @@ class TestImproveIndexesSuccessor:
         from tests.facade.conftest import make_facade as _mf
 
         fired: list[str] = []
-        f, _log = _mf(on_episode_improved=fired.append)
+        f, _log = _mf(on_episode_indexed=fired.append)
         f._engine.improve_raise = EngineError(E_COLLISION_EXISTS, collisions=["c1"])
         with pytest.raises(EngineError):
             f.improve("e1", "new body", by=_by())

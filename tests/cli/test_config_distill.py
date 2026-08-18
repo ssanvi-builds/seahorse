@@ -39,6 +39,20 @@ def test_distill_section_defaults(tmp_path) -> None:
     cfg = load_config(tmp_path)
     assert cfg.distill is not None
     assert cfg.distill.synthesis == "skip"
+    assert cfg.distill.supersede is False  # opt-in (ADR-10 honesty)
+
+
+def test_distill_supersede_true(tmp_path) -> None:
+    _write_toml(tmp_path, _base_toml() + "[distill]\nsupersede = true\n")
+    cfg = load_config(tmp_path)
+    assert cfg.distill is not None
+    assert cfg.distill.supersede is True
+
+
+def test_distill_invalid_supersede_rejected(tmp_path) -> None:
+    _write_toml(tmp_path, _base_toml() + '[distill]\nsupersede = "yes"\n')
+    with pytest.raises(CliConfigInvalid):
+        load_config(tmp_path)
 
 
 def test_distill_section_full(tmp_path) -> None:

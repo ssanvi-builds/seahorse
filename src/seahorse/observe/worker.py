@@ -157,12 +157,16 @@ class ObserverWorker:
             return
 
         tag = short_session_tag(session_id)
+        # The H1 title is derived ONCE and reused for the body + the payload
+        # (the same tag/prompt_number → the same title).
+        title = build_title(prompt, tag, prompt_number)
         body = render_turn_body(
             prompt,
             tool_events,
             session_tag=tag,
             prompt_number=prompt_number,
             max_chars=self._config.body_max_chars,
+            title=title,
         )
         if len(body) < self._config.min_body_chars:
             # Threshold: body < 40 chars → no episode.
@@ -177,7 +181,7 @@ class ObserverWorker:
                 "agent_id": self._agent_id(turn_events),
                 "session_id": session_id,
             },
-            title=build_title(prompt, tag, prompt_number),
+            title=title,
             summary=derive_summary(body, max_chars=self._config.summary_max_chars),
             cognitive_type="episodic",
         )

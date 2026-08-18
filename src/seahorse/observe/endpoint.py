@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+from collections.abc import Collection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ from seahorse.observe.protocol import (
     parse_envelope,
 )
 from seahorse.observe.queue import ObserverQueue
+from seahorse.observe.threshold import DEFAULT_DROP_TOOLS
 
 _SOCKET_MODE = 0o600
 
@@ -82,10 +84,15 @@ class ObserverEndpoint:
         *,
         socket_path: Path | str,
         token: str | None = None,
+        drop_tools: Collection[str] = DEFAULT_DROP_TOOLS,
     ) -> None:
         self._queue = queue
         self._socket_path = Path(socket_path)
         self._token = token
+        # The configured ``[observe].drop_tools`` — applied at enqueue so a tool
+        # added to the set never reaches the queue (its content is entirely
+        # secret; redaction alone cannot guarantee it is clean).
+        self._drop_tools = drop_tools
         self._server: _UnixHTTPServer | None = None
 
     # ------------------------------------------------------------- core logic
@@ -124,6 +131,7 @@ class ObserverEndpoint:
                 tool_input=env.payload.get("tool_input", ""),
                 tool_response=env.payload.get("tool_response", ""),
                 agent_id=agent_id,
+                drop_tools=self._drop_tools,
             )
         elif env.event_type == EVENT_STOP:
             handle_stop(self._queue, session_id=session_id, agent_id=agent_id)

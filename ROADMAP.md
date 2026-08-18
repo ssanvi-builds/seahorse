@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.7.0):
+What works today (v0.8.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -55,14 +55,21 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
 
 ## Roadmap
 
-- **Near term** — public launch and community onboarding. The engine is
-  feature-complete for a single-user memory store; the focus is the launch
-  (Show HN, blog, X, MCP registry, Obsidian community), reliability, edge
-  cases, and making external contribution straightforward.
-- **Medium term** — distillation synthesis, cross-project sync, and a web
-  viewer.
-- **Long term** — a managed cloud offering as a later phase, and wider adoption
-  of the memory standard across agents and harnesses.
+- **Near term** — close the "self-evolving" loop and harden the moat. The
+  public launch (v0.6.0) is done; the focus is responding to launch feedback
+  (Show HN, community), reliability, edge cases, and making external
+  contribution straightforward. On the product side: **supersession** (the
+  consolidated knowledge notes update themselves via `improve` instead of
+  duplicating) and **retrieval quality** as a first-class workstream — the
+  published benchmark is the public face of the product, and the F7 experiments
+  (multi-hop, entity-centric, decay, skills) are being run to inform the
+  roadmap.
+- **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
+  HTTP) as a standard expansion that also serves the local free tier, with the
+  web dashboard and managed sync deferred until the adoption gate produces data.
+  Cross-project sync and the web viewer follow that gate.
+- **Long term** — a managed cloud offering as a later phase, gated by adoption,
+  and wider adoption of the memory standard across agents and harnesses.
 
 ## Contributing
 
