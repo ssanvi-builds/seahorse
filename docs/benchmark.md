@@ -46,15 +46,29 @@ retrieval-only pass — the engine ranks by relevance, it does not reason.
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full
-   dataset. These numbers are not a complete leaderboard.
-2. **Small, unvalidated judge.** Relevance scores depend on a small LLM judge
-   without human validation. Treat the absolute values as indicative.
+   dataset. These numbers are not a complete leaderboard. The subsample is
+   balanced across question types (temporal-reasoning, knowledge-update,
+   multi-session, single-session) so the slices are decision-complete, but the
+   absolute values are not a full-dataset measurement.
+2. **Judge applies only to end-to-end metrics.** The retrieval metrics
+   (recall@10, ndcg@10, mrr, precision@10) are computed against the dataset's
+   ground-truth golden sessions — **no LLM judge is involved**. The small,
+   unvalidated judge (`ollama/qwen2.5:7b`) is used only for the end-to-end
+   metrics (`knowledge_update_accuracy`, `fama_gap`), which are 0.0 by design
+   in retrieval-only mode. The retrieval numbers do not depend on the judge.
 3. **Retrieval-only.** This measures the ranking, not the agent's final answer.
    `knowledge_update_accuracy` and `fama_gap` are 0.0 by design (sanity checks
-   without a baseline).
+   without a baseline). The end-to-end value of the product (reader + retrieval)
+   is not yet measured — that is the next step.
 4. **Cross-encoder rejected.** A cross-encoder rerank was tested
    (`score_source: rrf_rerank`) and **rejected**: it degraded recall@10 to
    0.1057 with 1243 ms p95 latency. The RRF fusion stays the default.
+
+The temporal-reasoning slice (recall@10 0.02) is a **fundamental limitation of
+retrieval-only ranking, not a bug**: the engine ranks by textual relevance and
+cannot reason about "before/after/at the time of". Temporal reasoning is a
+reader/agent capability — the plan is to measure it end-to-end (reader +
+retrieval) rather than chase it with retrieval-only tricks.
 
 ## How not to compare these numbers
 
