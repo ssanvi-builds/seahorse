@@ -4,10 +4,21 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-08-19
 
 ### Added
 
+- **LLM synthesis for distillation (`seahorse consolidate --synthesis llm`)** —
+  the off-path F7+ block: 1 LLM call per recurrent cluster (N episodes → 1
+  fact), reusing the extractor seam (schema hint + repair + honest degrade).
+  A failed synthesis degrades to the deterministic fallback with a durable
+  `degraded_from="llm"` marker (ADR-10). Opt-in via the `[distill]` config
+  section (`synthesis = "llm"`) or the CLI flag; the deterministic distillation
+  remains the default.
+- **`LLMClient.extract` `prompt_builder` seam** — an optional custom prompt
+  builder lets callers reuse the full extraction pipeline (schema validation,
+  repair loop, fallback chain, cost cap) with a different prompt. Additive and
+  non-breaking.
 - **Distillation supersession (`seahorse consolidate --supersede`)** — a cluster
   whose key already has a consolidated note gains NEW valid episodes → the note
   is UPDATED via `improve` (invalidate + atomic append) instead of duplicating.
@@ -25,22 +36,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`[observe].drop_tools` applied at enqueue** — a tool added to the configured
   drop set never reaches the observer queue (previously it was only dropped at
   drain, so its redacted content persisted on disk).
-
-## [0.8.0] - 2026-08-17
-
-### Added
-
-- **LLM synthesis for distillation (`seahorse consolidate --synthesis llm`)** —
-  the off-path F7+ block: 1 LLM call per recurrent cluster (N episodes → 1
-  fact), reusing the extractor seam (schema hint + repair + honest degrade).
-  A failed synthesis degrades to the deterministic fallback with a durable
-  `degraded_from="llm"` marker (ADR-10). Opt-in via the `[distill]` config
-  section (`synthesis = "llm"`) or the CLI flag; the deterministic distillation
-  remains the default.
-- **`LLMClient.extract` `prompt_builder` seam** — an optional custom prompt
-  builder lets callers reuse the full extraction pipeline (schema validation,
-  repair loop, fallback chain, cost cap) with a different prompt. Additive and
-  non-breaking.
 
 ## [0.7.0] - 2026-08-16
 
