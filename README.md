@@ -126,11 +126,11 @@ Note: `~` is not expanded in `.mcp.json` — use `${HOME}` or an absolute path.
 (`mcpServers` in `settings.json` is silently ignored; MCP servers live in
 `~/.claude.json` for user/local scope and in `.mcp.json` for project scope.)
 
-Once connected, the agent sees the 12 memory tools — `remember`, `recall`,
+Once connected, the agent sees the 14 memory tools — `remember`, `recall`,
 `recall_timeline`, `recall_full`, `improve`, `forget`, `build_pit`,
-`skill_add`, `skill_show`, `freshness_view`, `audit_log`,
-`follow_supersedes_chain` (see [The agent
-surface](#the-agent-surface--7-memory-native-primitives--5-proceduralread-only-tools)).
+`skill_add`, `skill_show`, `skill_list`, `skill_search`, `freshness_view`,
+`audit_log`, `follow_supersedes_chain` (see [The agent
+surface](#the-agent-surface--7-memory-native-primitives--7-proceduralread-only-tools)).
 
 The observer (`seahorse setup`) is a separate piece: it captures Claude Code
 sessions into episodes. The MCP server is how the agent *reads and writes*
@@ -319,7 +319,7 @@ development setup, test/lint commands, and pull request workflow.
 See [ROADMAP.md](ROADMAP.md) for what is built, what is next, and the direction
 of the project. Release history lives in [CHANGELOG.md](CHANGELOG.md).
 
-## The agent surface — 7 memory-native primitives + 5 procedural/read-only tools
+## The agent surface — 7 memory-native primitives + 7 procedural/read-only tools
 
 Exposed over stdio MCP (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`) and
 mirrored on the CLI. These are memory primitives, not generic CRUD: an agent calls
@@ -337,12 +337,14 @@ The 7 primitives (write + retrieve):
 | `forget` | Soft-delete an episode (append-only; history preserved). |
 | `build_pit` | Build a point-in-time projection (all-None → current state). |
 
-Plus 5 procedural / read-only tools (skills + facade introspection):
+Plus 7 procedural / read-only tools (skills + facade introspection):
 
 | Tool | What it does |
 |------|--------------|
 | `skill_add` | Create a procedural skill (deterministic, near-zero cost). |
 | `skill_show` | Show a skill's gated body (trust gate). |
+| `skill_list` | List procedural skills (Discovery level). |
+| `skill_search` | Search procedural skills (hybrid recall, procedural filter). |
 | `freshness_view` | Freshness snapshot of an episode (age, stale, pending_ingest). |
 | `audit_log` | Audit events for an episode (write-path history). |
 | `follow_supersedes_chain` | The supersedes closure for an episode (version history). |
@@ -355,8 +357,8 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 
 - Bi-temporal, append-only episode store on stdlib `sqlite3` + sqlite-vec (FTS5
   + vec0). Auto-migrating schema.
-- The 7 memory-native primitives plus 5 procedural / read-only tools, on both
-  the CLI and stdio MCP (12 tools total).
+- The 7 memory-native primitives plus 7 procedural / read-only tools, on both
+  the CLI and stdio MCP (14 tools total).
 - Progressive disclosure (INDEX / TIMELINE / FULL) and point-in-time projection.
 - **Hybrid semantic retrieval**: `recall` ranks by relevance — sqlite-vec
   kNN + FTS5 BM25 fused with Reciprocal Rank Fusion, with point-in-time
@@ -377,6 +379,10 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
   must carry the load — the path does not silently depend on native structured
   outputs or a strong model.
 - Supersession (`improve`) and soft-delete (`forget`) with full history preserved.
+- **Batch distillation** (`seahorse consolidate`): distill many episodes into a
+  single consolidated note — deterministic by default, with opt-in LLM synthesis
+  (`--synthesis llm`) and supersession (`--supersede`) so the consolidated note
+  supersedes its sources.
 - Frontmatter import/export for the Obsidian vault layer (markdown as the
   human-readable, portable on-disk contract).
 - **Legacy-vault migration**: `seahorse frontmatter migrate` converts legacy
@@ -387,8 +393,7 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 
 A few CLI commands are wired but intentionally return exit `75` with a reason
 (`expire`, `revalidate`, `index verify`), so the surface is honest about what is
-not implemented yet rather than silently no-op'ing. Batch distillation
-(`consolidated`) is schema-valid but not built; `llm_partial` stays fully
+not implemented yet rather than silently no-op'ing. `llm_partial` stays fully
 reserved.
 
 ## Stack
@@ -440,14 +445,15 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ## Current status
 
-**v0.7.0.** The memory engine works end-to-end from a clean install: write
+**v0.8.0.** The memory engine works end-to-end from a clean install: write
 episodes, recall them with hybrid semantic retrieval, extract with a real
 multi-LLM path (local-first, CI-gated), improve and forget them, and serve an
 agent over stdio MCP. Recall ranks by relevance when vectors are populated and
 the embedder is wired, and honestly degrades to a current-state listing
 otherwise. `seahorse import` migrates claude-mem observations to episodes, and
-an opt-in recency ranking signal is available. The MCP server and the CLI now
-expose the same skill and read-only surfaces (14 MCP tools), timelines can be
-ranged by `created_at`/`valid_at`, and `--verbose` reports per-operation
-timing. See [What works](#what-works) and [ROADMAP.md](ROADMAP.md) for what is
-next.
+an opt-in recency ranking signal is available. Batch distillation
+(`seahorse consolidate`) turns many episodes into one consolidated note, with
+opt-in LLM synthesis and supersession. The MCP server and the CLI now expose the
+same skill and read-only surfaces (14 MCP tools), timelines can be ranged by
+`created_at`/`valid_at`, and `--verbose` reports per-operation timing. See
+[What works](#what-works) and [ROADMAP.md](ROADMAP.md) for what is next.
