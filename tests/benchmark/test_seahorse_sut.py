@@ -210,8 +210,29 @@ def test_identity_reports_experiment_flags(sut):
     assert ident["extraction_mode"] == "skip"
     assert ident["score_source"] == "mvp1_rrf"
     assert ident["recency_config"] is None
+    assert ident["decay_config"] is None  # decay default-OFF (pure-RRF fingerprint)
     assert ident["rerank_enabled"] is False
     assert ident["embed_mode"] == "body+summary"  # current product default
+
+
+def test_identity_reports_decay_config_when_wired(tmp_path, fake_reader, fake_tokenizer):
+    """The decay variant SUT pins its composition-root config in the identity."""
+    facade, storage = build_facade(tmp_path / "bench.db", retrieval_available=False)
+    decayed = SeahorseSUT(
+        facade,
+        lambda: build_facade(tmp_path / "bench2.db", retrieval_available=False)[0],
+        reader_llm=fake_reader,
+        tokenizer=fake_tokenizer,
+        fact_id_to_session={},
+        score_source="mvp1_decay",
+        decay_config={"default_half_life_days": 347.0},
+    )
+    try:
+        ident = decayed.identity()
+    finally:
+        storage.close()
+    assert ident["score_source"] == "mvp1_decay"
+    assert ident["decay_config"] == {"default_half_life_days": 347.0}
 
 
 # --------------------------------------------------------- PIT temporal-reasoning

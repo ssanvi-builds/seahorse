@@ -57,17 +57,32 @@ def test_config_hash_changes_with_parameters():
 
 def test_experiment_variants_are_configurable():
     """The harness must support the experiment variants."""
-    for score_source in ("mvp1_rrf", "mvp1_rrf_recency", "rrf_rerank"):
+    for score_source in ("mvp1_rrf", "mvp1_rrf_recency", "mvp1_decay", "rrf_rerank"):
         cfg = BenchmarkConfig(score_source=score_source)  # type: ignore[arg-type]
         cfg.validate()
     cfg = BenchmarkConfig(
         recency_config={"gamma": 0.5, "half_life_days": 30},
+        decay_config={"half_lives": {"episodic": 139.0}, "default_half_life_days": 347.0},
         rerank_enabled=True,
         rerank_model="hooman650/bge-reranker-v2-m3-onnx-o4",
     )
     cfg.validate()
     assert cfg.recency_config == {"gamma": 0.5, "half_life_days": 30}
+    assert cfg.decay_config == {
+        "half_lives": {"episodic": 139.0},
+        "default_half_life_days": 347.0,
+    }
     assert cfg.rerank_model == "hooman650/bge-reranker-v2-m3-onnx-o4"
+
+
+def test_decay_config_changes_config_hash():
+    """The decay config is part of the fingerprint — the decay variant run_id
+    differs from the baseline."""
+    base = BenchmarkConfig().config_hash()
+    decay = BenchmarkConfig(
+        decay_config={"default_half_life_days": 347.0}
+    ).config_hash()
+    assert base != decay
 
 
 def test_rerank_enabled_requires_pinned_model():

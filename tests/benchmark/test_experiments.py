@@ -19,6 +19,8 @@ from seahorse.benchmark.experiments import (
     RECALL_IMPROVEMENT_PP,
     RECENCY_SLICES,
     RERANK_P95_MS,
+    decay_variants,
+    decide_decay_rrf,
     decide_embed,
     decide_recency,
     decide_rerank,
@@ -88,6 +90,25 @@ class TestRerankVariants:
         assert kwargs["score_source"] == "rrf_rerank"
 
 
+class TestDecayVariants:
+    def test_baseline_vs_decay(self):
+        variants = decay_variants()
+        assert [v.name for v in variants] == ["mvp1_rrf", "mvp1_decay"]
+        assert variants[0].score_source == "mvp1_rrf"
+        assert variants[0].decay_config is None
+        assert variants[1].score_source == "mvp1_decay"
+        assert variants[1].decay_config is not None
+        # The R3 S₀ priors (per-type) + the conservative default ride the variant.
+        assert variants[1].decay_config["default_half_life_days"] == 347.0
+        assert variants[1].decay_config["half_lives"]["episodic"] == 139.0
+
+    def test_decay_variant_config_kwargs(self):
+        variant = decay_variants()[1]
+        kwargs = variant.as_config_kwargs()
+        assert kwargs["score_source"] == "mvp1_decay"
+        assert kwargs["decay_config"] is not None
+
+
 class TestVariantsFor:
     def test_unknown_experiment_rejected(self):
         with pytest.raises(ValueError, match="experiment"):
@@ -97,6 +118,7 @@ class TestVariantsFor:
         assert variants_for("recency") == recency_variants()
         assert variants_for("rerank") == rerank_variants()
         assert variants_for("embed") == embed_variants()
+        assert variants_for("decay_rrf") == decay_variants()
 
 
 # ---------------------------------------------------------------- decide
@@ -278,6 +300,61 @@ class TestDecideEmbed:
         assert decision["decision"] == "invalid_regime"
 
 
+# ---------------------------------------------------------------- decide (decay)
+
+def _decay_result(name: str, recall_slice: float, ndcg: float, *,
+                  detected: str = "mvp1_rrf") -> ExperimentResult:
+    return ExperimentResult(
+        variant=next(v for v in decay_variants() if v.name == name),
+        metrics={
+            "recall@10": MetricReport(
+                "recall@10", recall_slice, by_slice={"knowledge-update": recall_slice}
+            ),
+            "ndcg@10": MetricReport("ndcg@10", ndcg),
+        },
+        detected_score_source=detected,
+        run_errors=[],
+        run_id="r",
+    )
+
+
+class TestDecideDecayRrf:
+    def test_flip_decay_when_slice_improves_and_ndcg_holds(self):
+        baseline = _decay_result("mvp1_rrf", recall_slice=0.5, ndcg=0.6)
+        variant = _decay_result("mvp1_decay", recall_slice=0.65, ndcg=0.6)
+        decision = decide_decay_rrf(baseline, variant)
+        assert decision["decision"] == "flip_decay"
+        assert decision["flip"] is True
+        assert decision["variant"] == "mvp1_decay"
+        assert decision["recall_delta"] == pytest.approx(0.15)
+
+    def test_keep_off_when_no_slice_improvement(self):
+        baseline = _decay_result("mvp1_rrf", recall_slice=0.5, ndcg=0.6)
+        flat = _decay_result(
+            "mvp1_decay", recall_slice=0.5 + RECALL_IMPROVEMENT_PP / 2, ndcg=0.6
+        )
+        decision = decide_decay_rrf(baseline, flat)
+        assert decision["decision"] == "keep_off"
+        assert decision["flip"] is False
+
+    def test_keep_off_when_ndcg_degrades_beyond_1pp(self):
+        baseline = _decay_result("mvp1_rrf", recall_slice=0.5, ndcg=0.6)
+        damaged = _decay_result(
+            "mvp1_decay",
+            recall_slice=0.65,
+            ndcg=baseline.metric("ndcg@10").global_value - NDCG_DEGRADATION_PP - 0.001,
+        )
+        decision = decide_decay_rrf(baseline, damaged)
+        assert decision["decision"] == "keep_off"
+
+    def test_invalid_regime_when_baseline_fallback_g2(self):
+        baseline = _decay_result("mvp1_rrf", recall_slice=0.5, ndcg=0.6, detected="fallback_g2")
+        variant = _decay_result("mvp1_decay", recall_slice=0.65, ndcg=0.6)
+        decision = decide_decay_rrf(baseline, variant)
+        assert decision["decision"] == "invalid_regime"
+        assert decision["flip"] is False
+
+
 # ------------------------------------------------------------ runner (synthetic)
 
 def _fake_kwargs():
@@ -330,6 +407,21 @@ class TestRunExperimentSynthetic:
         # The rerank variant pinned its model in the fingerprint.
         assert report.results[1].run_id != report.results[0].run_id
         assert report.decision["decision"] in ("keep_rrf", "implement_f2")
+
+    def test_decay_rrf_report_shape(self, tmp_path):
+        report = run_experiment(
+            experiment="decay_rrf", corpus="synthetic", output_dir=str(tmp_path),
+            **_fake_kwargs(),
+        )
+        assert len(report.results) == 2
+        assert [r.variant.name for r in report.results] == ["mvp1_rrf", "mvp1_decay"]
+        # Both variants ran in the hybrid regime (no fallback_g2).
+        assert all(r.detected_score_source in ("mvp1_rrf", "mvp1_decay")
+                   for r in report.results)
+        # The decay variant pinned its composition-root config in the fingerprint.
+        assert report.results[1].run_id != report.results[0].run_id
+        assert report.results[1].variant.decay_config is not None
+        assert report.decision["decision"] in ("keep_off", "flip_decay")
 
     def test_unknown_experiment_rejected(self, tmp_path):
         with pytest.raises(ValueError, match="experiment"):
@@ -415,6 +507,7 @@ def test_experiments_and_corpora_constants():
         "recency",
         "rerank",
         "embed",
+        "decay_rrf",
         "batch",
         "multi_hop",
         "entity_centric",

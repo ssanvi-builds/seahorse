@@ -6,6 +6,7 @@ import pytest
 
 from seahorse.benchmark.adapters.registry import AdapterRegistry
 from seahorse.benchmark.cli import (
+    _decay_config,
     _recency_config,
     list_adapters,
     list_benchmarks,
@@ -129,6 +130,65 @@ def test_run_benchmark_default_recency_off(tmp_path, monkeypatch):
         reader_llm=FakeReaderLLM(),
     )
     assert captured["recency"] is None
+
+
+# ---------------------------------------------------------------- decay flags
+
+def test_decay_config_none_when_flag_unset():
+    assert _decay_config(None) is None
+
+
+def test_decay_config_from_flag():
+    assert _decay_config(347.0) == {"default_half_life_days": 347.0}
+
+
+def test_run_benchmark_wires_decay_to_facade(tmp_path, monkeypatch):
+    """The composition root receives a real ``DecayConfig``."""
+    import seahorse.benchmark.cli as bcli
+
+    captured: dict = {}
+    real = bcli.build_facade
+
+    def spy(db_path, **kwargs):
+        captured.update(kwargs)
+        return real(db_path, **kwargs)
+
+    monkeypatch.setattr(bcli, "build_facade", spy)
+    code = run_benchmark(
+        adapter="fake-cli",
+        output_dir=str(tmp_path),
+        reader_model="fake-reader",
+        judge_model="fake-judge",
+        reader_llm=FakeReaderLLM(),
+        score_source="mvp1_decay",
+        decay_half_life=200.0,
+    )
+    assert code == 0
+    decay = captured["decay"]
+    assert decay is not None
+    assert decay.default_half_life_days == pytest.approx(200.0)
+
+
+def test_run_benchmark_default_decay_off(tmp_path, monkeypatch):
+    """Without the flag, ``build_facade`` gets ``decay=None`` (pure RRF)."""
+    import seahorse.benchmark.cli as bcli
+
+    captured: dict = {}
+    real = bcli.build_facade
+
+    def spy(db_path, **kwargs):
+        captured.update(kwargs)
+        return real(db_path, **kwargs)
+
+    monkeypatch.setattr(bcli, "build_facade", spy)
+    run_benchmark(
+        adapter="fake-cli",
+        output_dir=str(tmp_path),
+        reader_model="fake-reader",
+        judge_model="fake-judge",
+        reader_llm=FakeReaderLLM(),
+    )
+    assert captured["decay"] is None
 
 
 def test_run_benchmark_recency_variant_reported(tmp_path):
