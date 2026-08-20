@@ -26,6 +26,15 @@ What works today (v0.8.0):
 - **Hybrid semantic retrieval** — `recall` ranks by relevance (sqlite-vec kNN +
   FTS5 BM25 fused with Reciprocal Rank Fusion) with point-in-time routing, and
   honestly degrades to a current-state listing when no embeddings are available.
+- **Decay ranking bias (opt-in, default-off)** — a FAMA-style Ebbinghaus
+  forgetting curve (`score' = score · 2^(-age_days/half_life[type])`, factor in
+  `(0, 1]`) that downweights stale knowledge by `created_at` age, with S₀
+  half-life priors per `cognitive_type` (episodic 139d, semantic 347d, social
+  231d, procedural 347d). Composable via the `build_facade(decay=...)`
+  composition-root swap, `seahorse benchmark --decay-half-life`, or the
+  `mvp1_decay` benchmark variant. PIT queries reproduce state as-of-`t` with
+  pure RRF — the bias never crosses axes (ADR-03) and the read path never
+  writes (R2).
 - **LLM extraction** — a real multi-provider extraction path (local-first:
   Ollama, plus Gemini, Groq, OpenRouter, OpenAI, Anthropic, DeepSeek, vLLM) with
   strict schema validation, retry/fallback, and an operative cost cap. The
@@ -37,7 +46,10 @@ What works today (v0.8.0):
   knowledge notes. With `--synthesis llm` (or the `[distill]` config section),
   the distillation is LLM-synthesized: 1 call per cluster turns N episodes into
   one coherent fact, degrading honestly to the deterministic fallback on
-  failure.
+  failure. **Supersession** (opt-in via `[distill] supersede` or
+  `seahorse consolidate --supersede`) updates an existing consolidated note in
+  place via `improve` when a cluster gains new valid episodes — never silently
+  overriding a note a human has edited.
 - **Vault migration and import** — `seahorse frontmatter migrate` converts legacy
   Obsidian notes, and `seahorse import` migrates claude-mem observations into
   episodes.
@@ -58,14 +70,15 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
 - **Near term** — close the "self-evolving" loop and harden the moat. The
   public launch (v0.6.0) is done; the focus is responding to launch feedback
   (Show HN, community), reliability, edge cases, and making external
-  contribution straightforward. On the product side: **supersession** (the
-  consolidated knowledge notes update themselves via `improve` instead of
-  duplicating) and **retrieval quality** as a first-class workstream — the
-  published benchmark is the public face of the product. The F7 experiments
-  (multi-hop, entity-centric, decay, skills) and the roadmap-review experiments
-  (RRF_K sweep, rerank-with-body, end-to-end measurement) are wired into the
-  harness (`seahorse benchmark experiment`); the synthetic runs validate the
-  mechanics, and the authoritative LMEB-S runs inform the roadmap.
+  contribution straightforward. Decay (Sprint D) is implemented default-off; the
+  remaining near-term work is **retrieval quality** as a first-class workstream —
+  the published benchmark is the public face of the product — plus the
+  authoritative LMEB-S runs (A5/A6/A4/recency/decay) that calibrate the recency
+  and decay pins. The F7 experiments (multi-hop, entity-centric, decay, skills)
+  and the roadmap-review experiments (RRF_K sweep, rerank-with-body, end-to-end
+  measurement) are wired into the harness (`seahorse benchmark experiment`); the
+  synthetic runs validate the mechanics, and the authoritative LMEB-S runs
+  inform the roadmap.
 - **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
   HTTP) as a standard expansion that also serves the local free tier, with the
   web dashboard and managed sync deferred until the adoption gate produces data.

@@ -4,6 +4,37 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - Unreleased
+
+### Added
+
+- **Decay ranking bias (Sprint D, opt-in, default-off)** — a FAMA-style
+  Ebbinghaus forgetting curve in the retrieval engine:
+  `score' = score · 2^(-age_days/half_life[type])`, factor in `(0, 1]`. The bias
+  folds INTO `FusedCandidate.score` post-RRF (never an external reorder),
+  downweighting stale knowledge by `created_at` age with S₀ half-life priors per
+  `cognitive_type` (episodic 139d, semantic 347d, social 231d, procedural 347d;
+  unknown/missing types fall back to the conservative 347d default — R3
+  experiment priors, NOT grounding). Reads `created_at` + `cognitive_type` in
+  batch via `index_repo.get_rows` (one IN query, no N+1). Honest degradation: a
+  candidate with no index `created_at` is left undecayed; a failure in the
+  optional signal keeps the current ranking (BLE001 + warning), never killing
+  it.
+- **Composition-root swap** — `build_facade(..., decay=DecayConfig | None)` and
+  `recall(..., decay=...)`; default `None` keeps the pure-RRF bit-comparable
+  fingerprint. `HybridRetriever` passes it through. PIT queries reproduce state
+  as-of-`t` with pure RRF — the bias never crosses axes (ADR-03). No writes
+  (R2): the read path never writes; `expired_at` stays NULL. No `x-*`
+  provenance reads in the core (R1). Can coexist with the F1 recency boost
+  (recency folds first, then decay — multiplicative compound, deterministic).
+- **Benchmark `mvp1_decay` variant + `decay_rrf` experiment** — baseline
+  `mvp1_rrf` (decay OFF) vs `mvp1_decay` (ON with the R3 priors), runnable via
+  `seahorse benchmark experiment decay_rrf` and the `--decay-half-life` flag on
+  `seahorse benchmark run`. `decide_decay_rrf` flips decay operational iff
+  recall@10 improves ≥ 1pp on the knowledge-update slice without degrading
+  global ndcg@10 by > 1pp; otherwise stays default-OFF. The standalone F7(g)
+  `experiment decay` (FAMA/MPA measurement) is unchanged.
+
 ## [0.8.0] - 2026-08-19
 
 ### Added
