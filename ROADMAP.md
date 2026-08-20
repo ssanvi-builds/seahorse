@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.8.0):
+What works today (v0.9.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -79,6 +79,19 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   measurement) are wired into the harness (`seahorse benchmark experiment`); the
   synthetic runs validate the mechanics, and the authoritative LMEB-S runs
   inform the roadmap.
+- **v1.0 — the stable standard** — the milestone that promises not to break
+  whoever depends on Seahorse. Three gates: (1) **frozen contracts** — the F3.1
+  portable format (schema 1.0.0) and the MCP profile `io.seahorse.memory/v1`
+  (14 tools) stop changing in breaking ways; additive evolution only, with a
+  documented migration path for 0.x vaults; (2) **the self-evolving loop
+  validated with data** — observe → consolidate/supersede → recall → decay
+  working end-to-end, with an authoritative LMEB-S run published as the official
+  baseline in `docs/benchmark.md` and the decay/recency pins decided by that
+  evidence (calibrated or documented `keep_off`); (3) **release quality** — CI
+  green, ≥80% coverage, fresh-user e2e green. Deliberately local-first: the
+  remote MCP server (Streamable HTTP), web dashboard, and managed sync are Fase 2
+  expansions gated by adoption, not requirements for 1.0. After 1.0, a breaking
+  change is a 2.0.
 - **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
   HTTP) as a standard expansion that also serves the local free tier, with the
   web dashboard and managed sync deferred until the adoption gate produces data.
