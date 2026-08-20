@@ -28,6 +28,7 @@ from seahorse.disclosure.types import TOP_K, PITPoint
 from seahorse.facade.errors import PitRecallNotSupportedMVP0
 from seahorse.facade.types import FacadeConfig
 from seahorse.facade.vigente_retriever import VigenteListingRetriever
+from seahorse.retrieval.decay import DecayConfig
 from seahorse.retrieval.recency import RecencyConfig
 
 _logger = logging.getLogger("seahorse.facade.hybrid_retriever")
@@ -50,6 +51,7 @@ class HybridRetriever:
         config: FacadeConfig,
         fallback: VigenteListingRetriever,
         recency: RecencyConfig | None = None,
+        decay: DecayConfig | None = None,
         reranker: QueryReranker | None = None,
     ) -> None:
         self._embedder = embedder
@@ -62,6 +64,8 @@ class HybridRetriever:
         self._fallback = fallback
         # Recency (default-OFF): None keeps the pure-RRF fingerprint.
         self._recency = recency
+        # Decay (Sprint D, default-OFF): None keeps the pure-RRF fingerprint.
+        self._decay = decay
         # Rerank (default-OFF): None keeps the pure-RRF fingerprint.
         # The composition root wires the cross-encoder here (single-point swap).
         self._reranker = reranker
@@ -130,6 +134,7 @@ class HybridRetriever:
             anchor_ep_id=None,
             clock=self._clock,
             recency=self._recency,
+            decay=self._decay,
             reranker=self._reranker,
         )
 

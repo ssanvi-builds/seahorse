@@ -35,6 +35,7 @@ from seahorse.persistence.storage import Storage
 from seahorse.write_path.stub import StubWritePath
 
 if TYPE_CHECKING:
+    from seahorse.retrieval.decay import DecayConfig
     from seahorse.retrieval.recency import RecencyConfig
 
 
@@ -52,6 +53,7 @@ def build_facade(
     retrieval_available: bool | None = None,
     llm_client: LLMClient | None = None,
     recency: RecencyConfig | None = None,
+    decay: DecayConfig | None = None,
     embed_mode: str = "body+summary",
     passage_embedder: Any | None = None,
     reranker: QueryReranker | None = None,
@@ -87,6 +89,12 @@ def build_facade(
     ``HybridRetriever`` (composition root, single-point swap). The default
     ``None`` keeps the pure-RRF bit-comparable fingerprint; the benchmark SUT
     and CLI wire it to run the recency A/B + sweep experiment.
+
+    The ``decay`` slot is the Sprint D decay configuration passed through to the
+    ``HybridRetriever`` (composition root, single-point swap). The default
+    ``None`` keeps the pure-RRF bit-comparable fingerprint; the benchmark SUT
+    and CLI wire it to run the decay A/B (FAMA-style / MPA). No writes (R2):
+    ``expired_at`` stays NULL.
 
     The ``embed_mode`` slot selects the passage text the write-path indexer
     embeds. Default ``body+summary`` (summary leads the vector, +2.7%
@@ -136,6 +144,7 @@ def build_facade(
             config=cfg,
             fallback=fallback,
             recency=recency,
+            decay=decay,
             reranker=reranker,
         )
         indexer = RetrievalIndexer(
