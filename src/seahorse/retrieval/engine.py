@@ -76,6 +76,7 @@ from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
 from seahorse.retrieval.constants import RERANK_OVERFETCH_K
+from seahorse.retrieval.decay import DecayConfig, apply_decay_bias
 from seahorse.retrieval.errors import RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
 from seahorse.retrieval.recency import RecencyConfig, apply_recency_boost
@@ -108,6 +109,7 @@ def recall(
     anchor_ep_id: str | None = None,
     clock: Callable[[], datetime] | None = None,
     recency: RecencyConfig | None = None,
+    decay: DecayConfig | None = None,
     reranker: QueryReranker | None = None,
     k_rerank: int = RERANK_OVERFETCH_K,
     rrf_k: int | None = None,
@@ -130,6 +132,17 @@ def recall(
     ≤k candidates, no N+1). Default-OFF: ``recency=None`` keeps the pure-RRF
     bit-comparable fingerprint; PIT queries (``state_at``/``known_at``) reproduce
     state as-of-``t`` with pure RRF and are NEVER boosted.
+
+    Decay (Sprint D): when ``decay`` is passed AND ``pit is None``, the fused
+    list gets an Ebbinghaus forgetting-curve downweight folded into
+    ``FusedCandidate.score`` (``score · 2^(-age_days/half_life[type])``, factor
+    in ``(0, 1]``). ``index_repo.get_rows`` batch-reads ``created_at`` +
+    ``cognitive_type`` (one ``IN`` query, no N+1). Default-OFF:
+    ``decay=None`` keeps the pure-RRF bit-comparable fingerprint; PIT queries
+    reproduce state as-of-``t`` with pure RRF and are NEVER decayed. No writes
+    (R2): the read path never writes; ``expired_at`` stays NULL. When both
+    ``recency`` and ``decay`` are set, recency folds first, then decay
+    (multiplicative compound, deterministic).
 
     Rerank: when ``reranker`` is passed, the RRF fusion over-fetches to
     ``k_rerank`` (NOT ``k``), the candidates are hydrated with summary/subject
@@ -205,6 +218,38 @@ def recall(
                 # hybrid path to the listing regime). Keep the pure-RRF result.
                 _logger.warning(
                     "recency boost failed; keeping pure RRF", exc_info=True
+                )
+    # Decay (Sprint D, default-OFF): the Ebbinghaus forgetting-curve downweight
+    # folds into FusedCandidate.score ONLY in the "now" regime (pit is None);
+    # PIT queries reproduce state as-of-t with pure RRF. Reads created_at +
+    # cognitive_type in batch via index_repo.get_rows (one IN query, no N+1).
+    # No writes (R2): expired_at stays NULL. When recency is also set, recency
+    # folds first, then decay (multiplicative compound, deterministic).
+    if decay is not None and pit is None:
+        if index_repo is None:
+            # Honest skip: decay requested but no index_repo to batch-read
+            # created_at/cognitive_type — the bias is never invented.
+            _logger.warning(
+                "decay requested but index_repo is None; bias skipped (pure RRF)"
+            )
+        else:
+            try:
+                created_at, cognitive_type_by_ep_id = _read_decay_batch(
+                    index_repo, [c.ep_id for c in fused]
+                )
+                fused = apply_decay_bias(
+                    fused,
+                    created_at,
+                    cognitive_type_by_ep_id,
+                    now,
+                    decay,
+                    k=k_fuse,
+                )
+            except Exception:  # noqa: BLE001 — a failure in the OPTIONAL decay
+                # signal must not kill the whole ranking (which would degrade the
+                # hybrid path to the listing regime). Keep the current result.
+                _logger.warning(
+                    "decay bias failed; keeping current ranking", exc_info=True
                 )
     # Rerank (default-OFF): the cross-encoder reorders the fused candidates by
     # relevance to the query, replacing the RRF score (the manifest records
@@ -284,6 +329,21 @@ def _read_created_at_batch(
     """
     rows = index_repo.get_rows(list(ep_ids))
     return {r.ep_id: r.created_at for r in rows}
+
+
+def _read_decay_batch(
+    index_repo: EpisodeIndexRepository, ep_ids: Sequence[str]
+) -> tuple[dict[str, datetime], dict[str, str]]:
+    """Batch-read ``created_at`` + ``cognitive_type`` for ≤k candidates.
+
+    One ``IN`` query (``index_repo.get_rows``) feeds both maps — the D3 fix, no
+    N+1. Rows missing from the result are simply absent from the maps —
+    ``apply_decay_bias`` leaves them undecayed.
+    """
+    rows = index_repo.get_rows(list(ep_ids))
+    created_at = {r.ep_id: r.created_at for r in rows}
+    cognitive_type = {r.ep_id: r.cognitive_type for r in rows}
+    return created_at, cognitive_type
 
 
 def _validate_pit(pit: PITPoint | None) -> None:
