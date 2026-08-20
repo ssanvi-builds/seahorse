@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from seahorse.contracts.retrieval import FusedCandidate
@@ -64,7 +64,9 @@ class DecayConfig:
     real values.
     """
 
-    half_lives: Mapping[str, float] = DECAY_HALF_LIVES_BY_TYPE
+    half_lives: Mapping[str, float] = field(
+        default_factory=lambda: DECAY_HALF_LIVES_BY_TYPE
+    )
     default_half_life_days: float = DECAY_DEFAULT_HALF_LIFE_DAYS
 
     def __post_init__(self) -> None:
