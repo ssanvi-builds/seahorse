@@ -7,7 +7,9 @@ of the ``PinningFingerprint``. ``validate()`` is the startup gate that rejects
 combinations.
 
 ``score_source`` is the experiment variant: ``mvp1_rrf`` | ``mvp1_rrf_recency``
-| ``rrf_rerank``. The SUT reports the honest detected regime in the manifest
+| ``mvp1_decay`` | ``rrf_rerank``. The ``mvp1_rrf`` variants share the pure-RRF
+baseline (recency/decay default-OFF); ``mvp1_decay`` (Sprint D) wires the decay
+bias. The SUT reports the honest detected regime in the manifest
 (``fallback_g2`` when the hybrid retrieval is not wired).
 """
 
@@ -20,7 +22,9 @@ from typing import Literal
 
 # The experiment variants the harness must support. ``fallback_g2`` is the
 # honest detected regime when the hybrid retrieval is not wired.
-ScoreSource = Literal["mvp1_rrf", "mvp1_rrf_recency", "rrf_rerank", "fallback_g2"]
+ScoreSource = Literal[
+    "mvp1_rrf", "mvp1_rrf_recency", "mvp1_decay", "rrf_rerank", "fallback_g2"
+]
 
 # Reproducibility classes: local is near-deterministic (95.6% expected match),
 # API is stochastic (22.1%).
@@ -52,6 +56,7 @@ class BenchmarkConfig:
 
     # Experiment variants (harness requirements, not options)
     recency_config: dict | None = None  # {"gamma": 0.5, "half_life_days": 30} | None
+    decay_config: dict | None = None  # {"half_lives": {...}, "default_half_life_days": 347} | None
     rerank_enabled: bool = False
     rerank_model: str = ""  # pinned cross-encoder identity ("" when rerank OFF)
     embed_mode: str = "body+summary"  # "body" | "body+summary" — default embedding surface
@@ -81,7 +86,13 @@ class BenchmarkConfig:
             )
         if self.top_k <= 0:
             raise ValueError(f"top_k must be positive, got {self.top_k}")
-        if self.score_source not in ("mvp1_rrf", "mvp1_rrf_recency", "rrf_rerank", "fallback_g2"):
+        if self.score_source not in (
+            "mvp1_rrf",
+            "mvp1_rrf_recency",
+            "mvp1_decay",
+            "rrf_rerank",
+            "fallback_g2",
+        ):
             raise ValueError(f"unknown score_source: {self.score_source!r}")
         if self.embed_mode not in ("body", "body+summary"):
             raise ValueError(

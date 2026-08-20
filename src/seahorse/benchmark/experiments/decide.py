@@ -1,8 +1,8 @@
 """Experiment decision logic — thresholds from the experiment design.
 
 Pure functions over ``ExperimentResult`` values; the runner feeds them the
-per-variant retrieval metrics and they emit the honest recency/rerank/embedding
-verdict.
+per-variant retrieval metrics and they emit the honest recency/rerank/embedding/
+decay verdict.
 
 Thresholds:
 
@@ -12,10 +12,14 @@ Thresholds:
   improvement, then highest ndcg@10) is the calibrated recency config; if none
   passes, keep recency OFF.
 - (b) rerank: the cross-encoder must improve global ``ndcg@10`` by ≥ 2pp AND
-  the rerank-path INDEX p95 must be ≤ 500ms to implement reranking; otherwise
+  the reranker-path INDEX p95 must be ≤ 500ms to implement reranking; otherwise
   keep RRF-only.
 - (c) embed: ``body+summary`` must improve global ``recall@10`` by ≥ 1pp to
   switch the embedder to vectorial mode; otherwise keep ``body``-only.
+- (d) decay (Sprint D): the Ebbinghaus bias must improve ``recall@10`` on the
+  ``knowledge-update`` slice (the FAMA target: the valid new version must stay
+  retrievable) by ≥ 1pp WITHOUT degrading global ``ndcg@10`` by > 1pp to go
+  operational (the run-authoritative A/B); otherwise keep decay default-OFF.
 
 Fail-loud honesty: if the baseline ran in the ``fallback_g2`` regime (hybrid
 retrieval not wired), the experiment is INVALID — no decision is claimed.
@@ -39,6 +43,10 @@ RERANK_P95_MS = 500.0
 
 # The slices the recency signal must improve.
 RECENCY_SLICES = ("temporal-reasoning", "knowledge-update")
+
+# The slice the decay bias must improve: the FAMA target (old/obsolete versions
+# out of the top-k, valid new versions retrievable).
+DECAY_SLICES = ("knowledge-update",)
 
 # The honest detected regime that invalidates a hybrid-regime experiment.
 _FALLBACK_G2 = "fallback_g2"
@@ -233,14 +241,71 @@ def decide_embed(baseline: ExperimentResult, variant: ExperimentResult) -> dict:
     }
 
 
+def decide_decay_rrf(baseline: ExperimentResult, variant: ExperimentResult) -> dict:
+    """Apply the decay threshold: go operational iff the Ebbinghaus bias improves
+    ``recall@10`` on the ``knowledge-update`` slice (the FAMA target) by ≥ 1pp
+    WITHOUT degrading global ``ndcg@10`` by > 1pp.
+
+    Returns a decision dict (``decision``, ``flip``, ``variant``, ``reason``,
+    ``recall_delta``, ``ndcg_delta``). Invalid (no decision) when the baseline
+    is ``fallback_g2`` (fail-loud honesty).
+    """
+    if baseline.detected_score_source == _FALLBACK_G2:
+        return {
+            "decision": "invalid_regime",
+            "flip": False,
+            "variant": None,
+            "reason": (
+                "baseline ran in the listing regime (hybrid retrieval not wired); "
+                "the decay comparison is not meaningful — re-run with the embeddings extra"
+            ),
+            "recall_delta": None,
+            "ndcg_delta": None,
+        }
+    base_slices = _recall10_by_slice(baseline)
+    v_slices = _recall10_by_slice(variant)
+    recall_delta = v_slices.get("knowledge-update", 0.0) - base_slices.get(
+        "knowledge-update", 0.0
+    )
+    ndcg_delta = _ndcg10(variant) - _ndcg10(baseline)
+    if recall_delta >= RECALL_IMPROVEMENT_PP and ndcg_delta >= -NDCG_DEGRADATION_PP:
+        return {
+            "decision": "flip_decay",
+            "flip": True,
+            "variant": variant.variant.name,
+            "reason": (
+                f"decay improves recall@10 on {DECAY_SLICES} by "
+                f"{recall_delta:.1%} (>= {RECALL_IMPROVEMENT_PP:.0%}) with global "
+                f"ndcg@10 delta {ndcg_delta:+.1%} within {NDCG_DEGRADATION_PP:.0%} "
+                f"of baseline; decay goes operational (default-on)"
+            ),
+            "recall_delta": recall_delta,
+            "ndcg_delta": ndcg_delta,
+        }
+    return {
+        "decision": "keep_off",
+        "flip": False,
+        "variant": None,
+        "reason": (
+            f"decay recall@10 delta on {DECAY_SLICES} {recall_delta:+.1%} < "
+            f"{RECALL_IMPROVEMENT_PP:.0%} OR ndcg@10 delta {ndcg_delta:+.1%} "
+            f"degrades beyond {NDCG_DEGRADATION_PP:.0%}; decay stays default-OFF"
+        ),
+        "recall_delta": recall_delta,
+        "ndcg_delta": ndcg_delta,
+    }
+
+
 __all__ = [
     "NDCG_DEGRADATION_PP",
     "RECALL_IMPROVEMENT_PP",
     "NDCG_IMPROVEMENT_PP",
     "RERANK_P95_MS",
     "RECENCY_SLICES",
+    "DECAY_SLICES",
     "ExperimentResult",
     "decide_recency",
     "decide_rerank",
     "decide_embed",
+    "decide_decay_rrf",
 ]

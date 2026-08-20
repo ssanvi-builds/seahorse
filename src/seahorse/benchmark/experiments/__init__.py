@@ -1,4 +1,5 @@
-"""Benchmark experiments — the harness that decides recency, rerank, and embedding.
+"""Benchmark experiments — the harness that decides recency, rerank, embedding,
+and decay.
 
 An experiment runs the benchmark harness once per variant (``score_source`` is
 the manifest variant) and applies the decision thresholds to the retrieval
@@ -12,12 +13,14 @@ with the real embeddings + LongMemEval haystack.
 """
 
 from seahorse.benchmark.experiments.decide import (
+    DECAY_SLICES,
     NDCG_DEGRADATION_PP,
     NDCG_IMPROVEMENT_PP,
     RECALL_IMPROVEMENT_PP,
     RECENCY_SLICES,
     RERANK_P95_MS,
     ExperimentResult,
+    decide_decay_rrf,
     decide_embed,
     decide_recency,
     decide_rerank,
@@ -31,6 +34,7 @@ from seahorse.benchmark.experiments.variants import (
     EXPERIMENTS,
     RERANK_OVERFETCH_K,
     ExperimentVariant,
+    decay_variants,
     embed_variants,
     recency_variants,
     rerank_variants,
@@ -49,12 +53,15 @@ __all__ = [
     "RERANK_P95_MS",
     "RERANK_OVERFETCH_K",
     "RECENCY_SLICES",
+    "DECAY_SLICES",
     "recency_variants",
     "embed_variants",
     "rerank_variants",
+    "decay_variants",
     "variants_for",
     "decide_recency",
     "decide_rerank",
     "decide_embed",
+    "decide_decay_rrf",
     "run_experiment",
 ]

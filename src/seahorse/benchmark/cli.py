@@ -22,6 +22,7 @@ from seahorse.benchmark.reporters.markdown_reporter import MarkdownReporter
 from seahorse.benchmark.runner import EvaluationRunner
 from seahorse.benchmark.sut.seahorse_sut import SeahorseSUT
 from seahorse.facade import build_facade
+from seahorse.retrieval.decay import DecayConfig
 from seahorse.retrieval.recency import RecencyConfig
 
 
@@ -41,6 +42,18 @@ def _recency_config(gamma: float | None, half_life_days: float | None) -> dict |
     return {"gamma": gamma, "half_life_days": half_life_days}
 
 
+def _decay_config(default_half_life_days: float | None) -> dict | None:
+    """Translate the ``--decay-half-life`` CLI flag to a ``DecayConfig`` dict.
+
+    A single flag overrides the default half-life for ALL cognitive types (the
+    per-type R3 priors stay the shipped default — that's the variant-matrix
+    config). Returns None (pure RRF, decay default-OFF) when unset.
+    """
+    if default_half_life_days is None:
+        return None
+    return {"default_half_life_days": default_half_life_days}
+
+
 def run_benchmark(
     *,
     adapter: str = "lmeb",
@@ -53,6 +66,7 @@ def run_benchmark(
     score_source: str = "mvp1_rrf",
     recency_gamma: float | None = None,
     recency_half_life: float | None = None,
+    decay_half_life: float | None = None,
     embed_mode: str = "body+summary",
     rerank_enable: bool = False,
     thresholds: dict[str, float] | None = None,
@@ -60,6 +74,7 @@ def run_benchmark(
 ) -> int:
     """Run the benchmark and return the CI exit code (0/10/3)."""
     recency_config = _recency_config(recency_gamma, recency_half_life)
+    decay_config = _decay_config(decay_half_life)
     config = BenchmarkConfig(
         adapter=adapter,
         dataset_config=dataset_config,
@@ -70,6 +85,7 @@ def run_benchmark(
         top_k=top_k,
         score_source=score_source,  # type: ignore[arg-type]
         recency_config=recency_config,
+        decay_config=decay_config,
         embed_mode=embed_mode,
         rerank_enabled=rerank_enable,
     )
@@ -88,16 +104,23 @@ def run_benchmark(
 
     def sut_factory() -> SeahorseSUT:
         # The composition-root swap is the ONLY wiring — the SUT knows nothing
-        # about RecencyConfig/reranker/embed_mode internals (delegation purity).
+        # about RecencyConfig/DecayConfig/reranker/embed_mode internals
+        # (delegation purity).
         recency = (
             RecencyConfig(**config.recency_config)
             if config.recency_config is not None
+            else None
+        )
+        decay = (
+            DecayConfig(**config.decay_config)
+            if config.decay_config is not None
             else None
         )
         reranker = _reranker() if rerank_enable else None
         facade, storage = build_facade(
             Path(tmp) / "bench.db",
             recency=recency,
+            decay=decay,
             embed_mode=config.embed_mode,
             reranker=reranker,
         )
@@ -106,6 +129,7 @@ def run_benchmark(
             lambda: build_facade(
                 Path(tmp) / "bench2.db",
                 recency=recency,
+                decay=decay,
                 embed_mode=config.embed_mode,
                 reranker=reranker,
             )[0],
@@ -116,6 +140,7 @@ def run_benchmark(
             top_k=top_k,
             score_source=score_source,
             recency_config=config.recency_config,
+            decay_config=config.decay_config,
             rerank_enabled=rerank_enable,
             embed_mode=config.embed_mode,
         )

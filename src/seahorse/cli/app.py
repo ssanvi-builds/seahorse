@@ -636,7 +636,9 @@ def benchmark_run_cmd(
     output_dir: str = typer.Option("benchmark-output", "--output-dir"),
     top_k: int = typer.Option(10, "--top-k", "-k"),
     score_source: str = typer.Option(
-        "mvp1_rrf", "--score-source", help="mvp1_rrf | mvp1_rrf_recency | rrf_rerank."
+        "mvp1_rrf",
+        "--score-source",
+        help="mvp1_rrf | mvp1_rrf_recency | mvp1_decay | rrf_rerank.",
     ),
     recency_gamma: float | None = typer.Option(
         None,
@@ -647,6 +649,11 @@ def benchmark_run_cmd(
         None,
         "--recency-half-life",
         help="Recency half-life in days (pairs with --recency-gamma).",
+    ),
+    decay_half_life: float | None = typer.Option(
+        None,
+        "--decay-half-life",
+        help="Decay half-life in days for all cognitive types (default-OFF when unset).",
     ),
     embed_mode: str = typer.Option(
         "body+summary",
@@ -673,6 +680,7 @@ def benchmark_run_cmd(
         score_source=score_source,
         recency_gamma=recency_gamma,
         recency_half_life=recency_half_life,
+        decay_half_life=decay_half_life,
         embed_mode=embed_mode,
         rerank_enable=rerank_enable,
     )
@@ -685,8 +693,8 @@ def benchmark_experiment_cmd(
     experiment: str = typer.Argument(
         ...,
         help=(
-            "recency | rerank | embed | batch | entity_centric | multi_hop | "
-            "decay | skills | rrf_k | rerank_body | end_to_end "
+            "recency | rerank | embed | decay_rrf | batch | entity_centric | "
+            "multi_hop | decay | skills | rrf_k | rerank_body | end_to_end "
             "(which experiment to run)."
         ),
     ),

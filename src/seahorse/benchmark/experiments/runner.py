@@ -39,6 +39,7 @@ from seahorse.benchmark.corpus_builder import (
 )
 from seahorse.benchmark.experiments.decide import (
     ExperimentResult,
+    decide_decay_rrf,
     decide_embed,
     decide_recency,
     decide_rerank,
@@ -73,6 +74,7 @@ from seahorse.benchmark.reporters.markdown_reporter import MarkdownReporter
 from seahorse.benchmark.runner import EvaluationRunner
 from seahorse.benchmark.sut.seahorse_sut import SeahorseSUT
 from seahorse.facade import build_facade
+from seahorse.retrieval.decay import DecayConfig
 from seahorse.retrieval.recency import RecencyConfig
 
 # Fallback clock delta (1 day) when the dataset has no usable date spread.
@@ -197,6 +199,12 @@ def _recency_config(variant: ExperimentVariant) -> RecencyConfig | None:
     return RecencyConfig(**variant.recency_config)
 
 
+def _decay_config(variant: ExperimentVariant) -> DecayConfig | None:
+    if variant.decay_config is None:
+        return None
+    return DecayConfig(**variant.decay_config)
+
+
 def _reranker_for(corpus: str):
     """The cross-encoder for a corpus: deterministic stub (synthetic) or the real
     fastembed backend (lmeb-s). Query-time pure — never requires a reindex."""
@@ -225,6 +233,7 @@ def _facade_factory(
         kwargs: dict = {
             "clock": clock,
             "recency": _recency_config(variant),
+            "decay": _decay_config(variant),
             "embed_mode": variant.embed_mode,
         }
         if corpus == "synthetic":
@@ -703,6 +712,8 @@ def run_experiment(
         decision = decide_recency(baseline, sweep)
     elif experiment == "rerank":
         decision = decide_rerank(baseline, sweep[0])
+    elif experiment == "decay_rrf":
+        decision = decide_decay_rrf(baseline, sweep[0])
     else:
         decision = decide_embed(baseline, sweep[0])
     return ExperimentReport(
@@ -805,6 +816,7 @@ def _run_variant(
             top_k=variant_config.top_k,
             score_source=variant_config.score_source,
             recency_config=variant_config.recency_config,
+            decay_config=variant_config.decay_config,
             rerank_enabled=variant_config.rerank_enabled,
             embed_mode=variant_config.embed_mode,
             ep_id_to_session=(

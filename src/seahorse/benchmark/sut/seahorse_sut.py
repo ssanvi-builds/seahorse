@@ -50,6 +50,7 @@ class SeahorseSUT:
         pit_queries: bool = True,
         score_source: str = "mvp1_rrf",
         recency_config: dict | None = None,
+        decay_config: dict | None = None,
         rerank_enabled: bool = False,
         embed_mode: str = "body+summary",
         ep_id_to_session: dict[str, str] | None = None,
@@ -66,6 +67,7 @@ class SeahorseSUT:
         self._pit_queries = pit_queries
         self._score_source = score_source
         self._recency_config = recency_config
+        self._decay_config = decay_config
         self._rerank_enabled = rerank_enabled
         self._embed_mode = embed_mode
         # Retrieval bridge: fact_id→session (spec contract) + ep_id→session
@@ -278,6 +280,7 @@ class SeahorseSUT:
             "extraction_mode": "skip",
             "score_source": self._score_source,
             "recency_config": self._recency_config,
+            "decay_config": self._decay_config,
             "rerank_enabled": self._rerank_enabled,
             "embed_mode": self._embed_mode,
         }
