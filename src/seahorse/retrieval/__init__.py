@@ -23,24 +23,31 @@ Honest deviations from the spec (documented in ``engine.py``):
 from __future__ import annotations
 
 from seahorse.retrieval.constants import (
+    DECAY_DEFAULT_HALF_LIFE_DAYS,
+    DECAY_HALF_LIVES_BY_TYPE,
     INDEX_P95_MS,
     RECENCY_GAMMA,
     RECENCY_HALF_LIFE_DAYS,
     RRF_K,
 )
+from seahorse.retrieval.decay import DecayConfig, apply_decay_bias
 from seahorse.retrieval.engine import recall
 from seahorse.retrieval.errors import RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
 from seahorse.retrieval.recency import RecencyConfig, apply_recency_boost
 
 __all__ = [
+    "DECAY_DEFAULT_HALF_LIFE_DAYS",
+    "DECAY_HALF_LIVES_BY_TYPE",
     "INDEX_P95_MS",
     "RECENCY_GAMMA",
     "RECENCY_HALF_LIFE_DAYS",
     "RRF_K",
+    "DecayConfig",
     "RecencyConfig",
     "RetrievalInvalidPITKind",
     "SourceList",
+    "apply_decay_bias",
     "apply_recency_boost",
     "recall",
     "rrf_fuse",
