@@ -4,6 +4,32 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-21
+
+### Added
+
+- **Reproducible balanced LMEB-S subsample harness utility** — `subsample.py`
+  materializes the documented compromise as a deterministic utility: the
+  balanced 100-question subsample of `longmemeval-s-s` (seed 42, composition
+  40 temporal-reasoning / 30 knowledge-update / 20 multi-session / 10
+  single-session-user), with the split hash **recomputed over the subsampled
+  instances** so the fingerprint identifies the subsample honestly
+  (`c6178fd0a436`). Fail-loud when a per-type quota cannot be satisfied.
+- **Authoritative LMEB-S standalone runs** — `build_real_corpus` for
+  `rrf_k` (A5), `rerank_body` (A6) and `end_to_end` (A4): ingest the real
+  haystack over the subsample (45,580 episodes) with the real fastembed
+  embedder, and measure **session-level recall** (any retrieved episode from
+  the golden session) via the `ep_id_to_session` bridge — LMEB answers live in
+  sessions, not a single turn. Shared `lmeb_corpus.py` builder +
+  `--subsample/--no-subsample` CLI flag wired through the runner.
+- **Authoritative decisions (2026-08-21)** — the five milestone experiments
+  run on the reproducible subsample (retrieval-only, ADR-10): `rrf_k`
+  **keep_60** (recall@10 0.790 flat across the sweep), `rerank_body`
+  **reopen_rerank** (body 0.830 vs summary 0.660 — the summary representation
+  was the F2 culprit), `end_to_end` **reader_bottleneck** (recall 0.790 / e2e
+  0.070), `decay_rrf` **keep_off** and `recency` **keep_off** (both seams
+  default-off confirmed: no delta on the real corpus). See `docs/benchmark.md`.
+
 ## [0.9.0] - 2026-08-20
 
 ### Added

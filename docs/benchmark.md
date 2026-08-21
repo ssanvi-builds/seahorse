@@ -43,6 +43,56 @@ The knowledge-update slice is the strongest (recall@10 0.44, mrr 0.47); the
 temporal-reasoning slice is the weakest (recall@10 0.02). This is expected for a
 retrieval-only pass — the engine ranks by relevance, it does not reason.
 
+## Authoritative experiment decisions — 2026-08-21
+
+The roadmap experiments (`rrf_k`, `rerank_body`, `end_to_end`, `decay_rrf`,
+`recency`) were run authoritatively on the **reproducible balanced 100-question
+subsample** of `longmemeval-s-s` (seed 42, split `c6178fd0a436`, composition
+40 temporal-reasoning / 30 knowledge-update / 20 multi-session / 10
+single-session-user; 45,580 stored episodes over 4,556 sessions). Retrieval-only
+(no LLM in the query path, ADR-10). Embeddings: `multilingual-e5-small`
+(`me5-small:384:int8`, body+summary per F3).
+
+**Two measurement regimes** — this distinction is mandatory for reading the
+numbers:
+
+- **Active-now** (standalone experiments): the engine queries the full session
+  history (`pit=None`). Measures the retrieval *ceiling*.
+- **Temporal** (SUT runner experiments): queries state-at-question-date, so
+  episodes after the question are invisible. Lower, but the honest
+  state-restricted measurement.
+
+The absolute recall@10 differs across regimes (0.79 active-now vs 0.18
+temporal). All decisions below compare **within a regime** (baseline vs variant
+at the same setting), so each is valid.
+
+| Experiment | Regime | Evidence | Decision |
+|---|---|---|---|
+| `rrf_k` (A5) | active-now | recall@10 **0.790** flat across RRF_K ∈ {10, 20, 40, 60} | **keep_60** — the untuned fusion constant is optimal |
+| `rerank_body` (A6) | active-now | baseline 0.790 · summary 0.660 · **body 0.830** | **reopen_rerank** — the summary/subject representation was the culprit behind F2's rejection |
+| `end_to_end` (A4) | active-now | recall@10 0.790 · e2e accuracy **0.070** | **reader_bottleneck** — retrieval recovers the session but the top-k summary context cannot support answers |
+| `decay_rrf` | temporal | mvp1_rrf 0.178/0.175 · mvp1_decay 0.178/0.175 | **keep_off** — decay changes nothing (ku slice 0.429 both) |
+| `recency` | temporal | baseline 0.178/0.175; all 9 γ×half-life combos identical | **keep_off** — the boost never moves the top-10; confirms F1 on the reproducible subsample |
+
+The decisions that are action items:
+
+1. **`reopen_rerank` (A6).** Reranking the full body recovers recall@10 0.83 —
+   above the pure-RRF baseline (0.79) and far above the summary rerank (0.66).
+   The stage-3 rerank should hydrate the **full body**, not `summary or subject`.
+   The latency gate (p95 ≤ 500 ms on the cross-encoder) is still to be verified
+   for the longer body texts before the reranker can ship.
+2. **`reader_bottleneck` (A4).** Retrieval is *not* the blocker on real data:
+   the golden session ranks in the top-10 for 79% of questions, but the
+   top-k summary context supports extractive answers only 7% of the time. This
+   inverts the synthetic finding and points the next milestone at the
+   context-representation / reader step, not the ranking stage.
+3. **`keep_60`, `keep_off`, `keep_off`.** The fusion constant (0.790 flat) and
+   both default-off seams are confirmed on the real corpus with reproducible
+   seeds — no flip.
+
+Each run is reproducible via the commands in [Reproduce](#reproduce) with
+`--experiment <name> --corpus lmeb-s --retrieval-only --subsample`.
+
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full
@@ -62,7 +112,17 @@ retrieval-only pass — the engine ranks by relevance, it does not reason.
    is not yet measured — that is the next step.
 4. **Cross-encoder rejected.** A cross-encoder rerank was tested
    (`score_source: rrf_rerank`) and **rejected**: it degraded recall@10 to
-   0.1057 with 1243 ms p95 latency. The RRF fusion stays the default.
+   0.1057 with 1243 ms p95 latency. The RRF fusion stays the default. The
+   `rerank_body` experiment (2026-08-21) re-opens this: scoring the **full
+   body** instead of the summary recovers recall@10 0.83, so the rejection is
+   specific to the representation, not the reranker.
+5. **Two measurement regimes.** The active-now experiments (0.79) and the
+   temporal experiments (0.18) are **not directly comparable** — they answer
+   different questions (full-history ceiling vs state-at-question-date). The
+   published single-run number above (recall@10 0.1296) is from the older
+   n≈470–500 temporal run and is superseded for *decision-making* by the
+   reproducible 100 subsample runs, though it remains the larger-sample
+   measurement.
 
 The temporal-reasoning slice (recall@10 0.02) is a **fundamental limitation of
 retrieval-only ranking, not a bug**: the engine ranks by textual relevance and
@@ -106,6 +166,13 @@ harness in the repo: so the measurement can be checked, not trusted.
 # Retrieval-only pass — deterministic, no LLM, cheap:
 uv sync --extra dev --extra benchmark --extra embeddings
 seahorse benchmark experiment embed --corpus lmeb-s --retrieval-only
+
+# Authoritative experiment runs (reproducible 100 subsample, seed 42):
+seahorse benchmark experiment rrf_k --corpus lmeb-s --retrieval-only --subsample
+seahorse benchmark experiment rerank_body --corpus lmeb-s --retrieval-only --subsample
+seahorse benchmark experiment end_to_end --corpus lmeb-s --retrieval-only --subsample
+seahorse benchmark experiment decay_rrf --corpus lmeb-s --retrieval-only --subsample
+seahorse benchmark experiment recency --corpus lmeb-s --retrieval-only --subsample
 
 # Full run with judge LLM (requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm
