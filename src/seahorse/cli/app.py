@@ -726,6 +726,15 @@ def benchmark_experiment_cmd(
             "— identical decision numbers, zero LLM cost."
         ),
     ),
+    subsample: bool = typer.Option(
+        True,
+        "--subsample/--no-subsample",
+        help=(
+            "Apply the reproducible balanced 100-question subsample to the "
+            "LMEB-S corpus (the documented compromise; the full-corpus ingest "
+            "hangs on FTS5 and runs overnight). Default ON."
+        ),
+    ),
 ) -> None:
     """Run an experiment and print the sweep table + decision."""
     from seahorse.benchmark.experiments.runner import (
@@ -743,6 +752,7 @@ def benchmark_experiment_cmd(
         top_k=top_k,
         temporal=temporal,
         reader_llm=StubReaderLLM() if retrieval_only else None,
+        subsample=subsample,
     )
     typer.echo(render_experiment_report(report))
 

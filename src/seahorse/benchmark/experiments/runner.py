@@ -182,14 +182,25 @@ class _StaticLoader:
         return self._dataset
 
 
-def _load_dataset(corpus: str) -> BenchmarkDataset:
-    """Load the corpus once; the runner deep-copies per variant."""
+def _load_dataset(corpus: str, *, subsample: bool = False) -> BenchmarkDataset:
+    """Load the corpus once; the runner deep-copies per variant.
+
+    ``subsample`` applies the reproducible balanced 100 (the 2026-08-07
+    documented compromise for LMEB-S — the full-corpus ingest hangs on FTS5 and
+    would run overnight) and recomputes ``split_hash`` over the SUBSAMPLED
+    instances so the fingerprint identifies the subsample (honesty).
+    """
     if corpus == "synthetic":
         return make_synthetic_dataset()
     if corpus == "lmeb-s":
         from seahorse.benchmark.adapters.longmemeval import LMEBLoader  # lazy: datasets extra
 
-        return LMEBLoader.load(BenchmarkConfig(dataset_config="s"))
+        dataset = LMEBLoader.load(BenchmarkConfig(dataset_config="s"))
+        if subsample:
+            from seahorse.benchmark.experiments.subsample import subsample_dataset  # lazy
+
+            return subsample_dataset(dataset)
+        return dataset
     raise ValueError(f"unknown corpus: {corpus!r} (expected {CORPORA!r})")
 
 
@@ -441,6 +452,7 @@ def run_experiment(
     warm_db: bool = True,
     template_cache: dict | None = None,
     pit_queries: bool = True,
+    subsample: bool = True,
 ) -> ExperimentReport:
     """Run a benchmark experiment and return the report with the decision verdict.
 
@@ -455,6 +467,10 @@ def run_experiment(
     ``run_experiment`` calls (the embed experiment's ``body`` variant reuses
     the recency experiment's body template). ``warm_db=False`` runs each
     variant on a fresh DB (the previous fresh-DB behavior, used to verify equivalence).
+
+    Subsample: the authoritative LMEB-S runs default to the reproducible
+    balanced 100 (the 2026-08-07 documented compromise — the full-corpus ingest
+    hangs on FTS5). ``subsample=False`` opts into the full-corpus overnight run.
     """
     if experiment not in EXPERIMENTS:
         raise ValueError(f"unknown experiment: {experiment!r} (expected {EXPERIMENTS!r})")
@@ -607,7 +623,9 @@ def run_experiment(
                 f"rrf_k experiment corpus must be 'synthetic' or 'lmeb-s', "
                 f"got {corpus!r}"
             )
-        rrf_k_result = run_rrf_k_experiment(corpus=corpus, top_k=top_k)
+        rrf_k_result = run_rrf_k_experiment(
+            corpus=corpus, top_k=top_k, subsample=subsample
+        )
         return ExperimentReport(
             experiment="rrf_k",
             corpus=corpus,
@@ -634,7 +652,9 @@ def run_experiment(
                 f"rerank_body experiment corpus must be 'synthetic' or 'lmeb-s', "
                 f"got {corpus!r}"
             )
-        rerank_body_result = run_rerank_body_experiment(corpus=corpus, top_k=top_k)
+        rerank_body_result = run_rerank_body_experiment(
+            corpus=corpus, top_k=top_k, subsample=subsample
+        )
         return ExperimentReport(
             experiment="rerank_body",
             corpus=corpus,
@@ -661,7 +681,9 @@ def run_experiment(
                 f"end_to_end experiment corpus must be 'synthetic' or 'lmeb-s', "
                 f"got {corpus!r}"
             )
-        end_to_end_result = run_end_to_end_experiment(corpus=corpus, top_k=top_k)
+        end_to_end_result = run_end_to_end_experiment(
+            corpus=corpus, top_k=top_k, subsample=subsample
+        )
         return ExperimentReport(
             experiment="end_to_end",
             corpus=corpus,
@@ -681,7 +703,7 @@ def run_experiment(
         top_k=top_k,
     )
     base_config.validate()
-    dataset = _load_dataset(corpus)
+    dataset = _load_dataset(corpus, subsample=subsample)
     tokenizer = Tokenizer()
     reader = reader_llm or ReaderLLMClient(reader_model)
     registry = make_metric_registry(tokenizer)
