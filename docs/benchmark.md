@@ -56,14 +56,18 @@ single-session-user; 45,580 stored episodes over 4,556 sessions). Retrieval-only
 **Two measurement regimes** — this distinction is mandatory for reading the
 numbers:
 
-- **Active-now** (standalone experiments): the engine queries the full session
-  history (`pit=None`). Measures the retrieval *ceiling*.
-- **Temporal** (SUT runner experiments): queries state-at-question-date, so
-  episodes after the question are invisible. Lower, but the honest
+- **Active-now**: the engine queries the full session history (`pit=None`).
+  Measures the retrieval *ceiling*. Two harness paths: the standalone
+  experiments (`rrf_k`, `rerank_body`, `end_to_end`) via `build_real_corpus`
+  (recall@10 0.79) and the SUT runner (`decay_rrf`, `recency`) via the
+  `EvaluationRunner` (recall@10 0.674). Same regime, two ingest paths — the
+  absolute baselines differ, so cross-harness absolute comparisons are not
+  valid; every decision below is delta-based within a single harness.
+- **Temporal** (SUT runner): queries state-at-question-date, so episodes after
+  the question are invisible. Lower (recall@10 0.18), but the honest
   state-restricted measurement.
 
-The absolute recall@10 differs across regimes (0.79 active-now vs 0.18
-temporal). All decisions below compare **within a regime** (baseline vs variant
+All decisions below compare **within a regime and harness** (baseline vs variant
 at the same setting), so each is valid.
 
 | Experiment | Regime | Evidence | Decision |
@@ -71,8 +75,19 @@ at the same setting), so each is valid.
 | `rrf_k` (A5) | active-now | recall@10 **0.790** flat across RRF_K ∈ {10, 20, 40, 60} | **keep_60** — the untuned fusion constant is optimal |
 | `rerank_body` (A6) | active-now | baseline 0.790 · summary 0.660 · **body 0.830** | **reopen_rerank** — the summary/subject representation was the culprit behind F2's rejection |
 | `end_to_end` (A4) | active-now | recall@10 0.790 · e2e accuracy **0.070** | **reader_bottleneck** — retrieval recovers the session but the top-k summary context cannot support answers |
-| `decay_rrf` | temporal | mvp1_rrf 0.178/0.175 · mvp1_decay 0.178/0.175 | **keep_off** — decay changes nothing (ku slice 0.429 both) |
-| `recency` | temporal | baseline 0.178/0.175; all 9 γ×half-life combos identical | **keep_off** — the boost never moves the top-10; confirms F1 on the reproducible subsample |
+| `decay_rrf` | active-now (runner) | mvp1_rrf 0.674/0.547 · mvp1_decay 0.674/**0.463** (ndcg −8.3%) | **keep_off** — decay leaves recall@10 flat and degrades ndcg@10 −8.3%; default-OFF confirmed with real evidence |
+| `recency` | active-now (runner) | baseline 0.674/0.547; all 9 γ×half-life combos recall@10 **0.674 flat**, ndcg 0.523–0.542 (every combo degrades) | **keep_off** — the boost fires, never moves the top-10, and degrades ndcg@10 in every combo; confirms F1 on the reproducible subsample |
+
+**Correction (2026-08-21, evening).** The first `decay_rrf`/`recency` runs used
+the SUT runner's default `pit_queries=True` in temporal mode, which PITs every
+query with `state_at(question_date)` — and the recency/decay seams are gated by
+`pit is None` (ADR-03), so the seams never fired and the "identical" numbers
+(0.178/0.175) were a forced null, not a measurement. Re-run in the active-now
+regime (`--no-temporal`), where the seams do fire: decay degrades ndcg@10
+−8.3% and recency degrades it −0.5 to −2.4pp in every combo, both with recall@10
+flat. Both `keep_off` decisions stand, now with valid evidence. The harness gap
+(the CLI does not expose `--pit-queries`, so a temporal decay/recency run
+silently measures a forced null) is tracked as a follow-up.
 
 The decisions that are action items:
 
@@ -116,13 +131,16 @@ Each run is reproducible via the commands in [Reproduce](#reproduce) with
    `rerank_body` experiment (2026-08-21) re-opens this: scoring the **full
    body** instead of the summary recovers recall@10 0.83, so the rejection is
    specific to the representation, not the reranker.
-5. **Two measurement regimes.** The active-now experiments (0.79) and the
-   temporal experiments (0.18) are **not directly comparable** — they answer
-   different questions (full-history ceiling vs state-at-question-date). The
-   published single-run number above (recall@10 0.1296) is from the older
-   n≈470–500 temporal run and is superseded for *decision-making* by the
-   reproducible 100 subsample runs, though it remains the larger-sample
-   measurement.
+5. **Two measurement regimes, two harness paths.** The active-now experiments
+   and the temporal experiments (0.18) are **not directly comparable** — they
+   answer different questions (full-history ceiling vs state-at-question-date).
+   Within active-now there are also two harness paths: the standalone
+   `build_real_corpus` experiments (0.79) and the SUT runner (0.674) — same
+   regime, different ingest, so their absolutes are not comparable either; all
+   decisions are delta-based within a single harness. The published single-run
+   number above (recall@10 0.1296) is from the older n≈470–500 temporal run and
+   is superseded for *decision-making* by the reproducible 100 subsample runs,
+   though it remains the larger-sample measurement.
 
 The temporal-reasoning slice (recall@10 0.02) is a **fundamental limitation of
 retrieval-only ranking, not a bug**: the engine ranks by textual relevance and
@@ -167,12 +185,15 @@ harness in the repo: so the measurement can be checked, not trusted.
 uv sync --extra dev --extra benchmark --extra embeddings
 seahorse benchmark experiment embed --corpus lmeb-s --retrieval-only
 
-# Authoritative experiment runs (reproducible 100 subsample, seed 42):
+# Authoritative experiment runs (reproducible 100 subsample, seed 42).
+# decay_rrf and recency MUST run active-now (--no-temporal): the recency/decay
+# seams are gated by `pit is None` (ADR-03), so a temporal run PITs every query
+# and measures a forced null (see the correction note above).
 seahorse benchmark experiment rrf_k --corpus lmeb-s --retrieval-only --subsample
 seahorse benchmark experiment rerank_body --corpus lmeb-s --retrieval-only --subsample
 seahorse benchmark experiment end_to_end --corpus lmeb-s --retrieval-only --subsample
-seahorse benchmark experiment decay_rrf --corpus lmeb-s --retrieval-only --subsample
-seahorse benchmark experiment recency --corpus lmeb-s --retrieval-only --subsample
+seahorse benchmark experiment decay_rrf --corpus lmeb-s --retrieval-only --no-temporal --subsample
+seahorse benchmark experiment recency --corpus lmeb-s --retrieval-only --no-temporal --subsample
 
 # Full run with judge LLM (requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm
