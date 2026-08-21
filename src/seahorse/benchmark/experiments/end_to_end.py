@@ -17,8 +17,12 @@ The reader is a deterministic EXTRACTIVE double (``ExtractiveReader``): it
 returns the context line with the most query-token overlap — a stand-in for the
 real reader LLM (``ReaderLLMClient``) that verifies the MECHANICS without an
 Ollama call. The authoritative end-to-end number comes from an LMEB-S run with
-the real reader (``--corpus lmeb-s``), which is not yet built
-(``build_real_corpus`` raises ``NotImplementedError``, fail-loud).
+the real reader (``--corpus lmeb-s``), which ingests the real haystack and
+measures SESSION-level recall (any retrieved episode from the golden session —
+LMEB answers live in sessions, not a single turn) over the reproducible 100
+subsample. The PIT path (``state_at``) degrades to active-now when the facade
+does not support it (``PitRecallNotSupportedMVP0``), mirroring the SUT's honest
+fallback.
 
 Decision (``decide_end_to_end``): informational — reports the end-to-end value
 and the ceiling gap (``recall@10 - end_to_end_accuracy``). A large gap means the
@@ -37,8 +41,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark.experiments.lmeb_corpus import (
+    build_real_facade,
+    ingest_haystack,
+    load_lmeb_subsample,
+)
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
+from seahorse.facade.errors import PitRecallNotSupportedMVP0
 from seahorse.facade.types import Provenance, RememberPayload
 
 # The k for the recall@k measurement (harness default).
@@ -294,18 +304,30 @@ def build_synthetic_corpus(
 
 
 def build_real_corpus(
-    db_path: Path,
+    db_path: Path, *, subsample: bool = True
 ) -> tuple[Any, Any, list[Episode], list[EndToEndQuestion], dict[str, str]]:
     """Build the real LMEB-S corpus (the authoritative decision).
 
-    NOT yet built: the LMEB-S end-to-end run with the real reader is a separate
-    task. Fail-loud (``NotImplementedError``) rather than silently running the
-    synthetic mechanics as if they were the science.
+    Ingests the real haystack (the reproducible 100 subsample by default) with
+    the real fastembed backend and returns ``(facade, storage, [], questions,
+    ep_id_to_session)``. ``episodes`` is empty — the session-level questions
+    carry no per-episode answer — and ``ep_id_to_session`` is the TRUE stored
+    episode inventory the session-level recall resolves through. Every LMEB
+    instance carries a ``question_date`` and ``golden_answer``.
     """
-    raise NotImplementedError(
-        "the LMEB-S end-to-end run is not built yet; run with corpus='synthetic' "
-        "to verify the harness mechanics"
-    )
+    dataset = load_lmeb_subsample(subsample=subsample)
+    facade, storage = build_real_facade(db_path)
+    _, ep_id_to_session = ingest_haystack(facade, dataset)
+    questions = [
+        EndToEndQuestion(
+            query=inst.question,
+            golden_answer=inst.golden_answer or "",
+            golden_session_ids=inst.golden_session_ids,
+            question_date=inst.question_date,
+        )
+        for inst in dataset.instances
+    ]
+    return facade, storage, [], questions, ep_id_to_session
 
 
 def _format_context(rows) -> str:
@@ -336,14 +358,19 @@ def _measure(
     e2e_hits: list[float] = []
     for q in questions:
         # Temporal-reasoning questions evaluate with ``pit=state_at(question_date)``
-        # (the SUT's ``_recall`` behavior) so the state as-of-the-question is
-        # ranked (the old version, pre-update).
+        # (the SUT's ``_recall`` behavior) so the state as ranked is the old
+        # version, pre-update. Honest degrade (mirroring ``SeahorseSUT._recall``):
+        # a regime without a PIT axis raises ``PitRecallNotSupportedMVP0`` from
+        # the facade → fall back to active-now, never crash the run.
         if q.question_date is not None:
             from seahorse.disclosure.types import PITPoint
 
-            rows = facade.recall(
-                q.query, k=top_k, pit=PITPoint(kind="state_at", t=q.question_date)
-            )
+            try:
+                rows = facade.recall(
+                    q.query, k=top_k, pit=PITPoint(kind="state_at", t=q.question_date)
+                )
+            except PitRecallNotSupportedMVP0:
+                rows = facade.recall(q.query, k=top_k)
         else:
             rows = facade.recall(q.query, k=top_k)
         if rows and all(r.score == 0.0 for r in rows):
@@ -378,12 +405,14 @@ def run_end_to_end_experiment(
     corpus: str = "synthetic",
     db_path: Path | str | None = None,
     top_k: int = END_TO_END_TOP_K,
+    subsample: bool = True,
 ) -> EndToEndExperimentResult:
     """Run the end-to-end measurement and return the result.
 
     ``corpus`` is ``"synthetic"`` (mechanical CI verification) or ``"lmeb-s"``
-    (the real corpus, authoritative — not yet built). ``db_path`` defaults to a
-    fresh temp DB (reproducible).
+    (the real corpus, authoritative — the reproducible 100 subsample by default;
+    ``subsample=False`` opts into the full-corpus overnight run). ``db_path``
+    defaults to a fresh temp DB (reproducible).
     """
     if corpus not in ("synthetic", "lmeb-s"):
         raise ValueError(
@@ -394,7 +423,9 @@ def run_end_to_end_experiment(
     if corpus == "synthetic":
         facade, storage, episodes, questions, ep_id_to_session = build_synthetic_corpus(db)
     else:
-        facade, storage, episodes, questions, ep_id_to_session = build_real_corpus(db)
+        facade, storage, episodes, questions, ep_id_to_session = build_real_corpus(
+            db, subsample=subsample
+        )
     try:
         recall_at_k, e2e, n_queries, n_episodes, regime = _measure(
             facade, episodes, questions, ep_id_to_session, top_k
