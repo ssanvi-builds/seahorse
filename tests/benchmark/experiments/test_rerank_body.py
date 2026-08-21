@@ -17,11 +17,14 @@ from seahorse.benchmark.experiments.rerank_body import (
     RERANK_BODY_DELTA_PP,
     RERANK_BODY_TOP_K,
     RerankBodyExperimentResult,
+    RerankBodyQuestion,
+    _measure,
     build_synthetic_corpus,
     decide_rerank_body,
     render_rerank_body_report,
     run_rerank_body_experiment,
 )
+from seahorse.facade.types import Provenance, RememberPayload
 
 
 class TestRunRerankBodyExperimentSynthetic:
@@ -163,3 +166,87 @@ class TestRunExperimentWiring:
 
         with pytest.raises(ValueError, match="rerank_body experiment corpus"):
             run_experiment(experiment="rerank_body", corpus="claude-mem")
+
+
+class TestSessionLevelRecall:
+    """LMEB-S recall is SESSION-level (any retrieved episode from the golden
+    session counts) — the real ``_measure`` branch the authoritative run uses."""
+
+    def test_golden_session_recovered_by_baseline_and_body(self, tmp_path) -> None:
+        from seahorse.benchmark.experiments.synthetic import HashEmbedder
+        from seahorse.facade import build_facade
+
+        facade, storage = build_facade(
+            tmp_path / "s.db",
+            retrieval_available=True,
+            passage_embedder=HashEmbedder(),
+        )
+        sessions = {
+            "s-aurora": ("Aurora", "Aurora project uses Rust for the pipeline."),
+            "s-beacon": ("Beacon", "Beacon project uses Kafka for the pipeline."),
+        }
+        bridge: dict[str, str] = {}
+        for session_id, (project, body) in sessions.items():
+            wr = facade.remember(
+                RememberPayload(
+                    body=body,
+                    by=Provenance(
+                        source_type="agent", agent_id="test", session_id=session_id
+                    ),
+                    title=project,
+                ),
+                extraction_mode="skip",
+            )
+            assert wr.ep_id is not None
+            bridge[wr.ep_id] = session_id
+        questions = [
+            RerankBodyQuestion(
+                query=f"What does the {project} project use?",
+                golden_session_ids=(s,),
+            )
+            for s, (project, _) in sessions.items()
+        ]
+        try:
+            recall_baseline, _, recall_body, n_queries, n_episodes, regime = _measure(
+                facade,
+                storage,
+                [],
+                questions,
+                RERANK_BODY_TOP_K,
+                ep_id_to_session=bridge,
+            )
+            assert regime == "hybrid"
+            assert n_queries == 2
+            assert n_episodes == 2  # the bridge is the true stored-episode inventory
+            assert recall_baseline == 1.0
+            assert recall_body == 1.0
+        finally:
+            storage.close()
+
+
+class TestRunRerankBodyRealWiring:
+    def test_lmeb_subsample_flag_plumbed(self, monkeypatch) -> None:
+        """``run_rerank_body_experiment(corpus='lmeb-s', subsample=...)`` forwards
+        the flag to ``build_real_corpus`` (the wiring, without the real ingest)."""
+        calls: dict = {}
+
+        def fake_build_real(db, *, subsample):
+            calls["subsample"] = subsample
+            facade, storage, episodes, questions = build_synthetic_corpus(db)
+            return facade, storage, episodes, questions, {}
+
+        monkeypatch.setattr(
+            "seahorse.benchmark.experiments.rerank_body.build_real_corpus",
+            fake_build_real,
+        )
+        monkeypatch.setattr(
+            "seahorse.benchmark.experiments.rerank_body.real_query_embedder",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            "seahorse.benchmark.experiments.rerank_body._build_real_reranker",
+            lambda: None,
+        )
+        result = run_rerank_body_experiment(corpus="lmeb-s", subsample=False)
+        assert calls["subsample"] is False
+        assert result.regime == "hybrid"

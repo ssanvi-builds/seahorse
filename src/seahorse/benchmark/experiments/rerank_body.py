@@ -23,10 +23,12 @@ representation is worth re-opening on LMEB-S (the keep_rrf decision was made on
 a biased subsample). Honest regime detection: all-zero scores => ``fallback_g2``
 => invalid decision (fail-loud honesty).
 
-The synthetic corpus verifies the harness MECHANICS in CI (``HashEmbedder`` +
+The synthetic corpus verifies the harness MECHANICS in Python (``HashEmbedder`` +
 ``HashReranker``, no model download) — NOT the science. The authoritative
-decision comes from an LMEB-S run (``--corpus lmeb-s``), which is not yet built
-(``build_real_corpus`` raises ``NotImplementedError``, fail-loud).
+decision comes from an LMEB-S run (``--corpus lmeb-s``), which ingests the real
+haystack with the real embedder and measures SESSION-level recall (any
+retrieved episode from the golden session — LMEB answers live in sessions, not
+a single turn) over the reproducible 100 subsample.
 """
 
 from __future__ import annotations
@@ -37,6 +39,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark.experiments.lmeb_corpus import (
+    build_real_facade,
+    ingest_haystack,
+    load_lmeb_subsample,
+    real_query_embedder,
+)
 from seahorse.benchmark.experiments.synthetic import HashEmbedder, HashReranker
 from seahorse.contracts.episode import Episode
 from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder
@@ -60,10 +68,17 @@ _FALLBACK_G2 = "fallback_g2"
 
 @dataclass(frozen=True)
 class RerankBodyQuestion:
-    """A retrieval probe: the query + the golden answer episode."""
+    """A retrieval probe: the query + the golden answer episode/session.
+
+    The synthetic corpus sets ``answer_ep_id`` (episode-level). The LMEB-S
+    corpus sets ``golden_session_ids`` (session-level — LMEB answers live in
+    sessions, not a single identifiable turn); the real ``_measure`` resolves
+    retrieved ep_ids to sessions via the bridge.
+    """
 
     query: str
-    answer_ep_id: str
+    answer_ep_id: str = ""
+    golden_session_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -204,6 +219,17 @@ def _ingest_episodes(
     return stored, id_map
 
 
+def _build_real_reranker() -> Any:
+    """The real fastembed cross-encoder (bge-reranker-v2-m3, MIT) for the LMEB-S run.
+
+    Lazy import (the ``embeddings`` extra); the ONNX model downloads on the
+    first build (~1.1GB) — a one-time cost the rerank-body run accepts.
+    """
+    from seahorse.embeddings.rerank_backend import build_fastembed_reranker  # lazy
+
+    return build_fastembed_reranker()
+
+
 def build_synthetic_corpus(
     db_path: Path,
 ) -> tuple[Any, Any, list[Episode], list[RerankBodyQuestion]]:
@@ -225,17 +251,28 @@ def build_synthetic_corpus(
     return facade, storage, stored, remapped
 
 
-def build_real_corpus(db_path: Path) -> tuple[Any, Any, list[Episode], list[RerankBodyQuestion]]:
+def build_real_corpus(
+    db_path: Path, *, subsample: bool = True
+) -> tuple[Any, Any, list[Episode], list[RerankBodyQuestion], dict[str, str]]:
     """Build the real LMEB-S corpus (the authoritative decision).
 
-    NOT yet built: the LMEB-S body-rerank re-test is a separate task. Fail-loud
-    (``NotImplementedError``) rather than silently running the synthetic
-    mechanics as if they were the science.
+    Ingests the real haystack (the reproducible 100 subsample by default) with
+    the real fastembed backend and returns ``(facade, storage, [], questions,
+    ep_id_to_session)``. ``episodes`` is empty — the session-level questions
+    carry no per-episode answer — and ``ep_id_to_session`` is the TRUE stored
+    episode inventory (one entry per stored ep_id) the session-level recall
+    resolves retrieved episodes through.
     """
-    raise NotImplementedError(
-        "the LMEB-S body-rerank re-test is not built yet; run with corpus='synthetic' "
-        "to verify the harness mechanics"
-    )
+    dataset = load_lmeb_subsample(subsample=subsample)
+    facade, storage = build_real_facade(db_path)
+    _, ep_id_to_session = ingest_haystack(facade, dataset)
+    questions = [
+        RerankBodyQuestion(
+            query=inst.question, golden_session_ids=inst.golden_session_ids
+        )
+        for inst in dataset.instances
+    ]
+    return facade, storage, [], questions, ep_id_to_session
 
 
 def _measure(
@@ -244,27 +281,37 @@ def _measure(
     episodes: list[Episode],
     questions: list[RerankBodyQuestion],
     top_k: int,
+    *,
+    ep_id_to_session: dict[str, str] | None = None,
+    embedder: Any | None = None,
+    reranker: Any = None,
 ) -> tuple[float, float, float, int, int, str]:
     """Run the recall@10 measurement across the three rerank configurations.
 
     Returns ``(recall_baseline, recall_summary, recall_body, n_queries,
     n_episodes, regime)``. The regime degrades to ``fallback_g2`` when any query
     returns rows with all-zero scores (the hybrid path was not wired).
+
+    Synthetic questions resolve at EPISODE level (``answer_ep_id``); real
+    LMEB-S questions resolve at SESSION level (``golden_session_ids`` +
+    ``ep_id_to_session`` bridge) — any retrieved episode from the golden session
+    counts. ``embedder``/``reranker`` default to the deterministic hash doubles
+    (synthetic); the caller passes the REAL query embedder + cross-encoder for
+    the LMEB-S run.
     """
     ep_ids = {ep.id for ep in episodes}
-    # ``Any``: the adapter's ``embedding_dim`` is a read-only property, which
-    # does not structurally match the settable ``QueryEmbedder`` Protocol attr
-    # (the factory uses the same ``Any`` escape hatch).
-    embedder: Any = AsyncToSyncQueryEmbedder(HashEmbedder())
-    reranker = HashReranker()
+    n_episodes = len(ep_id_to_session) if ep_id_to_session else len(ep_ids)
+    if embedder is None:
+        embedder = cast(Any, AsyncToSyncQueryEmbedder(HashEmbedder()))
+    reranker = reranker if reranker is not None else HashReranker()
     regime = "hybrid"
 
     def _recall_at_k(rerank_text: str | None) -> float:
         nonlocal regime
         hits: list[float] = []
         for q in questions:
-            if q.answer_ep_id not in ep_ids:
-                continue  # the answer episode was not stored (collision)
+            if q.answer_ep_id and q.answer_ep_id not in ep_ids:
+                continue  # the synthetic answer episode was not stored (collision)
             rows = recall(
                 q.query,
                 pit=None,
@@ -278,16 +325,23 @@ def _measure(
                 k_rerank=RERANK_BODY_OVERFETCH_K,
                 rerank_text=rerank_text or "summary",
             )
-            retrieved = [r.ep_id for r in rows]
             if rows and all(r.score == 0.0 for r in rows):
                 regime = _FALLBACK_G2
-            hits.append(1.0 if q.answer_ep_id in retrieved else 0.0)
+            if q.golden_session_ids and ep_id_to_session:
+                # session-level (LMEB-S): any retrieved episode from the golden session.
+                retrieved_sessions = {ep_id_to_session.get(r.ep_id, "") for r in rows}
+                hits.append(
+                    1.0 if retrieved_sessions & set(q.golden_session_ids) else 0.0
+                )
+            else:
+                retrieved = [r.ep_id for r in rows]
+                hits.append(1.0 if q.answer_ep_id in retrieved else 0.0)
         return sum(hits) / len(hits) if hits else 0.0
 
     recall_baseline = _recall_at_k(None)
     recall_summary = _recall_at_k("summary")
     recall_body = _recall_at_k("body")
-    return recall_baseline, recall_summary, recall_body, len(questions), len(episodes), regime
+    return recall_baseline, recall_summary, recall_body, len(questions), n_episodes, regime
 
 
 def run_rerank_body_experiment(
@@ -295,12 +349,14 @@ def run_rerank_body_experiment(
     corpus: str = "synthetic",
     db_path: Path | str | None = None,
     top_k: int = RERANK_BODY_TOP_K,
+    subsample: bool = True,
 ) -> RerankBodyExperimentResult:
     """Run the rerank-with-body re-test and return the result.
 
     ``corpus`` is ``"synthetic"`` (mechanical CI verification) or ``"lmeb-s"``
-    (the real corpus, authoritative — not yet built). ``db_path`` defaults to a
-    fresh temp DB (reproducible).
+    (the real corpus, authoritative — the reproducible 100 subsample by default;
+    ``subsample=False`` opts into the full-corpus overnight run). ``db_path``
+    defaults to a fresh temp DB (reproducible).
     """
     if corpus not in ("synthetic", "lmeb-s"):
         raise ValueError(
@@ -310,11 +366,27 @@ def run_rerank_body_experiment(
     db = Path(db_path) if db_path is not None else tmp / "bench.db"
     if corpus == "synthetic":
         facade, storage, episodes, questions = build_synthetic_corpus(db)
+        bridge = None
+        embedder = None
+        reranker = None
     else:
-        facade, storage, episodes, questions = build_real_corpus(db)
+        facade, storage, episodes, questions, bridge = build_real_corpus(
+            db, subsample=subsample
+        )
+        embedder = real_query_embedder()
+        reranker = _build_real_reranker()
     try:
         recall_baseline, recall_summary, recall_body, n_queries, n_episodes, regime = (
-            _measure(facade, storage, episodes, questions, top_k)
+            _measure(
+                facade,
+                storage,
+                episodes,
+                questions,
+                top_k,
+                ep_id_to_session=bridge,
+                embedder=embedder,
+                reranker=reranker,
+            )
         )
     finally:
         storage.close()
