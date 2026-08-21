@@ -10,9 +10,11 @@ production constant is ``RRF_K=60`` (``retrieval/constants.py``), explicitly
 Metrics:
 - **recall@10 per RRF_K**: for each query, whether the golden answer episode is
   in the top-10 of the fused list. The synthetic corpus is designed so the
-  answer is rank-1 in BOTH sources (strong golden answer) and the distractors
+  answer is rank-1 in BOTH strategies (strong golden answer) and the distractors
   are mid-rank in both — the sweep verifies the fusion MECHANICS (deterministic,
-  answer always recovered) rather than the science.
+  answer always recovered) rather than the science. The LMEB-S run measures
+  SESSION-level recall (any retrieved episode from the golden session), because
+  LMEB golden answers live in sessions, not in a single identifiable turn.
 
 Decision (``decide_rrf_k``): if the best RRF_K improves recall@10 by >=
 ``RRF_K_IMPROVE_PP`` (5pp) over the production default 60, recommend the flip;
@@ -21,8 +23,9 @@ otherwise keep 60. Honest regime detection: all-zero scores => ``fallback_g2``
 
 The synthetic corpus verifies the harness MECHANICS in CI (``HashEmbedder``,
 no model download) — NOT the science. The authoritative decision comes from an
-LMEB-S run (``--corpus lmeb-s``), which is not yet built (``build_real_corpus``
-raises ``NotImplementedError``, fail-loud).
+LMEB-S run (``--corpus lmeb-s``), which ingests the real haystack with the
+real embedder and measures session-level recall over the reproducible 100
+subsample.
 """
 
 from __future__ import annotations
@@ -33,6 +36,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark.experiments.lmeb_corpus import (
+    build_real_facade,
+    ingest_haystack,
+    load_lmeb_subsample,
+    real_query_embedder,
+)
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
 from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder
@@ -56,10 +65,17 @@ _FALLBACK_G2 = "fallback_g2"
 
 @dataclass(frozen=True)
 class RrfKQuestion:
-    """A retrieval probe: the query + the golden answer episode."""
+    """A retrieval probe: the query + the golden answer episode/session.
+
+    The synthetic corpus sets ``answer_ep_id`` (episode-level). The LMEB-S
+    corpus sets ``golden_session_ids`` (session-level — LMEB answers live in
+    sessions, not a single identifiable turn); the real ``_measure`` resolves
+    retrieved ep_ids to sessions via the bridge.
+    """
 
     query: str
-    answer_ep_id: str
+    answer_ep_id: str = ""
+    golden_session_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -212,17 +228,26 @@ def build_synthetic_corpus(
     return facade, storage, stored, remapped
 
 
-def build_real_corpus(db_path: Path) -> tuple[Any, Any, list[Episode], list[RrfKQuestion]]:
+def build_real_corpus(
+    db_path: Path, *, subsample: bool = True
+) -> tuple[Any, Any, list[Episode], list[RrfKQuestion], dict[str, str]]:
     """Build the real LMEB-S corpus (the authoritative decision).
 
-    NOT yet built: the LMEB-S RRF_K sweep is a separate task. Fail-loud
-    (``NotImplementedError``) rather than silently running the synthetic
-    mechanics as if they were the science.
+    Ingests the real haystack (the reproducible 100 subsample by default) with
+    the real fastembed backend and returns ``(facade, storage, [], questions,
+    ep_id_to_session)``. ``episodes`` is empty — the session-level questions
+    carry no per-episode answer — and ``ep_id_to_session`` is the TRUE stored
+    episode inventory (one entry per stored ep_id) the session-level recall
+    resolves retrieved episodes through.
     """
-    raise NotImplementedError(
-        "the LMEB-S RRF_K sweep is not built yet; run with corpus='synthetic' "
-        "to verify the harness mechanics"
-    )
+    dataset = load_lmeb_subsample(subsample=subsample)
+    facade, storage = build_real_facade(db_path)
+    _, ep_id_to_session = ingest_haystack(facade, dataset)
+    questions = [
+        RrfKQuestion(query=inst.question, golden_session_ids=inst.golden_session_ids)
+        for inst in dataset.instances
+    ]
+    return facade, storage, [], questions, ep_id_to_session
 
 
 def _measure(
@@ -231,25 +256,33 @@ def _measure(
     episodes: list[Episode],
     questions: list[RrfKQuestion],
     top_k: int,
+    *,
+    ep_id_to_session: dict[str, str] | None = None,
+    embedder: Any | None = None,
 ) -> tuple[tuple[tuple[int, float], ...], int, int, str]:
     """Run the recall@10 measurement per RRF_K value.
 
     Returns ``(recall_by_rrf_k, n_queries, n_episodes, regime)``. The regime
     degrades to ``fallback_g2`` when any query returns rows with all-zero scores
     (the hybrid path was not wired).
+
+    Synthetic questions resolve at EPISODE level (``answer_ep_id``); real
+    LMEB-S questions resolve at SESSION level (``golden_session_ids`` +
+    ``ep_id_to_session`` bridge) — any retrieved episode from the golden session
+    counts. ``embedder`` defaults to the deterministic hash (synthetic); the
+    caller passes the REAL query embedder for the LMEB-S run.
     """
     ep_ids = {ep.id for ep in episodes}
-    # ``Any``: the adapter's ``embedding_dim`` is a read-only property, which
-    # does not structurally match the settable ``QueryEmbedder`` Protocol attr
-    # (the factory uses the same ``Any`` escape hatch).
-    embedder: Any = AsyncToSyncQueryEmbedder(HashEmbedder())
+    n_episodes = len(ep_id_to_session) if ep_id_to_session else len(ep_ids)
+    if embedder is None:
+        embedder = cast(Any, AsyncToSyncQueryEmbedder(HashEmbedder()))
     regime = "hybrid"
     recall_by_rrf_k: list[tuple[int, float]] = []
     for rrf_k in RRF_K_SWEEP:
         hits: list[float] = []
         for q in questions:
-            if q.answer_ep_id not in ep_ids:
-                continue  # the answer episode was not stored (collision)
+            if q.answer_ep_id and q.answer_ep_id not in ep_ids:
+                continue  # the synthetic answer episode was not stored (collision)
             rows = recall(
                 q.query,
                 pit=None,
@@ -261,12 +294,19 @@ def _measure(
                 k=top_k,
                 rrf_k=rrf_k,
             )
-            retrieved = [r.ep_id for r in rows]
             if rows and all(r.score == 0.0 for r in rows):
                 regime = _FALLBACK_G2
-            hits.append(1.0 if q.answer_ep_id in retrieved else 0.0)
+            if q.golden_session_ids and ep_id_to_session:
+                # session-level (LMEB-S): any retrieved episode from the golden session.
+                retrieved_sessions = {ep_id_to_session.get(r.ep_id, "") for r in rows}
+                hits.append(
+                    1.0 if retrieved_sessions & set(q.golden_session_ids) else 0.0
+                )
+            else:
+                retrieved = [r.ep_id for r in rows]
+                hits.append(1.0 if q.answer_ep_id in retrieved else 0.0)
         recall_by_rrf_k.append((rrf_k, sum(hits) / len(hits) if hits else 0.0))
-    return tuple(recall_by_rrf_k), len(questions), len(episodes), regime
+    return tuple(recall_by_rrf_k), len(questions), n_episodes, regime
 
 
 def run_rrf_k_experiment(
@@ -274,12 +314,14 @@ def run_rrf_k_experiment(
     corpus: str = "synthetic",
     db_path: Path | str | None = None,
     top_k: int = RRF_K_TOP_K,
+    subsample: bool = True,
 ) -> RrfKExperimentResult:
     """Run the RRF_K sweep measurement and return the result.
 
     ``corpus`` is ``"synthetic"`` (mechanical CI verification) or ``"lmeb-s"``
-    (the real corpus, authoritative — not yet built). ``db_path`` defaults to a
-    fresh temp DB (reproducible).
+    (the real corpus, authoritative — the reproducible 100 subsample by
+    default; ``subsample=False`` opts into the full-corpus overnight run).
+    ``db_path`` defaults to a fresh temp DB (reproducible).
     """
     if corpus not in ("synthetic", "lmeb-s"):
         raise ValueError(
@@ -289,11 +331,22 @@ def run_rrf_k_experiment(
     db = Path(db_path) if db_path is not None else tmp / "bench.db"
     if corpus == "synthetic":
         facade, storage, episodes, questions = build_synthetic_corpus(db)
+        bridge = None
+        embedder = None
     else:
-        facade, storage, episodes, questions = build_real_corpus(db)
+        facade, storage, episodes, questions, bridge = build_real_corpus(
+            db, subsample=subsample
+        )
+        embedder = real_query_embedder()
     try:
         recall_by_rrf_k, n_queries, n_episodes, regime = _measure(
-            facade, storage, episodes, questions, top_k
+            facade,
+            storage,
+            episodes,
+            questions,
+            top_k,
+            ep_id_to_session=bridge,
+            embedder=embedder,
         )
     finally:
         storage.close()

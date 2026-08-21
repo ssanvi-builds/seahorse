@@ -4,7 +4,8 @@ The synthetic corpus verifies the harness MECHANICS: the golden answer is
 rank-1 in BOTH sources (vector: concentrated token overlap; BM25: the rare
 project name has high IDF), so recall@10 is 1.0 for every RRF_K value — the
 sweep is deterministic and the decision is stable. The authoritative decision
-comes from an LMEB-S run (``--corpus lmeb-s``, not yet built).
+comes from an LMEB-S run (``--corpus lmeb-s``), which measures SESSION-level
+recall over the reproducible 100 subsample.
 """
 
 from __future__ import annotations
@@ -16,11 +17,14 @@ from seahorse.benchmark.experiments.rrf_k import (
     RRF_K_SWEEP,
     RRF_K_TOP_K,
     RrfKExperimentResult,
+    RrfKQuestion,
+    _measure,
     build_synthetic_corpus,
     decide_rrf_k,
     render_rrf_k_report,
     run_rrf_k_experiment,
 )
+from seahorse.facade.types import Provenance, RememberPayload
 
 
 class TestRunRrfKExperimentSynthetic:
@@ -162,3 +166,134 @@ class TestRunExperimentWiring:
 
         with pytest.raises(ValueError, match="rrf_k experiment corpus"):
             run_experiment(experiment="rrf_k", corpus="claude-mem")
+
+
+def _build_session_corpus(
+    db_path,
+) -> tuple[object, object, list, dict[str, str], list[RrfKQuestion]]:
+    """A synthetic corpus with DISTINCT sessions (the LMEB-S shape).
+
+    Each golden session carries one answer episode with the query's distinctive
+    tokens; the ``ep_id_to_session`` bridge maps stored ep_ids to sessions. The
+    returned ``episodes`` list is empty (session-level questions carry no
+    per-episode answer — the real ``build_real_corpus`` returns the same).
+    """
+    from seahorse.benchmark.experiments.synthetic import HashEmbedder
+    from seahorse.facade import build_facade
+
+    facade, storage = build_facade(
+        db_path, retrieval_available=True, passage_embedder=HashEmbedder()
+    )
+    sessions = {
+        "s-aurora": ("Aurora", "Aurora project uses Rust for the pipeline."),
+        "s-beacon": ("Beacon", "Beacon project uses Kafka for the pipeline."),
+        "s-comet": ("Comet", "Comet project uses TensorFlow for the pipeline."),
+    }
+    bridge: dict[str, str] = {}
+    for session_id, (project, body) in sessions.items():
+        wr = facade.remember(
+            RememberPayload(
+                body=body,
+                by=Provenance(
+                    source_type="agent", agent_id="test", session_id=session_id
+                ),
+                title=project,
+            ),
+            extraction_mode="skip",
+        )
+        assert wr.ep_id is not None
+        bridge[wr.ep_id] = session_id
+    questions = [
+        RrfKQuestion(query=f"What does the {project} project use?", golden_session_ids=(s,))
+        for s, (project, _) in sessions.items()
+    ]
+    return facade, storage, [], bridge, questions
+
+
+class TestSessionLevelRecall:
+    """LMEB-S recall is SESSION-level: any retrieved episode from the golden
+    session counts (golden answers live in sessions, not a single identifiable
+    turn). This exercises the same ``_measure`` branch the real run uses."""
+
+    def test_golden_session_in_top10_hits(self, tmp_path) -> None:
+        facade, storage, _, bridge, questions = _build_session_corpus(
+            tmp_path / "s.db"
+        )
+        try:
+            recall_by_rrf_k, n_queries, n_episodes, regime = _measure(
+                facade,
+                storage,
+                [],
+                questions,
+                RRF_K_TOP_K,
+                ep_id_to_session=bridge,
+            )
+            assert regime == "hybrid"
+            assert n_queries == 3
+            assert n_episodes == 3  # the bridge is the true stored-episode inventory
+            for rrf_k, recall_at_k in recall_by_rrf_k:
+                assert rrf_k in RRF_K_SWEEP
+                assert recall_at_k == 1.0
+        finally:
+            storage.close()
+
+    def test_ghost_session_misses(self, tmp_path) -> None:
+        facade, storage, _, bridge, questions = _build_session_corpus(
+            tmp_path / "s.db"
+        )
+        ghost = RrfKQuestion(
+            query="What does the Ghost project use?", golden_session_ids=("s-ghost",)
+        )
+        try:
+            recall_by_rrf_k, _, _, regime = _measure(
+                facade,
+                storage,
+                [],
+                questions + [ghost],
+                RRF_K_TOP_K,
+                ep_id_to_session=bridge,
+            )
+            assert regime == "hybrid"
+            for _, recall_at_k in recall_by_rrf_k:
+                assert recall_at_k == 0.75  # 3 hits + 1 miss
+        finally:
+            storage.close()
+
+
+class TestRunRrfKExperimentRealWiring:
+    def test_lmeb_subsample_flag_plumbed(self, monkeypatch) -> None:
+        """``run_rrf_k_experiment(corpus='lmeb-s', subsample=...)`` forwards the
+        flag to ``build_real_corpus`` (the wiring, without the real ingest)."""
+        calls: dict = {}
+
+        def fake_build_real(db, *, subsample):
+            calls["subsample"] = subsample
+            facade, storage, episodes, questions = build_synthetic_corpus(db)
+            return facade, storage, episodes, questions, {}
+
+        monkeypatch.setattr(
+            "seahorse.benchmark.experiments.rrf_k.build_real_corpus", fake_build_real
+        )
+        monkeypatch.setattr(
+            "seahorse.benchmark.experiments.rrf_k.real_query_embedder", lambda: None
+        )
+        result = run_rrf_k_experiment(corpus="lmeb-s", subsample=False)
+        assert calls["subsample"] is False
+        assert result.regime == "hybrid"
+
+    def test_default_subsample_true(self, monkeypatch) -> None:
+        calls: dict = {}
+
+        def fake_build_real(db, *, subsample):
+            calls["subsample"] = subsample
+            facade, storage, episodes, questions = build_synthetic_corpus(db)
+            return facade, storage, episodes, questions, {}
+
+        monkeypatch.setattr(
+            "seahorse.benchmark.experiments.rrf_k.build_real_corpus", fake_build_real
+        )
+        monkeypatch.setattr(
+            "seahorse.benchmark.experiments.rrf_k.real_query_embedder", lambda: None
+        )
+        run_rrf_k_experiment(corpus="lmeb-s")  # default -> the documented subsample
+        assert calls["subsample"] is True
