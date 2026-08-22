@@ -56,6 +56,7 @@ def test_benchmark_experiment_retrieval_only_wires_stub(monkeypatch):
 
     def _fake_run_experiment(**kwargs):
         captured["reader_llm"] = kwargs.get("reader_llm")
+        captured["pit_queries"] = kwargs.get("pit_queries")
         return _FakeReport()
 
     monkeypatch.setattr(
@@ -71,6 +72,39 @@ def test_benchmark_experiment_retrieval_only_wires_stub(monkeypatch):
     from seahorse.benchmark.harness.reader_llm import StubReaderLLM
 
     assert isinstance(captured["reader_llm"], StubReaderLLM)
+    # Default: PIT queries on (the runner forces them off for decay_rrf/recency).
+    assert captured["pit_queries"] is True
+
+
+def test_benchmark_experiment_pit_queries_flag(tmp_path, monkeypatch):
+    """--no-pit-queries reaches run_experiment (active-now queries)."""
+    captured: dict = {}
+
+    class _FakeReport:
+        experiment = "recency"
+        corpus = "synthetic"
+        temporal_mode = True
+        results = ()
+        decision = {"decision": "keep_off", "flip": False, "reason": "test"}
+
+    def _fake_run_experiment(**kwargs):
+        captured["pit_queries"] = kwargs.get("pit_queries")
+        return _FakeReport()
+
+    monkeypatch.setattr(
+        "seahorse.benchmark.experiments.runner.run_experiment", _fake_run_experiment
+    )
+    monkeypatch.setattr(
+        "seahorse.benchmark.experiments.runner.render_experiment_report", lambda r: "ok"
+    )
+    code, out, err = invoke(
+        [
+            "benchmark", "experiment", "recency", "--retrieval-only",
+            "--corpus", "synthetic", "--no-pit-queries",
+        ]
+    )
+    assert code == 0, err
+    assert captured["pit_queries"] is False
 
 
 def test_import_dry_run(vault, tmp_path):

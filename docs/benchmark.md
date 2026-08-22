@@ -85,9 +85,11 @@ query with `state_at(question_date)` — and the recency/decay seams are gated b
 (0.178/0.175) were a forced null, not a measurement. Re-run in the active-now
 regime (`--no-temporal`), where the seams do fire: decay degrades ndcg@10
 −8.3% and recency degrades it −0.5 to −2.4pp in every combo, both with recall@10
-flat. Both `keep_off` decisions stand, now with valid evidence. The harness gap
-(the CLI does not expose `--pit-queries`, so a temporal decay/recency run
-silently measures a forced null) is tracked as a follow-up.
+flat. Both `keep_off` decisions stand, now with valid evidence. The harness is
+fixed so this cannot recur: the runner forces `pit_queries=False` for
+`decay_rrf`/`recency` (`_resolve_pit_queries`, ADR-03) and the CLI exposes
+`--pit-queries/--no-pit-queries` — a temporal decay/recency run can no longer
+silently measure a forced null.
 
 The decisions that are action items:
 

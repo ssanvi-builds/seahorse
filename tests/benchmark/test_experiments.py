@@ -450,6 +450,22 @@ class TestRunExperimentSynthetic:
         assert r1.decision == r2.decision
 
 
+def test_resolve_pit_queries_forces_active_now_for_now_regime_experiments():
+    """decay_rrf/recency must query active-now (pit=None): the recency/decay
+    seams are gated by `pit is None` (ADR-03), so a temporal PIT run would
+    measure a forced null (the 2026-08-21 correction)."""
+    from seahorse.benchmark.experiments.runner import _resolve_pit_queries
+
+    # The now-regime ranking experiments force active-now queries even when the
+    # caller asks for PIT queries — otherwise the seam never fires.
+    assert _resolve_pit_queries("decay_rrf", True) is False
+    assert _resolve_pit_queries("recency", True) is False
+    # An explicit False stays False; other experiments keep the caller's choice.
+    assert _resolve_pit_queries("decay_rrf", False) is False
+    assert _resolve_pit_queries("embed", True) is True
+    assert _resolve_pit_queries("rerank", False) is False
+
+
 def test_warm_db_matches_fresh_db(tmp_path):
     """Warm-DB (shared ingest across variants) must produce IDENTICAL retrieval
     metrics to fresh-DB runs — the recency boost reads created_at/now, both

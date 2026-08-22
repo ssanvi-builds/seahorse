@@ -717,6 +717,15 @@ def benchmark_experiment_cmd(
     temporal: bool = typer.Option(
         True, "--temporal/--no-temporal", help="Temporal ingestion (source_type=human)."
     ),
+    pit_queries: bool = typer.Option(
+        True,
+        "--pit-queries/--no-pit-queries",
+        help=(
+            "Query active-now (pit=None) instead of state-at-question-date. "
+            "Forced OFF for decay_rrf/recency: the recency/decay seams are gated "
+            "by `pit is None` (ADR-03), so a PIT query would measure a forced null."
+        ),
+    ),
     retrieval_only: bool = typer.Option(
         False,
         "--retrieval-only",
@@ -751,6 +760,7 @@ def benchmark_experiment_cmd(
         judge_model=judge_model,
         top_k=top_k,
         temporal=temporal,
+        pit_queries=pit_queries,
         reader_llm=StubReaderLLM() if retrieval_only else None,
         subsample=subsample,
     )

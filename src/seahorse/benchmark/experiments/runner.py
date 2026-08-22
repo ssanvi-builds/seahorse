@@ -22,6 +22,7 @@ that spread. Deterministic and temporally ordered.
 from __future__ import annotations
 
 import copy
+import logging
 import shutil
 import tempfile
 from collections.abc import Callable
@@ -202,6 +203,30 @@ def _load_dataset(corpus: str, *, subsample: bool = False) -> BenchmarkDataset:
             return subsample_dataset(dataset)
         return dataset
     raise ValueError(f"unknown corpus: {corpus!r} (expected {CORPORA!r})")
+
+
+_logger = logging.getLogger(__name__)
+
+
+def _resolve_pit_queries(experiment: str, pit_queries: bool) -> bool:
+    """Force active-now queries for the now-regime ranking experiments.
+
+    The recency/decay seams are gated by ``pit is None`` (ADR-03): a PIT query
+    reproduces state-as-of-t with pure RRF and never applies the bias. Running
+    ``decay_rrf``/``recency`` with ``pit_queries=True`` would therefore measure
+    a forced null (the 2026-08-21 correction) — the SUT PITs every query and
+    the seam silently never fires. These experiments must query active-now for
+    the bias to be testable.
+    """
+    if experiment in ("decay_rrf", "recency") and pit_queries:
+        _logger.warning(
+            "experiment=%s forces pit_queries=False: the recency/decay seams "
+            "are gated by `pit is None` (ADR-03); a PIT query would measure a "
+            "forced null",
+            experiment,
+        )
+        return False
+    return pit_queries
 
 
 def _recency_config(variant: ExperimentVariant) -> RecencyConfig | None:
@@ -476,6 +501,12 @@ def run_experiment(
         raise ValueError(f"unknown experiment: {experiment!r} (expected {EXPERIMENTS!r})")
     if corpus not in CORPORA:
         raise ValueError(f"unknown corpus: {corpus!r} (expected {CORPORA!r})")
+
+    # ADR-03: the recency/decay seams are gated by `pit is None`. A temporal PIT
+    # query would silently disable the seam and measure a forced null (the
+    # 2026-08-21 correction). Force active-now queries for these experiments so
+    # the bias is actually testable.
+    pit_queries = _resolve_pit_queries(experiment, pit_queries)
 
     if experiment == "batch":
         # (d) per-turn batching is a standalone measurement: no
