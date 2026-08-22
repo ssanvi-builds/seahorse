@@ -46,6 +46,26 @@ class TestRunEndToEndExperimentSynthetic:
         with pytest.raises(ValueError, match="unknown corpus"):
             run_end_to_end_experiment(corpus="nope")
 
+    def test_body_mode_runs_mechanics(self) -> None:
+        """The reader-context A/B mechanics: the body modes hydrate the FULL
+        body into the reader's context (progressive disclosure FULL level) and
+        the run still measures recall/e2e — no fallback."""
+        result = run_end_to_end_experiment(corpus="synthetic", context_mode="body")
+        assert result.regime == "hybrid"
+        assert result.n_queries == 10
+        assert result.end_to_end_accuracy >= 0.0
+
+    def test_body_bounded_mode_runs_mechanics(self) -> None:
+        result = run_end_to_end_experiment(
+            corpus="synthetic", context_mode="body_bounded"
+        )
+        assert result.regime == "hybrid"
+        assert result.n_queries == 10
+
+    def test_unknown_context_mode_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="unknown context mode"):
+            run_end_to_end_experiment(corpus="synthetic", context_mode="full")
+
 
 class TestExtractiveReader:
     def test_extracts_most_overlapping_line(self) -> None:

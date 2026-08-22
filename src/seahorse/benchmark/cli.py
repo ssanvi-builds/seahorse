@@ -69,6 +69,7 @@ def run_benchmark(
     decay_half_life: float | None = None,
     embed_mode: str = "body+summary",
     rerank_enable: bool = False,
+    context_mode: str = "summary",
     thresholds: dict[str, float] | None = None,
     reader_llm=None,
 ) -> int:
@@ -143,6 +144,7 @@ def run_benchmark(
             decay_config=config.decay_config,
             rerank_enabled=rerank_enable,
             embed_mode=config.embed_mode,
+            context_mode=context_mode,
         )
 
     runner = EvaluationRunner(

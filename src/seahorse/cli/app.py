@@ -665,6 +665,14 @@ def benchmark_run_cmd(
         "--rerank-enable",
         help="Cross-encoder rerank (opt-in, score_source=rrf_rerank).",
     ),
+    context_mode: str = typer.Option(
+        "summary",
+        "--context-mode",
+        help=(
+            "Reader context representation: summary (default) | body | body_bounded "
+            "(the reader-context A/B axis)."
+        ),
+    ),
 ) -> None:
     """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
     from seahorse.benchmark.cli import run_benchmark
@@ -683,6 +691,7 @@ def benchmark_run_cmd(
         decay_half_life=decay_half_life,
         embed_mode=embed_mode,
         rerank_enable=rerank_enable,
+        context_mode=context_mode,
     )
     raise typer.Exit(code=code)
 
@@ -744,6 +753,15 @@ def benchmark_experiment_cmd(
             "hangs on FTS5 and runs overnight). Default ON."
         ),
     ),
+    context_mode: str = typer.Option(
+        "summary",
+        "--context-mode",
+        help=(
+            "Reader context representation: summary (default) | body | body_bounded "
+            "(the reader-context A/B axis; the reader_context experiment runs all "
+            "three and ignores this flag)."
+        ),
+    ),
 ) -> None:
     """Run an experiment and print the sweep table + decision."""
     from seahorse.benchmark.experiments.runner import (
@@ -763,6 +781,7 @@ def benchmark_experiment_cmd(
         pit_queries=pit_queries,
         reader_llm=StubReaderLLM() if retrieval_only else None,
         subsample=subsample,
+        context_mode=context_mode,
     )
     typer.echo(render_experiment_report(report))
 

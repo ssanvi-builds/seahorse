@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from seahorse.benchmark.contracts import SUTResponse
 from seahorse.disclosure.types import PITPoint
@@ -53,6 +53,7 @@ class SeahorseSUT:
         decay_config: dict | None = None,
         rerank_enabled: bool = False,
         embed_mode: str = "body+summary",
+        context_mode: str = "summary",
         ep_id_to_session: dict[str, str] | None = None,
         fact_key_to_ep_id: dict[str, str] | None = None,
     ) -> None:
@@ -70,6 +71,7 @@ class SeahorseSUT:
         self._decay_config = decay_config
         self._rerank_enabled = rerank_enabled
         self._embed_mode = embed_mode
+        self._context_mode = context_mode
         # Retrieval bridge: fact_id→session (spec contract) + ep_id→session
         # (accurate, covers improve-created versions) + fact_key→ep_id (for the
         # KnowledgeUpdateSimulator). The warm-DB path pre-populates the bridge
@@ -162,7 +164,7 @@ class SeahorseSUT:
         retrieved_session_ids = tuple(
             self._ep_id_to_session.get(ep, "") for ep in retrieved_ep_ids
         )
-        context = self._format_index_rows(index_rows)
+        context = self._format_context(index_rows)
         tokens_measured = self._tokenizer.count(context)
         t0_reader = time.perf_counter()
         answer = self._reader_llm.generate(question, context, question_date)
@@ -222,13 +224,28 @@ class SeahorseSUT:
                 pass  # honest listing-regime degrade → active-now below
         return self._facade.recall(question, k=self._top_k)
 
-    @staticmethod
-    def _format_index_rows(rows) -> str:
-        lines = []
-        for i, r in enumerate(rows, 1):
-            snippet = r.summary or r.subject or ""
-            lines.append(f"{i}. [{r.subject}] {snippet}")
-        return "\n".join(lines)
+    def _format_context(self, rows) -> str:
+        """The reader's context via the assembler seam (configurable mode).
+
+        ``summary`` (default) is the ``[subject] summary`` baseline; the body
+        modes hydrate the top-k via ``batch_body_for`` (active-now — FULL PIT
+        is a later release). The seam lives in ``harness/context.py`` so the
+        QA path and the end_to_end experiment share the same representation.
+        """
+        from seahorse.benchmark.harness.context import (
+            ContextMode,
+            assemble_context,
+            batch_body_for,
+        )
+
+        if self._context_mode == "summary":
+            return assemble_context(rows, mode="summary")
+        bodies = batch_body_for(self._facade, [r.ep_id for r in rows])
+        return assemble_context(
+            rows,
+            mode=cast(ContextMode, self._context_mode),
+            body_for=bodies.get,
+        )
 
     # ------------------------------------------------------------ level probe
 

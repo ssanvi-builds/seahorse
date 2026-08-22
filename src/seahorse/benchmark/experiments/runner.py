@@ -56,6 +56,7 @@ from seahorse.benchmark.experiments.variants import (
     ExperimentVariant,
     variants_for,
 )
+from seahorse.benchmark.harness.context import ContextMode
 from seahorse.benchmark.harness.reader_llm import ReaderLLMClient
 from seahorse.benchmark.harness.tokenizer import Tokenizer
 from seahorse.benchmark.knowledge_update_simulator import KnowledgeUpdateSimulator
@@ -478,6 +479,7 @@ def run_experiment(
     template_cache: dict | None = None,
     pit_queries: bool = True,
     subsample: bool = True,
+    context_mode: str = "summary",
 ) -> ExperimentReport:
     """Run a benchmark experiment and return the report with the decision verdict.
 
@@ -713,7 +715,11 @@ def run_experiment(
                 f"got {corpus!r}"
             )
         end_to_end_result = run_end_to_end_experiment(
-            corpus=corpus, top_k=top_k, subsample=subsample
+            corpus=corpus,
+            top_k=top_k,
+            subsample=subsample,
+            context_mode=cast(ContextMode, context_mode),
+            reader=reader_llm,
         )
         return ExperimentReport(
             experiment="end_to_end",

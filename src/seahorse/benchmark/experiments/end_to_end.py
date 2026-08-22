@@ -46,6 +46,11 @@ from seahorse.benchmark.experiments.lmeb_corpus import (
     ingest_haystack,
     load_lmeb_subsample,
 )
+from seahorse.benchmark.harness.context import (
+    ContextMode,
+    assemble_context,
+    batch_body_for,
+)
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
 from seahorse.facade.errors import PitRecallNotSupportedMVP0
@@ -330,13 +335,15 @@ def build_real_corpus(
     return facade, storage, [], questions, ep_id_to_session
 
 
-def _format_context(rows) -> str:
-    """The reader's context: the top-k rows as ``N. [subject] summary`` lines."""
-    lines = []
-    for i, r in enumerate(rows, 1):
-        snippet = r.summary or r.subject or ""
-        lines.append(f"{i}. [{r.subject}] {snippet}")
-    return "\n".join(lines)
+def _format_context(
+    rows, *, mode: ContextMode = "summary", body_for=None
+) -> str:
+    """The reader's context via the assembler seam (summary | body | body_bounded).
+
+    ``body_for`` maps ep_id → body (the hydrated bodies for the non-summary
+    modes); None falls back to the summary line.
+    """
+    return assemble_context(rows, mode=mode, body_for=body_for)
 
 
 def _measure(
@@ -345,14 +352,24 @@ def _measure(
     questions: list[EndToEndQuestion],
     ep_id_to_session: dict[str, str],
     top_k: int,
+    *,
+    context_mode: ContextMode = "summary",
+    reader: Any | None = None,
 ) -> tuple[float, float, int, int, str]:
     """Run the full pipeline (retrieve -> reader -> answer) per question.
 
     Returns ``(recall_at_k, end_to_end_accuracy, n_queries, n_episodes,
     regime)``. The regime degrades to ``fallback_g2`` when any query returns
     rows with all-zero scores (the hybrid path was not wired).
+
+    ``context_mode`` selects the reader's context representation (the
+    reader-context A/B axis); the body modes hydrate the top-k via
+    ``batch_body_for`` (active-now — FULL PIT is a later release). ``reader``
+    defaults to the deterministic ``ExtractiveReader``; the authoritative run
+    injects the real ``ReaderLLMClient``.
     """
-    reader = ExtractiveReader()
+    if reader is None:
+        reader = ExtractiveReader()
     regime = "hybrid"
     recall_hits: list[float] = []
     e2e_hits: list[float] = []
@@ -380,9 +397,14 @@ def _measure(
         recall_hits.append(
             1.0 if retrieved_sessions & set(q.golden_session_ids) else 0.0
         )
-        # end-to-end: the reader's answer vs the golden answer. The reader sees
-        # the top-k summaries/subjects (NOT the bodies) — the A4 concern.
-        context = _format_context(rows)
+        # end-to-end: the reader's answer vs the golden answer. The context is
+        # the top-k rows rendered by the assembler seam — summary by default,
+        # hydrated bodies in the body modes (the A4 concern).
+        body_for = None
+        if context_mode != "summary":
+            bodies = batch_body_for(facade, [r.ep_id for r in rows])
+            body_for = bodies.get
+        context = _format_context(rows, mode=context_mode, body_for=body_for)
         answer = reader.generate(q.query, context, q.question_date)
         answer_norm = _normalize_answer(answer)
         golden_norm = _normalize_answer(q.golden_answer)
@@ -406,13 +428,18 @@ def run_end_to_end_experiment(
     db_path: Path | str | None = None,
     top_k: int = END_TO_END_TOP_K,
     subsample: bool = True,
+    context_mode: ContextMode = "summary",
+    reader: Any | None = None,
 ) -> EndToEndExperimentResult:
     """Run the end-to-end measurement and return the result.
 
     ``corpus`` is ``"synthetic"`` (mechanical CI verification) or ``"lmeb-s"``
     (the real corpus, authoritative — the reproducible 100 subsample by default;
     ``subsample=False`` opts into the full-corpus overnight run). ``db_path``
-    defaults to a fresh temp DB (reproducible).
+    defaults to a fresh temp DB (reproducible). ``context_mode`` is the
+    reader-context A/B axis (summary | body | body_bounded); ``reader`` defaults
+    to the deterministic ``ExtractiveReader`` (the authoritative run injects the
+    real ``ReaderLLMClient``).
     """
     if corpus not in ("synthetic", "lmeb-s"):
         raise ValueError(
@@ -428,7 +455,13 @@ def run_end_to_end_experiment(
         )
     try:
         recall_at_k, e2e, n_queries, n_episodes, regime = _measure(
-            facade, episodes, questions, ep_id_to_session, top_k
+            facade,
+            episodes,
+            questions,
+            ep_id_to_session,
+            top_k,
+            context_mode=context_mode,
+            reader=reader,
         )
     finally:
         storage.close()

@@ -98,6 +98,54 @@ def test_query_returns_response_with_bridge(sut, fake_reader):
     assert "index" in resp.latency_ms
 
 
+def _session_with_mid_turn_answer(sut) -> None:
+    """Ingest an episode whose answer sits MID-BODY — outside the first sentence
+    (the derived summary) — the exact A4 pathology the reader-context A/B
+    measures."""
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    sut.ingest(
+        [
+            _session(
+                "s1",
+                d,
+                [
+                    {
+                        "body": (
+                            "# France\n\n"
+                            "A project update about the deployment pipeline.\n\n"
+                            "Project X uses the RISC-V core."
+                        ),
+                        "title": "France",
+                    }
+                ],
+            )
+        ]
+    )
+
+
+def test_query_body_mode_hydrates_the_full_body(sut, fake_reader):
+    """The reader-context seam: with ``context_mode="body"`` the QA path hydrates
+    the FULL body (the mid-turn answer the summary loses) into the reader's
+    context — the A4 concern the reader-context A/B measures."""
+    sut._context_mode = "body"  # noqa: SLF001 — test hook
+    _session_with_mid_turn_answer(sut)
+    resp = sut.query("What does project X use?")
+    assert resp.answer == "Paris"  # the fake reader's canned answer
+    context = fake_reader.calls[-1][1]
+    assert "RISC-V" in context
+
+
+def test_query_summary_mode_does_not_hydrate_body(sut, fake_reader):
+    """Baseline (``context_mode="summary"``): the reader's context carries the
+    derived summary (the FIRST SENTENCE) ONLY — the mid-body answer never
+    reaches the reader (progressive disclosure, INDEX level)."""
+    _session_with_mid_turn_answer(sut)
+    sut.query("What does project X use?")
+    context = fake_reader.calls[-1][1]
+    assert "RISC-V" not in context
+    assert "deployment pipeline" in context
+
+
 def test_query_records_index_rerank_latency_when_enabled(sut, fake_reader):
     """With rerank_enabled the SUT records latency_ms["index_rerank"]
     (the rerank-path INDEX latency — the stage-3 budget)."""
