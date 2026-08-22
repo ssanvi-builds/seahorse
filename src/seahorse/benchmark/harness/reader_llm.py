@@ -38,7 +38,12 @@ class ReaderLLMClient:
 
         messages = [
             {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": context},
+            {
+                "role": "user",
+                "content": (
+                    f"Question: {question}\n\nRetrieved context:\n{context}"
+                ),
+            },
         ]
         resp = litellm.completion(
             model=self._model,

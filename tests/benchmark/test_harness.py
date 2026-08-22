@@ -53,6 +53,40 @@ def test_reader_llm_generate(monkeypatch):
     assert client.generate("Q?", "context") == "Paris"
 
 
+def test_reader_llm_generate_injects_question(monkeypatch):
+    """The question must reach the LLM: the user message carries it verbatim.
+
+    Regression for the reader-context finding (H2): ``generate`` received the
+    question but built ``messages=[system, context]`` — the reader was prompted
+    to answer but no question ever reached the model. Any end-to-end measurement
+    with a real reader is null until the question is injected.
+    """
+    client = ReaderLLMClient("ollama/qwen3:1.7b")
+    captured: dict = {}
+
+    class _Msg:
+        content = "Paris"
+
+    class _Choice:
+        message = _Msg()
+
+    class _Resp:
+        choices = [_Choice()]
+
+    def _completion(**kw):
+        captured["messages"] = kw["messages"]
+        return _Resp()
+
+    install_litellm(monkeypatch, _completion)
+    answer = client.generate("What is the capital of France?", "ctx")
+    assert answer == "Paris"
+    roles = [m["role"] for m in captured["messages"]]
+    assert roles == ["system", "user"]
+    user_msg = captured["messages"][-1]["content"]
+    assert "What is the capital of France?" in user_msg
+    assert "ctx" in user_msg
+
+
 def test_tokenizer_heuristic_fallback():
     """The deterministic chars/4 heuristic is used when tiktoken is absent."""
     tok = Tokenizer()
