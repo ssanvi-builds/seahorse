@@ -369,6 +369,10 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
   populated), `recall` falls back to the current-state listing (score 0.0, no
   ranking) and point-in-time recall is refused — the engine keeps working
   without ranking.
+- **Opt-in decay ranking (default-off)**: a FAMA-style Ebbinghaus forgetting
+  curve downweights stale knowledge by age (`score' = score · 2^(-age/half_life)`),
+  with per-type half-life priors. Off by default: the pure-RRF fingerprint stays
+  bit-comparable.
 - **LLM extraction**: a real multi-LLM path (ollama / gemini / groq /
   openrouter / openai / anthropic / deepseek / vllm, local-first) with a strict
   schema validator + repair loop, retry/fallback chain, and an operative cost cap
@@ -445,15 +449,15 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ## Current status
 
-**v0.8.0.** The memory engine works end-to-end from a clean install: write
+**v0.10.0.** The memory engine works end-to-end from a clean install: write
 episodes, recall them with hybrid semantic retrieval, extract with a real
 multi-LLM path (local-first, CI-gated), improve and forget them, and serve an
 agent over stdio MCP. Recall ranks by relevance when vectors are populated and
 the embedder is wired, and honestly degrades to a current-state listing
-otherwise. `seahorse import` migrates claude-mem observations to episodes, and
-an opt-in recency ranking signal is available. Batch distillation
-(`seahorse consolidate`) turns many episodes into one consolidated note, with
-opt-in LLM synthesis and supersession. The MCP server and the CLI now expose the
-same skill and read-only surfaces (14 MCP tools), timelines can be ranged by
-`created_at`/`valid_at`, and `--verbose` reports per-operation timing. See
-[What works](#what-works) and [ROADMAP.md](ROADMAP.md) for what is next.
+otherwise. An opt-in decay ranking bias (default-off) downweights stale
+knowledge by age. `seahorse import` migrates claude-mem observations to
+episodes, and batch distillation (`seahorse consolidate`) turns many episodes
+into one consolidated note, with opt-in LLM synthesis and supersession. The
+benchmark harness ships in the repo with caveats and reproduction commands in
+[docs/benchmark.md](docs/benchmark.md). See [What works](#what-works) and
+[ROADMAP.md](ROADMAP.md) for what is next.
