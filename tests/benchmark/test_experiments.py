@@ -532,5 +532,6 @@ def test_experiments_and_corpora_constants():
         "rrf_k",
         "rerank_body",
         "end_to_end",
+        "reader_context",
     }
     assert set(CORPORA) == {"synthetic", "lmeb-s", "claude-mem"}

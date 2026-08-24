@@ -430,6 +430,15 @@ def render_experiment_report(report: ExperimentReport) -> str:
         return render_end_to_end_report(
             cast(EndToEndExperimentResult, report.batch_result), report.decision
         )
+    if report.experiment == "reader_context":
+        from seahorse.benchmark.experiments.reader_context import (
+            ReaderContextExperimentResult,
+            render_reader_context_report,
+        )
+
+        return render_reader_context_report(
+            cast(ReaderContextExperimentResult, report.batch_result), report.decision
+        )
     lines = [
         f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
@@ -728,6 +737,35 @@ def run_experiment(
             results=(),
             decision=decide_end_to_end(end_to_end_result),
             batch_result=end_to_end_result,
+        )
+
+    if experiment == "reader_context":
+        # (reader-context A/B) the reader-context comparison is a standalone
+        # measurement: no EvaluationRunner, no BenchmarkDataset — the corpus is
+        # the synthetic retrievable episodes (or the authoritative LMEB-S run)
+        # and the metric is end-to-end accuracy across the summary | body |
+        # body_bounded assembler modes. Delegates to the reader_context module.
+        # The standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.reader_context import (
+            decide_reader_context,
+            run_reader_context_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"reader_context experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        reader_context_result = run_reader_context_experiment(
+            corpus=corpus, top_k=top_k, subsample=subsample, reader=reader_llm
+        )
+        return ExperimentReport(
+            experiment="reader_context",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_reader_context(reader_context_result),
+            batch_result=reader_context_result,
         )
 
     base_config = BenchmarkConfig(

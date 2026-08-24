@@ -346,7 +346,7 @@ def _format_context(
     return assemble_context(rows, mode=mode, body_for=body_for)
 
 
-def _measure(
+def measure_end_to_end(
     facade: Any,
     episodes: list[Episode],
     questions: list[EndToEndQuestion],
@@ -454,7 +454,7 @@ def run_end_to_end_experiment(
             db, subsample=subsample
         )
     try:
-        recall_at_k, e2e, n_queries, n_episodes, regime = _measure(
+        recall_at_k, e2e, n_queries, n_episodes, regime = measure_end_to_end(
             facade,
             episodes,
             questions,
@@ -552,6 +552,7 @@ __all__ = [
     "build_real_corpus",
     "build_synthetic_corpus",
     "decide_end_to_end",
+    "measure_end_to_end",
     "render_end_to_end_report",
     "run_end_to_end_experiment",
 ]

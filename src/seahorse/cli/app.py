@@ -703,8 +703,8 @@ def benchmark_experiment_cmd(
         ...,
         help=(
             "recency | rerank | embed | decay_rrf | batch | entity_centric | "
-            "multi_hop | decay | skills | rrf_k | rerank_body | end_to_end "
-            "(which experiment to run)."
+            "multi_hop | decay | skills | rrf_k | rerank_body | end_to_end | "
+            "reader_context (which experiment to run)."
         ),
     ),
     corpus: str = typer.Option(
