@@ -4,6 +4,33 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-08-22
+
+### Added
+
+- **Reader-context A/B experiment** — `reader_context` benchmark experiment
+  (summary | body | body_bounded) that falsifies the A4 `reader_bottleneck`
+  hypothesis: does hydrating the FULL body close the end-to-end gap? New
+  `harness/context.py` seam (`ContextMode`, pure `assemble_context`,
+  `batch_body_for` wiring over `recall_full` in batches ≤ `MAX_FULL_BATCH`),
+  `experiments/reader_context.py` (measures e2e accuracy across the three modes
+  over the SAME corpus, `decide_reader_context` flips iff a body mode recovers
+  ≥ 10pp over summary, `invalid_regime` on `fallback_g2`), wired into
+  `EXPERIMENTS`, the runner dispatch/render and the CLI (`--context-mode`,
+  `--reader-model`).
+- **H2 fix — the reader now sees the question** — `ReaderLLMClient.generate`
+  received `question` but discarded it (built `messages=[system, context]`); the
+  user message now includes `"Question: {question}\n\nRetrieved context:
+  {context}"`. Any end-to-end measurement with the real reader was null until
+  this fix.
+- **Authoritative decision (2026-08-22)** — the reader-context A/B on the
+  reproducible 100 subsample with the real reader (`ollama/qwen3:0.6b`, t=0,
+  seed=42): recall@10 0.790 (ceiling) · e2e summary 0.070 · body 0.090 ·
+  body_bounded 0.090 → **keep_summary** (delta 2.0pp < 10pp). The summary
+  representation is NOT the reader bottleneck; the ~70pp recall→e2e gap points
+  to episode-level retrieval granularity or reader quality (follow-ups). See
+  `docs/benchmark.md`.
+
 ## [0.10.0] - 2026-08-21
 
 ### Added

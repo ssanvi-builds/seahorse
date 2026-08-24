@@ -110,6 +110,46 @@ The decisions that are action items:
 Each run is reproducible via the commands in [Reproduce](#reproduce) with
 `--experiment <name> --corpus lmeb-s --retrieval-only --subsample`.
 
+## Authoritative experiment decisions — 2026-08-22 reader-context
+
+The `reader_context` A/B falsifies the A4 `reader_bottleneck` hypothesis: does
+hydrating the **full body** (not the ~200-char summary) close the end-to-end
+gap? Measured on the same reproducible 100-question subsample (seed 42, split
+`c6178fd0a436`), corpus built **once** and the three assembler modes
+(`summary` | `body` | `body_bounded` capped at 2000 chars/episode) measured
+over the same facade. Reader: the real `ReaderLLMClient` (`ollama/qwen3:0.6b`,
+t=0, seed=42, max_tokens=512) — the H2 bug (the reader discarded the question)
+was fixed before this run. Active-now regime (FULL PIT is a later release).
+
+| Mode | recall@10 (ceiling) | end-to-end accuracy |
+|---|---|---|
+| `summary` (baseline) | 0.790 | **0.070** |
+| `body` (full hydration) | 0.790 | 0.090 |
+| `body_bounded` (2000 chars) | 0.790 | 0.090 |
+
+**Decision: `keep_summary`.** Hydrating the full body recovers only **2.0pp**
+(0.070 → 0.090), far below the `READER_CONTEXT_DELTA_PP` = 10pp flip threshold.
+The summary representation is **not** the reader bottleneck.
+
+**The deeper finding.** The ~70pp gap between recall@10 (0.790 — the golden
+session ranks in the top-10) and end-to-end accuracy (0.070–0.090) does *not*
+close when the reader sees the full body. The bottleneck is therefore not the
+context representation. Two candidate causes, both follow-ups: (1) **episode
+granularity** — session-level recall is coarse; the golden session is in the
+top-10, but the specific answer-bearing episode may not be, so no context
+representation can help; (2) **reader quality** — `qwen3:0.6b` is a weak
+extractor, and a stronger reader (e.g. `qwen3:14b-q4_K_M`, ~15× slower) might
+recover more from either representation. The delta between modes is the honest
+signal here; the absolute accuracy is a floor set by the weak reader.
+
+**Caveats.** Reader is the small local model `qwen3:0.6b` (chosen on a timing
+probe: ~2s/query vs ~28s for the 14b — 300 LLM calls ≈ 10 min vs 2.3 h); the
+extractive double is never presented as "the reader". The `episodes: 0` line in
+the report is cosmetic (the real corpus keeps episodes in the DB, not a Python
+list). The harness seam (`ContextMode`, `assemble_context`, `batch_body_for`,
+`--context-mode`) ships as the product-facing deliverable; the product answer
+path keeps the summary representation.
+
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full
@@ -196,6 +236,10 @@ seahorse benchmark experiment rerank_body --corpus lmeb-s --retrieval-only --sub
 seahorse benchmark experiment end_to_end --corpus lmeb-s --retrieval-only --subsample
 seahorse benchmark experiment decay_rrf --corpus lmeb-s --retrieval-only --no-temporal --subsample
 seahorse benchmark experiment recency --corpus lmeb-s --retrieval-only --no-temporal --subsample
+
+# Reader-context A/B (real reader, requires Ollama + the llm extra):
+uv sync --extra dev --extra benchmark --extra embeddings --extra llm
+seahorse benchmark experiment reader_context --corpus lmeb-s --reader-model ollama/qwen3:0.6b --subsample
 
 # Full run with judge LLM (requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm
