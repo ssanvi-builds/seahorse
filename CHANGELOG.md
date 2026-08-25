@@ -4,6 +4,32 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-08-25
+
+### Added
+
+- **Episode-granularity experiment** — `episode_granularity` benchmark
+  experiment that measures whether the ANSWER-BEARING episode (not just its
+  golden session) reaches the top-k — the remaining A4 suspect after ranking
+  (session recall@10 0.790) and reader-context (body +2.0pp) were ruled out.
+  New pure `experiments/episode_locator.py` (longest contiguous n-gram of the
+  answer within episode bodies; verbatim/fragment/single-token/unlocalized
+  statuses; injectable embedding fallback) and `experiments/episode_granularity.py`
+  (session vs episode recall@10, within-session top-1/3/5 via vector-only
+  re-ranking, answer-in-context rate, `decide_episode_granularity` with the
+  reader-bottleneck / two-stage / not-retrievable thresholds, `invalid_regime`
+  on `fallback_g2`), wired into `EXPERIMENTS`, the runner dispatch/render and
+  the CLI help. Synthetic CI corpus verifies the mechanics (case A:
+  recoverable episode → 1.0/1.0; case B: session-only → 1.0/0.0).
+- **Authoritative decision (2026-08-25)** — `episode_granularity` on the
+  reproducible 100 subsample (retrieval-only, active-now): episode-level
+  recall@10 **0.533** clears the 0.5 gate — the answer-bearing episode IS
+  retrieved in a majority of queries, so granularity is not the dominant loss.
+  Within-session top-1/3/5 = 0.413/0.685/0.826, answer-in-context only 0.350.
+  **`reader_bottleneck`** — falsifies the A4 granularity hypothesis; follow-up
+  is reader quality / context assembly, NOT two-stage retrieval. See
+  `docs/benchmark.md`.
+
 ## [0.11.0] - 2026-08-22
 
 ### Added

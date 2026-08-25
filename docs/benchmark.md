@@ -150,6 +150,52 @@ list). The harness seam (`ContextMode`, `assemble_context`, `batch_body_for`,
 `--context-mode`) ships as the product-facing deliverable; the product answer
 path keeps the summary representation.
 
+## Authoritative experiment decisions — 2026-08-25 episode-granularity
+
+The `episode_granularity` experiment falsifies the A4 granularity hypothesis:
+is the ~70pp gap (recall@10 0.790 → e2e 0.070) caused by the answer-bearing
+episode missing from the top-10 even though its golden session ranks? Measured
+on the same reproducible 100-question subsample (seed 42, split
+`c6178fd0a436`), retrieval-only, active-now. The answer-bearing episode is
+located with the n-gram heuristic in `experiments/episode_locator.py`
+(verbatim / fragment / single-token; 92/100 localized — the 8 unlocalized are
+derived numeric answers excluded from the episode-recall denominator).
+Within-session rank is a vector-only approximation (fastembed, role-prefixed):
+the engine has no session-restricted recall, so all episodes of the golden
+session are scored against the query and the best answer-bearing episode's rank
+is read off.
+
+| Metric | Value |
+|---|---|
+| session-level recall@10 | 0.790 |
+| episode-level recall@10 (localized only, n=92) | **0.533** |
+| within-session top-1 / top-3 / top-5 | 0.413 / 0.685 / 0.826 |
+| answer-in-context rate (fragment ≥ 2 tokens in top-k) | 0.350 |
+
+**Decision: `reader_bottleneck`.** Episode-level recall@10 (0.533) clears the
+`EPISODE_LEVEL_RECALL_THRESHOLD` = 0.5 gate: the answer-bearing episode IS
+retrieved in a majority of queries, so episode granularity is not the dominant
+bottleneck. The remaining loss is downstream — context assembly + reader
+extraction — and the conditional two-stage retrieval fix is explicitly **not**
+indicated by the plan's decision rule.
+
+**Honest reading of the numbers.** The granularity gap is real but secondary:
+session 0.790 → episode 0.533 (≈26pp), and within-session the answer episode is
+top-1 only 41% of the time — a two-stage session→episode rerank would recover
+part of that. But the dominant loss sits between episode recall (0.533) and
+answer-in-context (0.350): the answer-bearing episode reaches the top-10, yet a
+distinctive answer fragment appears in the assembled context barely a third of
+the time. Follow-ups, in order of expected leverage: (1) **reader quality** —
+`qwen3:0.6b` is a weak extractor; (2) **context assembly** — which episodes'
+bodies actually make it into the top-k context; (3) two-stage session→episode
+re-ranking, only if (1) and (2) do not close the gap.
+
+**Caveats.** Localization is a heuristic, never ground truth — the raw LMEB
+dataset exposes no answer→turn mapping. The 8/100 unlocalized derived answers
+(e.g. "43" computed from two facts) are excluded from the denominator, not
+counted as misses. Within-session rank is vector-only, a local approximation of
+the hybrid re-score. Runs are active-now (ADR-03); FULL PIT is a later release.
+
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full
@@ -240,6 +286,9 @@ seahorse benchmark experiment recency --corpus lmeb-s --retrieval-only --no-temp
 # Reader-context A/B (real reader, requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm
 seahorse benchmark experiment reader_context --corpus lmeb-s --reader-model ollama/qwen3:0.6b --subsample
+
+# Episode-granularity (retrieval-only, deterministic — the heuristic is pure code):
+seahorse benchmark experiment episode_granularity --corpus lmeb-s --retrieval-only --subsample
 
 # Full run with judge LLM (requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm
