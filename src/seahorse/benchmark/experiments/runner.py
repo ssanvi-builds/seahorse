@@ -439,6 +439,16 @@ def render_experiment_report(report: ExperimentReport) -> str:
         return render_reader_context_report(
             cast(ReaderContextExperimentResult, report.batch_result), report.decision
         )
+    if report.experiment == "episode_granularity":
+        from seahorse.benchmark.experiments.episode_granularity import (
+            EpisodeGranularityExperimentResult,
+            render_episode_granularity_report,
+        )
+
+        return render_episode_granularity_report(
+            cast(EpisodeGranularityExperimentResult, report.batch_result),
+            report.decision,
+        )
     lines = [
         f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
@@ -766,6 +776,35 @@ def run_experiment(
             results=(),
             decision=decide_reader_context(reader_context_result),
             batch_result=reader_context_result,
+        )
+
+    if experiment == "episode_granularity":
+        # (episode granularity) the session- vs episode-level recall comparison
+        # is a standalone measurement: no EvaluationRunner, no BenchmarkDataset —
+        # the corpus is the synthetic recoverable/session-only episodes (or the
+        # authoritative LMEB-S run) and the metric is whether the answer-bearing
+        # EPISODE reaches the top-10. Delegates to the episode_granularity
+        # module. The standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.episode_granularity import (
+            decide_episode_granularity,
+            run_episode_granularity_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"episode_granularity experiment corpus must be 'synthetic' or "
+                f"'lmeb-s', got {corpus!r}"
+            )
+        episode_granularity_result = run_episode_granularity_experiment(
+            corpus=corpus, top_k=top_k, subsample=subsample
+        )
+        return ExperimentReport(
+            experiment="episode_granularity",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_episode_granularity(episode_granularity_result),
+            batch_result=episode_granularity_result,
         )
 
     base_config = BenchmarkConfig(
