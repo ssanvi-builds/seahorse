@@ -295,6 +295,65 @@ the measurement corrected the estimate. Caveat: `answer_fragment_present` is a
 substring (not semantic) check, so paraphrase answers underestimate recall on
 the non-single-token queries too.
 
+## Authoritative experiment decisions — 2026-08-27 two-stage session→episode
+
+The `two_stage_retrieval` experiment is the documented follow-up to the 15
+retrieval misses from context-assembly. Same reproducible 100-question subsample
+(seed 42), `--retrieval-only` (deterministic), active-now. The experiment
+measures the **oracle upper bound** of a two-stage design — session→episode
+retrieval with **perfect golden-session identification** — re-ranking the
+golden session's episodes by a real **hybrid** (vector + BM25 over bodies)
+score.
+
+| Metric | Value |
+|---|---|
+| session recall@10 (baseline) | 0.790 (79/100) |
+| episode recall@10 (baseline, pure RRF) | **0.533** (49/92 localized) |
+| within-session top-1 / top-3 / top-5 (hybrid re-rank) | 0.356 / 0.593 / 0.831 |
+| **two-stage@1 / @3 / @5 (oracle)** | 0.283 / 0.467 / **0.707** |
+
+`two_stage@5 = 0.707 ≥ 0.533 + 0.05` → the oracle gate flips **`two_stage_indicated`**:
+with perfect session identification, the golden session's top-5 (hybrid re-ranked)
+contains the answer-bearing episode more often than the global top-10. The
+conditional fix (session-restricted recall in the engine) was therefore
+implemented and measured — the seam, not the upper bound.
+
+**The engine's automatic version is NET-HARMFUL.** Three designs were
+implemented and verified on the same subsample:
+
+| Design | Identification | episode recall@10 | session hits |
+|---|---|---|---|
+| Baseline (boost OFF, pure RRF) | — | **0.533** | 79/100 |
+| Aggressive | top-1 candidate's session | 0.326 | 45/100 |
+| Merge | majority session, re-score + interleave | 0.424 | 62/100 |
+| Append-only | majority session, never re-score fused, append fresh | 0.424 | 62/100 |
+
+**Decision: `two_stage_not_indicated` (engine).** The oracle upper bound (0.707)
+is NOT engine-realizable on LMEB-S: sessions are short (~4 turns) and the top-10
+surfaces only 1–2 episodes per session, so majority-session identification ties
+and degenerates to near-random — session hits drop 79 → 62 with any boost. The
+bottleneck is **session identification, not the re-rank**: the re-rank recovers
+episodes only when the identified session is actually golden, and the automatic
+identification is too unreliable to make that pay. The oracle measures an upper
+bound the product cannot reach without a separate session-retrieval stage that
+does not exist (a real product change, not a ranking seam).
+
+**Closure.** `session_boost` (the two-stage seam) ships **disabled by default**;
+the SUT is byte-identical to the v0.13.0 baseline. The seam, the
+`session_id` denormalization (migration 012) and its tests stay as **measured
+infrastructure** — the negative result is documented, not hidden, and the
+benchmark experiments pass `session_boost=False` explicitly to measure the
+pure-RRF baseline. The two-stage idea is not dead in general (it works on the
+oracle); it is closed for LMEB-S specifically because session identification is
+the missing stage. Re-opening it would require a real session-retrieval product
+stage, which is out of scope for the current milestone.
+
+**Honest reading of the numbers.** Three independent designs all landed below
+the baseline — this is not an implementation bug (the unit mechanics are
+verified) but a structural limit of the data (short sessions → identification
+ties). The oracle-vs-automatic gap (0.707 vs 0.424) is the honest measure of how
+much the missing session-retrieval stage would be worth if it existed.
+
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full
@@ -395,6 +454,9 @@ seahorse benchmark experiment reader_quality --corpus lmeb-s --reader-model olla
 
 # Context-assembly gap decomposition (retrieval-only, deterministic):
 seahorse benchmark experiment context_assembly --corpus lmeb-s --retrieval-only --subsample
+
+# Two-stage session→episode (oracle upper bound, retrieval-only, deterministic):
+seahorse benchmark experiment two_stage_retrieval --corpus lmeb-s --retrieval-only --subsample
 
 # Full run with judge LLM (requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm

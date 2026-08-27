@@ -4,6 +4,37 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-08-27
+
+### Added
+
+- **Two-stage session→episode experiment** — `two_stage_retrieval` benchmark
+  experiment measuring the oracle upper bound of a two-stage design (session →
+  episode with PERFECT golden-session identification): the golden session's
+  episodes are re-ranked by a real hybrid score (vector + BM25 over bodies),
+  and `two_stage_episode_recall_{1,3,5}` = `session_recall × within_session_top_m`
+  is the decision headline. New `experiments/two_stage_retrieval.py` (frozen
+  `TwoStageExperimentResult`; pure `_hybrid_rank_within_session`; R3-prior
+  decay-free `decide_two_stage` with the explicit 5pp threshold —
+  `invalid_regime` on `fallback_g2`, `two_stage_indicated` iff
+  `two_stage@5 >= episode_recall@k + 0.05`, else `two_stage_not_indicated`),
+  wired into `EXPERIMENTS`, the runner dispatch/render and the CLI. Synthetic
+  corpus verifies the mechanics (3 cases, 9 queries, HashEmbedder):
+  session_recall 6/9, two_stage@5 6/9 → `two_stage_indicated`.
+- **Authoritative decision (2026-08-27)** — the oracle flips
+  `two_stage_indicated` (two_stage@5 **0.707** ≥ 0.533 + 0.05), so the
+  conditional fix was implemented AND measured: `session_id` denormalized into
+  `episode_index` (migration 012), and a `session_boost` seam in `recall` that
+  identifies the majority session from the fused top-k, re-ranks its episodes
+  by hybrid and appends the fresh ones. The automatic version is **NET-HARMFUL**
+  on LMEB-S in every design (aggressive 0.326, merge 0.424, append-only 0.424
+  vs pure-RRF **0.533**; session hits 79 → 62): sessions are short (~4 turns)
+  and the top-10 surfaces 1–2 episodes per session, so majority identification
+  ties and degenerates — session identification is the bottleneck, not the
+  re-rank. The oracle upper bound is NOT engine-realizable. `session_boost`
+  ships **disabled by default** (SUT byte-identical to v0.13.0); the seam,
+  migration and tests stay as measured infrastructure. See `docs/benchmark.md`.
+
 ## [0.13.0] - 2026-08-27
 
 ### Added
