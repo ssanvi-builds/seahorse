@@ -51,14 +51,14 @@ from seahorse.benchmark.experiments.end_to_end import (
     EndToEndQuestion,
     build_real_corpus,
 )
+from seahorse.benchmark.experiments.episode_granularity import (
+    ANSWER_FRAGMENT_MIN_NGRAM,
+)
 from seahorse.benchmark.experiments.episode_locator import (
     STATUS_SINGLE_TOKEN,
     STATUS_UNLOCALIZED,
     answer_fragment_present,
     locate_answer_episodes,
-)
-from seahorse.benchmark.experiments.episode_granularity import (
-    ANSWER_FRAGMENT_MIN_NGRAM,
 )
 from seahorse.benchmark.harness.context import assemble_context, batch_body_for
 from seahorse.contracts.episode import Episode
@@ -304,7 +304,7 @@ def _golden_session_ep_ids(
 def _classify_query(
     *,
     status: str,
-    answer_ep_ids: Sequence[str],
+    answer_ep_ids: set[str],
     retrieved_ep_ids: Sequence[str],
     context_hit: bool,
 ) -> str:

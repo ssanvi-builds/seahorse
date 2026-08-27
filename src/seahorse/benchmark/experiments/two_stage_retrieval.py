@@ -436,7 +436,7 @@ def _measure_two_stage(
     episode_hits: list[float] = []
     n_localized = 0
     n_session_hit = 0
-    n_within_hit: dict[int, int] = {m: 0 for m in SESSION_TOPS}
+    n_within_hit: dict[int, int] = dict.fromkeys(SESSION_TOPS, 0)
     regime = "hybrid"
 
     for q in questions:

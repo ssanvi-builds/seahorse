@@ -13,9 +13,6 @@ from __future__ import annotations
 import pytest
 
 from seahorse.benchmark.experiments.context_assembly import (
-    HYDRATION_FAILURE_RATE_THRESHOLD,
-    METRIC_CEILING_RATE_THRESHOLD,
-    RETRIEVAL_MISS_RATE_THRESHOLD,
     ContextAssemblyExperimentResult,
     _classify_query,
     decide_context_assembly,
