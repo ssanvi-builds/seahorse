@@ -61,6 +61,7 @@ class IndexRowData:
     created_at: datetime
     expired_at: datetime | None
     supersedes: str | None
+    session_id: str | None = None
 
 
 class HopsCapExceeded(Exception):

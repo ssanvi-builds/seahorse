@@ -1,6 +1,6 @@
 """Validate IndexRowData matches the signed row contract.
 
-The frozen 14-field shape is the stable contract surface the indexer owns and
+The frozen 15-field shape is the stable contract surface the indexer owns and
 the persistence layer, hybrid retrieval, and the benchmark harness consume. This
 test guards the freeze: a silent field add/remove here fails the build.
 """
@@ -35,6 +35,7 @@ _BASE_ROW: dict = {
     "created_at": datetime(2026, 1, 1, tzinfo=UTC),
     "expired_at": None,
     "supersedes": None,
+    "session_id": None,
 }
 
 
@@ -42,9 +43,9 @@ def _make_row(**overrides) -> IndexRowData:
     return IndexRowData(**{**_BASE_ROW, **overrides})
 
 
-def test_index_row_data_has_exactly_14_fields():
-    # Row-contract freeze: 14 fields.
-    assert len(dataclasses.fields(IndexRowData)) == 14
+def test_index_row_data_has_exactly_15_fields():
+    # Row-contract freeze: 15 fields.
+    assert len(dataclasses.fields(IndexRowData)) == 15
 
 
 def test_index_row_data_field_names_match_signed_contract():
@@ -64,6 +65,7 @@ def test_index_row_data_field_names_match_signed_contract():
         "created_at",
         "expired_at",
         "supersedes",
+        "session_id",
     }
     assert names == expected
 

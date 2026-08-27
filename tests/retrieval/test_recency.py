@@ -234,6 +234,9 @@ class TestRecallRecencyIntegration:
             clock=fixed_clock,
             recency=RecencyConfig(gamma=GAMMA, half_life_days=HALF_LIFE),
         )
+        # One batch IN query for recency's created_at read, no N+1 (the session
+        # boost is default-OFF — the authoritative LMEB-S run proved it
+        # net-harmful — so it adds no get_rows call).
         assert len(index_repo.get_rows_calls) == 1
         assert set(index_repo.get_rows_calls[0]) == {"e1", "e2"}
 

@@ -63,6 +63,7 @@ def _row_to_index(row: sqlite3.Row) -> IndexRowData:
         created_at=_req_dt(row["created_at"]),
         expired_at=_parse_dt(row["expired_at"]),
         supersedes=row["supersedes"],
+        session_id=row["session_id"],
     )
 
 
@@ -109,6 +110,20 @@ class SqliteEpisodeIndexRepository:
 
     def get_rows(self, ep_ids: Sequence[str]) -> list[IndexRowData]:
         return self._rows_by_ep_ids(tuple(ep_ids))
+
+    def get_rows_by_session(self, session_id: str) -> list[IndexRowData]:
+        """All rows of one session (SQL ``WHERE session_id = ?``).
+
+        The two-stage session→episode re-rank fetches the top session's episodes
+        with this single query (denormalized by migration 012). Deterministic
+        order (``ep_id`` asc) so the re-rank is reproducible.
+        """
+        with self._cm.reader() as r:
+            rows = r.execute(
+                "SELECT * FROM episode_index WHERE session_id = ? ORDER BY ep_id",
+                (session_id,),
+            ).fetchall()
+        return [_row_to_index(row) for row in rows]
 
     def get_rows_state_at(self, ep_ids: Sequence[str], t: datetime) -> list[IndexRowData]:
         ids = tuple(ep_ids)

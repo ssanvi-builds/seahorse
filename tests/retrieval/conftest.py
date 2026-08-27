@@ -45,6 +45,7 @@ def _ep(
     expired_at: datetime | None = None,
     supersedes: str | None = None,
     schema_version: str = "F3.1",
+    body: str | None = None,
 ) -> Episode:
     return Episode(
         id=ep_id,
@@ -56,6 +57,7 @@ def _ep(
         invalid_at=invalid_at,
         expired_at=expired_at,
         supersedes=supersedes,
+        body=body,
     )
 
 
@@ -68,6 +70,7 @@ def _row(
     invalid_at: datetime | None = None,
     expired_at: datetime | None = None,
     supersedes: str | None = None,
+    session_id: str | None = None,
 ) -> IndexRowData:
     return IndexRowData(
         ep_id=ep_id,
@@ -84,6 +87,7 @@ def _row(
         created_at=created_at,
         expired_at=expired_at,
         supersedes=supersedes,
+        session_id=session_id,
     )
 
 
@@ -106,6 +110,7 @@ class FakeQueryEmbedder:
     def __init__(self, vec: Any = "VEC") -> None:
         self.calls: list[str] = []
         self.vec = vec
+        self.similarity_scores: list[float] | None = None
 
     def embed_query(self, query: str) -> Any:
         self.calls.append(query)
@@ -114,6 +119,14 @@ class FakeQueryEmbedder:
     def embed_queries(self, texts: Sequence[str]) -> Any:
         self.calls.extend(texts)
         return [self.vec for _ in texts]
+
+    def similarity(self, query_vec: Any, passages: Sequence[str]) -> Sequence[float]:
+        """Cosine seam for the session re-rank. Defaults to a per-passage
+        token-overlap proxy so the two-stage boost is deterministic without a
+        real embedder; tests may pin ``similarity_scores`` for exact control."""
+        if self.similarity_scores is not None:
+            return self.similarity_scores[: len(passages)]
+        return [float(len(p.split())) for p in passages]
 
 
 class FakeVectorRepo:
@@ -280,13 +293,19 @@ class FakeIndexRepo:
     def __init__(self) -> None:
         self.get_rows_calls: list[list[str]] = []
         self.rows: dict[str, IndexRowData] = {}
+        self.session_rows: dict[str, list[IndexRowData]] = {}
 
     def get_rows(self, ep_ids: Sequence[str]) -> list[IndexRowData]:
         self.get_rows_calls.append(list(ep_ids))
         return [self.rows[e] for e in ep_ids if e in self.rows]
 
+    def get_rows_by_session(self, session_id: str) -> list[IndexRowData]:
+        return list(self.session_rows.get(session_id, []))
+
     def add(self, row: IndexRowData) -> None:
         self.rows[row.ep_id] = row
+        if row.session_id is not None:
+            self.session_rows.setdefault(row.session_id, []).append(row)
 
     # The remaining accessors are unused by the engine; raise to fail loud if reached.
     def get_rows_state_at(

@@ -291,17 +291,26 @@ def _default_embedder(corpus: str) -> Embedder:
 def _recall_rows(facade: Any, q: EndToEndQuestion, top_k: int):
     """Recall the top-k rows (active-now, the honest PIT fallback mirroring
     ``measure_end_to_end`` — a regime without a PIT axis raises
-    ``PitRecallNotSupportedMVP0`` → active-now, never crash the run)."""
+    ``PitRecallNotSupportedMVP0`` → active-now, never crash the run).
+
+    ``session_boost=False``: this experiment measures the within-session re-rank
+    UPPER BOUND (the pre-fix baseline + its own hybrid re-rank). The engine's
+    session boost is the automatic version (imperfect identification); measuring
+    with it active would corrupt the baseline ``session_level_recall_at_k``.
+    """
     if q.question_date is not None:
         from seahorse.disclosure.types import PITPoint  # lazy
 
         try:
             return facade.recall(
-                q.query, k=top_k, pit=PITPoint(kind="state_at", t=q.question_date)
+                q.query,
+                k=top_k,
+                pit=PITPoint(kind="state_at", t=q.question_date),
+                session_boost=False,
             )
         except PitRecallNotSupportedMVP0:
-            return facade.recall(q.query, k=top_k)
-    return facade.recall(q.query, k=top_k)
+            return facade.recall(q.query, k=top_k, session_boost=False)
+    return facade.recall(q.query, k=top_k, session_boost=False)
 
 
 def _golden_session_ep_ids(

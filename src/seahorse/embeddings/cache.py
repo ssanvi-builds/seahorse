@@ -56,6 +56,12 @@ class CachedQueryEmbedder:
         self._cache_put(h, blob)
         return blob
 
+    def similarity(self, query_vec: Any, passages: Sequence[str]) -> Sequence[float]:
+        # The two-stage session re-rank is a per-recall operation over the top
+        # session's episodes (not the repeated-query hot path the cache serves);
+        # delegate to the inner embedder verbatim.
+        return self._inner.similarity(query_vec, passages)
+
     def embed_queries(self, texts: Sequence[str]) -> Any:
         hashes = [_content_hash(t, "query") for t in texts]
         found = self._cache_repo.batch_lookup(

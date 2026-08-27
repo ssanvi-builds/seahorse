@@ -78,6 +78,7 @@ class HybridRetriever:
         k: int = TOP_K,
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
+        session_boost: bool = False,
     ) -> Sequence[FusedCandidate]:
         # Parity with the listing retriever (``k_eff = min(k, config.top_k)``):
         # the config's ``top_k`` (e.g. the MCP ``seahorse.toml``) caps the
@@ -86,7 +87,9 @@ class HybridRetriever:
         k_eff = min(k, self._config.top_k)
         if self._can_serve():
             try:
-                return self._hybrid(query, pit, k_eff, cognitive_type, subject_filter)
+                return self._hybrid(
+                    query, pit, k_eff, cognitive_type, subject_filter, session_boost
+                )
             except PitRecallNotSupportedMVP0:
                 raise
             except Exception:
@@ -117,6 +120,7 @@ class HybridRetriever:
         k: int,
         cognitive_type: str | None,
         subject_filter: str | None,
+        session_boost: bool = False,
     ) -> Sequence[FusedCandidate]:
         from seahorse.retrieval.engine import recall  # lazy (import-laziness)
 
@@ -136,6 +140,7 @@ class HybridRetriever:
             recency=self._recency,
             decay=self._decay,
             reranker=self._reranker,
+            session_boost=session_boost,
         )
 
     def _g2(

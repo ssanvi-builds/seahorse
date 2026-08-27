@@ -77,6 +77,14 @@ class QueryEmbedder(Protocol):
     adapter satisfying this Protocol runs the single-query case
     (``role='query'``, L2-unit-normalized) and returns the vector in the shape
     the vector index expects.
+
+    ``similarity`` is the two-stage session→episode seam: the engine is
+    stdlib-only and never decodes the opaque vectors, so the embedder (which
+    knows the vector format) computes the query-vs-passage cosine similarities.
+    ``query_vec`` is the opaque vector from ``embed_query``; ``passages`` are
+    embedded with ``role='passage'`` (the e5 role prefix — the same semantics
+    the two-stage experiment's within-session re-rank uses). Returns one cosine
+    per passage, in order.
     """
 
     embedding_dim: int
@@ -84,6 +92,8 @@ class QueryEmbedder(Protocol):
     def embed_query(self, query: str) -> Any: ...
 
     def embed_queries(self, texts: Sequence[str]) -> Any: ...
+
+    def similarity(self, query_vec: Any, passages: Sequence[str]) -> Sequence[float]: ...
 
 
 __all__ = ["QueryEmbedder"]

@@ -11,6 +11,7 @@ the core path.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder
 from seahorse.embeddings.types import ModelIdentity
@@ -68,3 +69,19 @@ def test_embed_query_is_deterministic_for_same_query() -> None:
     a = adapter.embed_query("madrid")
     b = adapter.embed_query("madrid")
     assert a == b
+
+
+def test_similarity_returns_cosine_per_passage() -> None:
+    # The two-stage session→episode seam: the embedder computes cosine
+    # (query-vs-passage, passages embedded with role='passage' — the e5 role
+    # prefix). The fake's vecs[i, i % dim] = 1.0 makes passage 0 identical to
+    # the query (cosine 1.0) and passage 1 orthogonal (cosine 0.0).
+    embedder = _FakeEmbedder()
+    adapter = AsyncToSyncQueryEmbedder(embedder)
+    query_blob = adapter.embed_query("madrid")
+    sims = adapter.similarity(query_blob, ["same as query", "orthogonal"])
+    assert len(sims) == 2
+    assert sims[0] == pytest.approx(1.0)
+    assert sims[1] == pytest.approx(0.0)
+    # Passages are embedded with role='passage' (the e5 role prefix).
+    assert embedder.calls[-1] == (("same as query", "orthogonal"), "passage")

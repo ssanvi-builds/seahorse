@@ -59,7 +59,7 @@ def test_migration_009_idempotent_via_runner() -> None:
     second = apply_migrations(c)
     assert first > 0
     assert second == 0  # re-running applies nothing — no 'duplicate column' error
-    assert current_version(c) == 11  # 009 + 010
+    assert current_version(c) == 12  # 009 + 010 + 011 + 012
     c.close()
 
 

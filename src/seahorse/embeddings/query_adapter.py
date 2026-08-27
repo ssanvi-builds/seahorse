@@ -66,6 +66,25 @@ class AsyncToSyncQueryEmbedder:
         vecs = self._run(self._embedder.embed(texts, "query"))
         return np.asarray(vecs, dtype=np.float32).tobytes()
 
+    def similarity(self, query_vec: Any, passages: Sequence[str]) -> Sequence[float]:
+        """Cosine(query_vec, each passage) — the two-stage session re-rank seam.
+
+        Passages are embedded with ``role='passage'`` (the e5 role prefix, the
+        same semantics the two-stage experiment's within-session re-rank uses).
+        ``query_vec`` is the opaque BLOB from ``embed_query``; both are decoded
+        here (the embedder owns the vector format — the engine is stdlib-only).
+        """
+        vecs = self._run(self._embedder.embed(passages, "passage"))
+        q = np.frombuffer(query_vec, dtype=np.float32)
+        p = np.asarray(vecs, dtype=np.float32)
+        q_norm = float(np.linalg.norm(q))
+        p_norms = np.linalg.norm(p, axis=1)
+        dots = p @ q
+        return [
+            float(dots[i] / (p_norms[i] * q_norm)) if p_norms[i] and q_norm else 0.0
+            for i in range(len(p))
+        ]
+
     def _run(self, coro: Any) -> np.ndarray:
         return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
 

@@ -21,7 +21,7 @@ actual DDL (``PRAGMA table_info``), so the constant cannot drift from the schema
 
 from __future__ import annotations
 
-# The 15 columns the Engine hot path writes. Order matches the VALUES tuple in
+# The 16 columns the Engine hot path writes. Order matches the VALUES tuple in
 # ``SqliteEpisodeRepository.append`` (do not reorder without updating both).
 EPISODE_INDEX_CORE_COLUMNS = (
     "ep_id",
@@ -39,6 +39,7 @@ EPISODE_INDEX_CORE_COLUMNS = (
     "skip_extraction",
     "title",
     "summary",
+    "session_id",
 )
 
 # Lateral file metadata (migration 003 denormalized from episode_paths). The hot

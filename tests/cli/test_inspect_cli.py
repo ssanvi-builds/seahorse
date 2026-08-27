@@ -70,7 +70,7 @@ def test_inspect_after_migrate(tmp_path, vault):
     assert code == 0, err
     obj = json.loads(out)
     assert obj["db_exists"] is True
-    assert obj["schema_version"] == 11
+    assert obj["schema_version"] == 12
 
 
 def test_inspect_is_read_only_does_not_create_db(tmp_path, vault):

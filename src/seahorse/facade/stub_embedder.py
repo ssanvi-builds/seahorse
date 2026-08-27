@@ -57,5 +57,8 @@ class StubQueryEmbedder:
     def embed_queries(self, texts: Sequence[str]) -> Any:
         raise SeahorseError(code=E_NOT_IN_MVP_0, detail=_DETAIL)
 
+    def similarity(self, query_vec: Any, passages: Sequence[str]) -> Sequence[float]:
+        raise SeahorseError(code=E_NOT_IN_MVP_0, detail=_DETAIL)
+
 
 __all__ = ["StubQueryEmbedder"]

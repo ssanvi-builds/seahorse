@@ -176,6 +176,7 @@ class _RetrieverLike(Protocol):
         k: int,
         cognitive_type: str | None,
         subject_filter: str | None,
+        session_boost: bool = False,
     ) -> Sequence[FusedCandidate]: ...
 
 
@@ -301,6 +302,7 @@ class MemoryFacade:
         k: int = TOP_K,
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
+        session_boost: bool = False,
     ) -> list[IndexRow]:
         """Recall the INDEX level (current-state listing / later hybrid).
 
@@ -311,7 +313,10 @@ class MemoryFacade:
         delegated to the injected ``Retriever`` (extension point); the retriever
         produces ``FusedCandidate`` and the facade forwards the (possibly PIT)
         candidates to ``materialize_index``. The facade NEVER constructs
-        ``IndexRow``.
+        ``IndexRow``. ``session_boost`` (default-OFF) is the two-stage seam's
+        session-restricted re-rank — DISABLED by default (the authoritative
+        LMEB-S run proved it net-harmful: 0.424 vs 0.533 pure RRF); the
+        benchmark passes False explicitly to measure the pure-RRF baseline.
         """
         if not query or not query.strip():
             raise EmptyQueryError()
@@ -326,6 +331,7 @@ class MemoryFacade:
             k=k,
             cognitive_type=cognitive_type,
             subject_filter=subject_filter,
+            session_boost=session_boost,
         )
         # The facade forwards the (possibly PIT) candidates to materialize_index.
         return self._shaper.materialize_index(candidates, pit=pit, now=self._clock())

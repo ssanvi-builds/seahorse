@@ -34,6 +34,9 @@ class _RecordingEmbedder:
         self.calls.extend(texts)
         return [[0.0] * self.embedding_dim for _ in texts]
 
+    def similarity(self, query_vec, passages) -> list[float]:  # type: ignore[no-untyped-def]
+        return [0.0] * len(passages)
+
 
 def _advancing_clock(start: datetime, step: timedelta):
     state = {"t": start}

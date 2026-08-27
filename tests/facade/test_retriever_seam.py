@@ -40,6 +40,7 @@ class RecordingRetriever:
         k: int,
         cognitive_type: str | None,
         subject_filter: str | None,
+        session_boost: bool = False,
     ) -> tuple[FusedCandidate, ...]:
         self.calls.append(
             {
@@ -48,6 +49,7 @@ class RecordingRetriever:
                 "k": k,
                 "cognitive_type": cognitive_type,
                 "subject_filter": subject_filter,
+                "session_boost": session_boost,
             }
         )
         return self._candidates

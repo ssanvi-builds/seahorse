@@ -324,6 +324,11 @@ def _measure(
                 reranker=reranker if rerank_text is not None else None,
                 k_rerank=RERANK_BODY_OVERFETCH_K,
                 rerank_text=rerank_text or "summary",
+                # ``session_boost=False``: the synthetic corpus is a single
+                # session (``claude-mem-import-syn``), so the engine's session
+                # boost would re-rank ALL episodes within it — an artifact. The
+                # experiment isolates the rerank stage's effect on recall.
+                session_boost=False,
             )
             if rows and all(r.score == 0.0 for r in rows):
                 regime = _FALLBACK_G2

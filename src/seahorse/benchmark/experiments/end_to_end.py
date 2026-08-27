@@ -374,6 +374,12 @@ def measure_end_to_end(
     recall_hits: list[float] = []
     e2e_hits: list[float] = []
     for q in questions:
+        # ``session_boost=False``: the benchmark measures the hybrid ranking's
+        # recall@10 (the pure RRF + configured stages). The session boost is a
+        # separate product stage measured by the two-stage experiment (upper
+        # bound) + the engine verification (automatic version); including it
+        # here would change the authoritative baseline (0.790/0.533) and make
+        # the suite inconsistent.
         # Temporal-reasoning questions evaluate with ``pit=state_at(question_date)``
         # (the SUT's ``_recall`` behavior) so the state as ranked is the old
         # version, pre-update. Honest degrade (mirroring ``SeahorseSUT._recall``):
@@ -384,12 +390,15 @@ def measure_end_to_end(
 
             try:
                 rows = facade.recall(
-                    q.query, k=top_k, pit=PITPoint(kind="state_at", t=q.question_date)
+                    q.query,
+                    k=top_k,
+                    pit=PITPoint(kind="state_at", t=q.question_date),
+                    session_boost=False,
                 )
             except PitRecallNotSupportedMVP0:
-                rows = facade.recall(q.query, k=top_k)
+                rows = facade.recall(q.query, k=top_k, session_boost=False)
         else:
-            rows = facade.recall(q.query, k=top_k)
+            rows = facade.recall(q.query, k=top_k, session_boost=False)
         if rows and all(r.score == 0.0 for r in rows):
             regime = _FALLBACK_G2
         # recall@10 (the ceiling): any retrieved episode from the golden session.

@@ -55,6 +55,8 @@ Implementation notes:
 from __future__ import annotations
 
 import logging
+import re
+from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any, TypeVar
@@ -75,7 +77,7 @@ from seahorse.contracts.persistence import (
 from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
-from seahorse.retrieval.constants import RERANK_OVERFETCH_K
+from seahorse.retrieval.constants import RERANK_OVERFETCH_K, RRF_K
 from seahorse.retrieval.decay import DecayConfig, apply_decay_bias
 from seahorse.retrieval.errors import RetrievalInvalidPITKind
 from seahorse.retrieval.fusion import SourceList, rrf_fuse
@@ -114,6 +116,7 @@ def recall(
     k_rerank: int = RERANK_OVERFETCH_K,
     rrf_k: int | None = None,
     rerank_text: str = "summary",
+    session_boost: bool = False,
 ) -> list[FusedCandidate]:
     """Hybrid retrieval entrypoint — 2-stage RRF fusion + optional stage-3 rerank.
 
@@ -153,6 +156,18 @@ def recall(
     pure-RRF bit-comparable fingerprint. Honest degrade: a missing ``index_repo``
     (no text to hydrate) or a reranker failure keeps the RRF order truncated to
     ``k`` — never invented scores.
+
+    Session boost (the two-stage seam, default-OFF): when ``session_boost`` AND
+    ``index_repo`` is present AND ``pit is None``, the top session (the session
+    owning the MAJORITY of the fused candidates) is re-ranked by hybrid (vector
+    + BM25 over the bodies) and its FRESH episodes appended into the result by
+    score — fused candidates keep their exact scores, so the baseline is
+    preserved verbatim. DISABLED by default: the authoritative LMEB-S run proved
+    the automatic two-stage net-harmful (episode recall@10 0.424 vs 0.533 pure
+    RRF — session identification is too unreliable on LMEB-S); the seam stays
+    as measured infrastructure and the benchmark passes ``session_boost=False``
+    explicitly to measure the pure-RRF baseline (the upper-bound measurement).
+    PIT queries reproduce state as-of-t with pure RRF and are never boosted.
     """
     _validate_pit(pit)
     now = clock() if clock is not None else _default_clock()
@@ -287,6 +302,32 @@ def recall(
                 "rerank failed; keeping RRF order", exc_info=True
             )
             fused = fused[:k]
+    # Session-restricted two-stage re-rank (the two-stage fix, default-ON): the
+    # engine has no session-restricted recall; this stage identifies the top
+    # session as the session owning the MAJORITY of the fused candidates,
+    # fetches ALL of its episodes (SQL WHERE session_id = ?), re-ranks them by
+    # hybrid (vector + BM25 over the bodies), and appends the session's FRESH
+    # episodes by score — fused candidates are never re-scored, so the baseline
+    # is preserved verbatim. PIT queries reproduce state as-of-t with pure RRF
+    # (never boosted). Honest degrade: no index_repo (no session_ids to resolve)
+    # or a failure keeps the current ranking (never invented).
+    if session_boost and index_repo is not None and pit is None:
+        try:
+            fused = _apply_session_boost(
+                fused,
+                query,
+                query_vec,
+                index_repo,
+                episode_repo,
+                embedder,
+                k=k,
+            )
+        except Exception:  # noqa: BLE001 — a failure in the OPTIONAL session
+            # boost must not kill the whole ranking (which would degrade the
+            # hybrid path to the listing regime). Keep the current result.
+            _logger.warning(
+                "session boost failed; keeping current ranking", exc_info=True
+            )
     return fused
 
 
@@ -316,6 +357,149 @@ def _rerank_text(row: IndexRowData) -> str:
     adds signal before paying its cost.
     """
     return row.summary or row.subject or ""
+
+
+def _normalize_tokens(text: str) -> list[str]:
+    """Lower-case + split on non-alphanumeric runs (the BM25 tokenizer)."""
+    return [t for t in re.sub(r"[^a-z0-9]+", " ", text.lower()).split() if t]
+
+
+def _hybrid_episode_scores(
+    query: str,
+    query_vec: Any,
+    episodes: Sequence[Episode],
+    embedder: QueryEmbedder,
+) -> dict[str, float]:
+    """Hybrid per-episode RRF scores (vector + BM25 over the bodies).
+
+    Mirrors the two-stage experiment's within-session re-rank: vector = cosine
+    (query-vs-body, via the embedder's ``similarity`` seam — the engine is
+    stdlib-only and never decodes vectors); BM25 = query-token overlap with the
+    body; RRF-fused (1/(rrf_k + rank) per source). Returns ``{ep_id: score}``
+    for the episodes with a body (the merge-by-score building block the session
+    boost consumes).
+    """
+    bodies = [ep.body or "" for ep in episodes]
+    if not any(bodies):
+        return {}
+    sims = embedder.similarity(query_vec, bodies)
+    q_tokens = set(_normalize_tokens(query))
+    vector_ranked = sorted(
+        (
+            (ep.id, sims[i])
+            for i, ep in enumerate(episodes)
+            if ep.body
+        ),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    bm25_ranked = sorted(
+        (
+            (
+                ep.id,
+                float(
+                    sum(1 for t in _normalize_tokens(ep.body or "") if t in q_tokens)
+                ),
+            )
+            for ep in episodes
+            if ep.body
+        ),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    scores: dict[str, float] = defaultdict(float)
+    for ranked in (vector_ranked, bm25_ranked):
+        for rank, (ep_id, _) in enumerate(ranked, start=1):
+            scores[ep_id] += 1.0 / (RRF_K + rank)
+    return dict(scores)
+
+
+def _hybrid_rank_episodes(
+    query: str,
+    query_vec: Any,
+    episodes: Sequence[Episode],
+    embedder: QueryEmbedder,
+) -> list[str]:
+    """Rank episodes by hybrid score (vector + BM25 RRF over the bodies).
+
+    Mirrors the two-stage experiment's within-session re-rank: vector = cosine
+    (query-vs-body, via the embedder's ``similarity`` seam — the engine is
+    stdlib-only and never decodes vectors); BM25 = query-token overlap with the
+    body; RRF-fused (1/(rrf_k + rank) per source), sorted desc with ep_id
+    tie-break. Returns the ranked ep_ids (best first).
+    """
+    scores = _hybrid_episode_scores(query, query_vec, episodes, embedder)
+    return sorted(scores, key=lambda ep_id: (-scores[ep_id], ep_id))
+
+
+def _apply_session_boost(
+    fused: list[FusedCandidate],
+    query: str,
+    query_vec: Any,
+    index_repo: EpisodeIndexRepository,
+    episode_repo: EpisodeRepository,
+    embedder: QueryEmbedder,
+    *,
+    k: int,
+) -> list[FusedCandidate]:
+    """Re-rank the top session's episodes by hybrid and append the fresh ones.
+
+    The two-stage fix: identify the top session as the session owning the
+    MAJORITY of the fused top-k candidates (aggregates evidence across the
+    fused list — the single top-1 candidate's session only identifies the
+    golden session ~49% of the time, the majority is more robust), fetch ALL of
+    its episodes (SQL ``WHERE session_id = ?``), re-rank them by hybrid (vector
+    + BM25 over the bodies), and APPEND the session's FRESH episodes (those
+    outside the fused top-k) by their hybrid score. Fused candidates are NEVER
+    re-scored — they keep their exact RRF scores and positions — so the
+    baseline is preserved verbatim: a wrong session identification can only
+    displace the weakest bottom candidates, never a mid-list golden episode.
+    Sorted desc, ep_id tie-break, truncated to k. Honest degrade: no session_id
+    resolvable (rows missing) or no session episodes → keep the fused order
+    (never invented).
+    """
+    if not fused:
+        return fused
+    rows = index_repo.get_rows([c.ep_id for c in fused])
+    counts = Counter(r.session_id for r in rows if r.session_id)
+    if not counts:
+        return fused  # no session to boost (honest no-op)
+    top_session = counts.most_common(1)[0][0]
+    session_rows = index_repo.get_rows_by_session(top_session)
+    if not session_rows:
+        return fused
+    # Hydrate the session's episode bodies (per-episode get — N+1, acceptable
+    # for the session-scoped re-rank; the body-rerank seam sets the precedent).
+    episodes: list[Episode] = []
+    for row in session_rows:
+        ep = episode_repo.get(row.ep_id)
+        if ep is not None and ep.body:
+            episodes.append(ep)
+    if not episodes:
+        return fused
+    hybrid = _hybrid_episode_scores(query, query_vec, episodes, embedder)
+    if not hybrid:
+        return fused
+    original_sources = {c.ep_id: c.sources for c in fused}
+    # Append-only merge: fused candidates keep their exact RRF scores (never
+    # re-scored); the session's FRESH episodes enter with their hybrid score.
+    # The ``session`` marker tags exactly those recovered episodes.
+    new_ids = [ep_id for ep_id in hybrid if ep_id not in original_sources]
+    merged: dict[str, float] = {c.ep_id: c.score for c in fused}
+    for ep_id in new_ids:
+        merged[ep_id] = hybrid[ep_id]
+    ordered = sorted(merged, key=lambda ep_id: (-merged[ep_id], ep_id))
+    return [
+        FusedCandidate(
+            ep_id=ep_id,
+            score=merged[ep_id],
+            sources=(
+                original_sources.get(ep_id, ())
+                + (("session",) if ep_id in new_ids else ())
+            ),
+        )
+        for ep_id in ordered[:k]
+    ]
 
 
 def _read_created_at_batch(

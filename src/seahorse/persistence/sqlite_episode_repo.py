@@ -122,6 +122,7 @@ class SqliteEpisodeRepository:
                     0,
                     episode.title,
                     episode.summary,
+                    episode.provenance.get("session_id"),
                 ),
             )
 

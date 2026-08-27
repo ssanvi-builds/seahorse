@@ -75,6 +75,7 @@ class VigenteListingRetriever:
         k: int = TOP_K,
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
+        session_boost: bool = False,
     ) -> tuple[FusedCandidate, ...]:
         """Current-state listing -> synthetic FusedCandidates (score=0.0, no sources).
 

@@ -177,6 +177,7 @@ class SqliteSidecarIndexRepository:
                         _skip_extraction(note),
                         ep.title,
                         ep.summary,
+                        ep.provenance.get("session_id"),
                         note.file_path,
                         note.mtime_ms,
                         note.size,

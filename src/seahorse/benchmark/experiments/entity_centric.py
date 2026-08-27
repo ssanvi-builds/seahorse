@@ -277,7 +277,11 @@ def _measure(
 
     for cluster in clusters:
         query = f"what do we know about {cluster.entity}"
-        rows = facade.recall(query, k=top_k)
+        # ``session_boost=False``: the synthetic corpus is a single session
+        # (``claude-mem-import-syn``), so the engine's session boost would
+        # re-rank ALL episodes within it — an artifact, not a real signal. The
+        # experiment measures the hybrid ranking's entity recall.
+        rows = facade.recall(query, k=top_k, session_boost=False)
         retrieved = [r.ep_id for r in rows]
         if rows and all(r.score == 0.0 for r in rows):
             regime = _FALLBACK_G2

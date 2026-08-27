@@ -37,7 +37,7 @@ class _SingleQueryOnly:
 
 
 class _FullEmbedder:
-    """New shape: dim + single + batch. Must satisfy the Protocol."""
+    """New shape: dim + single + batch + similarity. Must satisfy the Protocol."""
 
     embedding_dim: int = 768
 
@@ -46,6 +46,9 @@ class _FullEmbedder:
 
     def embed_queries(self, texts: Any) -> Any:
         return [[0.0] * self.embedding_dim for _ in texts]
+
+    def similarity(self, query_vec: Any, passages: Any) -> Any:
+        return [0.0] * len(passages)
 
 
 def test_protocol_widened_with_batch_and_dim() -> None:

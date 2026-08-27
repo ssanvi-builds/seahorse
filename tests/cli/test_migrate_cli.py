@@ -25,9 +25,9 @@ def test_migrate_json_payload(tmp_path, vault):
     assert code == 0, err
     obj = json.loads(out)
     assert obj["command"] == "migrate"
-    assert obj["applied"] == 11
-    assert obj["schema_version"] == 11
-    assert obj["latest_available"] == 11
+    assert obj["applied"] == 12
+    assert obj["schema_version"] == 12
+    assert obj["latest_available"] == 12
 
 
 def test_migrate_up_to_flag(tmp_path, vault):
@@ -71,4 +71,4 @@ def test_migrate_then_inspect_sees_schema_version(tmp_path, vault):
     invoke(["--vault", str(vault), "migrate"])
     code, out, err = invoke(["--vault", str(vault), "--json", "inspect"])
     assert code == 0, err
-    assert json.loads(out)["schema_version"] == 11
+    assert json.loads(out)["schema_version"] == 12

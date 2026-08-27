@@ -60,8 +60,8 @@ def test_core_columns_are_rebuild_minus_file_metadata() -> None:
     assert set(EPISODE_INDEX_CORE_COLUMNS) == set(EPISODE_INDEX_REBUILD_COLUMNS) - set(
         EPISODE_INDEX_FILE_COLUMNS
     )
-    assert len(EPISODE_INDEX_CORE_COLUMNS) == 15
-    assert len(EPISODE_INDEX_REBUILD_COLUMNS) == 18
+    assert len(EPISODE_INDEX_CORE_COLUMNS) == 16
+    assert len(EPISODE_INDEX_REBUILD_COLUMNS) == 19
 
 
 def test_index_insert_sql_core_omits_file_metadata() -> None:

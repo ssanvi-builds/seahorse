@@ -120,7 +120,7 @@ def _insert_path(conn, ep_id: str, mtime_ms: int) -> None:
 def test_empty_db_snapshot_is_all_zeros(conn):
     snap = read_sidecar_status(conn, now=_NOW)
     assert snap == SidecarSnapshot(
-        schema_version=11,
+        schema_version=12,
         episodes=0,
         episode_index=0,
         vigentes=0,
@@ -256,7 +256,7 @@ def test_last_mtime_none_when_no_paths(conn):
 
 def test_schema_version_reflects_applied_migrations(conn):
     snap = read_sidecar_status(conn, now=_NOW)
-    assert snap.schema_version == 11
+    assert snap.schema_version == 12
 
 
 def test_schema_version_zero_on_unmigrated_db(tmp_path):

@@ -1,0 +1,21 @@
+-- 012_session_id.sql — denormalizes session_id into episode_index for the
+-- two-stage session→episode retrieval (the engine's session-restricted recall).
+--
+-- The engine has no session-restricted recall today: session_id only lives in
+-- Episode.provenance (episodes table). This migration denormalizes it into the
+-- episode_index bridge table so the two-stage re-rank can fetch a session's
+-- episodes with one SQL WHERE session_id = ? (the "single edit to the constant"
+-- pattern in episode_index_columns.py).
+--
+-- Idempotency: SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS and cannot be
+-- made conditional in raw SQL (executescript is non-procedural). The primary
+-- idempotency mechanism is the migration runner's schema_version row (each NNN
+-- runs at most once per DB) — consistent with 009.
+--
+-- Atomicity: the runner wraps each migration (DDL + the schema_version INSERT)
+-- in a single BEGIN/COMMIT transaction. This file therefore carries no
+-- BEGIN/COMMIT of its own (which would nest-fail inside the runner's
+-- transaction): the ALTER and the index are atomic with each other and with the
+-- version row.
+ALTER TABLE episode_index ADD COLUMN session_id TEXT;
+CREATE INDEX IF NOT EXISTS ix_episode_index_session_id ON episode_index (session_id);
