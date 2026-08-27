@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.11.1):
+What works today (v0.12.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -64,7 +64,8 @@ What works today (v0.11.1):
   Authoritative decisions on the reproducible 100-question subsample are
   recorded there — rrf_k `keep_60`, rerank_body `reopen_rerank`,
   decay_rrf/recency `keep_off`, reader-context `keep_summary`,
-  episode-granularity `reader_bottleneck`.
+  episode-granularity `reader_bottleneck`, reader-quality
+  `context_assembly_bottleneck`.
 
 CI runs the full test suite with a coverage gate (≥80%), plus lint and type
 checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally.
@@ -78,8 +79,10 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   remaining near-term work is **retrieval quality** as a first-class workstream —
   the published benchmark is the public face of the product — plus the
   authoritative LMEB-S runs (A5/A6/A4/recency/decay), now complete and published
-  in `docs/benchmark.md` (the A4 chain converges on the reader/context-assembly
-  step: `keep_summary` then `reader_bottleneck`). The F7 experiments (multi-hop, entity-centric, decay, skills)
+  in `docs/benchmark.md`. The A4 chain is closed: ranking, representation
+  (`keep_summary`), granularity (`reader_bottleneck`), and reader model
+  (`context_assembly_bottleneck`) are all ruled out — the loss sits in context
+  assembly (answer-in-context 0.350), the next milestone. The F7 experiments (multi-hop, entity-centric, decay, skills)
   and the roadmap-review experiments (RRF_K sweep, rerank-with-body, end-to-end
   measurement) are wired into the harness (`seahorse benchmark experiment`); the
   synthetic runs validate the mechanics, and the authoritative LMEB-S runs
