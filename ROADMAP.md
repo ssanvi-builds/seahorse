@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.13.0):
+What works today (v0.14.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -68,7 +68,13 @@ What works today (v0.13.0):
   `context_assembly_bottleneck`, context-assembly `metric_ceiling` (the
   answer-in-context gap is largely a metric artifact — 54/100 answers are
   single-token or unlocalized and can never satisfy the 2-gram check; the
-  assembler works: 0 hydration failures).
+  assembler works: 0 hydration failures), and two-stage session→episode
+  `two_stage_not_indicated` (engine) — the oracle upper bound 0.707 is NOT
+  engine-realizable on LMEB-S: automatic session identification drops hits
+  79 → 62 and episode recall@10 0.533 → 0.424 in every design, so the
+  `session_boost` seam ships disabled (the SUT is byte-identical to the
+  v0.13.0 baseline); the bottleneck is session identification, not the
+  re-rank.
 
 CI runs the full test suite with a coverage gate (≥80%), plus lint and type
 checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally.
@@ -88,10 +94,17 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   gap (answer-in-context 0.350) is now decomposed: `metric_ceiling` (54/100
   answers structurally cannot be hits with a 2-gram metric — 46 single-token +
   8 unlocalized), 15 retrieval misses, 0 hydration failures — the assembler is
-  not defective. The A4 chain is fully explained; the remaining near-term focus
-  is the Fase 2 re-sequence (the remote MCP server as a standard expansion) or
-  the documented two-stage session→episode follow-up for the 15 retrieval
-  misses. The F7 experiments (multi-hop, entity-centric, decay, skills)
+  not defective. The two-stage session→episode follow-up was measured and
+  CLOSED AS NEGATIVE: the oracle upper bound (0.707) cleared the flip gate, but
+  the automatic version is net-harmful on LMEB-S in every design (episode
+  recall@10 0.533 → 0.424) — short sessions (~4 turns) make majority
+  identification tie and degenerate, so the bottleneck is session
+  identification, not the re-rank. The seam ships disabled; re-opening it
+  would require a real session-retrieval product stage (out of scope). The A4
+  chain is fully explained; the remaining near-term focus is the Fase 2
+  re-sequence (the remote MCP server as a standard expansion) or the next
+  retrieval-quality workstream. The F7 experiments (multi-hop, entity-centric,
+  decay, skills)
   and the roadmap-review experiments (RRF_K sweep, rerank-with-body, end-to-end
   measurement) are wired into the harness (`seahorse benchmark experiment`); the
   synthetic runs validate the mechanics, and the authoritative LMEB-S runs
