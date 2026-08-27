@@ -4,6 +4,37 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-08-27
+
+### Added
+
+- **Context-assembly experiment** — `context_assembly` benchmark experiment
+  that decomposes the answer-in-context gap (episode recall 0.533 →
+  answer-in-context 0.350) into disjoint per-query buckets: `context_hit` /
+  `hydration_failure` / `retrieval_miss` / `single_token` / `unlocalized`
+  (invariant: they sum to `n_queries`). New `experiments/context_assembly.py`
+  (frozen `ContextAssemblyExperimentResult`; pure `_classify_query`;
+  `decide_context_assembly` with explicit thresholds in precedence order —
+  `invalid_regime` on `fallback_g2` (fail-loud), `hydration_bottleneck`
+  (flip=True), `retrieval_ceiling`, `metric_ceiling`, `context_assembly_ok`;
+  the flip is True ONLY for the defective-assembler case), wired into
+  `EXPERIMENTS`, the runner dispatch/render and the CLI. The reported
+  `answer_in_context_summary` diagnostic does NOT decide (representation is
+  already closed by `reader_context`). Synthetic corpus verifies the mechanics
+  (3 cases, 9 queries, HashEmbedder): case A context_hit, case B
+  retrieval_miss, case C single_token.
+- **Authoritative decision (2026-08-27)** — `context_assembly` on the
+  reproducible 100 subsample (retrieval-only): episode recall 0.533,
+  answer-in-context 0.340, and **`metric_ceiling`** — `metric_ceiling_rate
+  = 54/100 = 0.54 >= 0.15`, dominated by 46 single-token + 8 unlocalized
+  answers that can never be hits with `min_ngram=2`. **No fix.** The
+  conditional fix (`batch_body_for` hydration robustness) is NOT indicated:
+  `hydration_failures = 0`, assembly efficiency 1.0 — the assembler works.
+  Two-stage session→episode stays a documented follow-up candidate for the 15
+  retrieval misses, not a flip. This closes the A4 chain explanation: the
+  answer-in-context gap is largely a metric artifact. See
+  `docs/benchmark.md`.
+
 ## [0.12.0] - 2026-08-27
 
 ### Added

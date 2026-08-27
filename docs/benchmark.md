@@ -247,6 +247,54 @@ metric favors verbatim copying (see above). The `episodes: 0` line in the report
 is cosmetic (the real corpus keeps episodes in the DB, not a Python list). Runs
 are active-now (ADR-03); FULL PIT is a later release.
 
+## Authoritative experiment decisions — 2026-08-27 context-assembly
+
+The `context_assembly` experiment decomposes the answer-in-context gap into
+disjoint per-query buckets. Measured on the same reproducible 100-question
+subsample (seed 42, split `c6178fd0a436`), `--retrieval-only` (deterministic,
+no LLM). Context representation fixed at `summary` (the `keep_summary`
+decision); the answer-in-context metric uses hydrated bodies (`mode="body"`).
+Active-now regime. The `answer_in_context_summary` value is a REPORTED
+diagnostic only — it does not decide (the representation axis is already
+closed).
+
+| Bucket (disjoint, sums to 100) | Count |
+|---|---|
+| context hits | 31 |
+| hydration failures | **0** |
+| retrieval misses | 15 |
+| single-token (metric ceiling) | **46** |
+| unlocalized (metric ceiling) | 8 |
+
+Localization profile: 92 localized / 8 unlocalized, of the localized 20
+verbatim / 26 fragment / 46 single-token. episode recall@10 **0.533**,
+answer-in-context **0.340** (the 0.350 headline, ±1 query noise), reported
+summary diagnostic 0.210.
+
+**Decision: `metric_ceiling`.** The gap is dominated by the metric ceiling:
+`metric_ceiling_rate = 54/100 = 0.54 >= 0.15` — 46 single-token answers and 8
+unlocalized answers can NEVER be answer-in-context hits with `min_ngram=2`.
+**No fix.** The conditional fix (`batch_body_for` hydration robustness) is NOT
+indicated: `hydration_failures = 0`, assembly efficiency `31/31 = 1.0` — when
+the answer-bearing episode is retrieved AND its body is hydrated, the answer
+fragment ALWAYS reaches the assembled context. The assembler is not the
+bottleneck. Two-stage session→episode remains a documented follow-up candidate
+for the 15 retrieval misses (0.163 rate, below the 0.40 threshold) — not a
+flip in this milestone.
+
+**Honest reading of the numbers.** The answer-in-context gap (episode recall
+0.533 → answer-in-context 0.350) is LARGELY a metric artifact: 46 of the 92
+localized answers are single tokens that structurally cannot satisfy the
+≥2-token contiguous-n-gram check, and 8 more answers are unlocalized (derived,
+never stated verbatim in any episode). Over half the queries are structurally
+unmeasurable by this metric — the assembler works. The prior gap arithmetic
+(which predicted uncertainty between `hydration_bottleneck` and
+`retrieval_ceiling`) underestimated single-token answers (≤9 estimated, 46
+measured) and overestimated retrieval misses (43.4 estimated, 15 measured) —
+the measurement corrected the estimate. Caveat: `answer_fragment_present` is a
+substring (not semantic) check, so paraphrase answers underestimate recall on
+the non-single-token queries too.
+
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full
@@ -344,6 +392,9 @@ seahorse benchmark experiment episode_granularity --corpus lmeb-s --retrieval-on
 # Reader-quality A/B (real readers, requires Ollama + the llm extra):
 # weak = the A4 baseline qwen3:0.6b, strong = the cloud model.
 seahorse benchmark experiment reader_quality --corpus lmeb-s --reader-model ollama/qwen3:0.6b --strong-reader-model ollama/deepseek-v4-flash:0731-cloud --subsample
+
+# Context-assembly gap decomposition (retrieval-only, deterministic):
+seahorse benchmark experiment context_assembly --corpus lmeb-s --retrieval-only --subsample
 
 # Full run with judge LLM (requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm
