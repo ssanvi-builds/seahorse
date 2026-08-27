@@ -704,7 +704,8 @@ def benchmark_experiment_cmd(
         help=(
             "recency | rerank | embed | decay_rrf | batch | entity_centric | "
             "multi_hop | decay | skills | rrf_k | rerank_body | end_to_end | "
-            "reader_context | episode_granularity (which experiment to run)."
+            "reader_context | episode_granularity | reader_quality "
+            "(which experiment to run)."
         ),
     ),
     corpus: str = typer.Option(
@@ -718,6 +719,14 @@ def benchmark_experiment_cmd(
     output_dir: str = typer.Option("benchmark-output", "--output-dir"),
     reader_model: str = typer.Option(
         "ollama/qwen3:1.7b", "--reader-model", help="Reader LLM (t=0, seed=42)."
+    ),
+    strong_reader_model: str = typer.Option(
+        "ollama/deepseek-v4-flash:0731-cloud",
+        "--strong-reader-model",
+        help=(
+            "Strong reader LLM for the reader_quality A/B (the weak baseline is "
+            "--reader-model; the strong candidate is this model)."
+        ),
     ),
     judge_model: str = typer.Option(
         "ollama/qwen2.5:7b", "--judge-model", help="Judge LLM (family-disjoint from reader)."
@@ -775,6 +784,7 @@ def benchmark_experiment_cmd(
         corpus=corpus,
         output_dir=output_dir,
         reader_model=reader_model,
+        strong_reader_model=strong_reader_model,
         judge_model=judge_model,
         top_k=top_k,
         temporal=temporal,

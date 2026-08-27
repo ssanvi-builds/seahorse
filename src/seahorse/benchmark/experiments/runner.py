@@ -449,6 +449,15 @@ def render_experiment_report(report: ExperimentReport) -> str:
             cast(EpisodeGranularityExperimentResult, report.batch_result),
             report.decision,
         )
+    if report.experiment == "reader_quality":
+        from seahorse.benchmark.experiments.reader_quality import (
+            ReaderQualityExperimentResult,
+            render_reader_quality_report,
+        )
+
+        return render_reader_quality_report(
+            cast(ReaderQualityExperimentResult, report.batch_result), report.decision
+        )
     lines = [
         f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
@@ -491,6 +500,7 @@ def run_experiment(
     output_dir: str = "benchmark-output",
     reader_model: str = "ollama/qwen3:1.7b",
     judge_model: str = "ollama/qwen2.5:7b",
+    strong_reader_model: str = "ollama/deepseek-v4-flash:0731-cloud",
     top_k: int = 10,
     temporal: bool = True,
     reader_llm=None,
@@ -805,6 +815,51 @@ def run_experiment(
             results=(),
             decision=decide_episode_granularity(episode_granularity_result),
             batch_result=episode_granularity_result,
+        )
+
+    if experiment == "reader_quality":
+        # (reader-quality A/B) the reader-model comparison is a standalone
+        # measurement: no EvaluationRunner, no BenchmarkDataset — the corpus is
+        # the synthetic retrievable episodes (or the authoritative LMEB-S run)
+        # and the metric is end-to-end accuracy with the WEAK vs STRONG reader
+        # over the SAME corpus. Delegates to the reader_quality module. The
+        # standalone result reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.reader_quality import (
+            decide_reader_quality,
+            run_reader_quality_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"reader_quality experiment corpus must be 'synthetic' or 'lmeb-s', "
+                f"got {corpus!r}"
+            )
+        if corpus == "synthetic":
+            # CI: deterministic doubles (the module defaults) — no Ollama.
+            reader_weak = reader_llm
+            reader_strong = reader_llm
+        else:
+            # Authoritative: the real reader pair — weak from ``--reader-model``
+            # (the A4 baseline ``qwen3:0.6b``), strong from
+            # ``--strong-reader-model`` (the cloud model). A caller-injected
+            # ``reader_llm`` overrides both (e.g. ``StubReaderLLM`` for
+            # retrieval-only).
+            reader_weak = reader_llm or ReaderLLMClient(reader_model)
+            reader_strong = reader_llm or ReaderLLMClient(strong_reader_model)
+        reader_quality_result = run_reader_quality_experiment(
+            corpus=corpus,
+            top_k=top_k,
+            subsample=subsample,
+            reader_weak=reader_weak,
+            reader_strong=reader_strong,
+        )
+        return ExperimentReport(
+            experiment="reader_quality",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_reader_quality(reader_quality_result),
+            batch_result=reader_quality_result,
         )
 
     base_config = BenchmarkConfig(
