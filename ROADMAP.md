@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.12.0):
+What works today (v0.13.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -65,7 +65,10 @@ What works today (v0.12.0):
   recorded there — rrf_k `keep_60`, rerank_body `reopen_rerank`,
   decay_rrf/recency `keep_off`, reader-context `keep_summary`,
   episode-granularity `reader_bottleneck`, reader-quality
-  `context_assembly_bottleneck`.
+  `context_assembly_bottleneck`, context-assembly `metric_ceiling` (the
+  answer-in-context gap is largely a metric artifact — 54/100 answers are
+  single-token or unlocalized and can never satisfy the 2-gram check; the
+  assembler works: 0 hydration failures).
 
 CI runs the full test suite with a coverage gate (≥80%), plus lint and type
 checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally.
@@ -81,8 +84,14 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   authoritative LMEB-S runs (A5/A6/A4/recency/decay), now complete and published
   in `docs/benchmark.md`. The A4 chain is closed: ranking, representation
   (`keep_summary`), granularity (`reader_bottleneck`), and reader model
-  (`context_assembly_bottleneck`) are all ruled out — the loss sits in context
-  assembly (answer-in-context 0.350), the next milestone. The F7 experiments (multi-hop, entity-centric, decay, skills)
+  (`context_assembly_bottleneck`) are all ruled out — and the context-assembly
+  gap (answer-in-context 0.350) is now decomposed: `metric_ceiling` (54/100
+  answers structurally cannot be hits with a 2-gram metric — 46 single-token +
+  8 unlocalized), 15 retrieval misses, 0 hydration failures — the assembler is
+  not defective. The A4 chain is fully explained; the remaining near-term focus
+  is the Fase 2 re-sequence (the remote MCP server as a standard expansion) or
+  the documented two-stage session→episode follow-up for the 15 retrieval
+  misses. The F7 experiments (multi-hop, entity-centric, decay, skills)
   and the roadmap-review experiments (RRF_K sweep, rerank-with-body, end-to-end
   measurement) are wired into the harness (`seahorse benchmark experiment`); the
   synthetic runs validate the mechanics, and the authoritative LMEB-S runs
