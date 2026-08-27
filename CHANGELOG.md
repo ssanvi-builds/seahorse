@@ -4,6 +4,30 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-08-27
+
+### Added
+
+- **Reader-quality A/B experiment** — `reader_quality` benchmark experiment
+  that measures end-to-end accuracy with a WEAK reader (the A4 baseline
+  `qwen3:0.6b`) vs a STRONG reader (the cloud model
+  `deepseek-v4-flash:0731-cloud`) over ONE corpus — the evidence for whether
+  the reader MODEL is the bottleneck (the last A4 suspect after representation,
+  granularity and ranking were ruled out). New `experiments/reader_quality.py`
+  (corpus built once, both readers measure over the same facade;
+  `decide_reader_quality` with the 10pp `READER_QUALITY_DELTA_PP` flip
+  threshold; `invalid_regime` on `fallback_g2`), wired into `EXPERIMENTS`, the
+  runner dispatch/render (real readers for `lmeb-s`, deterministic doubles for
+  synthetic CI) and the CLI `--strong-reader-model` flag. Synthetic corpus
+  verifies the mechanics (abstaining weak reader 0.0 → extractive strong 0.5).
+- **Authoritative decision (2026-08-27)** — `reader_quality` on the
+  reproducible 100 subsample (real readers, active-now): weak 0.060, strong
+  **0.040**, delta **−2.0pp** on recall@10 0.790 — the strong reader recovers
+  nothing. **`context_assembly_bottleneck`** — falsifies the A4 reader-quality
+  hypothesis; the reader model is NOT the bottleneck. This closes the A4 chain
+  (representation, granularity, reader model all ruled out); the remaining loss
+  is context assembly (answer-in-context 0.350). See `docs/benchmark.md`.
+
 ## [0.11.1] - 2026-08-25
 
 ### Added

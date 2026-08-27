@@ -196,6 +196,57 @@ dataset exposes no answer→turn mapping. The 8/100 unlocalized derived answers
 counted as misses. Within-session rank is vector-only, a local approximation of
 the hybrid re-score. Runs are active-now (ADR-03); FULL PIT is a later release.
 
+## Authoritative experiment decisions — 2026-08-27 reader-quality
+
+The `reader_quality` A/B falsifies the A4 reader-quality hypothesis: does a
+STRONGER reader model close the end-to-end gap? Measured on the same
+reproducible 100-question subsample (seed 42, split `c6178fd0a436`), corpus
+built ONCE and the two readers measured over the same facade. Weak reader: the
+A4 baseline `ollama/qwen3:0.6b` (t=0, seed=42, max_tokens=512). Strong reader:
+`ollama/deepseek-v4-flash:0731-cloud` — the cloud model served through Ollama,
+a far more capable extractor. Context representation fixed at `summary` (the
+`keep_summary` decision). Active-now regime.
+
+| Reader | end-to-end accuracy |
+|---|---|
+| `qwen3:0.6b` (weak, A4 baseline) | **0.060** |
+| `deepseek-v4-flash:0731-cloud` (strong) | 0.040 |
+| delta (strong − weak) | **−2.0pp** |
+
+recall@10 (the shared ceiling): 0.790.
+
+**Decision: `context_assembly_bottleneck`.** The strong reader recovers
+**nothing** — delta −2.0pp, far below the `READER_QUALITY_DELTA_PP` = 10pp flip
+threshold. The reader MODEL is not the bottleneck. This closes the A4 chain:
+context representation (`keep_summary`, +2.0pp), episode granularity
+(`reader_bottleneck`, episode recall 0.533), and now reader model (no recovery)
+are all ruled out. The loss sits in **context assembly** — the answer fragment
+is not in the top-k context (answer-in-context rate 0.350 from the
+episode-granularity run).
+
+**Honest reading of the numbers.** The strong reader's slight underperformance
+(0.040 vs 0.060) is likely a metric artifact: the end-to-end metric is a
+normalized substring match, which favors verbatim copying. A stronger model
+paraphrases rather than copies the golden string, so it scores lower even when
+its answer is semantically correct. The decision does not depend on this — even
+a generous reading gives delta ≈ 0, far below the 10pp threshold. The weak
+reader's 0.060 here vs 0.070 in the reader-context A/B is 6 vs 7 questions out
+of 100 — within noise.
+
+**The next milestone is context assembly.** The A4 chain is exhausted: ranking
+(recall@10 0.790), representation, granularity, and reader model are all ruled
+out. The remaining loss is between episode recall (0.533) and answer-in-context
+(0.350): the answer-bearing episode reaches the top-10, yet a distinctive answer
+fragment appears in the assembled context barely a third of the time. Follow-up:
+which episodes' bodies actually make it into the top-k context, and how to
+assemble them so the answer fragment is present.
+
+**Caveats.** The strong reader is the cloud model served through Ollama
+(decision-grade, not authoritative-grade — ADR-10). The extractive substring
+metric favors verbatim copying (see above). The `episodes: 0` line in the report
+is cosmetic (the real corpus keeps episodes in the DB, not a Python list). Runs
+are active-now (ADR-03); FULL PIT is a later release.
+
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full
@@ -289,6 +340,10 @@ seahorse benchmark experiment reader_context --corpus lmeb-s --reader-model olla
 
 # Episode-granularity (retrieval-only, deterministic — the heuristic is pure code):
 seahorse benchmark experiment episode_granularity --corpus lmeb-s --retrieval-only --subsample
+
+# Reader-quality A/B (real readers, requires Ollama + the llm extra):
+# weak = the A4 baseline qwen3:0.6b, strong = the cloud model.
+seahorse benchmark experiment reader_quality --corpus lmeb-s --reader-model ollama/qwen3:0.6b --strong-reader-model ollama/deepseek-v4-flash:0731-cloud --subsample
 
 # Full run with judge LLM (requires Ollama + the llm extra):
 uv sync --extra dev --extra benchmark --extra embeddings --extra llm
