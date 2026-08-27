@@ -458,6 +458,16 @@ def render_experiment_report(report: ExperimentReport) -> str:
         return render_reader_quality_report(
             cast(ReaderQualityExperimentResult, report.batch_result), report.decision
         )
+    if report.experiment == "context_assembly":
+        from seahorse.benchmark.experiments.context_assembly import (
+            ContextAssemblyExperimentResult,
+            render_context_assembly_report,
+        )
+
+        return render_context_assembly_report(
+            cast(ContextAssemblyExperimentResult, report.batch_result),
+            report.decision,
+        )
     lines = [
         f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
@@ -860,6 +870,37 @@ def run_experiment(
             results=(),
             decision=decide_reader_quality(reader_quality_result),
             batch_result=reader_quality_result,
+        )
+
+    if experiment == "context_assembly":
+        # (context-assembly) the answer-in-context gap decomposition is a
+        # standalone measurement: no EvaluationRunner, no BenchmarkDataset — the
+        # corpus is the synthetic retrievable episodes (or the authoritative
+        # LMEB-S run) and the metric is the disjoint per-query bucket counts.
+        # Delegates to the context_assembly module. The standalone result
+        # reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.context_assembly import (
+            decide_context_assembly,
+            run_context_assembly_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"context_assembly experiment corpus must be 'synthetic' or "
+                f"'lmeb-s', got {corpus!r}"
+            )
+        context_assembly_result = run_context_assembly_experiment(
+            corpus=corpus,
+            top_k=top_k,
+            subsample=subsample,
+        )
+        return ExperimentReport(
+            experiment="context_assembly",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_context_assembly(context_assembly_result),
+            batch_result=context_assembly_result,
         )
 
     base_config = BenchmarkConfig(

@@ -258,3 +258,30 @@ class TestRunContextAssemblySynthetic:
     def test_unknown_corpus_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown corpus"):
             run_context_assembly_experiment(corpus="nope")
+
+
+class TestRunExperimentWiring:
+    def test_context_assembly_via_run_experiment(self) -> None:
+        """``run_experiment(experiment='context_assembly')`` delegates to the
+        module and renders the report."""
+        from seahorse.benchmark.experiments.runner import (
+            render_experiment_report,
+            run_experiment,
+        )
+
+        report = run_experiment(experiment="context_assembly", corpus="synthetic")
+        assert report.experiment == "context_assembly"
+        assert report.decision["decision"] in (
+            "hydration_bottleneck",
+            "retrieval_ceiling",
+            "metric_ceiling",
+            "context_assembly_ok",
+        )
+        rendered = render_experiment_report(report)
+        assert "Context-assembly experiment" in rendered
+
+    def test_context_assembly_rejects_claude_mem_corpus(self) -> None:
+        from seahorse.benchmark.experiments.runner import run_experiment
+
+        with pytest.raises(ValueError, match="'synthetic' or 'lmeb-s'"):
+            run_experiment(experiment="context_assembly", corpus="claude-mem")

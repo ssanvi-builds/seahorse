@@ -535,5 +535,6 @@ def test_experiments_and_corpora_constants():
         "reader_context",
         "episode_granularity",
         "reader_quality",
+        "context_assembly",
     }
     assert set(CORPORA) == {"synthetic", "lmeb-s", "claude-mem"}

@@ -52,6 +52,7 @@ EXPERIMENTS = (
     "reader_context",
     "episode_granularity",
     "reader_quality",
+    "context_assembly",
 )
 
 # Corpora: synthetic (mechanical CI verification), the real LMEB-S haystack,
