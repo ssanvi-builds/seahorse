@@ -468,6 +468,16 @@ def render_experiment_report(report: ExperimentReport) -> str:
             cast(ContextAssemblyExperimentResult, report.batch_result),
             report.decision,
         )
+    if report.experiment == "two_stage_retrieval":
+        from seahorse.benchmark.experiments.two_stage_retrieval import (
+            TwoStageExperimentResult,
+            render_two_stage_report,
+        )
+
+        return render_two_stage_report(
+            cast(TwoStageExperimentResult, report.batch_result),
+            report.decision,
+        )
     lines = [
         f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
         f"temporal={report.temporal_mode})",
@@ -901,6 +911,37 @@ def run_experiment(
             results=(),
             decision=decide_context_assembly(context_assembly_result),
             batch_result=context_assembly_result,
+        )
+
+    if experiment == "two_stage_retrieval":
+        # (two-stage) the session→episode re-rank is a standalone measurement:
+        # no EvaluationRunner, no BenchmarkDataset — the corpus is the synthetic
+        # retrievable episodes (or the authoritative LMEB-S run) and the metric
+        # is the within-session hybrid re-rank vs the global top-10 baseline.
+        # Delegates to the two_stage_retrieval module. The standalone result
+        # reuses the ``batch_result`` slot.
+        from seahorse.benchmark.experiments.two_stage_retrieval import (
+            decide_two_stage,
+            run_two_stage_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"two_stage_retrieval experiment corpus must be 'synthetic' or "
+                f"'lmeb-s', got {corpus!r}"
+            )
+        two_stage_result = run_two_stage_experiment(
+            corpus=corpus,
+            top_k=top_k,
+            subsample=subsample,
+        )
+        return ExperimentReport(
+            experiment="two_stage_retrieval",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_two_stage(two_stage_result),
+            batch_result=two_stage_result,
         )
 
     base_config = BenchmarkConfig(

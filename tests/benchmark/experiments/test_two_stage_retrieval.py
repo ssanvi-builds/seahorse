@@ -163,3 +163,28 @@ class TestRunTwoStageSynthetic:
     def test_unknown_corpus_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown corpus"):
             run_two_stage_experiment(corpus="nope")
+
+
+class TestRunExperimentWiring:
+    def test_two_stage_via_run_experiment(self) -> None:
+        """``run_experiment(experiment='two_stage_retrieval')`` delegates to the
+        module and renders the report."""
+        from seahorse.benchmark.experiments.runner import (
+            render_experiment_report,
+            run_experiment,
+        )
+
+        report = run_experiment(experiment="two_stage_retrieval", corpus="synthetic")
+        assert report.experiment == "two_stage_retrieval"
+        assert report.decision["decision"] in (
+            "two_stage_indicated",
+            "two_stage_not_indicated",
+        )
+        rendered = render_experiment_report(report)
+        assert "Two-stage session→episode experiment" in rendered
+
+    def test_two_stage_rejects_claude_mem_corpus(self) -> None:
+        from seahorse.benchmark.experiments.runner import run_experiment
+
+        with pytest.raises(ValueError, match="'synthetic' or 'lmeb-s'"):
+            run_experiment(experiment="two_stage_retrieval", corpus="claude-mem")
