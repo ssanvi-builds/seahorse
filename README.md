@@ -449,7 +449,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ## Current status
 
-**v0.10.0.** The memory engine works end-to-end from a clean install: write
+**v0.14.0.** The memory engine works end-to-end from a clean install: write
 episodes, recall them with hybrid semantic retrieval, extract with a real
 multi-LLM path (local-first, CI-gated), improve and forget them, and serve an
 agent over stdio MCP. Recall ranks by relevance when vectors are populated and

@@ -13,10 +13,11 @@ import os
 
 import pytest
 
-from seahorse.cli.config import SeahorseConfig
+from seahorse.cli.config import ObserveConfig, SeahorseConfig
 from seahorse.cli.errors import CliObserverRunning
 from seahorse.observe.cli import (
     pid_file,
+    run_observe_event,
     run_observe_start,
     run_observe_status,
     run_observe_stop,
@@ -142,3 +143,120 @@ def test_start_spawns_and_writes_pid(tmp_path, monkeypatch) -> None:
     # --vault is a GLOBAL option and must precede the subcommand (observe run);
     # a regression here made the observer die with "No such option: --vault".
     assert spawned["cmd"].index("--vault") < spawned["cmd"].index("observe")
+
+
+# ---------------------------------------------------------------------------
+# observe event (hook injection — the self-evolving loop's capture path)
+# ---------------------------------------------------------------------------
+
+
+def _capture_post(monkeypatch, posted: list) -> None:
+    """Route ``_post_event`` into a list so tests can assert the envelope."""
+
+    def _fake_post(cfg, raw):
+        posted.append(raw)
+        return 200, ""
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", _fake_post)
+
+
+def test_observe_event_user_prompt_submit(tmp_path, monkeypatch) -> None:
+    """UserPromptSubmit maps to user_prompt_submit with the prompt payload."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-1")
+    monkeypatch.setenv("CLAUDE_PROMPT", "remember this")
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    assert posted == [
+        {
+            "session_id": "sess-1",
+            "event_type": "user_prompt_submit",
+            "payload": {"prompt": "remember this"},
+        }
+    ]
+
+
+def test_observe_event_post_tool_use(tmp_path, monkeypatch) -> None:
+    """PostToolUse maps to post_tool_use with the tool payload."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "PostToolUse")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-2")
+    monkeypatch.setenv("CLAUDE_TOOL_NAME", "Read")
+    monkeypatch.setenv("CLAUDE_TOOL_USE_ID", "call_1")
+    monkeypatch.setenv("CLAUDE_TOOL_INPUT", '{"path": "x"}')
+    monkeypatch.setenv("CLAUDE_TOOL_RESPONSE", "ok")
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    assert posted == [
+        {
+            "session_id": "sess-2",
+            "event_type": "post_tool_use",
+            "payload": {
+                "tool_name": "Read",
+                "tool_use_id": "call_1",
+                "tool_input": '{"path": "x"}',
+                "tool_response": "ok",
+            },
+        }
+    ]
+
+
+def test_observe_event_includes_agent_id(tmp_path, monkeypatch) -> None:
+    """CLAUDE_AGENT_ID is carried on the envelope when present."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-3")
+    monkeypatch.setenv("CLAUDE_AGENT_ID", "agent-7")
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    assert posted[0]["agent_id"] == "agent-7"
+    assert posted[0]["event_type"] == "session_start"
+
+
+def test_observe_event_unknown_event_ignored(tmp_path, monkeypatch) -> None:
+    """An unmapped hook event is a silent no-op (never POSTs)."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "PreToolUse")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-4")
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    assert posted == []
+
+
+def test_observe_event_missing_env_noop(tmp_path, monkeypatch) -> None:
+    """Missing hook env vars are a silent no-op (never POSTs)."""
+    monkeypatch.delenv("CLAUDE_HOOK_EVENT_NAME", raising=False)
+    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    assert posted == []
+
+
+def test_observe_event_observer_not_running_noop(tmp_path, monkeypatch) -> None:
+    """A missing observer socket is a silent no-op (real _post_event path)."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-5")
+    monkeypatch.setenv("CLAUDE_PROMPT", "x")
+    # Observer configured but no socket file exists → (0, "not running").
+    cfg = SeahorseConfig(
+        vault=tmp_path,
+        seahorse_dir=tmp_path / ".seahorse",
+        db_path=tmp_path / ".seahorse" / "seahorse.db",
+        observe=ObserveConfig(),
+    )
+    run_observe_event(cfg, fmt="human", out=_out())
+
+
+def test_observe_event_post_failure_noop(tmp_path, monkeypatch) -> None:
+    """A failed POST (OSError) is a silent no-op — the hook must not abort."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-6")
+    monkeypatch.setenv("CLAUDE_PROMPT", "x")
+
+    def _raise_oserror(cfg, raw):
+        raise OSError("socket gone")
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", _raise_oserror)
+    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
