@@ -2,8 +2,20 @@ name: Publish to PyPI
 
 # Release-on-tag: pushing a `v*` tag builds the wheel and publishes it to
 # PyPI as `seahorse-memory`. The import package stays `seahorse`; only the
-# distribution name changes. Requires the `PYPI_API_TOKEN` secret (a PyPI
-# API token scoped to the `seahorse-memory` project).
+# distribution name changes.
+#
+# Chain (nothing publishes to PyPI without passing the gate before it):
+#   test → publish-testpypi → verify-testpypi → build-and-publish → verify-pypi
+#   * publish-testpypi  — build + publish the tag to TestPyPI.
+#   * verify-testpypi   — install the TestPyPI artifact in a fresh venv and run
+#                         the full README onboarding + MCP (e2e-pypi.sh, fast).
+#   * build-and-publish — only after the TestPyPI artifact verified: publish
+#                         the same tag to real PyPI.
+#   * verify-pypi       — post-publish verification of the real PyPI artifact.
+#
+# Secrets: PYPI_API_TOKEN (PyPI, environment `pypi`) and TESTPYPI_API_TOKEN
+# (TestPyPI, environment `testpypi`). Both are PyPI API tokens scoped to the
+# `seahorse-memory` project.
 on:
   push:
     tags: ["v*"]
@@ -46,9 +58,53 @@ jobs:
         env:
           SEAHORSE_RUN_INSTALL_SMOKE: "0"
 
+  publish-testpypi:
+    name: publish to TestPyPI
+    needs: test
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Publish to TestPyPI
+        run: uv publish --publish-url https://test.pypi.org/legacy/ --token ${{ secrets.TESTPYPI_API_TOKEN }}
+
+  verify-testpypi:
+    name: verify TestPyPI artifact (e2e-pypi.sh)
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install-and-run the TestPyPI artifact
+        run: scripts/e2e-pypi.sh
+        env:
+          SEAHORSE_INDEX_URL: https://test.pypi.org/simple
+          SEAHORSE_EXTRA_INDEX_URL: https://pypi.org/simple
+          SEAHORSE_VERSION: ${{ github.ref_name }}
+          SEAHORSE_FAST: "1"
+
   build-and-publish:
     name: build + publish to PyPI
-    needs: test
+    needs: [test, verify-testpypi]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -68,3 +124,21 @@ jobs:
 
       - name: Publish to PyPI
         run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
+
+  verify-pypi:
+    name: verify PyPI artifact (e2e-pypi.sh)
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install-and-run the PyPI artifact
+        run: scripts/e2e-pypi.sh
+        env:
+          SEAHORSE_FAST: "1"
