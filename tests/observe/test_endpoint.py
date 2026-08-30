@@ -19,7 +19,7 @@ import time
 
 import pytest
 
-from seahorse.observe.endpoint import ObserverEndpoint
+from seahorse.observe.endpoint import ObserverEndpoint, validate_socket_path
 from seahorse.observe.protocol import EVENT_POST_TOOL_USE, EVENT_USER_PROMPT_SUBMIT
 from seahorse.observe.queue import ObserverQueue
 
@@ -170,6 +170,18 @@ def _wait_for_socket(socket_path, timeout_s: float = 5.0) -> None:
         except (ConnectionRefusedError, FileNotFoundError, OSError):
             time.sleep(0.05)
     raise AssertionError(f"socket {socket_path} did not accept connections within {timeout_s}s")
+
+
+def test_validate_socket_path_rejects_long_path() -> None:
+    """A socket path over the AF_UNIX limit fails loud (not silent drop)."""
+    long_path = os.path.join(tempfile.gettempdir(), "x" * 200, "observer.sock")
+    with pytest.raises(ValueError, match="socket path too long"):
+        validate_socket_path(long_path)
+
+
+def test_validate_socket_path_accepts_short_path() -> None:
+    """A normal socket path passes the guard."""
+    validate_socket_path(_short_socket_path())  # must not raise
 
 
 def test_serve_forever_accepts_post(tmp_path) -> None:

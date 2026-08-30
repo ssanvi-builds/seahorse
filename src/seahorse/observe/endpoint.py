@@ -41,6 +41,24 @@ from seahorse.observe.threshold import DEFAULT_DROP_TOOLS
 
 _SOCKET_MODE = 0o600
 
+# AF_UNIX caps ``sun_path`` at 104 bytes (macOS) / 108 (Linux). A vault whose
+# ``.seahorse/observer/observer.sock`` exceeds this fails to bind — and the
+# endpoint thread dies silently while the worker keeps draining an empty queue
+# (``observe status`` still reports "running"). Fail loud instead of dropping
+# every envelope.
+_AF_UNIX_PATH_MAX = 104
+
+
+def validate_socket_path(path: Path | str) -> None:
+    """Raise if the unix socket path exceeds the OS AF_UNIX limit."""
+    length = len(str(path).encode("utf-8"))
+    if length > _AF_UNIX_PATH_MAX:
+        raise ValueError(
+            f"observer socket path too long ({length} bytes; AF_UNIX limit is "
+            f"{_AF_UNIX_PATH_MAX}): {path} — move the vault to a shorter path "
+            "or set [observe].socket_path"
+        )
+
 
 class _UnixHTTPServer(ThreadingHTTPServer):
     address_family = socket.AF_UNIX

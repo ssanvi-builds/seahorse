@@ -26,7 +26,9 @@ from typing import Literal, TextIO, cast
 
 from seahorse.cli.config import SeahorseConfig
 from seahorse.cli.errors import CliError, CliObserverRunning
+from seahorse.cli.exit_codes import CLI_CONFIG_INVALID
 from seahorse.cli.output import OutputFormat
+from seahorse.observe.endpoint import validate_socket_path
 from seahorse.observe.worker import ObserverConfig
 
 OBSERVER_DIR_NAME = "observer"
@@ -114,6 +116,19 @@ def run_observe_start(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
     pid = _read_pid(cfg)
     if pid is not None and _pid_alive(pid):
         raise CliObserverRunning(pid)
+    # Fail loud before spawning: a socket path over the AF_UNIX limit would
+    # kill the child's endpoint thread silently and drop every envelope while
+    # ``observe status`` still reports "running". (Only when [observe] is
+    # configured — without it the child fails loud on its own.)
+    if cfg.observe is not None:
+        try:
+            validate_socket_path(socket_path(cfg))
+        except ValueError as exc:
+            raise CliError(
+                exit_code=CLI_CONFIG_INVALID,
+                name="CLI_CONFIG_INVALID",
+                detail=str(exc),
+            ) from exc
     log_path = observer_dir(cfg) / LOG_FILENAME
     observer_dir(cfg).mkdir(parents=True, exist_ok=True)
     with open(log_path, "ab") as log:

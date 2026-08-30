@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from seahorse.observe.endpoint import ObserverEndpoint
+from seahorse.observe.endpoint import ObserverEndpoint, validate_socket_path
 from seahorse.observe.queue import ObserverQueue
 from seahorse.observe.worker import ObserverConfig, ObserverWorker
 
@@ -41,6 +41,10 @@ def run_observer(
     drains the queue every ``interval_s`` seconds. Exits on ``stop_event``,
     ``max_drains`` (test control), or KeyboardInterrupt.
     """
+    # Fail loud before the endpoint thread starts: a socket path over the
+    # AF_UNIX limit would kill the thread silently (daemon) and drop every
+    # envelope while the worker keeps draining an empty queue.
+    validate_socket_path(socket_path)
     endpoint = ObserverEndpoint(
         queue, socket_path=socket_path, token=token, drop_tools=config.drop_tools
     )

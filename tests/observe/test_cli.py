@@ -14,7 +14,8 @@ import os
 import pytest
 
 from seahorse.cli.config import ObserveConfig, SeahorseConfig
-from seahorse.cli.errors import CliObserverRunning
+from seahorse.cli.errors import CliError, CliObserverRunning
+from seahorse.cli.exit_codes import CLI_CONFIG_INVALID
 from seahorse.observe.cli import (
     pid_file,
     run_observe_event,
@@ -116,6 +117,26 @@ def test_stop_kills_live_pid(tmp_path) -> None:
     proc.wait(timeout=5)
     with pytest.raises(ProcessLookupError):
         os.kill(proc.pid, 0)
+
+
+def test_start_fails_loud_on_long_socket_path(tmp_path) -> None:
+    """A vault whose observer socket exceeds the AF_UNIX limit fails loud.
+
+    Regression: the endpoint thread used to die silently (daemon) on
+    ``AF_UNIX path too long`` while ``observe status`` still reported
+    "running" — every envelope was dropped with no error.
+    """
+    long_vault = tmp_path / ("v" * 60)
+    cfg = SeahorseConfig(
+        vault=long_vault,
+        seahorse_dir=long_vault / ".seahorse",
+        db_path=long_vault / ".seahorse" / "seahorse.db",
+        observe=ObserveConfig(),
+    )
+    with pytest.raises(CliError) as exc:
+        run_observe_start(cfg, fmt="human", out=_out())
+    assert exc.value.exit_code == CLI_CONFIG_INVALID
+    assert "socket path too long" in exc.value.detail
 
 
 def test_start_spawns_and_writes_pid(tmp_path, monkeypatch) -> None:
