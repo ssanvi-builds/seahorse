@@ -284,9 +284,11 @@ class LiteLLMBackend:
         timeout_s: float,
     ) -> CompletionResult:
         try:
-            from litellm import (  # type: ignore[import-not-found]  # lazy: extra 'llm'
-                completion,
-            )
+            import litellm  # type: ignore[import-not-found]  # lazy: extra 'llm'
+            # LiteLLM prints a "Give Feedback" banner to stdout on first use;
+            # that would corrupt `--format json` output (doctor, scripts).
+            litellm.suppress_debug_info = True
+            completion = litellm.completion
         except ImportError:
             raise LLMError(
                 "LiteLLM is not installed; run `uv sync --extra llm` "

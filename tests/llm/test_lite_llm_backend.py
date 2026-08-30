@@ -267,3 +267,20 @@ class TestProtocolConformance:
         assert isinstance(
             LiteLLMBackend(route=_route("ollama/qwen3:1.7b")), LLMClient
         )
+
+
+class TestBannerSuppression:
+    def test_suppress_debug_info_set_on_litellm(self, monkeypatch) -> None:
+        """The backend must silence litellm's stdout banner.
+
+        LiteLLM prints a "Give Feedback" banner to stdout on first use; that
+        would corrupt `--format json` output (doctor, scripts). The backend
+        sets ``suppress_debug_info`` on the module it imports.
+        """
+        _install_litellm(
+            monkeypatch,
+            lambda **kw: _FakeResp('{"subject": "seahorse", "tags": []}'),
+        )
+        backend = LiteLLMBackend(route=_route("ollama/qwen3:1.7b"))
+        backend.extract("body", _Frontmatter)
+        assert sys.modules["litellm"].suppress_debug_info is True
