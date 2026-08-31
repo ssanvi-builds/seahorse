@@ -121,7 +121,12 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   green, ≥80% coverage, fresh-user e2e green. Deliberately local-first: the
   remote MCP server (Streamable HTTP), web dashboard, and managed sync are Fase 2
   expansions gated by adoption, not requirements for 1.0. After 1.0, a breaking
-  change is a 2.0.
+  change is a 2.0. **The pre-v1.0 validation is complete (2026-08-31)**: all
+  three gates are validated with evidence — frozen contracts (MCP
+  protocolVersion `2025-11-25` + 14 tools + CLI onboarding, `e2e-pypi.sh` 24
+  passed), the self-evolving loop (`e2e-loop.sh` 39 passed), and release
+  quality (CI green, `e2e-pypi.sh` 24 passed, `e2e-vm.sh` 32 passed on a clean
+  Linux VM with no dev tooling). Pending: the 1.0.0 bump + tag.
 - **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
   HTTP) as a standard expansion that also serves the local free tier, with the
   web dashboard and managed sync deferred until the adoption gate produces data.
