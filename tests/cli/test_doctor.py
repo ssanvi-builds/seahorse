@@ -152,3 +152,23 @@ class TestProviderSelfTest:
         ok, detail = _provider_self_test(LlmConfig(primary="ollama/qwen3:1.7b"))
         assert ok is False
         assert "boom" in detail
+
+    def test_self_test_schema_tolerates_extra_fields(self) -> None:
+        """Small local models emit ``valid_at`` from the extraction pattern; the
+        probe schema must accept it (extra=allow) while still requiring the
+        core ``subject`` field."""
+        from seahorse.cli.doctor import _SelfTestSchema
+
+        ok = _SelfTestSchema.model_validate({"subject": "Seahorse", "valid_at": ""})
+        assert ok.subject == "Seahorse"
+
+    def test_self_test_schema_requires_subject(self) -> None:
+        from pydantic import ValidationError
+
+        from seahorse.cli.doctor import _SelfTestSchema
+
+        try:
+            _SelfTestSchema.model_validate({"valid_at": ""})
+        except ValidationError:
+            return
+        raise AssertionError("subject is required — probe must not pass without it")

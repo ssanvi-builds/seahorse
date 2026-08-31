@@ -28,11 +28,17 @@ from seahorse.llm import LLMError, resolve_provider
 
 
 class _SelfTestSchema(BaseModel):
-    """Minimal schema for the doctor's live provider probe."""
+    """Minimal schema for the doctor's live provider probe.
 
-    model_config = ConfigDict(extra="forbid")
+    ``subject`` is required (the probe must produce the core extraction field);
+    ``extra="allow"`` tolerates the extra fields small local models emit from
+    the extraction pattern (e.g. ``valid_at``) — the probe tests reachability
+    and schema-valid JSON, not strict field discipline.
+    """
 
-    subject: str | None = None
+    model_config = ConfigDict(extra="allow")
+
+    subject: str
 
 
 def _sqlite_load_extension_supported() -> bool:
