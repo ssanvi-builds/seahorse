@@ -281,11 +281,13 @@ else
   # appending a second one is a TOML duplicate-key error. Rewrite the section
   # through the library's own writer, which preserves the [seahorse] values.
   # Ollama's base URL defaults to http://localhost:11434 — the in-VM server.
+  # timeout_s=120: the FIRST call must load qwen3:0.6b (~522MB) into RAM on CPU
+  # (a 4G VM); the 20s default times out on the cold load (litellm.Timeout).
   run "rewrite [llm] config" "$PYTHON" -c "
 from pathlib import Path
 from seahorse.cli.config import LlmConfig, write_llm_config
-write_llm_config(Path('$VAULT'), LlmConfig(primary='ollama/qwen3:0.6b'))
-print('  [llm] rewritten: primary = ollama/qwen3:0.6b')
+write_llm_config(Path('$VAULT'), LlmConfig(primary='ollama/qwen3:0.6b', timeout_s=120.0))
+print('  [llm] rewritten: primary = ollama/qwen3:0.6b, timeout_s = 120.0')
 "
   # The write path only routes the LLM extraction for source_type=agent (the
   # cost guard in decide_path); the CLI default is "human", which silently
