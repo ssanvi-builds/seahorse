@@ -32,6 +32,12 @@ SEAHORSE="$VENV/bin/seahorse"
 SEAHORSE_MCP="$VENV/bin/seahorse-mcp"
 PYTHON="$VENV/bin/python"
 export FASTEMBED_CACHE_PATH="$HOME/fastembed-cache"
+# The CLI resolves the vault from SEAHORSE_VAULT (or --vault / cwd inside the
+# vault); the inner script runs from $HOME, so the env var is required.
+export SEAHORSE_VAULT="$VAULT"
+# Command output is teed here so last_ep_id() can parse `ep_id:` lines.
+LOG="$HOME/e2e-vm-inner.log"
+: > "$LOG"
 
 # --- state -------------------------------------------------------------------
 PASS=0
@@ -46,22 +52,30 @@ fail() { FAIL=$((FAIL + 1)); FAILED_STEPS+=("$1"); info "  ❌ $1"; }
 step() {  # step <n> <title>
   info ""
   info "════════════════════════════════════════════════════════════"
-  info "STEP $n: $*"
+  info "STEP $1: $*"
   info "════════════════════════════════════════════════════════════"
 }
 
-run() {  # run <label> <cmd...> — transparent, live output
+run() {  # run <label> <cmd...> — transparent, live output, teed to $LOG
   local label="$1"; shift
   info ""
   info "▶ $*"
-  if "$@" 2>&1; then ok "$label"; else fail "$label"; fi
+  set +e
+  "$@" 2>&1 | tee -a "$LOG"
+  local rc=${PIPESTATUS[0]}
+  set -e
+  if (( rc == 0 )); then ok "$label"; else fail "$label"; fi
 }
 
 run_critical() {  # run_critical <label> <cmd...> — abort on failure
   local label="$1"; shift
   info ""
   info "▶ $*"
-  if "$@" 2>&1; then
+  set +e
+  "$@" 2>&1 | tee -a "$LOG"
+  local rc=${PIPESTATUS[0]}
+  set -e
+  if (( rc == 0 )); then
     ok "$label"
   else
     fail "$label"
@@ -75,6 +89,29 @@ check() {  # check <label> <test-args...>
   if "$@"; then ok "$label"; else fail "$label"; fi
 }
 
+retry() {  # retry <label> <attempts> <cmd...> — retry with linear backoff
+  local label="$1"; shift
+  local attempts="$1"; shift
+  local n=0 rc=0
+  while (( n < attempts )); do
+    n=$((n + 1))
+    info ""
+    info "▶ (attempt $n/$attempts) $*"
+    set +e
+    "$@" 2>&1 | tee -a "$LOG"
+    rc=${PIPESTATUS[0]}
+    set -e
+    if (( rc == 0 )); then
+      ok "$label"
+      return 0
+    fi
+    info "  attempt $n failed (rc=$rc); retrying in $((n * 10))s..."
+    sleep $((n * 10))
+  done
+  fail "$label"
+  return 1
+}
+
 last_ep_id() {  # most recent `ep_id:` line in the log (human remember/improve)
   sed -n 's/^[[:space:]]*ep_id:[[:space:]]*\([0-9a-f-]*\).*/\1/p' "$LOG" | tail -1
 }
@@ -82,8 +119,9 @@ last_ep_id() {  # most recent `ep_id:` line in the log (human remember/improve)
 # --- step 1: provision -------------------------------------------------------
 step 1 "Provision: apt python3 + venv + pip + curl (no uv, no git, no build-essential)"
 run_critical "apt-get update" apt-get update -qq
-run_critical "apt-get install python3 python3-venv python3-pip curl" \
-  apt-get install -y -qq python3 python3-venv python3-pip curl
+# zstd: the Ollama install script needs it to extract the binary.
+run_critical "apt-get install python3 python3-venv python3-pip curl zstd" \
+  apt-get install -y -qq python3 python3-venv python3-pip curl zstd
 check "python3 present" command -v python3
 check "no uv present (the point is the real user)" bash -c '! command -v uv'
 check "no git present" bash -c '! command -v git'
@@ -101,7 +139,14 @@ if [[ -n "$VERSION" ]]; then
   PKG="$PKG==$VERSION"
 fi
 info "  pip install ${PIP_ARGS[*]} $PKG"
-run_critical "pip install $PKG" "$VENV/bin/pip" install "${PIP_ARGS[@]}" "$PKG"
+# The wheel download is flaky on some networks (truncated → hash mismatch);
+# retry with backoff. pip's HTTP cache keeps completed blobs across attempts.
+if retry "pip install $PKG" 3 "$VENV/bin/pip" install "${PIP_ARGS[@]}" "$PKG"; then
+  :
+else
+  info "ABORT: pip install failed after 3 attempts — cannot continue."
+  exit 1
+fi
 check "seahorse binary present" test -x "$SEAHORSE"
 check "seahorse-mcp binary present" test -x "$SEAHORSE_MCP"
 if [[ -n "$VERSION" ]]; then
@@ -165,7 +210,10 @@ PY
 fi
 
 run "improve (supersession)" "$SEAHORSE" improve "$EP1" "Sergio lives in Barcelona" --reason correction
-run "forget (soft-delete)" "$SEAHORSE" forget "$EP1" --reason done
+# improve supersedes EP1 (sets invalid_at); forget must target the NEW episode.
+EP2="$(last_ep_id)"
+check "improve ep_id captured" test -n "$EP2"
+run "forget (soft-delete)" "$SEAHORSE" forget "$EP2" --reason done
 run "context (non-empty)" "$SEAHORSE" context
 run "consolidate (idempotent)" "$SEAHORSE" consolidate
 
@@ -174,23 +222,52 @@ if (( FAST )); then
   info ""
   info "STEP 4: Ollama in-VM — SKIPPED (SEAHORSE_FAST=1)"
 else
-  step 4 "Ollama in-VM: install script + pull qwen3:0.6b + serve"
+  step 4 "Ollama in-VM: install script + serve + pull qwen3:0.6b"
   run_critical "ollama install script" bash -c "curl -fsSL https://ollama.com/install.sh | sh"
   check "ollama binary present" command -v ollama
-  run_critical "ollama pull qwen3:0.6b" ollama pull qwen3:0.6b
-  # Serve in the background; the model runs on CPU (no GPU in the VM).
+  # Some networks cannot reach Cloudflare R2 via its DNS-resolved anycast IPs
+  # (172.64.66.1 / 172.64.190.1 time out: `dial tcp ... i/o timeout`), which
+  # breaks the ollama blob download. Detect it and map the R2 hosts to a
+  # known-good Cloudflare anycast IP (the one registry.ollama.ai uses);
+  # verified by downloading a real blob range returning GGUF data.
+  R2_BUCKET="dd20bb891979d25aebc8bec07b2b3bbc"
+  if curl -sI -m 5 https://r2.cloudflarestorage.com >/dev/null 2>&1; then
+    ok "R2 reachable via DNS (no hosts workaround needed)"
+  else
+    info "  R2 default route unreachable — applying /etc/hosts workaround"
+    run_critical "R2 route workaround in /etc/hosts" bash -c "
+      cat >> /etc/hosts <<'EOF'
+104.18.16.170 r2.cloudflarestorage.com
+104.18.16.170 $R2_BUCKET.r2.cloudflarestorage.com
+EOF
+"
+  fi
+  # The install script's systemd service does not start in a container (no
+  # systemd as PID 1); serve manually in the background BEFORE pulling.
   nohup ollama serve > "$HOME/ollama.log" 2>&1 &
   OLLAMA_PID=$!
   info "  ollama serve pid $OLLAMA_PID"
   # Wait for the API to accept requests.
+  API_UP=0
   for _ in $(seq 1 30); do
-    if curl -s -m 2 http://localhost:11434 >/dev/null 2>&1; then break; fi
+    if curl -s -m 2 http://localhost:11434 >/dev/null 2>&1; then API_UP=1; break; fi
     sleep 1
   done
-  if curl -s -m 2 http://localhost:11434 >/dev/null 2>&1; then
+  if (( API_UP )); then
     ok "ollama API up (localhost:11434)"
   else
     fail "ollama API up (localhost:11434)"
+    info "  ollama.log tail:"
+    tail -5 "$HOME/ollama.log" >&2 || true
+    exit 1
+  fi
+  # The model blob download from Cloudflare R2 is flaky; retry with backoff
+  # (ollama resumes partial blobs, so retries are cheap).
+  if retry "ollama pull qwen3:0.6b" 3 ollama pull qwen3:0.6b; then
+    :
+  else
+    info "ABORT: ollama pull failed after 3 attempts — cannot continue."
+    exit 1
   fi
 fi
 
@@ -200,16 +277,22 @@ if (( FAST )); then
   info "STEP 5: LLM extraction — SKIPPED (SEAHORSE_FAST=1)"
 else
   step 5 "Real LLM extraction: [llm] config → remember --extraction-mode llm"
-  # Append the [llm] section to the vault TOML (Ollama base URL defaults to
-  # http://localhost:11434 — the in-VM server).
-  cat >> "$VAULT/.seahorse/seahorse.toml" <<'TOML'
-
-[llm]
-primary = "ollama/qwen3:0.6b"
-TOML
+  # `seahorse init` already writes a `[llm]` section (primary qwen3:1.7b);
+  # appending a second one is a TOML duplicate-key error. Rewrite the section
+  # through the library's own writer, which preserves the [seahorse] values.
+  # Ollama's base URL defaults to http://localhost:11434 — the in-VM server.
+  run "rewrite [llm] config" "$PYTHON" -c "
+from pathlib import Path
+from seahorse.cli.config import LlmConfig, write_llm_config
+write_llm_config(Path('$VAULT'), LlmConfig(primary='ollama/qwen3:0.6b'))
+print('  [llm] rewritten: primary = ollama/qwen3:0.6b')
+"
+  # The write path only routes the LLM extraction for source_type=agent (the
+  # cost guard in decide_path); the CLI default is "human", which silently
+  # degrades to skip. The agent source_type is the real user case here.
   run "remember --extraction-mode llm" \
     "$SEAHORSE" remember "The deploy pipeline gates v1.0 on a clean VM install" \
-    --title "deploy pipeline [vm:1]" --extraction-mode llm
+    --title "deploy pipeline [vm:1]" --extraction-mode llm --source-type agent
   EP_LLM="$(last_ep_id)"
   check "llm ep_id captured" test -n "$EP_LLM"
   # Assert the LLM actually extracted: provenance.extraction_mode == "llm" and

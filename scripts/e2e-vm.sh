@@ -80,7 +80,8 @@ if [[ "${REUSE:-0}" == "1" ]]; then
   fi
 else
   info "  creating VM $MACHINE ($DISTRO)..."
-  if orbctl create "$DISTRO" "$MACHINE"; then
+  # 4G RAM + 2 CPUs: qwen3:0.6b runs on CPU and needs ~1-2GB to load.
+  if orbctl create --memory 4G --cpus 2 "$DISTRO" "$MACHINE"; then
     ok "VM created"
   else
     fail "VM created"
@@ -89,9 +90,28 @@ else
   fi
 fi
 
+# --- wait for the VM to accept commands ---------------------------------------
+# orbctl create returns as soon as the machine is created; it may not be ready
+# to run commands yet. Poll until `orbctl run` answers (or give up).
+info "  waiting for the VM to accept commands..."
+VM_READY=0
+for _ in $(seq 1 30); do
+  if orbctl run -m "$MACHINE" bash -c 'true' >/dev/null 2>&1; then
+    VM_READY=1
+    break
+  fi
+  sleep 2
+done
+if (( VM_READY )); then
+  ok "VM ready"
+else
+  fail "VM ready (no response after 60s)"
+  exit 1
+fi
+
 # --- copy + run the inner script ---------------------------------------------
 info "  copying e2e-vm-inner.sh into the VM..."
-if orbctl run -m "$MACHINE" -- bash -c 'cat > /tmp/e2e-vm-inner.sh' < "$INNER"; then
+if orbctl run -m "$MACHINE" bash -c 'cat > /tmp/e2e-vm-inner.sh' < "$INNER"; then
   ok "inner script copied"
 else
   fail "inner script copied"
@@ -100,9 +120,11 @@ fi
 
 info "  running the inner script in the VM (output streamed below)..."
 info "────────────────────────────────────────────────────────────"
+# Run as root: `orbctl run` defaults to the host user (uid 501), which cannot
+# apt-get. The inner script provisions apt packages, so it needs root.
 # The inner script's exit code decides the gate; tee keeps a host-side log.
 set +e
-orbctl run -m "$MACHINE" -- bash /tmp/e2e-vm-inner.sh 2>&1 | tee -a "$LOG"
+orbctl run -m "$MACHINE" -u root bash /tmp/e2e-vm-inner.sh 2>&1 | tee -a "$LOG"
 INNER_RC=${PIPESTATUS[0]}
 set -e
 info "────────────────────────────────────────────────────────────"
