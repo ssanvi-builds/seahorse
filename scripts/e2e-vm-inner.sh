@@ -269,6 +269,14 @@ EOF
     info "ABORT: ollama pull failed after 3 attempts — cannot continue."
     exit 1
   fi
+  # llama.cpp's thread pool livelocks on the OrbStack kernel when it uses more
+  # threads than the VM can schedule (observed: 10 threads on a 9-CPU VM spins
+  # at ~190% CPU forever, both in the repack phase and in inference). A custom
+  # model with num_thread=2 sidesteps it entirely — the model loads and
+  # generates normally. This is an environment workaround, not a Seahorse fix.
+  printf "FROM qwen3:0.6b\nPARAMETER num_thread 2\n" > "$HOME/Modelfile-t2"
+  run_critical "ollama create qwen3:0.6b-t2 (num_thread=2)" \
+    ollama create qwen3:0.6b-t2 -f "$HOME/Modelfile-t2"
 fi
 
 # --- step 5: real LLM extraction ---------------------------------------------
@@ -281,13 +289,15 @@ else
   # appending a second one is a TOML duplicate-key error. Rewrite the section
   # through the library's own writer, which preserves the [seahorse] values.
   # Ollama's base URL defaults to http://localhost:11434 — the in-VM server.
-  # timeout_s=120: the FIRST call must load qwen3:0.6b (~522MB) into RAM on CPU
+  # The custom model qwen3:0.6b-t2 (num_thread=2) is the one that survives the
+  # OrbStack kernel's thread-pool livelock (see STEP 4).
+  # timeout_s=120: the FIRST call must load the model (~522MB) into RAM on CPU
   # (a 4G VM); the 20s default times out on the cold load (litellm.Timeout).
   run "rewrite [llm] config" "$PYTHON" -c "
 from pathlib import Path
 from seahorse.cli.config import LlmConfig, write_llm_config
-write_llm_config(Path('$VAULT'), LlmConfig(primary='ollama/qwen3:0.6b', timeout_s=120.0))
-print('  [llm] rewritten: primary = ollama/qwen3:0.6b, timeout_s = 120.0')
+write_llm_config(Path('$VAULT'), LlmConfig(primary='ollama/qwen3:0.6b-t2', timeout_s=120.0))
+print('  [llm] rewritten: primary = ollama/qwen3:0.6b-t2, timeout_s = 120.0')
 "
   # The write path only routes the LLM extraction for source_type=agent (the
   # cost guard in decide_path); the CLI default is "human", which silently
