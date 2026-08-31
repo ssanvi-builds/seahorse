@@ -4,6 +4,29 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-08-31
+
+### Added
+
+- **Pre-v1.0 validation harness** — the published artifact is now verified
+  from PyPI on a clean machine before v1.0. `scripts/e2e-pypi.sh` installs
+  `seahorse-memory[embeddings,llm]` from a configurable index into a fresh venv
+  and runs the README onboarding plus MCP over all three launch paths (binary,
+  `seahorse mcp` subcommand, `uvx`). `scripts/e2e-vm.sh` provisions a clean
+  Linux VM (OrbStack debian:bookworm, no uv/git/build-essential) and runs the
+  full onboarding with real embeddings (fresh mE5-small download) and real LLM
+  extraction (Ollama in-VM, custom `qwen3:0.6b-t2` model). `scripts/e2e-loop.sh`
+  validates the self-evolving loop end-to-end (observe → consolidate/supersede
+  → recall → decay). The publish workflow now gates PyPI on a TestPyPI
+  verification chain (`publish-testpypi` → `verify-testpypi` →
+  `build-and-publish` → `verify-pypi`).
+
+### Fixed
+
+- **Doctor provider self-test tolerates small local models** — the probe schema
+  requires only `subject` (extra fields allowed), so small models that emit
+  `valid_at` from the extraction pattern no longer fail the self-test.
+
 ## [0.14.0] - 2026-08-27
 
 ### Added
