@@ -14,6 +14,7 @@ preserving other hooks and config.
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import sys
@@ -25,8 +26,12 @@ from seahorse.cli.config import (
     DEFAULT_OBSERVE_SOCKET,
     DEFAULT_SKIP_TOOLS,
     config_path_for,
+    is_initialized,
+    resolve_vault,
+    write_default_config,
     write_global_pointer,
 )
+from seahorse.cli.errors import CliVaultNotFound
 from seahorse.cli.output import OutputFormat
 
 # The marker that identifies the observer hooks in settings.json (the uninstall
@@ -43,6 +48,93 @@ _OBSERVER_HOOKS: dict[str, str] = {
 }
 
 _OBSERVE_SECTION_RE = re.compile(r"\n\[observe\].*?(?=\n\[|\Z)", re.DOTALL)
+
+# Obsidian's vault registry (obsidian.json) lives next to Seahorse's global
+# pointer, under the same config-home convention.
+_OBSIDIAN_APP_DIR = "obsidian"
+_OBSIDIAN_REGISTRY_NAME = "obsidian.json"
+_DEFAULT_VAULT_DIRNAME = "Seahorse"
+
+
+def _obsidian_registry_path() -> Path:
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / _OBSIDIAN_APP_DIR / _OBSIDIAN_REGISTRY_NAME
+
+
+def discover_obsidian_vaults() -> list[Path]:
+    """Existing Obsidian vaults from Obsidian's own registry (obsidian.json).
+
+    Tolerates a missing or corrupt registry (empty list — discovery is best
+    effort, never a failure). Vaults whose directory no longer exists are
+    filtered out.
+    """
+    try:
+        data = json.loads(_obsidian_registry_path().read_text(encoding="utf-8"))
+        entries = list(data.get("vaults", {}).values())
+    except (OSError, ValueError):
+        return []
+    vaults: list[Path] = []
+    for entry in entries:
+        raw = entry.get("path") if isinstance(entry, dict) else None
+        if not raw:
+            continue
+        candidate = Path(raw).expanduser()
+        if candidate.is_dir():
+            vaults.append(candidate.resolve())
+    return vaults
+
+
+def _bootstrap_vault(vault: Path) -> Path:
+    """Create the vault directory + minimal config if missing (idempotent)."""
+    vault.mkdir(parents=True, exist_ok=True)
+    if not is_initialized(vault):
+        write_default_config(vault)
+    return vault
+
+
+def _pick_vault_interactively() -> Path:
+    """Ask the user which vault Seahorse should use (TTY only).
+
+    Offers Obsidian's registered vaults plus a last option that creates a
+    fresh vault at ``~/Seahorse``. The pick is bootstrapped, so the chosen
+    directory always ends up initialized.
+    """
+    discovered = discover_obsidian_vaults()
+    options = [*discovered, Path.home() / _DEFAULT_VAULT_DIRNAME]
+    print("No Seahorse vault found. Pick the vault to use with Seahorse:")
+    for index, option in enumerate(options, start=1):
+        note = "" if option in discovered else " (created if missing)"
+        print(f"  {index}. {option}{note}")
+    choice = input(f"Vault [1-{len(options)}]: ").strip()
+    try:
+        picked = options[int(choice) - 1]
+    except (ValueError, IndexError) as exc:
+        raise CliVaultNotFound(hint=f"invalid choice {choice!r}") from exc
+    return _bootstrap_vault(picked)
+
+
+def ensure_vault(explicit: Path | None) -> Path:
+    """Resolve the vault for ``setup``, bootstrapping instead of failing.
+
+    An explicit ``--vault`` is created and initialized if missing. Otherwise
+    the normal resolution order applies (env / cwd walk / global pointer);
+    only when nothing resolves does setup interact: on a TTY it offers a
+    numbered pick, without a TTY it fails loud with a ``--vault`` hint so
+    scripts never hang on a prompt.
+    """
+    if explicit is not None:
+        return _bootstrap_vault(explicit.expanduser().resolve())
+    try:
+        return resolve_vault(None)
+    except CliVaultNotFound:
+        if not sys.stdin.isatty():
+            raise CliVaultNotFound(
+                hint="pass --vault <path> (or run `seahorse setup` in a terminal)"
+            ) from None
+        return _pick_vault_interactively()
 
 
 def _default_settings_path() -> Path:
@@ -205,6 +297,8 @@ def run_setup_uninstall(
 
 __all__ = [
     "HOOK_MARKER",
+    "discover_obsidian_vaults",
+    "ensure_vault",
     "write_observe_config",
     "merge_hooks",
     "remove_hooks",

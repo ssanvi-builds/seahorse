@@ -873,15 +873,28 @@ def setup(
     uninstall: bool = typer.Option(
         False, "--uninstall", help="Remove the observer hooks + [observe] config."
     ),
+    vault: Path | None = typer.Option(
+        None,
+        "--vault",
+        help="Vault to set up (bootstrapped if missing; overrides resolution).",
+    ),
 ) -> None:
-    """Install the observer: merge Claude Code hooks + write [observe] config."""
-    from seahorse.cli.setup import run_setup, run_setup_uninstall
+    """Install the observer: merge Claude Code hooks + write [observe] config.
 
-    cfg = ctx.obj.resolved_config()
+    On the install path the vault is resolved, then bootstrapped if missing
+    (``--vault`` forces a path; on a TTY an interactive picker offers the
+    Obsidian-registered vaults). This removes the cold-start exit 82: a fresh
+    user runs ``seahorse setup`` and leaves with a working vault.
+    """
+    from seahorse.cli.setup import ensure_vault, run_setup, run_setup_uninstall
+
     if uninstall:
-        run_setup_uninstall(cfg.vault, fmt=ctx.obj.fmt, out=_out(ctx))
-    else:
-        run_setup(cfg.vault, fmt=ctx.obj.fmt, out=_out(ctx))
+        run_setup_uninstall(
+            ctx.obj.resolved_config().vault, fmt=ctx.obj.fmt, out=_out(ctx)
+        )
+        return
+    resolved_vault = ensure_vault(vault)
+    run_setup(resolved_vault, fmt=ctx.obj.fmt, out=_out(ctx))
 
 
 @app.command()

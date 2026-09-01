@@ -10,11 +10,17 @@ and the ``[observe]`` section, preserving other hooks.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from seahorse.cli.config import load_config
+import pytest
+
+from seahorse.cli.config import load_config, write_default_config
+from seahorse.cli.errors import CliVaultNotFound
 from seahorse.cli.setup import (
     HOOK_MARKER,
+    discover_obsidian_vaults,
+    ensure_vault,
     merge_hooks,
     remove_hooks,
     run_setup,
@@ -294,6 +300,91 @@ def test_run_setup_registers_global_pointer(tmp_path, monkeypatch) -> None:
     pointer = tmp_path / "xdg" / "seahorse" / "vault"
     assert pointer.is_file()
     assert Path(pointer.read_text().strip()) == vault.resolve()
+
+
+# ---------------------------------------------------------------------------
+# ensure_vault — setup's resolve-or-create entry (kills the exit-82 wall)
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_vault_explicit_missing_dir_is_created(tmp_path, monkeypatch) -> None:
+    """``setup --vault <new path>`` bootstraps instead of exit 82."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    vault = ensure_vault(tmp_path / "fresh")
+    assert (vault / ".seahorse" / "seahorse.toml").is_file()
+    assert vault == (tmp_path / "fresh").resolve()
+
+
+def test_ensure_vault_resolution_wins_without_explicit(tmp_path, monkeypatch) -> None:
+    """cwd (or parents) / pointer resolve as before — no wizard, no prompt."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    write_default_config(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert ensure_vault(None) == tmp_path.resolve()
+
+
+def test_ensure_vault_wizard_picks_discovered_vault(tmp_path, monkeypatch) -> None:
+    """Interactive: the discovered vaults are offered; the pick is honored."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    vault_a = tmp_path / "vault-a"
+    vault_a.mkdir()
+    monkeypatch.setattr(
+        "seahorse.cli.setup.discover_obsidian_vaults", lambda: [vault_a]
+    )
+    monkeypatch.setattr("sys.stdin", type("_TTY", (), {"isatty": lambda _s: True})())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "1")
+    os.chdir(tmp_path)
+    picked = ensure_vault(None)
+    assert picked == vault_a
+    assert (vault_a / ".seahorse" / "seahorse.toml").is_file()  # bootstrapped
+
+
+def test_ensure_vault_wizard_create_default(tmp_path, monkeypatch) -> None:
+    """The last option creates a fresh vault at ~/Seahorse."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("seahorse.cli.setup.discover_obsidian_vaults", lambda: [])
+    monkeypatch.setattr("sys.stdin", type("_TTY", (), {"isatty": lambda _s: True})())
+    monkeypatch.setattr("builtins.input", lambda _prompt: "1")
+    picked = ensure_vault(None)
+    assert picked == (tmp_path / "home" / "Seahorse").resolve()
+    assert (picked / ".seahorse" / "seahorse.toml").is_file()
+
+
+def test_ensure_vault_non_tty_raises_actionable(tmp_path, monkeypatch) -> None:
+    """No resolution + no TTY: exit 82 with a hint that names --vault."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(CliVaultNotFound) as exc:
+        ensure_vault(None)
+    assert "--vault" in exc.value.detail
+
+
+def test_discover_obsidian_vaults_parses_registry(tmp_path, monkeypatch) -> None:
+    """obsidian.json vaults are parsed; non-existent dirs are filtered."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    reg = tmp_path / "xdg" / "obsidian" / "obsidian.json"
+    reg.parent.mkdir(parents=True)
+    real = tmp_path / "real-vault"
+    real.mkdir()
+    reg.write_text(json.dumps({
+        "vaults": {
+            "abc123": {"path": str(real), "ts": 1},
+            "dead": {"path": str(tmp_path / "gone"), "ts": 2},
+        }
+    }))
+    assert discover_obsidian_vaults() == [real.resolve()]
+
+
+def test_discover_obsidian_vaults_missing_registry_is_empty(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert discover_obsidian_vaults() == []
 
 
 def test_run_setup_uninstall_removes_hooks(tmp_path, monkeypatch) -> None:
