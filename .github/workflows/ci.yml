@@ -66,3 +66,54 @@ jobs:
       # the pipeline fast while still exercising the fresh-user install paths.
       - name: Run e2e matrix (core_min + uv_sync_dev)
         run: scripts/e2e-matrix.sh --ci-subset
+
+  # macOS gate: the core (SQLite + sqlite-vec + FTS5) is platform-sensitive
+  # (enable_load_extension, AF_UNIX paths, GNU-only shell idioms). Public repo,
+  # so macos runners are free. One Python version (3.12) — the coverage matrix
+  # stays on ubuntu. No heavy extras (fastembed/litellm downloads are slow and
+  # flaky on CI); sqlite-vec ships an arm64 macOS wheel (verified on PyPI).
+  macos-test:
+    name: lint + type + test (macos, py3.12)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # uv-managed Python is required: the system python3 on the runners may
+      # lack sqlite3 enable_load_extension (needed by sqlite-vec).
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies (with dev extras)
+        run: uv sync --extra dev --python 3.12
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest
+        env:
+          SEAHORSE_RUN_INSTALL_SMOKE: "0"
+
+  macos-e2e:
+    name: e2e matrix (macos, CI subset)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Run e2e matrix (core_min + uv_sync_dev)
+        run: scripts/e2e-matrix.sh --ci-subset
