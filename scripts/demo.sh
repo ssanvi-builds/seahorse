@@ -19,7 +19,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VAULT="/private/tmp/seahorse-demo-$(date +%s)"
+# macOS keeps /private/tmp (long paths allowed there); other platforms fall
+# back to $TMPDIR — /private/tmp does not exist on Linux.
+if [[ -d /private/tmp && -w /private/tmp ]]; then
+  DEMO_BASE="/private/tmp"
+else
+  DEMO_BASE="${TMPDIR:-/tmp}"
+fi
+VAULT="$DEMO_BASE/seahorse-demo-$(date +%s)"
 KEEP=0
 IMPORT_SOURCE="${HOME}/.claude-mem/claude-mem.db"
 
