@@ -13,7 +13,8 @@ import json
 from pathlib import Path
 
 from seahorse.cli.config import load_config, write_default_config
-from seahorse.cli.doctor import run_doctor
+from seahorse.cli.doctor import _context_probe, run_doctor
+from seahorse.cli.setup import write_observe_config
 
 
 def _write(vault: Path, body: str) -> Path:
@@ -172,3 +173,107 @@ class TestProviderSelfTest:
         except ValidationError:
             return
         raise AssertionError("subject is required — probe must not pass without it")
+
+
+# ---------------------------------------------------------------------------
+# Capture end-to-end checks (hooks / observer / context)
+# ---------------------------------------------------------------------------
+
+
+def _settings(tmp_path: Path, events: list[str]) -> Path:
+    """A settings.json whose observer hooks cover only ``events``."""
+    path = tmp_path / "settings.json"
+    hooks = {
+        event: [{"matcher": "*", "hooks": [{"type": "command",
+                                            "command": "py -m seahorse.cli.app observe event"}]}]
+        for event in events
+    }
+    path.write_text(json.dumps({"hooks": hooks}), encoding="utf-8")
+    return path
+
+
+class TestCaptureChecks:
+    def test_hooks_installed_ok(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", str(_settings(
+            tmp_path, ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"]
+        )))
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        hooks = next(c for c in payload["checks"] if c["check"] == "claude_hooks")
+        assert hooks["status"] == "OK"
+        assert "4 events" in hooks["detail"]
+
+    def test_hooks_missing_file_warns(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv(
+            "SEAHORSE_CLAUDE_SETTINGS", str(tmp_path / "nope" / "settings.json")
+        )
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        hooks = next(c for c in payload["checks"] if c["check"] == "claude_hooks")
+        assert hooks["status"] == "WARN"
+        assert "setup" in hooks["detail"]
+        assert payload["healthy"] is False
+
+    def test_hooks_partial_warns_naming_missing_events(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", str(
+            _settings(tmp_path, ["SessionStart"])
+        ))
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        hooks = next(c for c in payload["checks"] if c["check"] == "claude_hooks")
+        assert hooks["status"] == "WARN"
+        assert "UserPromptSubmit" in hooks["detail"]
+
+    def test_observer_socket_present_ok(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        write_observe_config(tmp_path)
+        cfg = load_config(tmp_path)
+        assert cfg.observe is not None
+        sock = cfg.seahorse_dir / cfg.observe.socket_path
+        sock.parent.mkdir(parents=True, exist_ok=True)
+        sock.touch()
+        payload = _doctor(cfg, monkeypatch)
+        obs = next(c for c in payload["checks"] if c["check"] == "observer")
+        assert obs["status"] == "OK"
+
+    def test_observer_socket_absent_warns_autostart(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        write_observe_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        obs = next(c for c in payload["checks"] if c["check"] == "observer")
+        assert obs["status"] == "WARN"
+        assert "auto-starts" in obs["detail"]
+
+    def test_observer_unconfigured_warns_setup(self, tmp_path, monkeypatch) -> None:
+        _write(tmp_path, '[seahorse]\ndb_path = "x.db"\n')
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        obs = next(c for c in payload["checks"] if c["check"] == "observer")
+        assert obs["status"] == "WARN"
+        assert "setup" in obs["detail"]
+
+    def test_context_probe_ok(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        monkeypatch.setattr(
+            "seahorse.cli.doctor._context_probe", lambda _cfg: (True, "ok (128 chars)")
+        )
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        ctx = next(c for c in payload["checks"] if c["check"] == "context")
+        assert ctx["status"] == "OK"
+
+    def test_context_probe_fail_warns(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        monkeypatch.setattr(
+            "seahorse.cli.doctor._context_probe", lambda _cfg: (False, "exit 83")
+        )
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        ctx = next(c for c in payload["checks"] if c["check"] == "context")
+        assert ctx["status"] == "WARN"
+        assert "exit 83" in ctx["detail"]
+
+    def test_context_probe_live_renders_nonempty(self, tmp_path, monkeypatch) -> None:
+        """The real probe (subprocess) renders context against a real vault."""
+        write_default_config(tmp_path)
+        cfg = load_config(tmp_path)
+        ok, detail = _context_probe(cfg)
+        assert ok is True
+        assert "ok" in detail

@@ -14,10 +14,13 @@ diagnosis, not a gate). Config failures already surface as ``CliConfigInvalid``
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
+from pathlib import Path
 from typing import TextIO
 
 from pydantic import BaseModel, ConfigDict
@@ -25,6 +28,11 @@ from pydantic import BaseModel, ConfigDict
 from seahorse.cli.config import LlmConfig, SeahorseConfig
 from seahorse.cli.output import OutputFormat, render_message
 from seahorse.llm import LLMError, resolve_provider
+
+# The observer hook events + marker (shared with setup, which installs them).
+_OBSERVER_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop")
+_HOOK_MARKER = "observe event"
+_CONTEXT_PROBE_TIMEOUT_S = 10.0
 
 
 class _SelfTestSchema(BaseModel):
@@ -105,6 +113,83 @@ def _provider_self_test(llm: LlmConfig) -> tuple[bool, str]:
     return True, f"ok ({res.model_used})"
 
 
+def _claude_settings_path() -> Path:
+    env = os.environ.get("SEAHORSE_CLAUDE_SETTINGS")
+    if env:
+        return Path(env)
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _entry_commands(entry: dict) -> list[str]:
+    """All commands in a settings.json hook entry (flat legacy or nested)."""
+    commands = [entry["command"]] if entry.get("command") else []
+    commands.extend(h["command"] for h in entry.get("hooks", []) if h.get("command"))
+    return commands
+
+
+def _hooks_check() -> tuple[str, str]:
+    """The observer hooks as installed in Claude Code's settings.json."""
+    path = _claude_settings_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return (
+            "WARN",
+            f"no observer hooks in {path}; run `seahorse setup` to install capture",
+        )
+    installed: dict[str, bool] = {}
+    for event in _OBSERVER_EVENTS:
+        entries = data.get("hooks", {}).get(event, [])
+        installed[event] = any(
+            _HOOK_MARKER in c for entry in entries for c in _entry_commands(entry)
+        )
+    if not all(installed.values()):
+        missing = ", ".join(e for e, ok in installed.items() if not ok)
+        return "WARN", f"hooks missing for: {missing}; run `seahorse setup`"
+    return "OK", f"installed ({len(_OBSERVER_EVENTS)} events)"
+
+
+def _observer_check(config: SeahorseConfig) -> tuple[str, str]:
+    """The observer worker as seen from the vault (socket presence)."""
+    if config.observe is None:
+        return "WARN", "observer not configured; run `seahorse setup`"
+    from seahorse.observe.cli import socket_path
+
+    if socket_path(config).exists():
+        return "OK", "observer running (socket present)"
+    return (
+        "WARN",
+        "observer not running; it auto-starts on the next Claude Code session",
+    )
+
+
+def _context_probe(config: SeahorseConfig) -> tuple[bool, str]:
+    """Render the SessionStart context through the real CLI (end-to-end)."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "seahorse.cli.app",
+        "--vault",
+        str(config.vault),
+        "context",
+    ]
+    try:
+        res = subprocess.run(  # noqa: S603
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_CONTEXT_PROBE_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"error: {exc}"
+    if res.returncode != 0:
+        return False, f"exit {res.returncode}"
+    if not res.stdout.strip():
+        return False, "empty context"
+    return True, f"ok ({len(res.stdout)} chars)"
+
+
 def run_doctor(
     config: SeahorseConfig, *, fmt: OutputFormat = "human", out: TextIO
 ) -> None:
@@ -170,6 +255,17 @@ def run_doctor(
             "status": "OK" if config.db_path.exists() else "WARN",
             "detail": str(config.db_path),
         }
+    )
+
+    # Capture end-to-end: hooks installed in Claude Code, observer worker,
+    # and the SessionStart context rendering through the real CLI.
+    hooks_status, hooks_detail = _hooks_check()
+    checks.append({"check": "claude_hooks", "status": hooks_status, "detail": hooks_detail})
+    obs_status, obs_detail = _observer_check(config)
+    checks.append({"check": "observer", "status": obs_status, "detail": obs_detail})
+    ctx_ok, ctx_detail = _context_probe(config)
+    checks.append(
+        {"check": "context", "status": "OK" if ctx_ok else "WARN", "detail": ctx_detail}
     )
 
     checks.append(
