@@ -181,7 +181,10 @@ def test_merge_hooks_idempotent_with_preexisting_wellformed_hook(tmp_path) -> No
     the marker check must look inside `hooks`, not just at the entry level.
     """
     path = _settings_path(tmp_path)
-    nested = {"matcher": "*", "hooks": [{"type": "command", "command": "py -m seahorse.cli.app observe event"}]}
+    nested = {
+        "matcher": "*",
+        "hooks": [{"type": "command", "command": "py -m seahorse.cli.app observe event"}],
+    }
     _write_settings(path, {"hooks": {"UserPromptSubmit": [nested]}})
     merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
     with open(path, encoding="utf-8") as fh:
@@ -228,7 +231,10 @@ def test_remove_hooks_removes_nested_observer_hooks(tmp_path) -> None:
                     {
                         "matcher": "*",
                         "hooks": [
-                            {"type": "command", "command": "python -m seahorse.cli.app observe event"}
+                            {
+                                "type": "command",
+                                "command": "python -m seahorse.cli.app observe event",
+                            }
                         ],
                     },
                     {
