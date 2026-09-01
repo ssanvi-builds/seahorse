@@ -166,6 +166,29 @@ def test_start_spawns_and_writes_pid(tmp_path, monkeypatch) -> None:
     assert spawned["cmd"].index("--vault") < spawned["cmd"].index("observe")
 
 
+def test_start_uses_spawn_observer_helper(tmp_path, monkeypatch) -> None:
+    """``run_observe_start`` delegates the spawn to ``_spawn_observer``.
+
+    The hook respawn path (dead observer → spawn from ``observe event``) shares
+    this helper; this pins the delegation so a refactor of one cannot silently
+    diverge from the other.
+    """
+    cfg = _cfg(tmp_path)
+
+    def _fake_spawn(cfg_arg):
+        assert cfg_arg is cfg
+        # The real helper's contract: spawn detached AND write the pid file.
+        pid_file(cfg_arg).parent.mkdir(parents=True, exist_ok=True)
+        pid_file(cfg_arg).write_text("4243")
+        return 4243
+
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", _fake_spawn)
+    out = _out()
+    run_observe_start(cfg, fmt="human", out=out)
+    assert "started" in out.getvalue()
+    assert pid_file(cfg).read_text() == "4243"
+
+
 # ---------------------------------------------------------------------------
 # observe event (hook injection — the self-evolving loop's capture path)
 # ---------------------------------------------------------------------------

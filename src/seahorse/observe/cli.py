@@ -111,11 +111,14 @@ def run_observe_status(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -
     _emit(cfg, fmt, out, {"running": running, "pid": pid if running else None})
 
 
-def run_observe_start(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
-    """Spawn the observer as a detached subprocess (single-writer)."""
-    pid = _read_pid(cfg)
-    if pid is not None and _pid_alive(pid):
-        raise CliObserverRunning(pid)
+def _spawn_observer(cfg: SeahorseConfig) -> int:
+    """Spawn ``observe run`` as a detached subprocess; return the child pid.
+
+    Shared by ``observe start`` (user-facing, fails loud) and the hook respawn
+    path (``_ensure_running``, swallows errors). Validates the socket path
+    first: a vault over the AF_UNIX limit would otherwise spawn a child whose
+    endpoint thread dies silently while ``observe status`` reports "running".
+    """
     # Fail loud before spawning: a socket path over the AF_UNIX limit would
     # kill the child's endpoint thread silently and drop every envelope while
     # ``observe status`` still reports "running". (Only when [observe] is
@@ -148,10 +151,19 @@ def run_observe_start(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
             start_new_session=True,
         )
     _write_pid(cfg, proc.pid)
+    return proc.pid
+
+
+def run_observe_start(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
+    """Spawn the observer as a detached subprocess (single-writer)."""
+    pid = _read_pid(cfg)
+    if pid is not None and _pid_alive(pid):
+        raise CliObserverRunning(pid)
+    child_pid = _spawn_observer(cfg)
     if fmt == "human":
-        out.write(f"observer: started (pid {proc.pid})\n")
+        out.write(f"observer: started (pid {child_pid})\n")
     else:
-        out.write(json.dumps({"started": True, "pid": proc.pid}) + "\n")
+        out.write(json.dumps({"started": True, "pid": child_pid}) + "\n")
 
 
 def run_observe_stop(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
