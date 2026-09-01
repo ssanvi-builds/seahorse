@@ -4,6 +4,18 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-09-01
+
+### Fixed
+
+- **`seahorse setup` wrote Claude Code-invalid hooks** — `merge_hooks` emitted
+  `{matcher, command}` (flat command key), which Claude Code ignores with a
+  settings-validation error; the shape is now the valid
+  `{matcher, hooks: [{type, command}]}`. The dedup check and
+  `seahorse setup --uninstall` now read commands from both the nested and the
+  legacy flat shape, so re-running setup against existing hooks no longer
+  duplicates entries, and the uninstall removes them all.
+
 ## [0.16.0] - 2026-09-01
 
 ### Added
