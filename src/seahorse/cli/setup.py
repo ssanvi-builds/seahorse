@@ -88,10 +88,24 @@ def _remove_observe_section(vault: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _hook_commands(entry: dict) -> list[str]:
+    """All commands in a settings.json hook entry.
+
+    Claude Code's shape nests the command inside ``hooks: [{type, command}]``;
+    a flat ``command`` at the entry level (written by ≤0.16.0) is ignored by
+    Claude Code but still tracked here so the uninstall cleans it up too.
+    """
+    commands = [entry["command"]] if entry.get("command") else []
+    commands.extend(
+        h["command"] for h in entry.get("hooks", []) if h.get("command")
+    )
+    return commands
+
+
 def merge_hooks(settings_path: Path | str, *, hook_command: str) -> None:
     """Merge the observer hooks into settings.json (coexisting with others).
 
-    Idempotent: a hook whose command already contains the marker is not
+    Idempotent: an entry whose command already contains the marker is not
     duplicated. Other hooks (e.g. claude-mem) are preserved.
     """
     path = Path(settings_path)
@@ -101,8 +115,16 @@ def merge_hooks(settings_path: Path | str, *, hook_command: str) -> None:
     hooks = data.setdefault("hooks", {})
     for event, matcher in _OBSERVER_HOOKS.items():
         entries = hooks.setdefault(event, [])
-        if not any(HOOK_MARKER in h.get("command", "") for h in entries):
-            entries.append({"matcher": matcher, "command": hook_command})
+        already_installed = any(
+            HOOK_MARKER in c for h in entries for c in _hook_commands(h)
+        )
+        if not already_installed:
+            entries.append(
+                {
+                    "matcher": matcher,
+                    "hooks": [{"type": "command", "command": hook_command}],
+                }
+            )
     # A fresh user may not have ~/.claude/ yet (no Claude Code installed) — the
     # hooks are written ready for when it is. The observer is a Claude Code
     # capture adapter; the rest of Seahorse is agent-agnostic.
@@ -118,10 +140,14 @@ def remove_hooks(settings_path: Path | str) -> None:
     data = json.loads(path.read_text(encoding="utf-8"))
     hooks = data.get("hooks", {})
     for event in list(hooks):
-        hooks[event] = [
-            h for h in hooks[event] if HOOK_MARKER not in h.get("command", "")
+        kept = [
+            h
+            for h in hooks[event]
+            if not any(HOOK_MARKER in c for c in _hook_commands(h))
         ]
-        if not hooks[event]:
+        if kept:
+            hooks[event] = kept
+        else:
             del hooks[event]
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 

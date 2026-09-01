@@ -43,6 +43,18 @@ def _write_settings(path, data: dict) -> None:
         json.dump(data, fh)
 
 
+def _commands(entry: dict) -> list[str]:
+    """All commands in a hook entry, from either the flat (legacy, invalid)
+    or the nested (Claude Code) shape. Test-side mirror of the production
+    helper — kept independent so the tests do not trust the implementation.
+    """
+    commands = [entry["command"]] if entry.get("command") else []
+    commands.extend(
+        h["command"] for h in entry.get("hooks", []) if h.get("command")
+    )
+    return commands
+
+
 # ---------------------------------------------------------------------------
 # write_observe_config
 # ---------------------------------------------------------------------------
@@ -94,7 +106,26 @@ def test_merge_hooks_adds_observer_hooks(tmp_path) -> None:
     assert "PostToolUse" in hooks
     assert "Stop" in hooks
     for event in ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"):
-        assert any(HOOK_MARKER in h["command"] for h in hooks[event])
+        for entry in hooks[event]:
+            # The Claude Code shape: matcher + hooks array of command objects.
+            assert entry["hooks"][0]["type"] == "command"
+            assert HOOK_MARKER in entry["hooks"][0]["command"]
+
+
+def test_merge_hooks_shape_is_claude_code_valid(tmp_path) -> None:
+    """The written entry must validate against Claude Code's schema:
+    `matcher` (string) + `hooks` (array of {type, command}). A flat
+    `command` key at the entry level is silently ignored by Claude Code.
+    """
+    path = _settings_path(tmp_path)
+    _write_settings(path, {})
+    merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    for event in ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"):
+        for entry in data["hooks"][event]:
+            assert isinstance(entry["hooks"], list)
+            assert entry.get("command") is None
 
 
 def test_merge_hooks_creates_missing_parent_dir(tmp_path) -> None:
@@ -123,7 +154,7 @@ def test_merge_hooks_coexists_with_existing_hooks(tmp_path) -> None:
     merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    commands = [h["command"] for h in data["hooks"]["UserPromptSubmit"]]
+    commands = [c for h in data["hooks"]["UserPromptSubmit"] for c in _commands(h)]
     assert "claude-mem capture" in commands  # preserved
     assert any(HOOK_MARKER in c for c in commands)  # observer added
 
@@ -136,11 +167,34 @@ def test_merge_hooks_is_idempotent(tmp_path) -> None:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
     for event in ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"):
-        observer = [h for h in data["hooks"][event] if HOOK_MARKER in h["command"]]
+        observer = [
+            h
+            for h in data["hooks"][event]
+            if any(HOOK_MARKER in c for c in _commands(h))
+        ]
         assert len(observer) == 1  # no duplicates
 
 
+def test_merge_hooks_idempotent_with_preexisting_wellformed_hook(tmp_path) -> None:
+    """Regression: a well-formed (nested) observer hook written by a newer
+    version must be detected by an older-format run and NOT duplicated —
+    the marker check must look inside `hooks`, not just at the entry level.
+    """
+    path = _settings_path(tmp_path)
+    nested = {"matcher": "*", "hooks": [{"type": "command", "command": "py -m seahorse.cli.app observe event"}]}
+    _write_settings(path, {"hooks": {"UserPromptSubmit": [nested]}})
+    merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    entries = data["hooks"]["UserPromptSubmit"]
+    assert len(entries) == 1  # the pre-existing hook, not duplicated
+    assert HOOK_MARKER in entries[0]["hooks"][0]["command"]
+
+
 def test_remove_hooks_removes_observer_only(tmp_path) -> None:
+    """Legacy flat entries (written by v0.16.0's buggy merge) are still
+    removed — the uninstall must clean up the malformed artifacts too.
+    """
     path = _settings_path(tmp_path)
     _write_settings(
         path,
@@ -156,7 +210,39 @@ def test_remove_hooks_removes_observer_only(tmp_path) -> None:
     remove_hooks(path)
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    commands = [h["command"] for h in data["hooks"]["UserPromptSubmit"]]
+    commands = [c for h in data["hooks"]["UserPromptSubmit"] for c in _commands(h)]
+    assert "claude-mem capture" in commands  # preserved
+    assert not any(HOOK_MARKER in c for c in commands)  # observer removed
+
+
+def test_remove_hooks_removes_nested_observer_hooks(tmp_path) -> None:
+    """Regression: well-formed (nested) observer hooks were invisible to the
+    uninstall because the marker check only looked at the entry level.
+    """
+    path = _settings_path(tmp_path)
+    _write_settings(
+        path,
+        {
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "matcher": "*",
+                        "hooks": [
+                            {"type": "command", "command": "python -m seahorse.cli.app observe event"}
+                        ],
+                    },
+                    {
+                        "matcher": "*",
+                        "hooks": [{"type": "command", "command": "claude-mem capture"}],
+                    },
+                ]
+            }
+        },
+    )
+    remove_hooks(path)
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    commands = [c for h in data["hooks"]["UserPromptSubmit"] for c in _commands(h)]
     assert "claude-mem capture" in commands  # preserved
     assert not any(HOOK_MARKER in c for c in commands)  # observer removed
 
