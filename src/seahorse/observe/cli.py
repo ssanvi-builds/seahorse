@@ -46,6 +46,7 @@ _LOCK_MODE = 0o600
 _POST_TIMEOUT_S = 5.0
 _ENSURE_RUNNING_WAIT_S = 1.0
 _ENSURE_RUNNING_POLL_INTERVAL_S = 0.1
+_CONTEXT_TIMEOUT_S = 2.0
 
 
 def observer_dir(cfg: SeahorseConfig) -> Path:
@@ -305,6 +306,51 @@ def _post_event(cfg: SeahorseConfig, raw: dict) -> tuple[int, str]:
         conn.close()
 
 
+def _context_command(cfg: SeahorseConfig) -> list[str]:
+    """The ``seahorse context`` command line — ``--vault`` precedes the subcommand."""
+    return [
+        sys.executable,
+        "-m",
+        "seahorse.cli.app",
+        "--vault",
+        str(cfg.vault),
+        "context",
+    ]
+
+
+def _inject_context(cfg: SeahorseConfig, out: TextIO) -> None:
+    """Emit the SessionStart ``hookSpecificOutput`` with the bootstrap context.
+
+    Runs ``seahorse context`` as a subprocess, not in-process: a hard timeout
+    (a hung SQLite would otherwise stall session start with no ceiling), crash
+    isolation, and the exact CLI output — no render drift between the README's
+    promise and the injection. Degrades to emitting nothing on timeout, spawn
+    failure, non-zero exit, or empty output. Never raises; writes nothing on
+    failure. With ``--quiet`` the write lands in the discard sink (consistent
+    with quiet semantics; the installed hook never passes --quiet).
+    """
+    try:
+        proc = subprocess.run(
+            _context_command(cfg),
+            capture_output=True,
+            timeout=_CONTEXT_TIMEOUT_S,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return
+    if proc.returncode != 0:
+        return
+    text = proc.stdout.decode("utf-8", errors="replace").strip()
+    if not text:
+        return
+    payload = {
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": text,
+        }
+    }
+    out.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
 def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
     """POST a hook event to the observer socket (called by the Claude Code hooks).
 
@@ -318,6 +364,10 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
     it waits up to ``_ENSURE_RUNNING_WAIT_S`` for the socket and retries once
     (advisory); mid-session events respawn fire-and-forget — the next hook
     wins. A non-200 status (400/401) means the worker is ALIVE: no respawn.
+
+    Context injection: on SessionStart (regardless of capture success), the
+    bootstrap context is emitted as a single ``hookSpecificOutput`` JSON line
+    — the only stdout the hook ever produces.
     """
     if cfg.observe is None:
         return  # observer not set up — silent no-op (never abort the session)
@@ -328,6 +378,7 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
     session_id = os.environ.get("CLAUDE_SESSION_ID", "")
     if not session_id:
         return  # no session — nothing to capture
+    is_session_start = event_name == "SessionStart"
     raw: dict = {
         "session_id": session_id,
         "event_type": event_type,
@@ -342,14 +393,15 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
         status = 0  # observer not reachable — same recovery path as no socket
     if status == 0:
         _ensure_running(cfg)
-        if event_name == "SessionStart" and _wait_for_observer(
+        if is_session_start and _wait_for_observer(
             cfg, wait_s=_ENSURE_RUNNING_WAIT_S, poll_s=_ENSURE_RUNNING_POLL_INTERVAL_S
         ):
             with contextlib.suppress(OSError):
                 _post_event(cfg, raw)  # advisory retry — result is best-effort
-        return  # non-200 and un-posted events are silent no-ops either way
     # status >= 200: the worker received (or explicitly rejected) the envelope
     # and logs its own errors. Nothing to do.
+    if is_session_start:
+        _inject_context(cfg, out)
 
 
 def run_observe_run(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:

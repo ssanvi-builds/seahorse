@@ -131,7 +131,11 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
 - **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
   HTTP) as a standard expansion that also serves the local free tier, with the
   web dashboard and managed sync deferred until the adoption gate produces data.
-  Cross-project sync and the web viewer follow that gate.
+  Cross-project sync and the web viewer follow that gate. Backlog:
+  **lossless spool** — when the hook cannot reach the observer socket even
+  after respawning it, envelopes would be written to a spool directory and
+  drained by the worker at startup (the hook writes files; the worker stays
+  the single DB writer), making capture lossless across observer downtime.
 - **Long term** — a managed cloud offering as a later phase, gated by adoption,
   and wider adoption of the memory standard across agents and harnesses.
 

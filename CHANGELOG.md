@@ -4,6 +4,36 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-09-01
+
+### Added
+
+- **Observer self-healing** — when a hook POST cannot reach the worker (socket
+  absent or `OSError`), the hook respawns a dead observer. On `SessionStart`
+  it waits up to 1s for the socket and retries once (advisory); mid-session
+  events respawn fire-and-forget — the next hook wins. A non-200 status
+  (400/401) is a live worker: no respawn. The healthy path is untouched: a
+  200 POST costs zero extra work.
+- **Context injection at SessionStart** — the hook now emits the bootstrap
+  context as a single `hookSpecificOutput` JSON line, making the README's
+  promise real: the next session starts with what previous sessions learned.
+  `seahorse context` runs as a subprocess with a hard 2s timeout and degrades
+  to no injection on timeout, spawn failure, non-zero exit, or empty output.
+  The empty-vault bootstrap IS injected (it teaches the agent that
+  `seahorse recall` exists).
+
+### Fixed
+
+- **Single-writer enforced by the kernel** — the observer startup now takes an
+  advisory `flock` on `observer.lock`. Previously two concurrent startups
+  could both pass the pid-file guard and the loser's `serve_forever` would
+  silently steal the live socket; a competing run now fails loud
+  (`CliObserverRunning`, exit 95) before building the facade.
+- **Hook crash without `[observe]`** — `socket_path()` raised
+  `AttributeError` inside the hook (only `OSError` was caught), exiting
+  non-zero and surfacing as a Claude Code hook failure. The missing-config
+  guard makes it a silent no-op (exit 0).
+
 ## [0.16.1] - 2026-09-01
 
 ### Fixed

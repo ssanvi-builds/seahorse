@@ -61,7 +61,9 @@ between sessions. Three steps:
 **1. Capture sessions.** `seahorse setup` installs the observer hooks into
 `~/.claude/settings.json`; `seahorse observe start` runs the capture worker.
 Every session is recorded as episodes — skip-first (near-zero cost),
-redacted, with a deterministic summary.
+redacted, with a deterministic summary. The hooks self-heal: if the worker
+dies, the next hook fires it back up, so capture resumes without manual
+intervention.
 
 ```bash
 seahorse setup

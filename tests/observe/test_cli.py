@@ -17,6 +17,7 @@ from seahorse.cli.config import ObserveConfig, SeahorseConfig
 from seahorse.cli.errors import CliError, CliObserverRunning
 from seahorse.cli.exit_codes import CLI_CONFIG_INVALID
 from seahorse.observe.cli import (
+    _context_command,
     _ensure_running,
     _wait_for_observer,
     acquire_observer_lock,
@@ -29,6 +30,14 @@ from seahorse.observe.cli import (
     run_observe_stop,
     socket_path,
 )
+
+
+class _FakeCompleted:
+    """Minimal subprocess.CompletedProcess stand-in for injection tests."""
+
+    def __init__(self, *, returncode: int, stdout: bytes) -> None:
+        self.returncode = returncode
+        self.stdout = stdout
 
 
 def _cfg(tmp_path) -> SeahorseConfig:
@@ -498,10 +507,13 @@ def test_event_respawns_and_retries_on_session_start(tmp_path, monkeypatch) -> N
         "seahorse.observe.cli._wait_for_observer",
         lambda _cfg, *, wait_s, poll_s: (sock.touch() or True),
     )
+    injected: list = []
+    _capture_inject(monkeypatch, injected)
     out = _out()
     run_observe_event(cfg, fmt="human", out=out)
     assert len(posts) == 2  # initial POST + one advisory retry
     assert len(spawns) == 1
+    assert injected == [cfg]  # SessionStart always injects, capture succeeded too
 
 
 def test_event_no_respawn_when_post_succeeds(tmp_path, monkeypatch) -> None:
@@ -516,8 +528,11 @@ def test_event_no_respawn_when_post_succeeds(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("seahorse.observe.cli._ensure_running", _boom)
     posted: list = []
     _capture_post(monkeypatch, posted)
+    injected: list = []
+    _capture_inject(monkeypatch, injected)
     run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
     assert len(posted) == 1
+    assert len(injected) == 1  # injection is independent of the capture plane
 
 
 def test_event_respawns_on_oserror_mid_session_without_wait(tmp_path, monkeypatch) -> None:
@@ -561,7 +576,10 @@ def test_event_no_respawn_on_non_200(tmp_path, monkeypatch) -> None:
         return 401, "bad token"
 
     monkeypatch.setattr("seahorse.observe.cli._post_event", _unauthorized)
+    injected: list = []
+    _capture_inject(monkeypatch, injected)
     run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+    assert len(injected) == 1  # a live-but-rejecting worker still gets injection
 
 
 def test_event_missing_observe_config_is_silent_noop(tmp_path, monkeypatch) -> None:
@@ -576,3 +594,129 @@ def test_event_missing_observe_config_is_silent_noop(tmp_path, monkeypatch) -> N
     _capture_post(monkeypatch, posted)
     run_observe_event(_cfg(tmp_path), fmt="human", out=_out())  # no [observe]
     assert posted == []
+
+
+# ---------------------------------------------------------------------------
+# context injection (SessionStart → hookSpecificOutput)
+# ---------------------------------------------------------------------------
+
+
+def _capture_inject(monkeypatch, calls: list) -> None:
+    def _fake_inject(cfg, out):
+        calls.append(cfg)
+
+    monkeypatch.setattr("seahorse.observe.cli._inject_context", _fake_inject)
+
+
+def test_session_start_emits_hook_specific_output_json(tmp_path, monkeypatch) -> None:
+    """SessionStart writes exactly one stdout line: the hookSpecificOutput JSON."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-inject")
+    cfg = _cfg_observe(tmp_path)
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    monkeypatch.setattr(
+        "seahorse.observe.cli.subprocess.run",
+        lambda *a, **k: _FakeCompleted(returncode=0, stdout=b"Seahorse memory context\n"),
+    )
+    out = _out()
+    run_observe_event(cfg, fmt="human", out=out)
+    import json
+
+    lines = out.getvalue().splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "Seahorse memory context" in payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_session_start_no_injection_on_nonzero_exit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-fail")
+    _capture_post(monkeypatch, [])
+    monkeypatch.setattr(
+        "seahorse.observe.cli.subprocess.run",
+        lambda *a, **k: _FakeCompleted(returncode=1, stdout=b"boom"),
+    )
+    out = _out()
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=out)
+    assert out.getvalue() == ""
+
+
+def test_session_start_no_injection_on_timeout(tmp_path, monkeypatch) -> None:
+    import subprocess as subprocess_module
+
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-timeout")
+    _capture_post(monkeypatch, [])
+
+    def _hang(*a, **k):
+        raise subprocess_module.TimeoutExpired(cmd="seahorse", timeout=2.0)
+
+    monkeypatch.setattr("seahorse.observe.cli.subprocess.run", _hang)
+    out = _out()
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=out)
+    assert out.getvalue() == ""  # degrades to no injection, never raises
+
+
+def test_session_start_no_injection_on_empty_output(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-empty")
+    _capture_post(monkeypatch, [])
+    monkeypatch.setattr(
+        "seahorse.observe.cli.subprocess.run",
+        lambda *a, **k: _FakeCompleted(returncode=0, stdout=b"   \n"),
+    )
+    out = _out()
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=out)
+    assert out.getvalue() == ""
+
+
+def test_non_session_start_events_never_emit_stdout(tmp_path, monkeypatch) -> None:
+    """The hookSpecificOutput gate is load-bearing: only SessionStart emits."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-gate")
+    monkeypatch.setenv("CLAUDE_PROMPT", "x")
+    _capture_post(monkeypatch, [])
+    monkeypatch.setattr(
+        "seahorse.observe.cli.subprocess.run",
+        lambda *a, **k: _FakeCompleted(returncode=0, stdout=b"leak"),
+    )
+    out = _out()
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=out)
+    assert out.getvalue() == ""
+
+
+def test_session_start_injects_even_when_observer_down(tmp_path, monkeypatch) -> None:
+    """Injection is independent of the capture plane: down worker still injects."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-down")
+    cfg = _cfg_observe(tmp_path)
+
+    def _dead_post(cfg_arg, raw):
+        return 0, "observer not running"
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", _dead_post)
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", lambda cfg_arg: 4247)
+    monkeypatch.setattr(
+        "seahorse.observe.cli._wait_for_observer", lambda _cfg, *, wait_s, poll_s: False
+    )
+    monkeypatch.setattr(
+        "seahorse.observe.cli.subprocess.run",
+        lambda *a, **k: _FakeCompleted(returncode=0, stdout=b"Seahorse memory context"),
+    )
+    out = _out()
+    run_observe_event(cfg, fmt="human", out=out)
+    import json
+
+    payload = json.loads(out.getvalue())
+    assert "Seahorse memory context" in payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_context_command_vault_precedes_subcommand(tmp_path) -> None:
+    """--vault is a GLOBAL option and must precede the ``context`` subcommand."""
+    cfg = _cfg_observe(tmp_path)
+    cmd = _context_command(cfg)
+    assert cmd.index("--vault") < cmd.index("context")
+    assert str(cfg.vault) in cmd
+    assert "seahorse.cli.app" in cmd
