@@ -4,6 +4,37 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-09-01
+
+### Added
+
+- **Materialization** — episodes become visible, editable F3.1 `.md` notes in
+  the vault, closing the loop between the agent's memory and the human's
+  Obsidian vault. The `[materialize]` section (default `consolidated`) writes
+  distilled knowledge (`extraction_mode=consolidated`) and project notes
+  (`cognitive_type=project_doc`) to `Memory/`; `all` writes every currently-valid
+  episode; `off` disables it. `seahorse setup` writes the section; `seahorse
+  materialize` backfills. The write path, `distill`, `improve`, and `forget`
+  all materialize/invalidate through one facade injection point (best-effort —
+  a materializer failure never fails the write).
+- **Editorial distillation** — the agent writes project notes via MCP `remember`
+  with `cognitive_type=project_doc`; Seahorse indexes and materializes them, and
+  `recall(query, cognitive_type="project_doc")` finds them again. The pattern is
+  documented in `docs/editorial-notes.md`.
+- **Human-edit guard (id-based, C3)** — the materializer compares frontmatter
+  ids, not mtimes: a same-slug note that is not ours gets a `{slug}-{id8}.md`
+  suffix and is never overwritten; `forget`/`improve`/supersession invalidate a
+  note by merging `invalid_at` into the frontmatter, preserving the current body
+  (a human edit survives). The consolidate editorial-authority guard now skips
+  seahorse's own materialized notes the same way.
+
+### Fixed
+
+- **`skip_extraction` unification (M2)** — the hot write path now derives
+  `skip_extraction` from `extraction_mode` (1 for `skip`, 0 otherwise) instead
+  of hardcoding 0, matching the rebuild. The divergence was visible once the
+  rebuild re-parsed seahorse's own materialized `.md`.
+
 ## [0.15.0] - 2026-08-31
 
 ### Added

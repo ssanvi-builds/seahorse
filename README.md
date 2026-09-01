@@ -185,6 +185,9 @@ seahorse observe status
 seahorse context
 # Distill recurrent episodes into semantic knowledge notes (N≥3, idempotent):
 seahorse consolidate
+# Materialize distilled knowledge + project notes as editable .md in the vault
+# (setup writes [materialize]; the consolidated note lands in Memory/):
+seahorse materialize
 # Remove the observer:
 seahorse setup --uninstall
 
@@ -387,6 +390,14 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
   single consolidated note — deterministic by default, with opt-in LLM synthesis
   (`--synthesis llm`) and supersession (`--supersede`) so the consolidated note
   supersedes its sources.
+- **Materialization** (`[materialize]`, default `consolidated`): distilled
+  knowledge and project notes become visible, editable F3.1 `.md` notes in the
+  vault (`Memory/` by default) — the agent works with the same notes the human
+  reads and edits. A human body edit survives (the guard compares frontmatter
+  ids, not mtimes); `forget`/`improve`/supersession invalidate the note by
+  merging `invalid_at` (never overwriting); collisions are reported, never
+  silently resolved. `seahorse materialize` backfills; `seahorse setup` writes
+  the section. See `docs/editorial-notes.md` for the pattern.
 - Frontmatter import/export for the Obsidian vault layer (markdown as the
   human-readable, portable on-disk contract).
 - **Legacy-vault migration**: `seahorse frontmatter migrate` converts legacy
