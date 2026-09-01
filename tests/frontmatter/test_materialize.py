@@ -19,8 +19,8 @@ from seahorse.frontmatter.materialize import (
     MODE_ALL,
     MODE_CONSOLIDATED,
     MODE_OFF,
-    MaterializeReport,
     Materializer,
+    MaterializeReport,
     slugify,
 )
 from seahorse.persistence.connection import ConnectionManager
