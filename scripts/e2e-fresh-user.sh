@@ -32,7 +32,15 @@ set -euo pipefail
 # --- resolve paths -----------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SANDBOX="/private/tmp/seahorse-e2e-$(date +%s)"
+# Sandbox base: macOS keeps /private/tmp (writable, shares the FASTEMBED cache
+# across runs); other platforms fall back to $TMPDIR — /private/tmp does not
+# exist on Linux.
+if [[ -d /private/tmp && -w /private/tmp ]]; then
+  SANDBOX_BASE="/private/tmp"
+else
+  SANDBOX_BASE="${TMPDIR:-/tmp}"
+fi
+SANDBOX="$SANDBOX_BASE/seahorse-e2e-$(date +%s)"
 LOG="$SANDBOX/e2e.log"
 VAULT="$SANDBOX/vault"
 
@@ -104,9 +112,23 @@ last_ep_id() {  # most recent `ep_id:` line in the log (human remember/improve)
   sed -n 's/^[[:space:]]*ep_id:[[:space:]]*\([0-9a-f-]*\).*/\1/p' "$LOG" | tail -1
 }
 
+sha256_file() {  # sha256_file <path> — sha256sum on Linux, shasum on macOS
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 # --- pre-flight --------------------------------------------------------------
 REAL_HOME="$HOME"
 START_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# The observer socket lives under $SANDBOX; AF_UNIX paths are capped at 104
+# bytes on macOS (108 on Linux), so refuse over-long sandbox paths up front.
+if (( ${#SANDBOX} >= 90 )); then
+  echo "sandbox path too long (${#SANDBOX} bytes, AF_UNIX cap 104): $SANDBOX" >&2
+  exit 2
+fi
 mkdir -p "$SANDBOX"
 : > "$LOG"
 
@@ -126,7 +148,7 @@ SNAP="$SANDBOX/snapshot-before.txt"
 : > "$SNAP"
 for f in "$REAL_HOME/.claude/settings.json" "$REAL_HOME/.claude-mem/claude-mem.db"; do
   if [[ -f "$f" ]]; then
-    echo "$(shasum -a 256 "$f" | awk '{print $1}')  $f" >> "$SNAP"
+    echo "$(sha256_file "$f")  $f" >> "$SNAP"
   else
     echo "ABSENT  $f" >> "$SNAP"
   fi
@@ -136,7 +158,7 @@ cat "$SNAP" | tee -a "$LOG" >&2
 
 # --- sandbox -----------------------------------------------------------------
 step 1 "Sandbox: isolated HOME + env"
-mkdir -p "$SANDBOX/home" "$VAULT" "/private/tmp/seahorse-e2e-cache"
+mkdir -p "$SANDBOX/home" "$VAULT" "$SANDBOX_BASE/seahorse-e2e-cache"
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_BIN_HOME XDG_STATE_HOME
 export HOME="$SANDBOX/home"
 if (( REUSE_UV_CACHE )) && [[ -d "$REAL_HOME/.cache/uv" ]]; then
@@ -146,7 +168,7 @@ else
   info "  UV_CACHE_DIR: isolated (no reuse)"
 fi
 # Shared across runs so re-runs reuse the ~235MB model instead of re-downloading.
-export FASTEMBED_CACHE_PATH="/private/tmp/seahorse-e2e-cache"
+export FASTEMBED_CACHE_PATH="$SANDBOX_BASE/seahorse-e2e-cache"
 export SEAHORSE_VAULT="$VAULT"
 cd "$SANDBOX"
 info "  HOME=$HOME"
@@ -364,7 +386,7 @@ SNAP_AFTER="$SANDBOX/snapshot-after.txt"
 : > "$SNAP_AFTER"
 for f in "$REAL_HOME/.claude/settings.json" "$REAL_HOME/.claude-mem/claude-mem.db"; do
   if [[ -f "$f" ]]; then
-    echo "$(shasum -a 256 "$f" | awk '{print $1}')  $f" >> "$SNAP_AFTER"
+    echo "$(sha256_file "$f")  $f" >> "$SNAP_AFTER"
   else
     echo "ABSENT  $f" >> "$SNAP_AFTER"
   fi
@@ -392,7 +414,7 @@ fi
 
 if pgrep -f "seahorse.cli.app observe run" >/dev/null 2>&1; then
   fail "no orphan observer process"
-  pgrep -af "seahorse.cli.app observe run" | tee -a "$LOG" >&2
+  pgrep -fl "seahorse.cli.app observe run" | tee -a "$LOG" >&2
 else
   ok "no orphan observer process"
 fi
