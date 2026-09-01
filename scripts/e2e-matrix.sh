@@ -317,7 +317,7 @@ m_verify_setup_observer() {  # setup/observer subset in the isolated HOME
   m_run "setup --uninstall" "$SEAHORSE" setup --uninstall
   if pgrep -f "seahorse.cli.app observe run" >/dev/null 2>&1; then
     fail "no orphan observer process"
-    pgrep -af "seahorse.cli.app observe run" | tee -a "$COMBO_LOG" >&2 || true
+    pgrep -fl "seahorse.cli.app observe run" | tee -a "$COMBO_LOG" >&2 || true
   else
     ok "no orphan observer process"
   fi
