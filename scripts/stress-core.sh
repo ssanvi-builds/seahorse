@@ -35,6 +35,12 @@ else
   SANDBOX_BASE="${TMPDIR:-/tmp}"
 fi
 SANDBOX="$SANDBOX_BASE/seahorse-stress-$(date +%s)"
+# The observer socket lives under $SANDBOX; AF_UNIX paths are capped at 104
+# bytes on macOS (108 on Linux), so refuse over-long sandbox paths up front.
+if (( ${#SANDBOX} >= 90 )); then
+  echo "sandbox path too long (${#SANDBOX} bytes, AF_UNIX cap 104): $SANDBOX" >&2
+  exit 2
+fi
 LOG="$SANDBOX/stress.log"
 VAULT="$SANDBOX/vault"
 SHARED_FASTEMBED_CACHE="$SANDBOX_BASE/seahorse-e2e-cache"
@@ -129,7 +135,9 @@ run "seahorse init" "$SEAHORSE" init "$VAULT"
 
 # --- S1 ingest ---------------------------------------------------------------
 step 1 "Ingest $EPISODES episodes"
-t0="$(date +%s%N)"
+# `date +%s%N` is GNU-only (macOS BSD date has no %N) — use python time_ns().
+now_ns() { python3 -c 'import time; print(time.time_ns())'; }
+t0="$(now_ns)"
 for i in $(seq 1 "$EPISODES"); do
   if ! "$SEAHORSE" remember "Stress episode $i: hybrid retrieval over sqlite-vec and FTS5" \
       --title "s$i" >/dev/null 2>&1; then
@@ -137,7 +145,7 @@ for i in $(seq 1 "$EPISODES"); do
     break
   fi
 done
-t1="$(date +%s%N)"
+t1="$(now_ns)"
 elapsed_ms=$(( (t1 - t0) / 1000000 ))
 ok "ingested $EPISODES episodes in ${elapsed_ms}ms ($(( elapsed_ms / EPISODES ))ms/ep)"
 count="$(inspect_count episodes)"
@@ -152,9 +160,11 @@ step 2 "Recall --top-k 100 p95 (INDEX budget ≤ 250ms, in-process)"
 # Measure in-process (facade.recall) — the INDEX budget is the retrieval cost,
 # NOT the CLI process startup (~400ms of Python+typer+pydantic imports). A
 # subprocess measurement would fail the 250ms budget on startup alone.
-TOOL_PY="$HOME/.local/share/uv/tools/seahorse/bin/python"
-if [[ ! -x "$TOOL_PY" ]]; then
-  fail "tool env python not found at $TOOL_PY"
+# The tool env is named after the PACKAGE (seahorse-memory), not the console
+# script (seahorse) — discover it instead of hardcoding the name.
+TOOL_PY="$(find "$HOME/.local/share/uv/tools" -maxdepth 3 -path '*/bin/python' 2>/dev/null | head -1)"
+if [[ -z "$TOOL_PY" || ! -x "$TOOL_PY" ]]; then
+  fail "tool env python not found under $HOME/.local/share/uv/tools"
 else
   if "$TOOL_PY" - "$VAULT/.seahorse/seahorse.db" "$RECALL_SAMPLES" <<'PY'
 import sys, time
@@ -204,13 +214,13 @@ fi
 
 # --- S4 reindex --------------------------------------------------------------
 step 4 "Reindex large vault"
-t0="$(date +%s%N)"
+t0="$(now_ns)"
 if "$SEAHORSE" index rebuild >/dev/null 2>&1; then
   ok "index rebuild completed"
 else
   fail "index rebuild completed"
 fi
-t1="$(date +%s%N)"
+t1="$(now_ns)"
 info "  index rebuild took $(( (t1 - t0) / 1000000 ))ms"
 expected=$(( EPISODES + 2 ))  # S1 + the 2 concurrent episodes
 count="$(inspect_count episodes)"
