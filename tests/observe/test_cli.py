@@ -17,6 +17,8 @@ from seahorse.cli.config import ObserveConfig, SeahorseConfig
 from seahorse.cli.errors import CliError, CliObserverRunning
 from seahorse.cli.exit_codes import CLI_CONFIG_INVALID
 from seahorse.observe.cli import (
+    _ensure_running,
+    _wait_for_observer,
     acquire_observer_lock,
     lock_file,
     pid_file,
@@ -25,6 +27,7 @@ from seahorse.observe.cli import (
     run_observe_start,
     run_observe_status,
     run_observe_stop,
+    socket_path,
 )
 
 
@@ -225,7 +228,7 @@ def test_observe_event_user_prompt_submit(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CLAUDE_PROMPT", "remember this")
     posted: list = []
     _capture_post(monkeypatch, posted)
-    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
     assert posted == [
         {
             "session_id": "sess-1",
@@ -245,7 +248,7 @@ def test_observe_event_post_tool_use(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CLAUDE_TOOL_RESPONSE", "ok")
     posted: list = []
     _capture_post(monkeypatch, posted)
-    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
     assert posted == [
         {
             "session_id": "sess-2",
@@ -267,7 +270,7 @@ def test_observe_event_includes_agent_id(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CLAUDE_AGENT_ID", "agent-7")
     posted: list = []
     _capture_post(monkeypatch, posted)
-    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
     assert posted[0]["agent_id"] == "agent-7"
     assert posted[0]["event_type"] == "session_start"
 
@@ -398,3 +401,178 @@ def test_observe_run_acquires_lock_and_releases(tmp_path, monkeypatch) -> None:
     fd = acquire_observer_lock(cfg)
     assert fd is not None
     os.close(fd)
+
+
+# ---------------------------------------------------------------------------
+# respawn from the hook path (_ensure_running / _wait_for_observer)
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_running_noop_when_pid_alive(tmp_path, monkeypatch) -> None:
+    cfg = _cfg_observe(tmp_path)
+    _write_pid(cfg, os.getpid())
+    spawned = {}
+
+    def _boom(cfg_arg):
+        spawned["called"] = True
+
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", _boom)
+    _ensure_running(cfg)
+    assert spawned == {}  # zero cost on the healthy path
+
+
+def test_ensure_running_spawns_when_pid_dead(tmp_path, monkeypatch) -> None:
+    cfg = _cfg_observe(tmp_path)
+    _write_pid(cfg, 999999999)  # dead pid
+
+    def _fake_spawn(cfg_arg):
+        assert cfg_arg is cfg
+        return 4244
+
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", _fake_spawn)
+    _ensure_running(cfg)  # must not raise
+
+
+def test_ensure_running_noop_without_observe_config(tmp_path, monkeypatch) -> None:
+    cfg = _cfg(tmp_path)  # no ObserveConfig
+
+    def _boom(cfg_arg):
+        raise AssertionError("must not spawn without [observe]")
+
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", _boom)
+    _ensure_running(cfg)
+
+
+def test_ensure_running_swallows_spawn_errors(tmp_path, monkeypatch) -> None:
+    """The hook respawn must never raise: CliError, OSError, all swallowed."""
+    for exc in (CliError(exit_code=CLI_CONFIG_INVALID, name="X", detail="d"), OSError("no")):
+        cfg = _cfg_observe(tmp_path)
+        monkeypatch.setattr(
+            "seahorse.observe.cli._spawn_observer", lambda _c, _e=exc: (_ for _ in ()).throw(_e)
+        )
+        _ensure_running(cfg)  # must not raise
+
+
+def test_wait_for_observer_true_when_socket_appears(tmp_path, monkeypatch) -> None:
+    cfg = _cfg_observe(tmp_path)
+
+    def _appear():
+        socket_path(cfg).parent.mkdir(parents=True, exist_ok=True)
+        socket_path(cfg).touch()
+
+    # The socket appears after the first poll: a timer, not a fixture race.
+    import threading
+
+    t = threading.Timer(0.005, _appear)
+    t.start()
+    try:
+        assert _wait_for_observer(cfg, wait_s=1.0, poll_s=0.01)
+    finally:
+        t.join()
+
+
+def test_wait_for_observer_false_on_budget(tmp_path) -> None:
+    cfg = _cfg_observe(tmp_path)
+    assert not _wait_for_observer(cfg, wait_s=0.05, poll_s=0.01)
+
+
+def test_event_respawns_and_retries_on_session_start(tmp_path, monkeypatch) -> None:
+    """SessionStart with a dead observer: ensure → wait → one retry POST."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-e2e")
+    cfg = _cfg_observe(tmp_path)
+    posts: list = []
+    spawns: list = []
+
+    def _stateful_post(cfg_arg, raw):
+        posts.append(raw)
+        return (0, "observer not running") if len(posts) == 1 else (200, "")
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", _stateful_post)
+    monkeypatch.setattr(
+        "seahorse.observe.cli._spawn_observer", lambda cfg_arg: spawns.append(1) or 4245
+    )
+    # The socket "appears" right after the spawn (the fake child binds).
+    sock = tmp_path / ".seahorse" / "observer.sock"
+    monkeypatch.setattr(
+        "seahorse.observe.cli._wait_for_observer",
+        lambda _cfg, *, wait_s, poll_s: (sock.touch() or True),
+    )
+    out = _out()
+    run_observe_event(cfg, fmt="human", out=out)
+    assert len(posts) == 2  # initial POST + one advisory retry
+    assert len(spawns) == 1
+
+
+def test_event_no_respawn_when_post_succeeds(tmp_path, monkeypatch) -> None:
+    """Healthy path cost is zero: a 200 POST never touches pid nor spawn."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-healthy")
+
+    def _boom(cfg_arg):
+        raise AssertionError("healthy path must not spawn")
+
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", _boom)
+    monkeypatch.setattr("seahorse.observe.cli._ensure_running", _boom)
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+    assert len(posted) == 1
+
+
+def test_event_respawns_on_oserror_mid_session_without_wait(tmp_path, monkeypatch) -> None:
+    """Mid-session OSError: respawn fire-and-forget — no wait, no retry."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-mid")
+    monkeypatch.setenv("CLAUDE_PROMPT", "x")
+    cfg = _cfg_observe(tmp_path)
+    spawns: list = []
+    waited = {}
+
+    def _oserror_post(cfg_arg, raw):
+        raise OSError("socket gone")
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", _oserror_post)
+    monkeypatch.setattr(
+        "seahorse.observe.cli._spawn_observer", lambda cfg_arg: spawns.append(1) or 4246
+    )
+
+    def _no_wait(_cfg, *, wait_s, poll_s):
+        waited["called"] = True
+        return True
+
+    monkeypatch.setattr("seahorse.observe.cli._wait_for_observer", _no_wait)
+    run_observe_event(cfg, fmt="human", out=_out())
+    assert len(spawns) == 1
+    assert waited == {}  # no wait on mid-session events
+
+
+def test_event_no_respawn_on_non_200(tmp_path, monkeypatch) -> None:
+    """A 400/401 means the worker is alive: never respawn, never retry."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-auth")
+
+    def _boom(cfg_arg):
+        raise AssertionError("non-200 is a live worker — do not respawn")
+
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", _boom)
+
+    def _unauthorized(cfg_arg, raw):
+        return 401, "bad token"
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", _unauthorized)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+
+
+def test_event_missing_observe_config_is_silent_noop(tmp_path, monkeypatch) -> None:
+    """Regression: without [observe], ``socket_path`` raised AttributeError.
+
+    The hook only caught OSError, so the process exited non-zero and the
+    Claude Code session saw a hook failure. The guard makes it exit 0.
+    """
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-noobs")
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg(tmp_path), fmt="human", out=_out())  # no [observe]
+    assert posted == []

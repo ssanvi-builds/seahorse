@@ -16,6 +16,7 @@ References:
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import os
@@ -38,6 +39,13 @@ LOG_FILENAME = "observer.log"
 QUEUE_FILENAME = "observer.db"
 LOCK_FILENAME = "observer.lock"
 _LOCK_MODE = 0o600
+
+# Hook-path tuning. The SessionStart respawn waits at most this long for the
+# child to bind its socket before giving up (degrade honestly — the session
+# starts regardless); mid-session hooks spawn fire-and-forget instead.
+_POST_TIMEOUT_S = 5.0
+_ENSURE_RUNNING_WAIT_S = 1.0
+_ENSURE_RUNNING_POLL_INTERVAL_S = 0.1
 
 
 def observer_dir(cfg: SeahorseConfig) -> Path:
@@ -230,6 +238,43 @@ def _build_payload(event_name: str) -> dict:
     return {}
 
 
+def _ensure_running(cfg: SeahorseConfig) -> None:
+    """Respawn a dead observer from the hook path. Never raises.
+
+    Cheap checks only: without ``[observe]`` there is nothing to spawn, and a
+    live pid means the worker is up (a missing socket alone can mean "still
+    binding" — the caller's wait handles that). Spawn errors (invalid socket
+    path, fork failure) are swallowed: the hook must never abort the session.
+    """
+    if cfg.observe is None:
+        return
+    pid = _read_pid(cfg)
+    if pid is not None and _pid_alive(pid):
+        return
+    try:
+        _spawn_observer(cfg)
+    except (CliError, OSError, ValueError):
+        return
+
+
+def _wait_for_observer(cfg: SeahorseConfig, *, wait_s: float, poll_s: float) -> bool:
+    """Poll for the observer socket to appear; False once the budget expires.
+
+    Readiness signal is the same one ``_post_event`` uses (``socket_path``
+    existence). Known limitation: the child takes the lock and builds the
+    facade before binding, so with a large or cold DB the socket may not
+    appear within the budget — the caller degrades honestly.
+    """
+    import time
+
+    deadline = time.monotonic() + wait_s
+    while time.monotonic() < deadline:
+        if socket_path(cfg).exists():
+            return True
+        time.sleep(poll_s)
+    return socket_path(cfg).exists()
+
+
 def _post_event(cfg: SeahorseConfig, raw: dict) -> tuple[int, str]:
     """POST an envelope to the observer unix socket; return (status, message)."""
     import http.client
@@ -240,7 +285,7 @@ def _post_event(cfg: SeahorseConfig, raw: dict) -> tuple[int, str]:
         return 0, "observer not running"
 
     class _UnixHTTPConnection(http.client.HTTPConnection):
-        def __init__(self, socket_path: str, timeout: float = 5) -> None:
+        def __init__(self, socket_path: str, timeout: float = _POST_TIMEOUT_S) -> None:
             super().__init__("localhost", timeout=timeout)
             self._socket_path = socket_path
 
@@ -265,9 +310,17 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
 
     Reads the hook env vars (``CLAUDE_HOOK_EVENT_NAME`` / ``CLAUDE_SESSION_ID``
     / ``CLAUDE_PROMPT`` / ``CLAUDE_TOOL_*``) and POSTs the envelope to the unix
-    socket. The hook must NEVER abort the agent session: a missing observer or a
-    failed POST is a silent no-op (exit 0).
+    socket. The hook must NEVER abort the agent session: any observer failure
+    is a silent no-op (exit 0).
+
+    Self-healing: when the POST cannot reach the worker (socket absent →
+    status 0, or OSError), the hook respawns a dead observer. On SessionStart
+    it waits up to ``_ENSURE_RUNNING_WAIT_S`` for the socket and retries once
+    (advisory); mid-session events respawn fire-and-forget — the next hook
+    wins. A non-200 status (400/401) means the worker is ALIVE: no respawn.
     """
+    if cfg.observe is None:
+        return  # observer not set up — silent no-op (never abort the session)
     event_name = os.environ.get("CLAUDE_HOOK_EVENT_NAME", "")
     event_type = _HOOK_EVENT_TYPES.get(event_name)
     if event_type is None:
@@ -286,9 +339,17 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
     try:
         status, _message = _post_event(cfg, raw)
     except OSError:
-        return  # observer not reachable — silent no-op (hook must not abort)
-    if status not in (200, 0):
-        return  # non-200 — silent no-op (the observer logs its own errors)
+        status = 0  # observer not reachable — same recovery path as no socket
+    if status == 0:
+        _ensure_running(cfg)
+        if event_name == "SessionStart" and _wait_for_observer(
+            cfg, wait_s=_ENSURE_RUNNING_WAIT_S, poll_s=_ENSURE_RUNNING_POLL_INTERVAL_S
+        ):
+            with contextlib.suppress(OSError):
+                _post_event(cfg, raw)  # advisory retry — result is best-effort
+        return  # non-200 and un-posted events are silent no-ops either way
+    # status >= 200: the worker received (or explicitly rejected) the envelope
+    # and logs its own errors. Nothing to do.
 
 
 def run_observe_run(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
