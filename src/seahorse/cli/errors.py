@@ -25,6 +25,7 @@ from typing import Any
 
 from seahorse.cli.exit_codes import (
     CLI_CONFIG_INVALID,
+    CLI_MATERIALIZE_NOT_CONFIGURED,
     CLI_MIGRATION_DEFERRED,
     CLI_NOT_IN_MVP_0,
     CLI_OBSERVER_RUNNING,
@@ -193,6 +194,27 @@ class CliRebuildConflicts(CliError):
         return payload
 
 
+class CliMaterializeNotConfigured(CliError):
+    """``seahorse materialize`` when the vault has no ``[materialize]`` section.
+
+    Materialization is opt-in (the section is absent by default). The backfill
+    needs the section's ``dir``/``mode`` to know where and what to write, so a
+    missing section fails loud at exit 98 (Cat C) with the setup hint — the
+    operator runs ``seahorse setup`` (which writes the section) or adds it by
+    hand.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            exit_code=CLI_MATERIALIZE_NOT_CONFIGURED,
+            name="CLI_MATERIALIZE_NOT_CONFIGURED",
+            detail=(
+                "materialization is not configured for this vault; run "
+                "`seahorse setup` or add a [materialize] section to seahorse.toml"
+            ),
+        )
+
+
 __all__ = [
     "CliError",
     "CliNotInMVP0",
@@ -201,4 +223,5 @@ __all__ = [
     "CliUsageError",
     "CliMigrationDeferred",
     "CliRebuildConflicts",
+    "CliMaterializeNotConfigured",
 ]

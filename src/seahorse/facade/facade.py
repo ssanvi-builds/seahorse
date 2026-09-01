@@ -121,7 +121,25 @@ class _WritePathLike(Protocol):
 
 
 @runtime_checkable
+class _MaterializerLike(Protocol):
+    """The materializer surface the facade needs (structural).
+
+    The facade never constructs or configures the materializer — the
+    composition root injects it (same pattern as ``on_episode_indexed``). The
+    facade only calls ``materialize`` (ACTIVE write / distill / improve
+    successor) and ``invalidate`` (forget / improve old episode) and treats
+    both as best-effort side effects (M9: never fail the write path).
+    """
+
+    def materialize(self, ep: Episode) -> Any: ...
+
+    def invalidate(self, ep: Episode) -> Any: ...
+
+
+@runtime_checkable
 class _EngineLike(Protocol):
+    def get(self, ep_id: str) -> Episode | None: ...
+
     def get_vigente(
         self, subject: str | None = ..., *, now: datetime | None = ...
     ) -> list[Episode]: ...
@@ -200,6 +218,7 @@ class MemoryFacade:
         primitive_log: Callable[[str, str], None] | None = None,
         embedder: QueryEmbedder | None = None,
         on_episode_indexed: Callable[[str], None] | None = None,
+        materializer: _MaterializerLike | None = None,
     ) -> None:
         self._engine = engine
         self._write_path = write_path
@@ -220,6 +239,13 @@ class MemoryFacade:
         # would never reach vec0/FTS and the hybrid recall could not recover
         # them. The composition root wires this to the write-path indexer.
         self._on_episode_indexed = on_episode_indexed
+        # Materialization hook (M6: facade-level injection point). The facade
+        # calls it after all four write surfaces — remember (ACTIVE), distill,
+        # improve (successor + invalidate old), forget (invalidate) — so one
+        # injection point covers the write path, the distill bypass, and the
+        # invalidation paths (C1). Best-effort: the materializer never fails
+        # the write path (M9).
+        self._materializer = materializer
 
     # ------------------------------------------------------------------ now
 
@@ -254,6 +280,10 @@ class MemoryFacade:
         self._validate_remember_payload(payload)
         mode = self._resolve_mode(skip_extraction, extraction_mode)
         result = self._write_path.ingest(payload, mode, now=self._now(now))
+        # Materialize on ACTIVE writes (the materializer's mode filter decides
+        # which episodes become notes — the facade never knows the mode).
+        if result.status == "ACTIVE" and result.ep_id:
+            self._materialize_episode(result.ep_id)
         self._log("remember", result.status.lower())
         return result
 
@@ -291,6 +321,50 @@ class MemoryFacade:
         if skip_extraction is False:
             return "llm"
         return self._config.default_extraction_mode
+
+    # ---------------------------------------------------------- materialize
+
+    def _materialize_episode(self, ep_id: str) -> None:
+        """Best-effort materialization hook (M9: never fails the write path).
+
+        Fetches the episode via the engine's public ``get`` reader and hands it
+        to the injected materializer. The materializer's mode filter decides
+        which episodes become notes; its best-effort contract reports failures
+        in the ``MaterializeResult`` instead of raising. The outer guard is
+        belt-and-braces: the hook is a side effect, never a failure point.
+        """
+        if self._materializer is None:
+            return
+        try:
+            ep = self._engine.get(ep_id)
+            if ep is None:
+                _logger.warning("materialize.missing ep_id=%s", ep_id)
+                return
+            result = self._materializer.materialize(ep)
+            _logger.info("materialize ep_id=%s status=%s", ep_id, result.status)
+        except Exception:  # noqa: BLE001 — best-effort, never fail the write path
+            _logger.warning("materialize.failed ep_id=%s", ep_id, exc_info=True)
+
+    def _invalidate_episode(self, ep: Episode) -> None:
+        """Best-effort invalidation hook (C1): merge ``invalid_at`` into the .md.
+
+        ``ep`` must carry the invalidation (``forget`` returns it directly;
+        ``improve`` re-fetches the old episode after the engine set
+        ``invalid_at``). The materializer's ``invalidate`` is a merge that
+        preserves the current body (a human edit survives).
+        """
+        if self._materializer is None:
+            return
+        try:
+            result = self._materializer.invalidate(ep)
+            if result is not None:
+                _logger.info(
+                    "materialize.invalidate ep_id=%s status=%s", ep.id, result.status
+                )
+        except Exception:  # noqa: BLE001 — best-effort, never fail the write path
+            _logger.warning(
+                "materialize.invalidate_failed ep_id=%s", ep.id, exc_info=True
+            )
 
     # ----------------------------------------------------------------- recall
 
@@ -415,6 +489,13 @@ class MemoryFacade:
         # regime wires no hook → honest no-op.
         if self._on_episode_indexed is not None:
             self._on_episode_indexed(result.id)
+        # Materialize the successor and invalidate the old .md (C1): the old
+        # episode now carries ``invalid_at`` in the DB, so ``engine.get``
+        # returns it with the invalidation the merge needs.
+        self._materialize_episode(result.id)
+        old = self._engine.get(ep_id)
+        if old is not None:
+            self._invalidate_episode(old)
         self._log("improve", "updated")
         return result
 
@@ -447,6 +528,9 @@ class MemoryFacade:
         """
         self._validate_forget_input(ep_id, reason, by)
         result = self._engine.forget(ep_id, reason=reason, by=dict(by), now=self._now(now))
+        # Invalidate the materialized .md (C1): ``result`` IS the invalidated
+        # episode (``invalid_at`` set) — no re-fetch needed.
+        self._invalidate_episode(result)
         self._log("forget", "invalidated")
         return result
 
@@ -505,6 +589,19 @@ class MemoryFacade:
         # regime wires no hook → honest no-op.
         if self._on_episode_indexed is not None:
             self._on_episode_indexed(result.ep_id)
+        # Materialize the consolidated note (the default ``consolidated`` mode
+        # exists precisely for this — distilled knowledge becomes a visible,
+        # editable .md).
+        self._materialize_episode(result.ep_id)
+        # Supersession (F7+): the old note is invalidated (C1) — the same merge
+        # the improve path performs. ``distill_episodes`` calls ``engine.improve``
+        # directly (bypassing ``facade.improve``), so the invalidation must
+        # happen here: the old episode now carries ``invalid_at`` in the DB, and
+        # ``engine.get`` returns it with the invalidation the merge needs.
+        if supersede_ep_id is not None:
+            old = self._engine.get(supersede_ep_id)
+            if old is not None:
+                self._invalidate_episode(old)
         return result
 
     def freshness_view(self, ep_id: str) -> FreshnessView:

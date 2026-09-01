@@ -55,6 +55,7 @@ from seahorse.cli.primitives import (
     run_forget,
     run_freshness_view,
     run_improve,
+    run_materialize,
     run_recall,
     run_recall_full,
     run_recall_timeline,
@@ -132,6 +133,8 @@ class CliContext:
                 cfg.db_path,
                 config=FacadeConfig(default_extraction_mode=mode, top_k=cfg.top_k),
                 llm_client=self.llm_client(),
+                vault_root=cfg.vault,
+                materialize=cfg.materialize,
             )
             self._facade = facade
             self._storage = storage
@@ -385,6 +388,31 @@ def consolidate(
         llm_client=ctx.obj.llm_client(),
         vault_path=ctx.obj.resolved_config().vault,
         supersede=supersede,
+    )
+
+
+@app.command()
+def materialize(
+    ctx: typer.Context,
+    mode: str | None = typer.Option(
+        None, "--mode", help="Override [materialize] mode: consolidated | all | off."
+    ),
+    cognitive_type: str | None = typer.Option(
+        None, "--cognitive-type", help="Filter the backfill by cognitive type."
+    ),
+) -> None:
+    """Backfill .md notes for currently-valid episodes (the [materialize] dir).
+
+    Idempotent: already-materialized notes are skipped. Requires a
+    ``[materialize]`` section (``seahorse setup`` writes it).
+    """
+    run_materialize(
+        ctx.obj.resolved_config(),
+        mode=mode,
+        cognitive_type=cognitive_type,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+        verbose=ctx.obj.verbose,
     )
 
 

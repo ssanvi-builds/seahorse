@@ -197,3 +197,118 @@ def test_load_config_explicit_path(tmp_path):
     p = write_default_config(v)
     cfg = load_config(v, explicit_config=p)
     assert cfg.vault == v.resolve()
+
+
+# ---------------------------------------------------------------------------
+# [materialize] section.
+# ---------------------------------------------------------------------------
+
+
+def test_materialize_section_absent_is_none(tmp_path):
+    """A vault without ``[materialize]`` has ``materialize=None`` (opt-in)."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    write_default_config(v)
+    cfg = load_config(v)
+    assert cfg.materialize is None
+
+
+def test_materialize_section_defaults(tmp_path):
+    """An empty ``[materialize]`` table resolves to the module defaults."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    write_default_config(v)
+    cfg_path = config_path_for(v)
+    cfg_path.write_text(
+        cfg_path.read_text(encoding="utf-8") + "\n[materialize]\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(v)
+    assert cfg.materialize is not None
+    assert cfg.materialize.mode == "consolidated"
+    assert cfg.materialize.dir == "Memory"
+
+
+def test_materialize_section_explicit(tmp_path):
+    """``mode`` / ``dir`` are parsed from the section."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    write_default_config(v)
+    cfg_path = config_path_for(v)
+    cfg_path.write_text(
+        cfg_path.read_text(encoding="utf-8")
+        + '\n[materialize]\nmode = "all"\ndir = "Notes"\n',
+        encoding="utf-8",
+    )
+    cfg = load_config(v)
+    assert cfg.materialize is not None
+    assert cfg.materialize.mode == "all"
+    assert cfg.materialize.dir == "Notes"
+
+
+def test_materialize_section_bad_mode_raises(tmp_path):
+    """A structurally wrong ``mode`` is a ``CliConfigInvalid`` (exit 83)."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    write_default_config(v)
+    cfg_path = config_path_for(v)
+    cfg_path.write_text(
+        cfg_path.read_text(encoding="utf-8")
+        + '\n[materialize]\nmode = "bogus"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(CliConfigInvalid, match="materialize.mode"):
+        load_config(v)
+
+
+def test_materialize_section_bad_dir_raises(tmp_path):
+    """A structurally wrong ``dir`` is a ``CliConfigInvalid`` (exit 83)."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    write_default_config(v)
+    cfg_path = config_path_for(v)
+    cfg_path.write_text(
+        cfg_path.read_text(encoding="utf-8") + '\n[materialize]\ndir = ""\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(CliConfigInvalid, match="materialize.dir"):
+        load_config(v)
+
+
+def test_materialize_section_not_a_table_raises(tmp_path):
+    """A non-table ``[materialize]`` value is a ``CliConfigInvalid``."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    # ``materialize = 42`` must sit at the ROOT (a bare key after a table header
+    # would belong to that table in TOML).
+    cfg_path = config_path_for(v)
+    cfg_path.parent.mkdir(parents=True)
+    cfg_path.write_text(
+        'materialize = 42\n\n[seahorse]\n'
+        'db_path = "seahorse.db"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(CliConfigInvalid, match="materialize must be a"):
+        load_config(v)
+
+
+def test_write_materialize_config_appends_and_preserves(tmp_path):
+    """``write_materialize_config`` appends idempotently, preserving other sections."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    write_default_config(v)
+    from seahorse.cli.config import MaterializeConfig, write_materialize_config
+
+    write_materialize_config(v, MaterializeConfig(mode="all", dir="Notes"))
+    cfg = load_config(v)
+    assert cfg.materialize is not None
+    assert cfg.materialize.mode == "all"
+    assert cfg.materialize.dir == "Notes"
+    # The [llm] section from init survives the append.
+    assert cfg.llm is not None
+
+    # Idempotent: a second write preserves the user's config.
+    write_materialize_config(v, MaterializeConfig(mode="off", dir="X"))
+    cfg2 = load_config(v)
+    assert cfg2.materialize.mode == "all"
+    assert cfg2.materialize.dir == "Notes"

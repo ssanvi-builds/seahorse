@@ -83,8 +83,12 @@ class RecordingEngine:
 
     def __init__(self) -> None:
         self.get_vigente_calls: list[dict[str, Any]] = []
+        self.get_calls: list[dict[str, Any]] = []
+        self.get_result: Episode | None = None
+        self.get_by_id: dict[str, Episode | None] = {}
         self.improve_calls: list[dict[str, Any]] = []
         self.forget_calls: list[dict[str, Any]] = []
+        self.remember_calls: list[dict[str, Any]] = []
         self.freshness_calls: list[dict[str, Any]] = []
         self.audit_calls: list[dict[str, Any]] = []
         self.chain_calls: list[dict[str, Any]] = []
@@ -94,11 +98,20 @@ class RecordingEngine:
         self.improve_raise: Exception | None = None
         self.forget_result: Episode | None = None
         self.forget_raise: Exception | None = None
+        self.remember_result: WriteResult = WriteResult(
+            ep_id="e9", fact_id="f9", status="ACTIVE", collisions_detected=[]
+        )
         self.freshness_result: FreshnessView = FreshnessView(
             fact_id="f1", age_days=0, stale=False, pending_ingest=False, regime="agent"
         )
         self.audit_result: list[AuditEvent] = []
         self.chain_result: list[Episode] = []
+
+    def get(self, ep_id: str) -> Episode | None:
+        self.get_calls.append({"ep_id": ep_id})
+        if ep_id in self.get_by_id:
+            return self.get_by_id[ep_id]
+        return self.get_result
 
     def get_vigente(
         self, subject: str | None = None, *, now: datetime | None = None
@@ -153,6 +166,11 @@ class RecordingEngine:
     def follow_supersedes_chain(self, ep_id: str) -> list[Episode]:
         self.chain_calls.append({"ep_id": ep_id})
         return list(self.chain_result)
+
+    def remember(self, **kwargs: Any) -> WriteResult:
+        """Engine-level remember (the distill primitive's write surface)."""
+        self.remember_calls.append(kwargs)
+        return self.remember_result
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +249,40 @@ class RecordingShaper:
 
 
 # ---------------------------------------------------------------------------
+# RecordingMaterializer — records the facade's materialize/invalidate calls.
+# ---------------------------------------------------------------------------
+
+
+class RecordingMaterializer:
+    """Materializer double that records calls and returns configurable results.
+
+    ``materialize`` returns a ``MaterializeResult``-shaped object (status +
+    path); ``invalidate`` returns one or None. ``raise_on`` lets a test prove
+    the facade's best-effort contract (M9): a materializer failure never
+    propagates to the caller.
+    """
+
+    def __init__(self) -> None:
+        self.materialize_calls: list[Episode] = []
+        self.invalidate_calls: list[Episode] = []
+        self.materialize_result: Any = None
+        self.invalidate_result: Any = None
+        self.raise_on: str | None = None  # "materialize" | "invalidate"
+
+    def materialize(self, ep: Episode) -> Any:
+        self.materialize_calls.append(ep)
+        if self.raise_on == "materialize":
+            raise RuntimeError("materializer boom")
+        return self.materialize_result
+
+    def invalidate(self, ep: Episode) -> Any:
+        self.invalidate_calls.append(ep)
+        if self.raise_on == "invalidate":
+            raise RuntimeError("materializer boom")
+        return self.invalidate_result
+
+
+# ---------------------------------------------------------------------------
 # A primitive_log that records (op, result) tuples — assert the primitive was
 # emitted with the right op/result.
 # ---------------------------------------------------------------------------
@@ -253,6 +305,7 @@ def make_facade(
     retriever: object | None = None,
     clock: Callable[[], datetime] | None = None,
     on_episode_indexed: Callable[[str], None] | None = None,
+    materializer: RecordingMaterializer | None = None,
 ):
     from seahorse.facade.facade import MemoryFacade
     from seahorse.facade.types import FacadeConfig
@@ -278,6 +331,7 @@ def make_facade(
         config=config,
         primitive_log=log_fn,
         on_episode_indexed=on_episode_indexed,
+        materializer=materializer,
     )
     return facade, log
 
@@ -320,6 +374,7 @@ __all__ = [
     "RecordingEngine",
     "RecordingWritePath",
     "RecordingShaper",
+    "RecordingMaterializer",
     "make_episode",
     "make_facade",
     "make_log",

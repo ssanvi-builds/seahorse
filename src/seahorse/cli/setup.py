@@ -138,15 +138,25 @@ def run_setup(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """Install the observer: ``[observe]`` config + Claude Code hooks."""
+    """Install the observer + materialization: config sections + Claude Code hooks.
+
+    Writes the ``[observe]`` section (with a generated auth token) and the
+    ``[materialize]`` section (defaults — the opt-in path for episode → .md
+    materialization), then merges the observer hooks into the Claude Code
+    settings. Both config writes are idempotent appends: a present section is
+    preserved (the user's config wins).
+    """
+    from seahorse.cli.config import MaterializeConfig, write_materialize_config
+
     write_observe_config(vault)
+    write_materialize_config(vault, MaterializeConfig())
     settings = Path(settings_path) if settings_path is not None else _default_settings_path()
     hook_command = f"{sys.executable} -m seahorse.cli.app observe event"
     merge_hooks(settings, hook_command=hook_command)
     if fmt == "human":
         out.write(
             "seahorse setup: observer installed "
-            f"(hooks merged into {settings}, [observe] config written)\n"
+            f"(hooks merged into {settings}, [observe] + [materialize] config written)\n"
         )
 
 

@@ -152,6 +152,10 @@ CLI_OBSERVER_RUNNING = 95
 # fully migrated, so scripts/chained commands must see it. 96 is Cat B
 # (ProceduralError), so 97 is the next free Cat C slot.
 CLI_MIGRATION_DEFERRED = 97
+# ``seahorse materialize`` when the vault has no ``[materialize]`` section
+# (materialization is opt-in). Fail-loud with the setup hint — the operator
+# runs ``seahorse setup`` or adds the section by hand.
+CLI_MATERIALIZE_NOT_CONFIGURED = 98
 
 # ---------------------------------------------------------------------------
 # Component-of-origin attribution for stderr ``component:`` (parity with the MCP server).

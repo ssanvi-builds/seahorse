@@ -30,10 +30,11 @@ from __future__ import annotations
 import sys
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO, TypeVar
 
+from seahorse.cli.config import SeahorseConfig
 from seahorse.cli.errors import CliNotInMVP0, CliUsageError
 from seahorse.cli.output import (
     OutputFormat,
@@ -277,31 +278,43 @@ def _vault_human_edited(vault_path: Path | None) -> Callable[[Any], bool] | None
     """The editorial-authority predicate: a note whose vault ``.md`` was edited
     after its creation is human-touched → never superseded.
 
-    Scans the vault once (clustering key → ``.md`` mtime) and returns a
-    predicate over an existing note. ``None`` when no vault path is available
-    (the supersession proceeds without the human-edit guard).
+    Scans the vault once (clustering key → ``.md`` mtime + frontmatter id) and
+    returns a predicate over an existing note. ``None`` when no vault path is
+    available (the supersession proceeds without the human-edit guard).
+
+    The frontmatter id is the C3 guard: a ``.md`` whose id matches the note's
+    id is seahorse's OWN materialization (written after ``created_at``, so its
+    mtime is always newer) — never a human edit. Only a ``.md`` with a
+    DIFFERENT or absent id (a human-authored note) can be human-touched.
     """
     if vault_path is None:
         return None
     from seahorse.distill.cluster import cluster_key
 
-    key_to_mtime: dict[str, float] = {}
+    key_to_entries: dict[str, list[tuple[float, str | None]]] = {}
     for path in vault_path.rglob("*.md"):
         try:
             subject = _md_subject(path)
         except OSError:
             continue
         if subject:
-            key_to_mtime[cluster_key(subject)] = path.stat().st_mtime
+            key_to_entries.setdefault(cluster_key(subject), []).append(
+                (path.stat().st_mtime, _md_frontmatter_id(path))
+            )
 
     def _human_edited(note: Any) -> bool:
-        mtime = key_to_mtime.get(cluster_key(note.subject or ""))
-        if mtime is None:
+        entries = key_to_entries.get(cluster_key(note.subject or ""))
+        if not entries:
             return False  # no vault .md for this note → not human-touched
         created = note.created_at
         if created is None:
             return False
-        return mtime > created.timestamp()
+        for mtime, md_id in entries:
+            if md_id == note.id:
+                continue  # seahorse's own materialization — not a human edit (C3)
+            if mtime > created.timestamp():
+                return True  # a human-authored .md edited after the note's creation
+        return False
 
     return _human_edited
 
@@ -317,6 +330,25 @@ def _md_subject(path: Path) -> str:
         if line.startswith("# "):
             return line[2:].strip()
     return ""
+
+
+def _md_frontmatter_id(path: Path) -> str | None:
+    """The frontmatter ``id`` of a vault ``.md``, or None when absent.
+
+    A light parse (no ruamel): the F3.1 frontmatter is a YAML block between
+    ``---`` fences with ``id: <uuid>`` as a top-level key. A note whose id
+    matches the episode id is seahorse's own materialization (C3); a note with
+    a different or absent id is human-authored.
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if not text.startswith("---"):
+        return None
+    for line in text.splitlines()[1:]:
+        if line == "---":
+            break
+        if line.startswith("id:"):
+            return line[3:].strip().strip("'\"")
+    return None
 
 
 def run_consolidate(
@@ -382,6 +414,96 @@ def run_consolidate(
                             "status": i.status,
                             "ep_id": i.ep_id,
                             "synthesis": i.synthesis,
+                        }
+                        for i in report.items
+                    ],
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+
+# ---------------------------------------------------------------------------
+# materialize
+# ---------------------------------------------------------------------------
+
+
+def run_materialize(
+    config: SeahorseConfig,
+    *,
+    mode: str | None = None,
+    cognitive_type: str | None = None,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+    verbose: bool = False,
+) -> None:
+    """``seahorse materialize`` — backfill .md notes for currently-valid episodes.
+
+    Reads the current-state set (the ``get_vigente`` predicate — M7: PENDING
+    episodes are not materialized until vigente) and materializes each as an
+    F3.1 note in the configured ``[materialize] dir``. ``mode`` overrides the
+    config's mode (consolidated|all|off); ``cognitive_type`` filters the set.
+    Idempotent: already-materialized notes are skipped (frontmatter-id guard,
+    C3). Best-effort per note (M9): a failed write is reported, never fatal.
+
+    Unlike the primitive commands this takes the ``SeahorseConfig`` (not the
+    facade): the backfill needs the vault root + ``[materialize]`` section +
+    the sidecar, which the facade does not expose. It builds its own Storage +
+    engine (the ``run_index_rebuild`` pattern) and closes them in ``finally``.
+    """
+    from seahorse.cli.errors import CliMaterializeNotConfigured
+    from seahorse.engine.engine import BiTemporalEngine
+    from seahorse.frontmatter.materialize import Materializer
+    from seahorse.persistence.storage import Storage
+
+    mcfg = config.materialize
+    if mcfg is None:
+        raise CliMaterializeNotConfigured()
+    effective_mode = mode or mcfg.mode
+    storage = Storage(config.db_path)
+    try:
+        engine = BiTemporalEngine(repo=storage.episodes, audit=storage.audit)
+        eps = engine.get_vigente(None, now=datetime.now(UTC))
+        if cognitive_type is not None:
+            eps = [e for e in eps if e.cognitive_type == cognitive_type]
+        materializer = Materializer(
+            config.vault, dir=mcfg.dir, sidecar=storage.sidecar, mode=effective_mode
+        )
+        report = _timed(
+            "materialize",
+            lambda: materializer.materialize_episodes(eps),
+            verbose=verbose,
+        )
+    finally:
+        storage.close()
+    if fmt == "human":
+        if report.items:
+            for item in report.items:
+                if item.status == "written":
+                    out.write(f"materialized: {item.ep_id} -> {item.path}\n")
+                elif item.status == "skipped":
+                    out.write(f"skipped: {item.ep_id} ({item.reason})\n")
+                elif item.status == "collision":
+                    out.write(f"collision: {item.ep_id} ({item.reason})\n")
+                else:
+                    out.write(f"error: {item.ep_id} ({item.reason})\n")
+        else:
+            out.write("materialize: no currently-valid episodes to materialize\n")
+    else:
+        import json
+
+        out.write(
+            json.dumps(
+                {
+                    "written": report.written,
+                    "skipped": report.skipped,
+                    "items": [
+                        {
+                            "ep_id": i.ep_id,
+                            "status": i.status,
+                            "path": i.path,
+                            "reason": i.reason,
                         }
                         for i in report.items
                     ],

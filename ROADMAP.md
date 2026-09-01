@@ -114,10 +114,11 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   portable format (schema 1.0.0) and the MCP profile `io.seahorse.memory/v1`
   (14 tools) stop changing in breaking ways; additive evolution only, with a
   documented migration path for 0.x vaults; (2) **the self-evolving loop
-  validated with data** — observe → consolidate/supersede → recall → decay
-  working end-to-end, with an authoritative LMEB-S run published as the official
-  baseline in `docs/benchmark.md` and the decay/recency pins decided by that
-  evidence (calibrated or documented `keep_off`); (3) **release quality** — CI
+  validated with data** — observe → consolidate/supersede → materialize →
+  recall → decay working end-to-end, with an authoritative LMEB-S run published
+  as the official baseline in `docs/benchmark.md` and the decay/recency pins
+  decided by that evidence (calibrated or documented `keep_off`); (3) **release
+  quality** — CI
   green, ≥80% coverage, fresh-user e2e green. Deliberately local-first: the
   remote MCP server (Streamable HTTP), web dashboard, and managed sync are Fase 2
   expansions gated by adoption, not requirements for 1.0. After 1.0, a breaking

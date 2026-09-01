@@ -2,7 +2,8 @@
 #
 # e2e-loop.sh — validate the self-evolving loop end-to-end (v1.0 gate #2).
 #
-# The loop: observe (hook injection) → consolidate → supersede → recall → decay.
+# The loop: observe (hook injection) → consolidate → supersede → materialize →
+# recall → decay.
 #   * observe     — inject Claude Code hook events via env vars + `seahorse
 #                   observe event` (no real Claude Code); the worker drains the
 #                   queue and writes episodes.
@@ -10,6 +11,10 @@
 #                   knowledge note (extraction_mode=consolidated); idempotent.
 #   * supersede   — new episodes → the note is updated in-place (improve chain);
 #                   a human-edited vault note is NEVER superseded (guard).
+#   * materialize — the consolidated note becomes a visible F3.1 .md in Memory/;
+#                   supersede invalidates the old .md (C1) and materializes the
+#                   successor under a suffixed name; a foreign note is never
+#                   overwritten (id guard, C3).
 #   * recall      — the consolidated note is retrievable and ranks.
 #   * decay       — score' = score · 2^(-age_days/half_life) (default-OFF seam;
 #                   validated via the facade factory, the same seam the
@@ -379,8 +384,67 @@ PY
 run "human-edit guard prevented overwrite" \
   "$TOOL_PY" "$SANDBOX/check_guard.py" "$VAULT/.seahorse/seahorse.db"
 
+# --- materialize -------------------------------------------------------------
+step 7 "Materialize: consolidated note → F3.1 .md; supersede invalidates (C1)"
+# The default [materialize] mode=consolidated writes distilled knowledge to
+# Memory/. The consolidated note from step 5 must be there as an F3.1 note.
+if [[ -f "$VAULT/Memory/deploy-pipeline.md" ]]; then
+  ok "consolidated note materialized to Memory/deploy-pipeline.md"
+else
+  fail "consolidated note materialized to Memory/deploy-pipeline.md"
+fi
+
+# The old note carries the first semantic id + invalid_at (C1); the successor
+# (from step 6's supersede) lives under a suffixed name with the new id.
+cat > "$SANDBOX/check_materialize.py" <<'PY'
+import sqlite3, sys
+from pathlib import Path
+conn = sqlite3.connect(sys.argv[1])
+rows = conn.execute(
+    "SELECT id FROM episodes WHERE subject = 'deploy pipeline' "
+    "AND cognitive_type = 'semantic' ORDER BY created_at"
+).fetchall()
+conn.close()
+assert len(rows) >= 2, f"expected >=2 semantic versions, got {len(rows)}"
+old_id, new_id = rows[0][0], rows[-1][0]
+old_note = Path(sys.argv[2])  # Memory/deploy-pipeline.md
+text = old_note.read_text()
+assert f"id: {old_id}" in text, f"old note must carry {old_id}"
+assert "invalid_at" in text, "old note must be invalidated (C1)"
+suffixed = old_note.with_name(f"deploy-pipeline-{new_id[:8]}.md")
+assert suffixed.exists(), f"successor note {suffixed} missing"
+assert f"id: {new_id}" in suffixed.read_text(), f"successor must carry {new_id}"
+print(f"  materialize: old note invalidated (C1); successor {suffixed.name} carries {new_id}")
+PY
+run "supersede invalidated old .md + materialized successor (C1)" \
+  "$TOOL_PY" "$SANDBOX/check_materialize.py" \
+  "$VAULT/.seahorse/seahorse.db" "$VAULT/Memory/deploy-pipeline.md"
+
+# Human-edit guard (materializer): a foreign note with the same slug is never
+# overwritten — the backfill writes a suffixed note instead (id guard, C3).
+mkdir -p "$VAULT/Memory"
+cat > "$VAULT/Memory/guard-probe.md" <<'EOF'
+# guard probe
+
+A human note — not ours.
+EOF
+run "remember guard probe" \
+  "$SEAHORSE" remember "The guard probe episode for the materializer human-edit guard" \
+  --title "guard probe"
+run "materialize backfill (--mode all)" "$SEAHORSE" materialize --mode all
+if grep -q "A human note — not ours" "$VAULT/Memory/guard-probe.md"; then
+  ok "foreign note untouched by materializer (id guard)"
+else
+  fail "foreign note untouched by materializer (id guard)"
+fi
+if ls "$VAULT/Memory/guard-probe-"*.md >/dev/null 2>&1; then
+  ok "episode materialized under suffixed name"
+else
+  fail "episode materialized under suffixed name"
+fi
+
 # --- recall ------------------------------------------------------------------
-step 7 "Recall: the consolidated note is retrievable and ranks"
+step 8 "Recall: the consolidated note is retrievable and ranks"
 run "recall 'deploy pipeline'" "$SEAHORSE" --format json recall "deploy pipeline"
 if grep -q '"subject": "deploy pipeline".*"cognitive_type": "semantic"' "$LOG"; then
   ok "consolidated note retrievable via recall"
@@ -389,7 +453,7 @@ else
 fi
 
 # --- decay -------------------------------------------------------------------
-step 8 "Decay: score' = score · 2^(-age_days/half_life) (default-OFF seam)"
+step 9 "Decay: score' = score · 2^(-age_days/half_life) (default-OFF seam)"
 run "remember decay probe" \
   "$SEAHORSE" remember "This is a decay probe episode for the self-evolving loop validation" \
   --title "decay probe"
@@ -448,7 +512,7 @@ run "decay halves the score per the Ebbinghaus formula" \
   "$TOOL_PY" "$SANDBOX/check_decay.py" "$VAULT/.seahorse/seahorse.db" "$EP_DECAY"
 
 # --- bi-temporal integrity ---------------------------------------------------
-step 9 "Bi-temporal integrity: created_at/valid_at everywhere + timeline chain"
+step 10 "Bi-temporal integrity: created_at/valid_at everywhere + timeline chain"
 cat > "$SANDBOX/check_bitemporal.py" <<'PY'
 import sqlite3, sys
 conn = sqlite3.connect(sys.argv[1])
@@ -498,7 +562,7 @@ else
 fi
 
 # --- post-flight -------------------------------------------------------------
-step 10 "Post-flight: no-corruption verification"
+step 11 "Post-flight: no-corruption verification"
 SNAP_AFTER="$SANDBOX/snapshot-after.txt"
 : > "$SNAP_AFTER"
 for f in "$REAL_HOME/.claude/settings.json" "$REAL_HOME/.claude-mem/claude-mem.db"; do
@@ -531,7 +595,7 @@ else
 fi
 
 # --- report ------------------------------------------------------------------
-step 11 "Report"
+step 12 "Report"
 info ""
 info "════════════════════════════════════════════════════════════"
 info "E2E SELF-EVOLVING LOOP RESULT: $PASS passed, $FAIL failed"

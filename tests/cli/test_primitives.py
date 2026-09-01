@@ -335,3 +335,99 @@ def test_revalidate_raises_cli_not_in_mvp0():
     with pytest.raises(CliNotInMVP0) as exc_info:
         run_expire_revalidate("revalidate")
     assert exc_info.value.command == "revalidate"
+
+
+# ---------------------------------------------------------------------------
+# _vault_human_edited — the C3 id-based editorial-authority guard.
+# ---------------------------------------------------------------------------
+
+
+def _note(ep_id: str, subject: str, created_at: datetime):
+    from seahorse.contracts.episode import Episode
+
+    return Episode(
+        id=ep_id,
+        created_at=created_at,
+        schema_version="1.1",
+        provenance={"source_type": "agent"},
+        body=f"# {subject}",
+        subject=subject,
+        valid_at=created_at,
+        cognitive_type="semantic",
+        source_type="system",
+    )
+
+
+def test_md_frontmatter_id_extracts_f31_id(tmp_path) -> None:
+    from seahorse.cli.primitives import _md_frontmatter_id
+
+    p = tmp_path / "note.md"
+    p.write_text(
+        "---\nid: 01a05d1c-e660-7561-8506-b7784db89c82\n"
+        "created_at: '2026-09-01T00:00:00Z'\n---\n# note\n",
+        encoding="utf-8",
+    )
+    assert _md_frontmatter_id(p) == "01a05d1c-e660-7561-8506-b7784db89c82"
+
+
+def test_md_frontmatter_id_absent_for_plain_note(tmp_path) -> None:
+    from seahorse.cli.primitives import _md_frontmatter_id
+
+    p = tmp_path / "note.md"
+    p.write_text("# note\n\nHuman note.", encoding="utf-8")
+    assert _md_frontmatter_id(p) is None
+
+
+def test_vault_human_edited_none_without_vault_path() -> None:
+    from seahorse.cli.primitives import _vault_human_edited
+
+    assert _vault_human_edited(None) is None
+
+
+def test_vault_human_edited_skips_own_materialization(tmp_path) -> None:
+    """C3 — a seahorse-materialized .md (id match) is never a human edit, even
+    though its mtime is newer than the note's created_at (the materializer
+    writes the note AFTER the episode is created)."""
+    from seahorse.cli.primitives import _vault_human_edited
+
+    created = datetime(2026, 1, 1, tzinfo=UTC)
+    note = _note("ep-1", "deploy pipeline", created)
+    md = tmp_path / "Memory" / "deploy-pipeline.md"
+    md.parent.mkdir(parents=True)
+    md.write_text("---\nid: ep-1\n---\n# deploy pipeline\n", encoding="utf-8")
+    predicate = _vault_human_edited(tmp_path)
+    assert predicate is not None
+    assert predicate(note) is False
+
+
+def test_vault_human_edited_fires_for_human_note(tmp_path) -> None:
+    """A human-authored .md (no id) edited after the note's creation is
+    human-touched → never superseded."""
+    from seahorse.cli.primitives import _vault_human_edited
+
+    created = datetime(2026, 1, 1, tzinfo=UTC)
+    note = _note("ep-1", "deploy pipeline", created)
+    md = tmp_path / "notes" / "deploy-pipeline.md"
+    md.parent.mkdir(parents=True)
+    md.write_text("# deploy pipeline\n\nEdited by hand.", encoding="utf-8")
+    predicate = _vault_human_edited(tmp_path)
+    assert predicate is not None
+    assert predicate(note) is True
+
+
+def test_vault_human_edited_ignores_old_human_note(tmp_path) -> None:
+    """A human .md older than the note's creation is not human-touched."""
+    import os
+
+    from seahorse.cli.primitives import _vault_human_edited
+
+    created = datetime(2026, 1, 1, tzinfo=UTC)
+    note = _note("ep-1", "deploy pipeline", created)
+    md = tmp_path / "notes" / "deploy-pipeline.md"
+    md.parent.mkdir(parents=True)
+    md.write_text("# deploy pipeline\n\nOld note.", encoding="utf-8")
+    old = datetime(2025, 1, 1, tzinfo=UTC).timestamp()
+    os.utime(md, (old, old))
+    predicate = _vault_human_edited(tmp_path)
+    assert predicate is not None
+    assert predicate(note) is False

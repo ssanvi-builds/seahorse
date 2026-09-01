@@ -48,6 +48,18 @@ def _req_dt(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
+def _skip_extraction(ep: Episode) -> int:
+    """Derive ``skip_extraction`` from ``extraction_mode`` (M2 unification).
+
+    The hot path used to hardcode 0; the rebuild derives 1 for
+    ``extraction_mode=skip`` (sqlite_sidecar._skip_extraction). Materialization
+    made the divergence visible (the rebuild re-parses seahorse's own .md), so
+    the hot path now derives the same rule: 1 for skip, 0 otherwise. A
+    skip-path episode has no LLM extraction, so nothing to embed.
+    """
+    return 1 if ep.provenance.get("extraction_mode") == "skip" else 0
+
+
 _EPISODES_INSERT = (
     "INSERT INTO episodes (id, subject, fact_id, body_md, valid_at, invalid_at, "
     "created_at, expired_at, supersedes, supersedes_reason, cognitive_type, "
@@ -119,7 +131,7 @@ class SqliteEpisodeRepository:
                     episode.cognitive_type,
                     episode.source_type,
                     episode.schema_version,
-                    0,
+                    _skip_extraction(episode),
                     episode.title,
                     episode.summary,
                     episode.provenance.get("session_id"),

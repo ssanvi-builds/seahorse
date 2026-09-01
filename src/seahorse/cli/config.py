@@ -65,6 +65,14 @@ DEFAULT_SKIP_TOOLS: tuple[str, ...] = ("WebSearch", "WebFetch")
 DEFAULT_DROP_TOOLS: tuple[str, ...] = ("Read", "Bash")
 DEFAULT_OBSERVE_SOCKET = "observer/observer.sock"
 
+# Materialization defaults. The section is OPT-IN: a vault without a
+# ``[materialize]`` section has ``materialize=None`` (no .md materialization)
+# until ``seahorse setup`` writes it. ``mode`` selects which episodes become
+# F3.1 notes; ``dir`` is the vault-relative folder (visible to Obsidian).
+DEFAULT_MATERIALIZE_MODE = "consolidated"
+DEFAULT_MATERIALIZE_DIR = "Memory"
+_VALID_MATERIALIZE_MODES = frozenset({"consolidated", "all", "off"})
+
 _VAULT_ENV = "SEAHORSE_VAULT"
 
 
@@ -141,6 +149,23 @@ class DistillConfig:
 
 
 @dataclass(frozen=True)
+class MaterializeConfig:
+    """The ``[materialize]`` section — episode → .md materialization policy.
+
+    ``mode`` selects which episodes are materialized as F3.1 notes in the vault:
+    ``"consolidated"`` (default) materializes consolidated knowledge notes
+    (``extraction_mode=consolidated``) and project notes
+    (``cognitive_type=project_doc``) — the distilled knowledge, not the session
+    noise; ``"all"`` materializes every ACTIVE episode; ``"off"`` disables
+    materialization. ``dir`` is the vault-relative folder the notes are written
+    to (visible to Obsidian; the rebuild picks them up from any vault path).
+    """
+
+    mode: str = DEFAULT_MATERIALIZE_MODE
+    dir: str = DEFAULT_MATERIALIZE_DIR
+
+
+@dataclass(frozen=True)
 class SeahorseConfig:
     """Resolved Seahorse configuration for a vault.
 
@@ -160,6 +185,7 @@ class SeahorseConfig:
     observe: ObserveConfig | None = None
     procedural: ProceduralSection | None = None
     distill: DistillConfig | None = None
+    materialize: MaterializeConfig | None = None
 
     def with_overrides(
         self, *, extraction_mode: str | None = None, top_k: int | None = None
@@ -270,6 +296,10 @@ def load_config(
     # opt-in; the deterministic distillation is the default).
     distill = _parse_distill_section(data.get("distill"))
 
+    # Optional [materialize] section. Missing → materialize=None (no .md
+    # materialization until `seahorse setup` writes it).
+    materialize = _parse_materialize_section(data.get("materialize"))
+
     return SeahorseConfig(
         vault=vault,
         seahorse_dir=seahorse_dir,
@@ -280,6 +310,7 @@ def load_config(
         observe=observe,
         procedural=procedural,
         distill=distill,
+        materialize=materialize,
     )
 
 
@@ -421,6 +452,32 @@ def _parse_distill_section(raw: object) -> DistillConfig | None:
     return DistillConfig(synthesis=synthesis, supersede=supersede)
 
 
+def _parse_materialize_section(raw: object) -> MaterializeConfig | None:
+    """Validate an optional ``[materialize]`` section into a ``MaterializeConfig``.
+
+    ``None`` input (no section) → ``None`` (materialization is opt-in until
+    ``seahorse setup`` writes it). Any structurally wrong value is a
+    ``CliConfigInvalid`` (Cat C, exit 83) — a config typo fails loud, not as a
+    silent degrade at runtime.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise CliConfigInvalid("materialize must be a [materialize] table")
+
+    mode = raw.get("mode", DEFAULT_MATERIALIZE_MODE)
+    if not isinstance(mode, str) or mode not in _VALID_MATERIALIZE_MODES:
+        raise CliConfigInvalid(
+            f"materialize.mode={mode!r}; expected 'consolidated' | 'all' | 'off'"
+        )
+
+    dir_name = raw.get("dir", DEFAULT_MATERIALIZE_DIR)
+    if not isinstance(dir_name, str) or not dir_name:
+        raise CliConfigInvalid("materialize.dir must be a non-empty string")
+
+    return MaterializeConfig(mode=mode, dir=dir_name)
+
+
 def write_default_config(vault: Path) -> Path:
     """Write the minimal ``seahorse.toml`` into ``<vault>/.seahorse/``.
 
@@ -478,6 +535,26 @@ def write_llm_config(vault: Path, llm: LlmConfig) -> Path:
     return cfg_path
 
 
+def write_materialize_config(vault: Path, materialize: MaterializeConfig) -> Path:
+    """Write the ``[materialize]`` section to ``seahorse.toml`` (idempotent).
+
+    A present section is preserved (the user's config wins); a missing one is
+    appended with the given mode/dir. Appending (not re-serializing) preserves
+    the ``[llm]`` / ``[observe]`` / ``[procedural]`` / ``[distill]`` sections
+    already written by ``init`` / ``setup``. Returns the config path.
+    """
+    cfg_path = config_path_for(vault)
+    content = cfg_path.read_text(encoding="utf-8")
+    if "[materialize]" not in content:
+        content += (
+            "\n[materialize]\n"
+            f'mode = "{materialize.mode}"\n'
+            f'dir = "{materialize.dir}"\n'
+        )
+        cfg_path.write_text(content, encoding="utf-8")
+    return cfg_path
+
+
 __all__ = [
     "SEAHORSE_DIR_NAME",
     "CONFIG_FILENAME",
@@ -489,13 +566,17 @@ __all__ = [
     "DEFAULT_SKIP_TOOLS",
     "DEFAULT_DROP_TOOLS",
     "DEFAULT_OBSERVE_SOCKET",
+    "DEFAULT_MATERIALIZE_MODE",
+    "DEFAULT_MATERIALIZE_DIR",
     "SeahorseConfig",
     "LlmConfig",
     "ObserveConfig",
+    "MaterializeConfig",
     "is_initialized",
     "resolve_vault",
     "config_path_for",
     "load_config",
     "write_default_config",
     "write_llm_config",
+    "write_materialize_config",
 ]

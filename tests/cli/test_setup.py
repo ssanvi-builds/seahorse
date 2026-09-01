@@ -182,6 +182,7 @@ def test_run_setup_writes_config_and_hooks(tmp_path, monkeypatch) -> None:
     assert "setup" in out.getvalue()
     cfg = load_config(vault)
     assert cfg.observe is not None
+    assert cfg.materialize is not None  # setup is the [materialize] opt-in path
     with open(settings, encoding="utf-8") as fh:
         data = json.load(fh)
     assert "hooks" in data

@@ -35,6 +35,7 @@ from seahorse.persistence.storage import Storage
 from seahorse.write_path.stub import StubWritePath
 
 if TYPE_CHECKING:
+    from seahorse.cli.config import MaterializeConfig
     from seahorse.retrieval.decay import DecayConfig
     from seahorse.retrieval.recency import RecencyConfig
 
@@ -57,6 +58,8 @@ def build_facade(
     embed_mode: str = "body+summary",
     passage_embedder: Any | None = None,
     reranker: QueryReranker | None = None,
+    vault_root: Path | None = None,
+    materialize: MaterializeConfig | None = None,
 ) -> tuple[MemoryFacade, Storage]:
     """Build a real ``MemoryFacade`` over SQLite + the engine + the shaper + the write-path stub.
 
@@ -112,6 +115,16 @@ def build_facade(
     ``None`` keeps the pure-RRF bit-comparable fingerprint; the benchmark SUT
     and CLI wire it to run the rerank A/B experiment. Query-time pure: wiring a
     reranker never requires a reindex.
+
+    The ``vault_root`` + ``materialize`` slots wire the materializer (M6:
+    facade-level injection point). When both are set, a ``Materializer`` is
+    built over the storage's sidecar and injected into the facade, so the
+    write-path hooks (remember/distill/improve/forget) materialize episodes as
+    F3.1 notes. ``materialize`` is the ``[materialize]`` config section
+    (``MaterializeConfig``); ``vault_root`` is the vault root the notes are
+    written under. The Materializer is imported lazily (ruamel-confinement: the
+    frontmatter package pulls ruamel, which must not leak into every facade
+    build).
     """
     if embed_mode not in EMBED_MODES:
         raise ValueError(
@@ -167,6 +180,16 @@ def build_facade(
     on_indexed: Callable[[str], None] | None = None
     if retrieval is not None:
         on_indexed = indexer.index_episode
+    materializer = None
+    if vault_root is not None and materialize is not None:
+        from seahorse.frontmatter.materialize import Materializer  # lazy: ruamel
+
+        materializer = Materializer(
+            vault_root,
+            dir=materialize.dir,
+            sidecar=own_storage.sidecar,
+            mode=materialize.mode,
+        )
     facade = MemoryFacade(
         engine=engine,
         write_path=write_path,
@@ -176,6 +199,7 @@ def build_facade(
         config=cfg,
         embedder=facade_embedder,
         on_episode_indexed=on_indexed,
+        materializer=materializer,
     )
     return facade, own_storage
 

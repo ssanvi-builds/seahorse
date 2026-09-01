@@ -419,6 +419,15 @@ class BiTemporalEngine:
             if ep.valid_at is None or ep.valid_at <= now
         ]
 
+    def get(self, ep_id: str) -> Episode | None:
+        """Fetch one episode by id (public reader for the materializer hook).
+
+        The repo already exposes ``get``; the engine used it internally but did
+        not expose it. The facade's materializer hook needs the full episode
+        (frontmatter + body) after a write to serialize the F3.1 note.
+        """
+        return self._repo.get(ep_id)
+
     def follow_supersedes_chain(self, ep_id: str) -> list[Episode]:
         """Bidirectional supersedes closure for ``ep_id`` (delegates to the persistence layer)."""
         return self._repo.chain_from(ep_id)
