@@ -1,12 +1,15 @@
 """Vault discovery + ``seahorse.toml`` config for the CLI.
 
-Vault discovery in the current release (the upward climb is deferred to a
-later release):
+Vault discovery in the current release:
 
 1. ``--vault`` explicit flag (must be an existing directory).
-2. ``SEAHORSE_VAULT`` environment variable.
-3. ``./.seahorse/seahorse.toml`` in the current working directory.
-4. ``CliVaultNotFound`` (exit 82) with a hint to ``seahorse init <vault>``.
+2. ``SEAHORSE_VAULT`` environment variable (power-user override).
+3. ``.seahorse/seahorse.toml`` in the current directory or any parent
+   (git-style walk — a session in a subdirectory resolves the vault root).
+4. The global pointer (``~/.config/seahorse/vault``, written by ``seahorse
+   setup``): the vault a user registered as their default, resolved from any
+   working directory without shell env changes.
+5. ``CliVaultNotFound`` (exit 82) with an actionable hint.
 
 ``seahorse.toml`` is intentionally minimal in the current release (modes
 hardcoded as constants). Only three keys are read:
@@ -29,6 +32,7 @@ per the project coding style).
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -74,6 +78,48 @@ DEFAULT_MATERIALIZE_DIR = "Memory"
 _VALID_MATERIALIZE_MODES = frozenset({"consolidated", "all", "off"})
 
 _VAULT_ENV = "SEAHORSE_VAULT"
+_APP_DIR_NAME = "seahorse"
+POINTER_FILENAME = "vault"
+
+
+def global_config_dir() -> Path:
+    """The per-user Seahorse config dir (XDG on POSIX, Library on macOS)."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / _APP_DIR_NAME
+    base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return Path(base) / _APP_DIR_NAME
+
+
+def global_pointer_path() -> Path:
+    """The global vault pointer file (written by ``seahorse setup``)."""
+    return global_config_dir() / POINTER_FILENAME
+
+
+def read_global_pointer() -> Path | None:
+    """The vault registered by ``seahorse setup``, or None.
+
+    A stale pointer (deleted vault, or an existing dir without ``.seahorse/``)
+    is treated as absent, never an error — the pointer is a convenience, not a
+    state machine.
+    """
+    path = global_pointer_path()
+    if not path.is_file():
+        return None
+    try:
+        vault = Path(path.read_text(encoding="utf-8").strip()).expanduser()
+    except OSError:
+        return None
+    if not vault.is_dir() or not is_initialized(vault):
+        return None
+    return vault.resolve()
+
+
+def write_global_pointer(vault: Path) -> Path:
+    """Register ``vault`` as the user's default; returns the pointer path."""
+    path = global_pointer_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{vault.expanduser().resolve()}\n", encoding="utf-8")
+    return path
 
 
 @dataclass(frozen=True)
@@ -224,8 +270,13 @@ def resolve_vault(explicit: Path | None) -> Path:
         return vault
 
     cwd = Path.cwd().resolve()
-    if is_initialized(cwd):
-        return cwd
+    for candidate in (cwd, *cwd.parents):
+        if is_initialized(candidate):
+            return candidate
+
+    pointer = read_global_pointer()
+    if pointer is not None:
+        return pointer
 
     raise CliVaultNotFound()
 

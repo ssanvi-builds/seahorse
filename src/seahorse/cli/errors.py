@@ -79,7 +79,11 @@ class CliNotInMVP0(CliError):
 class CliVaultNotFound(CliError):
     """Vault resolution failed (--vault / env / .seahorse/ all missed)."""
 
-    def __init__(self, *, hint: str = "run `seahorse init <vault>` to bootstrap") -> None:
+    def __init__(
+        self,
+        *,
+        hint: str = "run `seahorse setup` (it bootstraps + registers a vault)",
+    ) -> None:
         super().__init__(
             exit_code=CLI_VAULT_NOT_FOUND,
             name="CLI_VAULT_NOT_FOUND",

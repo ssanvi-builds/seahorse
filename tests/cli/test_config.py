@@ -13,12 +13,22 @@ from seahorse.cli.config import (
     SEAHORSE_DIR_NAME,
     SeahorseConfig,
     config_path_for,
+    global_pointer_path,
     is_initialized,
     load_config,
+    read_global_pointer,
     resolve_vault,
     write_default_config,
+    write_global_pointer,
 )
 from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
+
+
+def _isolate_pointer(monkeypatch, tmp_path) -> Path:
+    """Redirect the global pointer to a tmp dir (tests never touch the host's)."""
+    xdg = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    return xdg
 
 # ---------------------------------------------------------------------------
 # write_default_config + is_initialized.
@@ -124,6 +134,7 @@ def test_resolve_vault_env_missing_dir_raises(monkeypatch, tmp_path):
 def test_resolve_vault_cwd_fallback(tmp_path, monkeypatch):
     """If --vault and env are absent, cwd with .seahorse/seahorse.toml wins."""
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
     write_default_config(tmp_path)  # cwd is now an init'd vault
     assert resolve_vault(None) == tmp_path.resolve()
@@ -131,9 +142,93 @@ def test_resolve_vault_cwd_fallback(tmp_path, monkeypatch):
 
 def test_resolve_vault_nothing_resolves_raises(monkeypatch, tmp_path):
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
     with pytest.raises(CliVaultNotFound):
         resolve_vault(None)
+
+
+# ---------------------------------------------------------------------------
+# global vault pointer (~/.config/seahorse/vault) + parent-directory walk.
+# ---------------------------------------------------------------------------
+
+
+def test_global_pointer_roundtrip(monkeypatch, tmp_path):
+    _isolate_pointer(monkeypatch, tmp_path)
+    v = tmp_path / "vault"
+    v.mkdir()
+    write_default_config(v)
+    path = write_global_pointer(v)
+    assert path == global_pointer_path()
+    assert read_global_pointer() == v.resolve()
+
+
+def test_global_pointer_missing_is_none(monkeypatch, tmp_path):
+    _isolate_pointer(monkeypatch, tmp_path)
+    assert read_global_pointer() is None
+
+
+def test_global_pointer_stale_vault_is_none(monkeypatch, tmp_path):
+    """A pointer to a deleted directory is treated as absent, not an error."""
+    _isolate_pointer(monkeypatch, tmp_path)
+    write_global_pointer(tmp_path / "gone")
+    assert read_global_pointer() is None
+
+
+def test_global_pointer_uninitialized_vault_is_none(monkeypatch, tmp_path):
+    """A pointer to an existing dir without .seahorse/ does not resolve."""
+    _isolate_pointer(monkeypatch, tmp_path)
+    v = tmp_path / "plain"
+    v.mkdir()
+    write_global_pointer(v)
+    assert read_global_pointer() is None
+
+
+def test_resolve_vault_parent_walk(tmp_path, monkeypatch):
+    """A session in a subdirectory of an init'd vault resolves the vault root."""
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
+    v = tmp_path / "vault"
+    write_default_config(v)
+    subdir = v / "notes" / "deep"
+    subdir.mkdir(parents=True)
+    monkeypatch.chdir(subdir)
+    assert resolve_vault(None) == v.resolve()
+
+
+def test_resolve_vault_pointer_fallback(tmp_path, monkeypatch):
+    """No cwd vault: the global pointer resolves the registered vault."""
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
+    v = tmp_path / "vault"
+    write_default_config(v)
+    write_global_pointer(v)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert resolve_vault(None) == v.resolve()
+
+
+def test_resolve_vault_cwd_beats_pointer(tmp_path, monkeypatch):
+    _isolate_pointer(monkeypatch, tmp_path)
+    pointer_vault = tmp_path / "pointer-vault"
+    write_default_config(pointer_vault)
+    write_global_pointer(pointer_vault)
+    monkeypatch.chdir(tmp_path)
+    write_default_config(tmp_path)  # cwd vault
+    assert resolve_vault(None) == tmp_path.resolve()
+
+
+def test_resolve_vault_env_beats_pointer(tmp_path, monkeypatch):
+    _isolate_pointer(monkeypatch, tmp_path)
+    pointer_vault = tmp_path / "pointer-vault"
+    write_default_config(pointer_vault)
+    write_global_pointer(pointer_vault)
+    env_vault = tmp_path / "env-vault"
+    env_vault.mkdir()
+    monkeypatch.setenv("SEAHORSE_VAULT", str(env_vault))
+    monkeypatch.chdir(tmp_path)
+    assert resolve_vault(None) == env_vault.resolve()
 
 
 # ---------------------------------------------------------------------------

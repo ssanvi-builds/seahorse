@@ -44,7 +44,7 @@ def test_not_in_mvp0_carries_command():
 def test_vault_not_found_default_hint():
     err = CliVaultNotFound()
     assert err.exit_code == CLI_VAULT_NOT_FOUND
-    assert "seahorse init" in err.detail
+    assert "seahorse setup" in err.detail
 
 
 def test_vault_not_found_custom_hint():

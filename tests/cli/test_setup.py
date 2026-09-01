@@ -10,6 +10,7 @@ and the ``[observe]`` section, preserving other hooks.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from seahorse.cli.config import load_config
 from seahorse.cli.setup import (
@@ -267,6 +268,7 @@ def test_run_setup_writes_config_and_hooks(tmp_path, monkeypatch) -> None:
     vault = _cfg(tmp_path)
     settings = _settings_path(tmp_path)
     monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     import io
 
     out = io.StringIO()
@@ -278,6 +280,20 @@ def test_run_setup_writes_config_and_hooks(tmp_path, monkeypatch) -> None:
     with open(settings, encoding="utf-8") as fh:
         data = json.load(fh)
     assert "hooks" in data
+
+
+def test_run_setup_registers_global_pointer(tmp_path, monkeypatch) -> None:
+    """``setup`` registers the vault as the user's default (no env var needed)."""
+    vault = _cfg(tmp_path)
+    settings = _settings_path(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    import io
+
+    run_setup(vault, settings_path=settings, fmt="human", out=io.StringIO())
+    pointer = tmp_path / "xdg" / "seahorse" / "vault"
+    assert pointer.is_file()
+    assert Path(pointer.read_text().strip()) == vault.resolve()
 
 
 def test_run_setup_uninstall_removes_hooks(tmp_path, monkeypatch) -> None:

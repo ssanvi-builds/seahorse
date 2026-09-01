@@ -25,6 +25,7 @@ from seahorse.cli.config import (
     DEFAULT_OBSERVE_SOCKET,
     DEFAULT_SKIP_TOOLS,
     config_path_for,
+    write_global_pointer,
 )
 from seahorse.cli.output import OutputFormat
 
@@ -176,6 +177,7 @@ def run_setup(
 
     write_observe_config(vault)
     write_materialize_config(vault, MaterializeConfig())
+    write_global_pointer(vault)
     settings = Path(settings_path) if settings_path is not None else _default_settings_path()
     hook_command = f"{sys.executable} -m seahorse.cli.app observe event"
     merge_hooks(settings, hook_command=hook_command)
