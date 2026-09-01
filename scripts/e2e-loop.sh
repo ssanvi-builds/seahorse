@@ -71,6 +71,14 @@ TOOL_PY=""
 # --- helpers -----------------------------------------------------------------
 info() { echo "$*" | tee -a "$LOG" >&2; }   # informational → stderr + log
 
+sha256_file() {  # sha256_file <path> — sha256sum on Linux, shasum on macOS
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 ok()   { PASS=$((PASS + 1)); info "  ✅ $1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED_STEPS+=("$1"); info "  ❌ $1"; }
 
@@ -142,6 +150,12 @@ PY
 # --- pre-flight --------------------------------------------------------------
 REAL_HOME="$HOME"
 START_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# The observer socket lives under $SANDBOX; AF_UNIX paths are capped at 104
+# bytes on macOS (108 on Linux), so refuse over-long sandbox paths up front.
+if (( ${#SANDBOX} >= 90 )); then
+  echo "sandbox path too long (${#SANDBOX} bytes, AF_UNIX cap 104): $SANDBOX" >&2
+  exit 2
+fi
 mkdir -p "$SANDBOX"
 : > "$LOG"
 
@@ -155,7 +169,7 @@ SNAP="$SANDBOX/snapshot-before.txt"
 : > "$SNAP"
 for f in "$REAL_HOME/.claude/settings.json" "$REAL_HOME/.claude-mem/claude-mem.db"; do
   if [[ -f "$f" ]]; then
-    echo "$(shasum -a 256 "$f" | awk '{print $1}')  $f" >> "$SNAP"
+    echo "$(sha256_file "$f")  $f" >> "$SNAP"
   else
     echo "ABSENT  $f" >> "$SNAP"
   fi
@@ -567,7 +581,7 @@ SNAP_AFTER="$SANDBOX/snapshot-after.txt"
 : > "$SNAP_AFTER"
 for f in "$REAL_HOME/.claude/settings.json" "$REAL_HOME/.claude-mem/claude-mem.db"; do
   if [[ -f "$f" ]]; then
-    echo "$(shasum -a 256 "$f" | awk '{print $1}')  $f" >> "$SNAP_AFTER"
+    echo "$(sha256_file "$f")  $f" >> "$SNAP_AFTER"
   else
     echo "ABSENT  $f" >> "$SNAP_AFTER"
   fi
@@ -589,7 +603,7 @@ fi
 
 if pgrep -f "seahorse.cli.app observe run" >/dev/null 2>&1; then
   fail "no orphan observer process"
-  pgrep -af "seahorse.cli.app observe run" | tee -a "$LOG" >&2
+  pgrep -fl "seahorse.cli.app observe run" | tee -a "$LOG" >&2
 else
   ok "no orphan observer process"
 fi
