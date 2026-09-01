@@ -4,6 +4,30 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-09-01
+
+### Added
+
+- **Global vault pointer + parent-directory resolution** — `resolve_vault` now
+  falls back to a user-level pointer file (`~/.config/seahorse/vault` on
+  Linux, `~/Library/Application Support/seahorse/vault` on macOS) and walks
+  parent directories looking for `.seahorse/` (git-style). A user running
+  `seahorse` from anywhere gets their vault; per-vault isolation is preserved
+  because cwd/env/`--vault` still win over the pointer.
+- **`seahorse setup` bootstraps the vault** — the cold-start exit 82 is gone:
+  `setup` resolves the vault, then bootstraps a missing one (mkdir + minimal
+  config) instead of failing. `--vault <path>` forces a directory (created if
+  missing); on a TTY with nothing resolved, an interactive picker offers the
+  Obsidian-registered vaults (parsed from Obsidian's own `obsidian.json`) plus
+  a last option that creates a fresh vault at `~/Seahorse`. Without a TTY the
+  failure stays loud (exit 82) with a `--vault` hint, so scripts never hang on
+  a prompt.
+- **Doctor capture end-to-end checks** — three new checks after `db`:
+  `claude_hooks` (the four observer hooks as installed in Claude Code's
+  settings.json, missing events named), `observer` (worker socket presence),
+  and `context` (the SessionStart context rendered through the real CLI, so a
+  broken injection is diagnosed instead of discovered mid-session).
+
 ## [0.17.1] - 2026-09-01
 
 ### Fixed

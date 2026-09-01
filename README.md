@@ -56,11 +56,13 @@ correct, and that does not lock you into any runtime or provider.
 ## Use case: Claude Code with persistent memory
 
 The fastest way to see Seahorse is to give Claude Code a memory that survives
-between sessions. Three steps:
+between sessions. Four steps:
 
-**1. Capture sessions.** `seahorse setup` installs the observer hooks into
-`~/.claude/settings.json`; `seahorse observe start` runs the capture worker.
-Every session is recorded as episodes — skip-first (near-zero cost),
+**1. Capture sessions.** `seahorse setup` bootstraps a vault if you do not
+have one (interactive picker on a terminal; `--vault <path>` to force one) and
+installs the observer hooks into `~/.claude/settings.json`; `seahorse observe
+start` runs the capture worker. Every session is recorded as episodes —
+skip-first (near-zero cost),
 redacted, with a deterministic summary. The hooks self-heal: if the worker
 dies, the next hook fires it back up, so capture resumes without manual
 intervention.
@@ -79,7 +81,11 @@ seahorse context
 seahorse recall "what did we decide about the API design?"
 ```
 
-**3. Bring your existing memory.** If you already use claude-mem, `seahorse
+**3. Verify the wiring.** `seahorse doctor` checks the whole capture chain
+end to end: hooks installed in Claude Code, observer worker alive, and the
+SessionStart context rendering.
+
+**4. Bring your existing memory.** If you already use claude-mem, `seahorse
 import` migrates its observations into canonical episodes — no replay, no
 lock-in:
 
