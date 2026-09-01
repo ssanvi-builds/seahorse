@@ -4,6 +4,14 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] - 2026-09-01
+
+### Fixed
+
+- **CI lint regression** (from 0.16.1) — two test fixtures exceeded the ruff
+  line length, failing the lint gate and blocking the PyPI publish of
+  v0.16.1/v0.17.0. No code changes; 0.17.0 never reached PyPI.
+
 ## [0.17.0] - 2026-09-01
 
 ### Added
