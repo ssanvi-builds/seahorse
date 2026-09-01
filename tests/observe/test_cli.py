@@ -17,8 +17,11 @@ from seahorse.cli.config import ObserveConfig, SeahorseConfig
 from seahorse.cli.errors import CliError, CliObserverRunning
 from seahorse.cli.exit_codes import CLI_CONFIG_INVALID
 from seahorse.observe.cli import (
+    acquire_observer_lock,
+    lock_file,
     pid_file,
     run_observe_event,
+    run_observe_run,
     run_observe_start,
     run_observe_status,
     run_observe_stop,
@@ -32,6 +35,17 @@ def _cfg(tmp_path) -> SeahorseConfig:
         vault=tmp_path,
         seahorse_dir=seahorse_dir,
         db_path=seahorse_dir / "seahorse.db",
+    )
+
+
+def _cfg_observe(tmp_path) -> SeahorseConfig:
+    """Config with the observer set up (the ``run_observe_run`` precondition)."""
+    base = _cfg(tmp_path)
+    return SeahorseConfig(
+        vault=base.vault,
+        seahorse_dir=base.seahorse_dir,
+        db_path=base.db_path,
+        observe=ObserveConfig(),
     )
 
 
@@ -304,3 +318,83 @@ def test_observe_event_post_failure_noop(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr("seahorse.observe.cli._post_event", _raise_oserror)
     run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
+
+
+# ---------------------------------------------------------------------------
+# single-writer lock (flock)
+# ---------------------------------------------------------------------------
+
+
+class _FakeStorage:
+    def close(self) -> None:
+        pass
+
+
+class _FakeFacade:
+    pass
+
+
+def test_acquire_observer_lock_returns_fd(tmp_path) -> None:
+    cfg = _cfg(tmp_path)
+    fd = acquire_observer_lock(cfg)
+    assert fd is not None
+    assert lock_file(cfg).exists()
+    os.close(fd)
+
+
+def test_acquire_observer_lock_fails_when_held(tmp_path) -> None:
+    cfg = _cfg(tmp_path)
+    fd1 = acquire_observer_lock(cfg)
+    assert fd1 is not None
+    try:
+        assert acquire_observer_lock(cfg) is None
+    finally:
+        os.close(fd1)
+    # Kernel releases the flock on close: the lock is acquirable again.
+    fd2 = acquire_observer_lock(cfg)
+    assert fd2 is not None
+    os.close(fd2)
+
+
+def test_observe_run_fails_loud_when_lock_held(tmp_path, monkeypatch) -> None:
+    """A second ``observe run`` fails loud BEFORE building the facade.
+
+    Regression: a competing foreground run used to bind over the live socket
+    (``serve_forever`` unlinks and re-binds) and steal it silently. The flock
+    makes the loser exit 95 without touching the facade.
+    """
+    cfg = _cfg_observe(tmp_path)
+    fd = acquire_observer_lock(cfg)
+    assert fd is not None
+    try:
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("loser must not build the facade")
+
+        monkeypatch.setattr("seahorse.facade.factory.build_facade", _boom)
+        with pytest.raises(CliObserverRunning):
+            run_observe_run(cfg, fmt="human", out=_out())
+    finally:
+        os.close(fd)
+
+
+def test_observe_run_acquires_lock_and_releases(tmp_path, monkeypatch) -> None:
+    """The winner holds the lock only for the run; it releases on return."""
+    cfg = _cfg_observe(tmp_path)
+    ran = {}
+
+    def _fake_run_observer(facade, queue, config, *, socket_path, token):
+        ran["socket_path"] = socket_path
+        ran["token"] = token
+
+    monkeypatch.setattr(
+        "seahorse.facade.factory.build_facade",
+        lambda *a, **k: (_FakeFacade(), _FakeStorage()),
+    )
+    monkeypatch.setattr("seahorse.observe.runner.run_observer", _fake_run_observer)
+    run_observe_run(cfg, fmt="human", out=_out())
+    assert ran["token"] is None  # ObserveConfig default
+    # The lock was released: it is acquirable again.
+    fd = acquire_observer_lock(cfg)
+    assert fd is not None
+    os.close(fd)

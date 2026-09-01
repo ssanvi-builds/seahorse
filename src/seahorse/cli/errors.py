@@ -126,12 +126,17 @@ class CliObserverRunning(CliError):
     observe stop`` first.
     """
 
-    def __init__(self, pid: int) -> None:
+    def __init__(self, pid: int | None = None) -> None:
         self.pid = pid
+        detail = (
+            f"observer is already running (pid {pid}); run `seahorse observe stop` first"
+            if pid is not None
+            else "observer is already running (single-writer lock held)"
+        )
         super().__init__(
             exit_code=CLI_OBSERVER_RUNNING,
             name="CLI_OBSERVER_RUNNING",
-            detail=f"observer is already running (pid {pid}); run `seahorse observe stop` first",
+            detail=detail,
         )
 
 

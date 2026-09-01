@@ -16,6 +16,7 @@ References:
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import signal
@@ -35,6 +36,8 @@ OBSERVER_DIR_NAME = "observer"
 PID_FILENAME = "observer.pid"
 LOG_FILENAME = "observer.log"
 QUEUE_FILENAME = "observer.db"
+LOCK_FILENAME = "observer.lock"
+_LOCK_MODE = 0o600
 
 
 def observer_dir(cfg: SeahorseConfig) -> Path:
@@ -44,6 +47,10 @@ def observer_dir(cfg: SeahorseConfig) -> Path:
 
 def pid_file(cfg: SeahorseConfig) -> Path:
     return observer_dir(cfg) / PID_FILENAME
+
+
+def lock_file(cfg: SeahorseConfig) -> Path:
+    return observer_dir(cfg) / LOCK_FILENAME
 
 
 def queue_path(cfg: SeahorseConfig) -> Path:
@@ -97,6 +104,25 @@ def _emit(cfg: SeahorseConfig, fmt: OutputFormat, out: TextIO, payload: dict) ->
             out.write("observer: not running\n")
     else:
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def acquire_observer_lock(cfg: SeahorseConfig) -> int | None:
+    """Take the observer single-writer lock with ``flock``; None if held.
+
+    The lock is an advisory ``flock`` on ``{observer_dir}/observer.lock``
+    (mode 0o600). The kernel releases it when the holder dies, so an orphaned
+    ``.lock`` file is harmless — liveness comes from the kernel, not the file.
+    The returned fd is the lock; keep it open for the writer's lifetime and
+    ``os.close(fd)`` to release.
+    """
+    observer_dir(cfg).mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_file(cfg), os.O_CREAT | os.O_RDWR, _LOCK_MODE)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +310,12 @@ def run_observe_run(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> N
             name="CLI_CONFIG_INVALID",
             detail="observer is not set up; run `seahorse setup` first",
         )
+    # Single-writer, enforced by the kernel: a competing foreground run used to
+    # bind over the live socket (``serve_forever`` unlinks and re-binds) and
+    # steal it silently. Fail loud before building anything.
+    lock_fd = acquire_observer_lock(cfg)
+    if lock_fd is None:
+        raise CliObserverRunning()
     facade, storage = build_facade(
         cfg.db_path,
         config=FacadeConfig(
@@ -308,13 +340,16 @@ def run_observe_run(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> N
     finally:
         queue.close()
         storage.close()
+        os.close(lock_fd)
 
 
 __all__ = [
+    "acquire_observer_lock",
     "observer_dir",
     "pid_file",
     "queue_path",
     "socket_path",
+    "lock_file",
     "run_observe_status",
     "run_observe_start",
     "run_observe_stop",
