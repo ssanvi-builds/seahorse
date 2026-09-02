@@ -90,7 +90,7 @@ def test_stdio_full_session(vault: Path) -> None:
         assert init["result"]["serverInfo"]["name"] == "seahorse-memory"
         # version is single-sourced from package metadata
         try:
-            expected_version = importlib.metadata.version("seahorse")
+            expected_version = importlib.metadata.version("seahorse-memory")
         except importlib.metadata.PackageNotFoundError:
             expected_version = "0.0.0"
         assert init["result"]["serverInfo"]["version"] == expected_version

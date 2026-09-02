@@ -144,7 +144,7 @@ def test_server_version_sourced_from_metadata() -> None:
     from seahorse.mcp.profile import _SERVER_VERSION
 
     try:
-        expected = importlib.metadata.version("seahorse")
+        expected = importlib.metadata.version("seahorse-memory")
     except importlib.metadata.PackageNotFoundError:
         expected = "0.0.0"
     assert expected == _SERVER_VERSION

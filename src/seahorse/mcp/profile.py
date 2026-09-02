@@ -39,7 +39,9 @@ _SERVER_NAME = "seahorse-memory"
 # in sync. Falls back to "0.0.0" when the package is not installed (a bare
 # checkout run via PYTHONPATH, no metadata) — still a valid semver-ish string.
 try:
-    _SERVER_VERSION = _pkg_version("seahorse")
+    # The distribution NAME (pyproject [project].name), not the import/package
+    # name — a wrong name here always falls back to "0.0.0" on real installs.
+    _SERVER_VERSION = _pkg_version("seahorse-memory")
 except PackageNotFoundError:  # not installed (bare checkout, no metadata)
     _SERVER_VERSION = "0.0.0"
 
