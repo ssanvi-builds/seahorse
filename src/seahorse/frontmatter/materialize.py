@@ -20,8 +20,10 @@ What the materializer owns:
   existing note's **frontmatter id** with the episode id (NOT mtimes — a
   seahorse-written note always has ``mtime > created_at``). Same id → already
   materialized (skip); different id → a foreign note or another episode → never
-  overwrite, write to ``{slug}-{id8}.md``; that also taken → report the
-  collision (the operator resolves, the rebuild reports conflicts).
+  overwrite, write to ``{slug}-{id8}.md``; that also taken → escalate the
+  suffix width (id12, id16, full id — ULID siblings from the same millisecond
+  share id8) before reporting the collision (the operator resolves, the
+  rebuild reports conflicts).
 - **Stable title for consolidated notes**: a consolidated episode's engine title
   carries the ``[session_tag:n]`` suffix while its subject is the stable cluster
   key (distill.py). The materializer serializes an *effective episode* whose
@@ -181,9 +183,26 @@ class Materializer:
             return MaterializeResult(ep.id, "skipped", reason="already_materialized")
         if existing_id is not None:
             # A foreign note (or another episode) owns the slug — never
-            # overwrite; fall back to the id8 suffix.
-            target = self._vault_root / self._dir / f"{slug}-{ep.id[:_ID8]}.md"
-            if self._existing_id(target) is not None:
+            # overwrite; fall back to the id8 suffix. ULIDs are millisecond-
+            # keyed: the invalidate+append pair of improve/consolidate usually
+            # lands in the SAME millisecond, so a successor shares id8 with
+            # its predecessor — when the predecessor's (invalidated) note owns
+            # ``{slug}-{id8}.md``, escalate the suffix width before reporting
+            # a collision, or the successor would be permanently unwritable
+            # (loop L6b, 2026-09-02).
+            for width in (_ID8, _ID8 + 4, _ID8 + 8, len(ep.id)):
+                target = self._vault_root / self._dir / f"{slug}-{ep.id[:width]}.md"
+                owned = self._existing_id(target)
+                if owned == ep.id:
+                    # Our own earlier materialization of this very episode
+                    # (the consolidate hook writes the id8 name) — idempotent
+                    # skip, never a duplicate at a longer width.
+                    return MaterializeResult(
+                        ep.id, "skipped", reason="already_materialized"
+                    )
+                if owned is None:
+                    break
+            else:
                 return MaterializeResult(
                     ep.id, "collision", reason="slug_and_id8_taken"
                 )

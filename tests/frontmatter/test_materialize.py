@@ -153,6 +153,55 @@ def test_materialize_slug_and_id8_taken_reports_collision(tmp_path, sidecar) -> 
     assert r.reason == "slug_and_id8_taken"
 
 
+def test_materialize_same_ms_ulid_sibling_escalates_suffix(tmp_path, sidecar) -> None:
+    """A successor sharing the id8 (same-ms ULID) with its invalidated
+    predecessor escalates the suffix width instead of being permanently
+    unwritable — improve/consolidate create the pair within one millisecond
+    (loop L6b, 2026-09-02)."""
+    old_id = "01a062fd-ed1d-4c2e-9f01-aaaaaaaaaaaa"
+    ep = _episode(ep_id="01a062fd-fbb3-4c2e-9f01-bbbbbbbbbbbb")
+    assert ep.id[:8] == old_id[:8]  # same-millisecond ULID siblings
+    m = Materializer(tmp_path, dir="Memory", sidecar=sidecar, mode=MODE_ALL)
+    # The human note owns the slug; the predecessor's (invalidated) note owns
+    # the id8-suffixed name.
+    for name, fm_id in (
+        ("my-subject.md", "human-note-id"),
+        (f"my-subject-{old_id[:8]}.md", old_id),
+    ):
+        p = tmp_path / "Memory" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"---\nid: {fm_id}\n---\n# body", encoding="utf-8")
+    r = m.materialize(ep)
+    assert r.status == "written"
+    assert r.path == f"Memory/my-subject-{ep.id[:12]}.md"
+    # The predecessor's note is untouched (never overwrite).
+    predecessor = tmp_path / "Memory" / f"my-subject-{old_id[:8]}.md"
+    assert f"id: {old_id}" in predecessor.read_text(encoding="utf-8")
+
+
+def test_materialize_own_id8_hook_file_is_idempotent_skip(tmp_path, sidecar) -> None:
+    """A foreign note owns the slug, and our OWN id8-suffixed note (written by
+    the consolidate hook) already exists → idempotent skip, never a duplicate
+    at a longer width (loop L6b, 2026-09-02)."""
+    ep = _episode(ep_id="01a06305-473d-758d-8bd8-f627845dbe6e")
+    memory = tmp_path / "Memory"
+    memory.mkdir(parents=True)
+    (memory / "my-subject.md").write_text("# Human\n\nNot ours.", encoding="utf-8")
+    m = Materializer(tmp_path, dir="Memory", sidecar=sidecar, mode=MODE_ALL)
+    # First materialize (the consolidate hook's write) lands on the id8 name.
+    first = m.materialize(ep)
+    assert first.status == "written"
+    assert first.path == f"Memory/my-subject-{ep.id[:8]}.md"
+    # The explicit backfill of the SAME episode must skip, not duplicate.
+    r = m.materialize(ep)
+    assert r.status == "skipped"
+    assert r.reason == "already_materialized"
+    # No duplicate appeared at a longer width.
+    assert sorted(p.name for p in memory.glob("my-subject-*.md")) == [
+        f"my-subject-{ep.id[:8]}.md"
+    ]
+
+
 def test_materialize_unparseable_note_is_foreign(tmp_path, sidecar) -> None:
     """A broken note (unparseable frontmatter) is foreign — never overwritten."""
     target = tmp_path / "Memory" / "my-subject.md"
