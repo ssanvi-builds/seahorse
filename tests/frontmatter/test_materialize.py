@@ -96,6 +96,16 @@ def test_materialize_writes_f31_note(tmp_path, sidecar) -> None:
     assert parsed.title == "My Subject"  # subject is derived from title by the rebuild
 
 
+def test_materialize_stamps_on_disk_format_version(tmp_path, sidecar) -> None:
+    """The note's frontmatter carries the ON-DISK format version ('0.1.0'),
+    not the episode-contract semver from the DB episode ('1.1') — L7 found the
+    write path stamping '1.1', disagreeing with the migrator's marker."""
+    m = Materializer(tmp_path, dir="Memory", sidecar=sidecar, mode=MODE_ALL)
+    m.materialize(_episode())  # _episode() uses the contract version 1.1
+    _cm, _body, parsed = parse_file(tmp_path / "Memory" / "my-subject.md")
+    assert parsed.schema_version == "0.1.0"
+
+
 def test_materialize_is_idempotent(tmp_path, sidecar) -> None:
     m = Materializer(tmp_path, dir="Memory", sidecar=sidecar, mode=MODE_ALL)
     m.materialize(_episode())

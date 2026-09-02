@@ -110,14 +110,20 @@ class VaultMigrator:
         return CASE_B, cm, body
 
     def _validate_or_d(self, path: Path) -> str:
-        """``schema_version`` is present: C if it validates as on-disk with valid_at, else D."""
+        """``schema_version`` is present: C if it parses as on-disk, else D.
+
+        ``valid_at`` is NOT required: the format spec makes it nullable
+        ("null means always true / not applicable"), and the engine's own
+        write-path notes (``remember``/``improve`` without ``--valid-at``)
+        omit it — requiring it here deferred every engine-materialized note
+        to case D (L7). A note missing any REQUIRED field (id, created_at,
+        provenance) still fails ``parse_file`` and lands in D.
+        """
         try:
-            _cm, _body, ep = parse_file(path)
+            parse_file(path)
         except Exception:
             return CASE_D  # on-disk marker present but invalid -> incompatible
-        if ep.valid_at is not None and ep.schema_version:
-            return CASE_C
-        return CASE_D  # marker present but incomplete after validation
+        return CASE_C
 
     # -------------------------------------------------------------- migrate_note
 

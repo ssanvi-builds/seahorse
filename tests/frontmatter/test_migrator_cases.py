@@ -103,11 +103,15 @@ class TestClassifyCaseD:
         case, _cm, _body = migrator.classify(note)
         assert case == CASE_D
 
-    def test_f31_marker_without_valid_at_is_case_d(
+    def test_f31_marker_without_valid_at_is_case_c(
         self, migrator: VaultMigrator, tmp_path: Path
     ) -> None:
-        # schema_version present + parse_file OK, but valid_at absent -> the canonical
-        # format marker is present yet incomplete -> case D (not silently treated as C).
+        # schema_version present + parse_file OK, but valid_at absent -> case C.
+        # The format spec makes valid_at nullable ("null means always true"),
+        # and the engine's own write-path notes omit it when remember/improve
+        # run without --valid-at — requiring it here deferred every
+        # engine-materialized note to case D (L7). Required fields (id,
+        # created_at, provenance) still gate via parse_file.
         note = tmp_path / "novalidat.md"
         note.write_text(
             "---\n"
@@ -119,7 +123,7 @@ class TestClassifyCaseD:
             encoding="utf-8",
         )
         case, _cm, _body = migrator.classify(note)
-        assert case == CASE_D
+        assert case == CASE_C
 
 
 class TestMigrateNoteCaseA:
@@ -246,24 +250,24 @@ class TestMigrateNoteCaseD:
         assert "FRONTMATTER_INVALID" in entry.error
         assert note.read_text(encoding="utf-8") == original  # untouched
 
-    def test_incomplete_f31_logs_incomplete_reason(
+    def test_marker_with_missing_required_field_is_case_d(
         self, migrator: VaultMigrator, tmp_path: Path
     ) -> None:
-        # schema_version present, parses OK, but no valid_at -> case D "incomplete".
-        note = tmp_path / "novalidat.md"
+        # schema_version present but a REQUIRED field (provenance) missing ->
+        # parse_file raises -> case D. valid_at alone does not gate (nullable).
+        note = tmp_path / "noprovenance.md"
         original = (
             "---\n"
             "schema_version: 0.1.0\n"
             "id: 01234567-89ab-7def-8123-456789abcdef\n"
             "created_at: 2024-01-01T00:00:00Z\n"
-            "provenance:\n  agent_id: x\n"
             "---\n# Title\n"
         )
         note.write_text(original, encoding="utf-8")
         entry = migrator.migrate_note(note)
         assert entry.case == CASE_D
         assert entry.error is not None
-        assert "incomplete" in entry.error.lower()
+        assert "FRONTMATTER_INVALID" in entry.error
         assert note.read_text(encoding="utf-8") == original  # untouched
 
     def test_subject_empty_degenerate_filename_is_case_d(

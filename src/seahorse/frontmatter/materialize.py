@@ -52,6 +52,7 @@ from typing import Protocol, runtime_checkable
 
 from seahorse.contracts.episode import Episode
 from seahorse.frontmatter.adapter import parse_file, serialize, write_file
+from seahorse.frontmatter.defaults import SCHEMA_VERSION_MVP0
 
 _logger = logging.getLogger("seahorse.frontmatter.materialize")
 
@@ -87,17 +88,23 @@ def slugify(subject: str) -> str:
 
 
 def _effective_episode(ep: Episode) -> Episode:
-    """The serialized form of ``ep``: stable title for consolidated notes (C2).
+    """The serialized form of ``ep``: stable title for consolidated notes (C2)
+    plus the on-disk format version.
 
     A consolidated episode's engine title carries the ``[session_tag:n]``
     suffix while its subject is the stable cluster key. Writing the note with
     ``title=subject`` makes the rebuild derive the SAME ``fact_id`` as the
     engine (the rebuild derives subject from title first). All other episodes
     keep their engine title.
-    """
+
+    ``schema_version`` is the episode-contract semver in the DB ('1.1'); the
+    on-disk frontmatter carries its own format version ('0.1.0'). Stamping the
+    payload's value made every engine-written note disagree with the migrator's
+    on-disk marker (L7). """
+    updated = {"schema_version": SCHEMA_VERSION_MVP0}
     if ep.provenance.get("extraction_mode") == "consolidated" and ep.subject:
-        return ep.model_copy(update={"title": ep.subject})
-    return ep
+        updated["title"] = ep.subject
+    return ep.model_copy(update=updated)
 
 
 @dataclass(frozen=True)
