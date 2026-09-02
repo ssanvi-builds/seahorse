@@ -182,7 +182,7 @@ m_offline() {
 # --- shared steps ------------------------------------------------------------
 m_install_uvtool() {  # m_install_uvtool <extras>
   local extras="$1"
-  m_run "uv tool install '.[$extras]'" bash -c "cd '$REPO_DIR' && uv tool install --python 3.13 '.[$extras]'"
+  m_run "uv tool install '.[$extras]'" bash -c "cd '$REPO_DIR' && uv tool install --python-preference only-managed --python 3.13 '.[$extras]'"
   SEAHORSE="$HOME/.local/bin/seahorse"
   SEAHORSE_MCP="$HOME/.local/bin/seahorse-mcp"
   m_check "seahorse binary present" test -x "$SEAHORSE"
@@ -202,8 +202,10 @@ m_install_uvsync() {  # dev workflow: extract committed tree + uv sync --extra d
   # Pin the same Python as `uv tool install` (3.13): the default interpreter
   # (e.g. a pyenv build without SQLITE_ENABLE_LOAD_EXTENSION) breaks every DB
   # command with a cryptic AttributeError (see the install note in
-  # e2e-fresh-user.sh).
-  m_run "uv sync --python 3.13 --extra dev" bash -c "cd '$COMBO_DIR/src' && uv sync --python 3.13 --extra dev"
+  # e2e-fresh-user.sh). only-managed keeps uv from resolving --python 3.13 to
+  # the runner's system CPython (macOS CI 2026-09-02: /usr/local/bin/python3.13
+  # lacked enable_load_extension).
+  m_run "uv sync --python-preference only-managed --python 3.13 --extra dev" bash -c "cd '$COMBO_DIR/src' && uv sync --python-preference only-managed --python 3.13 --extra dev"
   SEAHORSE="$COMBO_DIR/src/.venv/bin/seahorse"
   SEAHORSE_MCP="$COMBO_DIR/src/.venv/bin/seahorse-mcp"
   m_check "seahorse binary present (uv sync)" test -x "$SEAHORSE"
