@@ -75,7 +75,14 @@ class CollisionDetector:
         return fact_id_for(body, title=title)
 
     def detect(self, new_ep: Episode, repo: EpisodeRepository) -> list[Collision]:
-        fact_id = fact_id_for(new_ep.body or "", title=new_ep.title)
+        # Prefer the RESOLVED fact_id already on the episode (subject-override
+        # paths — e.g. the distiller's cluster key — set subject/fact_id before
+        # detect runs). Re-deriving from body/title misses those rivals when
+        # the body's H1 differs from the override subject, and the missed
+        # collision then surfaces as a raw IntegrityError from the
+        # uq_one_active_per_subject backstop instead of a handled COLLISION
+        # (loop L6b, 2026-09-02).
+        fact_id = new_ep.fact_id or fact_id_for(new_ep.body or "", title=new_ep.title)
         if fact_id is None:
             return []
         other = repo.find_vigent_by_fact_id(fact_id, exclude=new_ep.id)

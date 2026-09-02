@@ -19,6 +19,7 @@ from typing import Any
 
 from seahorse.distill.cluster import Cluster, cluster_episodes
 from seahorse.distill.synthesis import synthesize_cluster
+from seahorse.engine.errors import E_COLLISION_EXISTS, EngineError
 from seahorse.llm import LLMClient
 
 CONSOLIDATOR_AGENT = "consolidator"
@@ -156,26 +157,45 @@ def consolidate(
         consolidated_body, llm_by = _synthesize_or_fallback(
             cluster, synthesis, llm_client
         )
-        wr = facade.distill(
-            source_ep_ids=[e.id for e in cluster.episodes],
-            representative=cluster.representative,
-            consolidated_body=consolidated_body,
-            by={**effective_by, **llm_by},
-            supersede_ep_id=supersede_ep_id,
+        synthesis_label = (
+            "llm"
+            if "model_used" in llm_by and llm_by.get("model_used")
+            else "degraded"
+            if "degraded_from" in llm_by
+            else "skip"
         )
+        try:
+            wr = facade.distill(
+                source_ep_ids=[e.id for e in cluster.episodes],
+                representative=cluster.representative,
+                consolidated_body=consolidated_body,
+                by={**effective_by, **llm_by},
+                supersede_ep_id=supersede_ep_id,
+            )
+        except EngineError as exc:
+            if exc.code != E_COLLISION_EXISTS:
+                raise
+            # A rival active episode holds the cluster key (e.g. an untagged
+            # remember on the same subject) — a handled, reported collision,
+            # never a crash (loop L6b, 2026-09-02). The cluster is skipped;
+            # the report surfaces it.
+            items.append(
+                ConsolidateItem(
+                    key=cluster.key,
+                    source_count=len(cluster.episodes),
+                    status="COLLISION",
+                    ep_id=None,
+                    synthesis=synthesis_label,
+                )
+            )
+            continue
         items.append(
             ConsolidateItem(
                 key=cluster.key,
                 source_count=len(cluster.episodes),
                 status=wr.status,
                 ep_id=wr.ep_id,
-                synthesis=(
-                    "llm"
-                    if "model_used" in llm_by and llm_by.get("model_used")
-                    else "degraded"
-                    if "degraded_from" in llm_by
-                    else "skip"
-                ),
+                synthesis=synthesis_label,
             )
         )
     return ConsolidateReport(clusters_found=len(clusters), items=items)

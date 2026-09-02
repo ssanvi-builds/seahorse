@@ -586,13 +586,16 @@ class MemoryFacade:
         # Index the consolidated note so the hybrid recall can recover it — the
         # same bypass-the-write-path pattern as improve (the note is the most
         # valuable memory the distillation exists to produce). The listing
-        # regime wires no hook → honest no-op.
-        if self._on_episode_indexed is not None:
-            self._on_episode_indexed(result.ep_id)
-        # Materialize the consolidated note (the default ``consolidated`` mode
-        # exists precisely for this — distilled knowledge becomes a visible,
-        # editable .md).
-        self._materialize_episode(result.ep_id)
+        # regime wires no hook → honest no-op. A COLLISION result has no
+        # ep_id (a rival active episode holds the cluster key) — nothing to
+        # index or materialize; the report surfaces the collision.
+        if result.ep_id is not None:
+            if self._on_episode_indexed is not None:
+                self._on_episode_indexed(result.ep_id)
+            # Materialize the consolidated note (the default ``consolidated``
+            # mode exists precisely for this — distilled knowledge becomes a
+            # visible, editable .md).
+            self._materialize_episode(result.ep_id)
         # Supersession (F7+): the old note is invalidated (C1) — the same merge
         # the improve path performs. ``distill_episodes`` calls ``engine.improve``
         # directly (bypassing ``facade.improve``), so the invalidation must
