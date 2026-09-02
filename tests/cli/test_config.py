@@ -14,7 +14,6 @@ from seahorse.cli.config import (
     SEAHORSE_DIR_NAME,
     SeahorseConfig,
     config_path_for,
-    global_pointer_path,
     is_initialized,
     load_config,
     read_global_pointer,
@@ -164,12 +163,15 @@ def test_resolve_vault_nothing_resolves_raises(monkeypatch, tmp_path):
 
 
 def test_global_pointer_roundtrip(monkeypatch, tmp_path):
+    import seahorse.cli.config as cli_config
+
     _isolate_pointer(monkeypatch, tmp_path)
     v = tmp_path / "vault"
     v.mkdir()
     write_default_config(v)
     path = write_global_pointer(v)
-    assert path == global_pointer_path()
+    # Via the module attribute: the test's direct import predates the patch.
+    assert path == cli_config.global_pointer_path()
     assert read_global_pointer() == v.resolve()
 
 
