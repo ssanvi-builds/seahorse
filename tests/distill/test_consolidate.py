@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from seahorse.distill.consolidate import consolidate
+from seahorse.engine.errors import E_COLLISION_EXISTS, EngineError
 from seahorse.facade.factory import build_facade
 from seahorse.facade.types import RememberPayload
 from seahorse.llm import BudgetContext, ExtractResult
@@ -353,3 +354,92 @@ def test_consolidate_synthesis_llm_without_client_is_deterministic(tmp_path) -> 
         assert "degraded_from" not in consolidated[0].provenance
     finally:
         storage.close()
+
+
+def _stub_episode(ep_id: str, subject: str, *, now: datetime):
+    """A minimal episode for the stub facade (cluster_episodes only needs
+    subject / cognitive_type / provenance / supersedes / created_at)."""
+    from seahorse.contracts.episode import Episode
+
+    return Episode(
+        id=ep_id,
+        created_at=now,
+        schema_version="1.1",
+        provenance={"source_type": "agent", "extraction_mode": "skip"},
+        body=f"# {subject}\n\nDetail for {ep_id}.",
+        subject=subject,
+        valid_at=now,
+        cognitive_type="episodic",
+        source_type="agent",
+    )
+
+
+class _CollidingFacade:
+    """Stub facade whose distill raises the engine's collision error.
+
+    Fault injection for the handled-collision path: a rival active episode
+    holds the cluster key, so ``facade.distill`` raises
+    ``EngineError(E_COLLISION_EXISTS)`` (the supersede path — engine.improve
+    raises instead of returning a COLLISION WriteResult)."""
+
+    def __init__(self, eps, *, failing_key: str, other_error_key: str = "") -> None:
+        self._eps = eps
+        self._failing_key = failing_key
+        self._other_error_key = other_error_key
+        self.distill_calls: list[str] = []
+
+    def get_vigente(self):
+        return list(self._eps)
+
+    def distill(self, source_ep_ids, representative, consolidated_body, by,
+                supersede_ep_id=None):
+        self.distill_calls.append(representative.subject)
+        if representative.subject == self._failing_key:
+            raise EngineError(E_COLLISION_EXISTS, existing_id="rival-1")
+        if representative.subject == self._other_error_key:
+            raise EngineError("E_NOT_IN_MVP_0", primitive="distill")
+        from seahorse.contracts.engine import WriteResult
+
+        return WriteResult(ep_id="ep-new", fact_id="f" * 32, status="ACTIVE",
+                           collisions_detected=[])
+
+
+def test_consolidate_reports_collision_and_continues() -> None:
+    """A cluster whose distill hits E_COLLISION_EXISTS is reported as a
+    COLLISION row and the run continues with the remaining clusters — never a
+    crash (loop L6b, 2026-09-02)."""
+    eps = [
+        _stub_episode(f"e{i}", "hot cluster", now=T0 + timedelta(minutes=i))
+        for i in range(3)
+    ] + [
+        _stub_episode(f"f{i}", "calm cluster", now=T0 + timedelta(minutes=i))
+        for i in range(3)
+    ]
+    facade = _CollidingFacade(eps, failing_key="hot cluster")
+    report = consolidate(facade)
+    assert report.clusters_found == 2
+    by_key = {item.key: item for item in report.items}
+    # The colliding cluster: handled, honest, no episode.
+    assert by_key["hot cluster"].status == "COLLISION"
+    assert by_key["hot cluster"].ep_id is None
+    assert by_key["hot cluster"].source_count == 3
+    # The healthy cluster was still distilled.
+    assert by_key["calm cluster"].status == "ACTIVE"
+    assert by_key["calm cluster"].ep_id == "ep-new"
+    assert sorted(facade.distill_calls) == ["calm cluster", "hot cluster"]
+
+
+def test_consolidate_reraises_non_collision_engine_error() -> None:
+    """A non-collision EngineError from distill is NOT swallowed as a
+    COLLISION row — it propagates fail-loud."""
+    import pytest
+
+    eps = [
+        _stub_episode(f"e{i}", "broken cluster", now=T0 + timedelta(minutes=i))
+        for i in range(3)
+    ]
+    facade = _CollidingFacade(
+        eps, failing_key="never", other_error_key="broken cluster"
+    )
+    with pytest.raises(EngineError):
+        consolidate(facade)
