@@ -211,6 +211,7 @@ def test_resolve_vault_pointer_fallback(tmp_path, monkeypatch):
 
 def test_resolve_vault_cwd_beats_pointer(tmp_path, monkeypatch):
     _isolate_pointer(monkeypatch, tmp_path)
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)  # dev shells export it
     pointer_vault = tmp_path / "pointer-vault"
     write_default_config(pointer_vault)
     write_global_pointer(pointer_vault)

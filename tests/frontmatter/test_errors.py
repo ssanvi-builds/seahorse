@@ -35,6 +35,22 @@ def test_frontmatter_invalid_message_is_actionable() -> None:
     assert "id" in msg  # names a required field so the user knows what to fix
 
 
+def test_parse_file_wraps_yaml_syntax_error_with_path(tmp_path: Path) -> None:
+    """L7: a YAML syntax error in one note surfaced a raw ruamel ParserError
+    that named no file. parse_file must wrap it in FrontmatterInvalid with the
+    source path so `index rebuild` points at the offending note."""
+    import pytest
+
+    from seahorse.frontmatter.adapter import parse_file
+
+    note = tmp_path / "broken.md"
+    note.write_text("---\ntags: [geo, \n---\n# broken\n", encoding="utf-8")
+    with pytest.raises(FrontmatterInvalid) as excinfo:
+        parse_file(note)
+    assert excinfo.value.path == note
+    assert "broken.md" in str(excinfo.value)
+
+
 def test_migration_error_is_base_class() -> None:
     assert issubclass(XReservedCollision, MigrationError)
     assert issubclass(SubjectEmpty, MigrationError)

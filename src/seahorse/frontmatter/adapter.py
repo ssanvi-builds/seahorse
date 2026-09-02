@@ -76,8 +76,15 @@ def parse_file(
     text = path.read_text(encoding="utf-8")
     handler = RuamelRTHandler(_yaml)
     if handler.detect(text):
-        fm, raw_body = handler.split(text)
-        cm = handler.load(fm)
+        try:
+            fm, raw_body = handler.split(text)
+            cm = handler.load(fm)
+        except Exception as e:
+            # A ruamel parse error (bad YAML syntax) is wrapped so every read
+            # path surfaces the same typed error — with the source path —
+            # instead of a raw ParserError that names no file (L7: an index
+            # rebuild over one broken note reported an anonymous ParserError).
+            raise FrontmatterInvalid(path, e) from e
     else:
         cm = CommentedMap()
         raw_body = text
