@@ -53,6 +53,17 @@ def test_redact_env_line() -> None:
     assert "postgres://u:p@host/db" not in out
 
 
+def test_redact_env_assignment_midsentence() -> None:
+    """Secret assignments are redacted anywhere in the text, not only at line
+    start — prompts quote them mid-sentence (loop L5a re-verify finding)."""
+    out = redact_text("store this and AWS_SECRET_ACCESS_KEY=awsFAKEsecret000 ok")
+    assert "awsFAKEsecret000" not in out
+    assert "AWS_SECRET_ACCESS_KEY=[REDACTED]" in out
+    # Non-secret keys survive untouched.
+    assert redact_text("count=10 and name=bob") == "count=10 and name=bob"
+    assert redact_text("PATH=/usr/bin:/bin") == "PATH=/usr/bin:/bin"
+
+
 def test_redact_private_key_pem() -> None:
     pem = (
         "-----BEGIN PRIVATE KEY-----\n"

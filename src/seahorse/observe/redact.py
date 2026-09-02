@@ -48,10 +48,12 @@ _PEM_RE = re.compile(
 # scheme and the ``@`` so the URL shape survives.
 _URL_USERINFO_RE = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)([^/@\s]+)@")
 
-# ``.env``-style assignment lines. The value is redacted ONLY when the key
+# ``.env``-style assignments. The value is redacted ONLY when the key
 # name suggests a secret (belt-and-braces for values that match no other
-# pattern, e.g. ``PASSWORD=hunter2``).
-_ENV_LINE_RE = re.compile(r"(?m)^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(\S+)(\s*)$")
+# pattern, e.g. ``PASSWORD=hunter2``). Matches anywhere in the text (not just
+# line starts): prompts quote secrets mid-sentence — "store this and
+# AWS_SECRET_ACCESS_KEY=... ok" must redact too (loop L5a re-verify finding).
+_ENV_LINE_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)([^\s&\"']+)", re.MULTILINE)
 _SECRET_KEY_HINT = re.compile(
     r"(?i)(key|token|secret|password|passwd|pass|api|auth|credential|pwd)"
 )
@@ -75,9 +77,9 @@ def _redact_url_userinfo(match: re.Match[str]) -> str:
 
 
 def _redact_env_line(match: re.Match[str]) -> str:
-    indent, key, eq, value, trailing = match.groups()
+    key, eq, value = match.groups()
     if _SECRET_KEY_HINT.search(key):
-        return f"{indent}{key}{eq}{_REDACTED}{trailing}"
+        return f"{key}{eq}{_REDACTED}"
     return match.group(0)
 
 
