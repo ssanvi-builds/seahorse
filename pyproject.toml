@@ -58,7 +58,11 @@ dev = [
 # happens. Install with `uv sync --extra dev --extra embeddings`.
 embeddings = [
     "fastembed>=0.6.0",
-    "onnxruntime>=1.20",
+    # <1.29: 1.29.0 segfaults during its pybind init when the process argv is
+    # large (>= ~32KB body + default 8MB stack) after the CLI's other C
+    # extensions load. `uv tool install` does not use uv.lock, so tool envs
+    # float to the newest release — cap until upstream fixes it.
+    "onnxruntime>=1.20,<1.29",
 ]
 # The multi-LLM backend (LiteLLM unifies the 100+ provider surface). Also
 # optional: without this extra, `seahorse.llm` still imports (the contract +
