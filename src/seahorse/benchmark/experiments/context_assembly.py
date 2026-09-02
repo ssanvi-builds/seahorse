@@ -40,13 +40,13 @@ reproducible 100 subsample.
 
 from __future__ import annotations
 
-import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments.end_to_end import (
     EndToEndQuestion,
     build_real_corpus,
@@ -447,7 +447,7 @@ def run_context_assembly_experiment(
         raise ValueError(
             f"unknown corpus: {corpus!r} (expected 'synthetic' or 'lmeb-s')"
         )
-    tmp = Path(tempfile.mkdtemp(prefix="seahorse-contextassembly-"))
+    tmp = Path(mkdtemp_scoped("seahorse-contextassembly-"))
     db = Path(db_path) if db_path is not None else tmp / "bench.db"
     if corpus == "synthetic":
         facade, storage, questions, ep_id_to_session = _build_synthetic_corpus(db)

@@ -40,12 +40,12 @@ recovered by a procedural question.
 
 from __future__ import annotations
 
-import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
@@ -331,7 +331,7 @@ def run_skills_experiment(
             "from the haystack (not yet wired); run corpus='synthetic' to verify "
             "the harness mechanics"
         )
-    tmp = Path(tempfile.mkdtemp(prefix="seahorse-skills-"))
+    tmp = Path(mkdtemp_scoped("seahorse-skills-"))
     db = Path(db_path) if db_path is not None else tmp / "bench.db"
     facade, storage, episodes = build_synthetic_corpus(db)
     try:

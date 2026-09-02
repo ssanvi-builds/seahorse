@@ -38,12 +38,12 @@ The exact numbers are NOT the science (fail-loud honesty).
 
 from __future__ import annotations
 
-import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
@@ -427,7 +427,7 @@ def run_decay_experiment(
         raise ValueError(
             f"unknown corpus: {corpus!r} (expected 'synthetic' or 'lmeb-s')"
         )
-    tmp = Path(tempfile.mkdtemp(prefix="seahorse-decay-"))
+    tmp = Path(mkdtemp_scoped("seahorse-decay-"))
     db = Path(db_path) if db_path is not None else tmp / "bench.db"
     if corpus == "synthetic":
         facade, storage, episodes, facts = build_synthetic_corpus(db)

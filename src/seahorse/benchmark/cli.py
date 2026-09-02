@@ -7,9 +7,9 @@ returns the CI exit code (0=Pass / 10=Fail / 3=Tampered).
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
+from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.adapters.registry import AdapterRegistry
 from seahorse.benchmark.config import BenchmarkConfig
 from seahorse.benchmark.contracts import MetricResult
@@ -94,7 +94,7 @@ def run_benchmark(
     loader = AdapterRegistry.get(adapter)
     tokenizer = Tokenizer()
     reader = reader_llm or ReaderLLMClient(reader_model)
-    tmp = tempfile.mkdtemp(prefix="seahorse-bench-")
+    tmp = mkdtemp_scoped("seahorse-bench-")
 
     def _reranker():
         # The cross-encoder is query-time pure — wiring it never requires a

@@ -31,11 +31,11 @@ three modes measure over the same facade (a per-mode rebuild would re-ingest
 
 from __future__ import annotations
 
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments.end_to_end import (
     EndToEndQuestion,
     ExtractiveReader,
@@ -143,7 +143,7 @@ def run_reader_context_experiment(
         raise ValueError(
             f"unknown corpus: {corpus!r} (expected 'synthetic' or 'lmeb-s')"
         )
-    tmp = Path(tempfile.mkdtemp(prefix="seahorse-readercontext-"))
+    tmp = Path(mkdtemp_scoped("seahorse-readercontext-"))
     db = Path(db_path) if db_path is not None else tmp / "bench.db"
     if corpus == "synthetic":
         facade, storage, episodes, questions, ep_id_to_session = build_synthetic_corpus(db)

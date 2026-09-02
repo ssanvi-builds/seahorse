@@ -30,12 +30,12 @@ subsample.
 
 from __future__ import annotations
 
-import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments.lmeb_corpus import (
     build_real_facade,
     ingest_haystack,
@@ -327,7 +327,7 @@ def run_rrf_k_experiment(
         raise ValueError(
             f"unknown corpus: {corpus!r} (expected 'synthetic' or 'lmeb-s')"
         )
-    tmp = Path(tempfile.mkdtemp(prefix="seahorse-rrfk-"))
+    tmp = Path(mkdtemp_scoped("seahorse-rrfk-"))
     db = Path(db_path) if db_path is not None else tmp / "bench.db"
     if corpus == "synthetic":
         facade, storage, episodes, questions = build_synthetic_corpus(db)

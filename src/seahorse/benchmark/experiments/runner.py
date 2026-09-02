@@ -31,6 +31,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
+from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.config import BenchmarkConfig
 from seahorse.benchmark.contracts import BenchmarkDataset, DatasetLoader
 from seahorse.benchmark.corpus_builder import (
@@ -316,7 +317,7 @@ def _build_template(
     ``new_ep_ids_after_improve`` metadata is set on the shared dataset instances
     so the deep-copied variant datasets carry it into the metrics.
     """
-    template_dir = Path(tempfile.mkdtemp(prefix="seahorse-template-"))
+    template_dir = Path(mkdtemp_scoped("seahorse-template-"))
     clock = AdvancingClock(
         base=earliest_session_date(dataset), delta_seconds=_clock_delta_seconds(dataset)
     )
