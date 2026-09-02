@@ -2698,7 +2698,7 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "numpy", specifier = ">=2.0" },
-    { name = "onnxruntime", marker = "extra == 'embeddings'", specifier = ">=1.20" },
+    { name = "onnxruntime", marker = "extra == 'embeddings'", specifier = ">=1.20,<1.29" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5" },
