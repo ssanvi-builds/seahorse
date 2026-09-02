@@ -12,6 +12,7 @@ until SIGTERM/KeyboardInterrupt.
 from __future__ import annotations
 
 import logging
+import signal
 import threading
 import time
 from pathlib import Path
@@ -22,6 +23,11 @@ from seahorse.observe.queue import ObserverQueue
 from seahorse.observe.worker import ObserverConfig, ObserverWorker
 
 _logger = logging.getLogger("seahorse.observe.runner")
+
+
+def _on_sigterm(signum: int, frame: Any) -> None:
+    """Route SIGTERM through KeyboardInterrupt so the endpoint cleanup runs."""
+    raise KeyboardInterrupt
 
 
 def run_observer(
@@ -52,6 +58,15 @@ def run_observer(
     thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
     thread.start()
     drains = 0
+    # ``observe stop`` sends plain SIGTERM: without a handler the default
+    # action kills the process without unwinding, so the endpoint's ``finally``
+    # never unlinks the socket and a stale ``observer.sock`` survives every
+    # stop (loop L4a, 2026-09-02). SIGTERM reuses the KeyboardInterrupt path.
+    # Only installable from the main thread — tests drive it from workers too.
+    prev_sigterm: Any = None
+    if threading.current_thread() is threading.main_thread():
+        prev_sigterm = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, _on_sigterm)
     try:
         while True:
             report = worker.drain()
@@ -72,6 +87,8 @@ def run_observer(
     except KeyboardInterrupt:
         pass
     finally:
+        if prev_sigterm is not None:
+            signal.signal(signal.SIGTERM, prev_sigterm)
         endpoint.shutdown()
         thread.join(timeout=2)
 
