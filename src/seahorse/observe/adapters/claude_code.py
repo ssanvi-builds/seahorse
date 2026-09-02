@@ -69,7 +69,13 @@ def handle_user_prompt_submit(
     agent_id: str | None = None,
 ) -> None:
     """UserPromptSubmit hook: advance the persisted prompt_number (turn
-    boundary) and enqueue the prompt event."""
+    boundary) and enqueue the prompt event.
+
+    The prompt is redacted like any other payload — users paste secrets into
+    prompts, and "nothing raw is ever persisted" must hold for the prompt path
+    too (loop L5a, 2026-09-02: raw API keys survived in the envelope and were
+    re-printed by the SessionStart context injection).
+    """
     prompt_number = queue.advance_prompt_number(session_id)
     env = Envelope(
         schema_version="1.0",
@@ -79,7 +85,7 @@ def handle_user_prompt_submit(
         prompt_number=prompt_number,
         event_type=EVENT_USER_PROMPT_SUBMIT,
         ts="",
-        payload={"prompt": prompt},
+        payload=redact_payload({"prompt": prompt}),
     )
     queue.enqueue(env)
 

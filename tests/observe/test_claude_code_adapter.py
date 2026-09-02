@@ -68,6 +68,25 @@ def test_handle_user_prompt_submit_increments_per_prompt(queue: ObserverQueue) -
     assert queue.current_prompt_number(SESSION) == 2
 
 
+def test_handle_user_prompt_submit_redacts_before_enqueue(queue: ObserverQueue) -> None:
+    """The prompt path redacts like every other payload: users paste secrets
+    into prompts, and the SessionStart context injection re-prints episodes —
+    a raw secret here would flow straight back into Claude Code context
+    (loop L5a, 2026-09-02)."""
+    handle_session_start(queue, session_id=SESSION)
+    handle_user_prompt_submit(
+        queue,
+        session_id=SESSION,
+        prompt="exports ANTHROPIC_API_KEY: sk-ant-secret123456",
+    )
+    pending = queue.pending()
+    assert len(pending) == 1
+    _, env = pending[0]
+    assert env.event_type == EVENT_USER_PROMPT_SUBMIT
+    assert "sk-ant-secret123456" not in str(env.payload)
+    assert "[REDACTED]" in env.payload["prompt"]
+
+
 # ---------------------------------------------------------------------------
 # post_tool_use — redact + drop_tools
 # ---------------------------------------------------------------------------
