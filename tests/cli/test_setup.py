@@ -41,6 +41,26 @@ def _cfg(tmp_path):
     return tmp_path
 
 
+def _isolate_global_config(monkeypatch, tmp_path) -> Path:
+    """Redirect the global config (pointer + Obsidian registry) to tmp.
+
+    Monkeypatches the production path helpers instead of XDG_CONFIG_HOME
+    alone: on macOS both root at ~/Library and IGNORE XDG, so XDG-only
+    isolation leaked into the runner's real home and cross-contaminated
+    tests (macOS CI failures)."""
+    xdg = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    monkeypatch.setattr(
+        "seahorse.cli.config.global_pointer_path",
+        lambda: xdg / "seahorse" / "vault",
+    )
+    monkeypatch.setattr(
+        "seahorse.cli.setup._obsidian_registry_path",
+        lambda: xdg / "obsidian" / "obsidian.json",
+    )
+    return xdg
+
+
 def _settings_path(tmp_path) -> str:
     return str(tmp_path / "settings.json")
 
@@ -274,7 +294,7 @@ def test_run_setup_writes_config_and_hooks(tmp_path, monkeypatch) -> None:
     vault = _cfg(tmp_path)
     settings = _settings_path(tmp_path)
     monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     import io
 
     out = io.StringIO()
@@ -293,7 +313,7 @@ def test_run_setup_registers_global_pointer(tmp_path, monkeypatch) -> None:
     vault = _cfg(tmp_path)
     settings = _settings_path(tmp_path)
     monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     import io
 
     run_setup(vault, settings_path=settings, fmt="human", out=io.StringIO())
@@ -309,7 +329,7 @@ def test_run_setup_registers_global_pointer(tmp_path, monkeypatch) -> None:
 
 def test_ensure_vault_explicit_missing_dir_is_created(tmp_path, monkeypatch) -> None:
     """``setup --vault <new path>`` bootstraps instead of exit 82."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     vault = ensure_vault(tmp_path / "fresh")
     assert (vault / ".seahorse" / "seahorse.toml").is_file()
     assert vault == (tmp_path / "fresh").resolve()
@@ -317,7 +337,7 @@ def test_ensure_vault_explicit_missing_dir_is_created(tmp_path, monkeypatch) -> 
 
 def test_ensure_vault_resolution_wins_without_explicit(tmp_path, monkeypatch) -> None:
     """cwd (or parents) / pointer resolve as before — no wizard, no prompt."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
     write_default_config(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -326,7 +346,7 @@ def test_ensure_vault_resolution_wins_without_explicit(tmp_path, monkeypatch) ->
 
 def test_ensure_vault_wizard_picks_discovered_vault(tmp_path, monkeypatch) -> None:
     """Interactive: the discovered vaults are offered; the pick is honored."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
     vault_a = tmp_path / "vault-a"
     vault_a.mkdir()
@@ -343,7 +363,7 @@ def test_ensure_vault_wizard_picks_discovered_vault(tmp_path, monkeypatch) -> No
 
 def test_ensure_vault_wizard_create_default(tmp_path, monkeypatch) -> None:
     """The last option creates a fresh vault at ~/Seahorse."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     (tmp_path / "home").mkdir()
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
@@ -358,7 +378,7 @@ def test_ensure_vault_wizard_create_default(tmp_path, monkeypatch) -> None:
 
 def test_ensure_vault_non_tty_raises_actionable(tmp_path, monkeypatch) -> None:
     """No resolution + no TTY: exit 82 with a hint that names --vault."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
     monkeypatch.chdir(tmp_path)
     with pytest.raises(CliVaultNotFound) as exc:
@@ -368,7 +388,7 @@ def test_ensure_vault_non_tty_raises_actionable(tmp_path, monkeypatch) -> None:
 
 def test_discover_obsidian_vaults_parses_registry(tmp_path, monkeypatch) -> None:
     """obsidian.json vaults are parsed; non-existent dirs are filtered."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     reg = tmp_path / "xdg" / "obsidian" / "obsidian.json"
     reg.parent.mkdir(parents=True)
     real = tmp_path / "real-vault"
@@ -383,7 +403,7 @@ def test_discover_obsidian_vaults_parses_registry(tmp_path, monkeypatch) -> None
 
 
 def test_discover_obsidian_vaults_missing_registry_is_empty(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    _isolate_global_config(monkeypatch, tmp_path)
     assert discover_obsidian_vaults() == []
 
 

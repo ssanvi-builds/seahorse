@@ -10,6 +10,7 @@ from seahorse.cli.config import (
     DEFAULT_DB_FILENAME,
     DEFAULT_EXTRACTION_MODE,
     DEFAULT_TOP_K,
+    POINTER_FILENAME,
     SEAHORSE_DIR_NAME,
     SeahorseConfig,
     config_path_for,
@@ -25,9 +26,18 @@ from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
 
 
 def _isolate_pointer(monkeypatch, tmp_path) -> Path:
-    """Redirect the global pointer to a tmp dir (tests never touch the host's)."""
+    """Redirect the global pointer to a tmp dir (tests never touch the host's).
+
+    Monkeypatches the production path helper, not just XDG_CONFIG_HOME: on
+    macOS ``global_config_dir()`` roots at ~/Library and IGNORES XDG, so
+    XDG-only isolation leaked into the runner's real home and cross-
+    contaminated tests (macOS CI failures)."""
     xdg = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    monkeypatch.setattr(
+        "seahorse.cli.config.global_pointer_path",
+        lambda: xdg / "seahorse" / POINTER_FILENAME,
+    )
     return xdg
 
 # ---------------------------------------------------------------------------
