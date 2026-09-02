@@ -373,7 +373,7 @@ class BiTemporalEngine:
             with self._repo.atomic():  # atomic: full rollback if the 2nd write fails
                 self._repo.set_invalid_at(ep_id, now)  # invalidate-then-append order
                 self._guards.validate(new_ep, repo=self._repo, op="improve", now=now)
-                collisions = self._collision.detect(new_ep, self._repo)
+                collisions = self._collision.detect(new_ep, self._repo, op="improve")
                 if collisions:
                     # Fail-loud, consistent with the collision path. Rollback:
                     # target stays valid, new episode not appended. The caller

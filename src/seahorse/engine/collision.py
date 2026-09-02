@@ -2,7 +2,10 @@
 
 Two currently valid episodes of the same derived subject are a detectable
 collision UNLESS they share a ``supersedes`` chain (revalidate / improve within
-the chain is not a concurrent collision). Detection is fail-loud awareness only:
+the chain is not a concurrent collision). The chain exemption applies only to
+ops that invalidate their supersedes target before appending (``improve``);
+``apply_fact`` treats ``supersedes`` as a soft reference, so a chain rival that
+is still active IS a collision. Detection is fail-loud awareness only:
 the caller (``apply_fact`` / ``improve``) decides whether to skip or raise.
 
 Subject derivation: ``title > first H1 > None`` normalized with NFC + casefold +
@@ -74,7 +77,9 @@ class CollisionDetector:
     def fact_id_for(body: str, title: str | None = None) -> str | None:
         return fact_id_for(body, title=title)
 
-    def detect(self, new_ep: Episode, repo: EpisodeRepository) -> list[Collision]:
+    def detect(
+        self, new_ep: Episode, repo: EpisodeRepository, op: str = "apply_fact"
+    ) -> list[Collision]:
         # Prefer the RESOLVED fact_id already on the episode (subject-override
         # paths — e.g. the distiller's cluster key — set subject/fact_id before
         # detect runs). Re-deriving from body/title misses those rivals when
@@ -89,8 +94,15 @@ class CollisionDetector:
         if other is None:
             return []
         # Same supersedes chain (revalidate / improve within the chain) is not a
-        # concurrent collision: the new episode continues the lineage, not a rival.
-        if new_ep.supersedes is not None:
+        # concurrent collision: the new episode continues the lineage, not a
+        # rival. The exemption is ONLY sound for ops that invalidate the
+        # supersedes target before appending (``improve`` — invalidate-then-
+        # append in the same atomic). ``apply_fact`` treats ``supersedes`` as a
+        # SOFT reference (merge: the sources remain valid — they are the
+        # evidence), so a chain rival that is still active HOLDS the fact_id
+        # slot and must be reported; exempting it there let the unique-index
+        # backstop fire instead (loop L6b re-run, 2026-09-02).
+        if op == "improve" and new_ep.supersedes is not None:
             chain_ids = {e.id for e in repo.chain_from(new_ep.supersedes)}
             if other.id in chain_ids:
                 return []

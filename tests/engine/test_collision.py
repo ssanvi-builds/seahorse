@@ -133,12 +133,29 @@ def test_detect_excludes_self():
 
 
 def test_detect_same_chain_is_not_collision():
-    # existing E2 is in the chain of new_ep.supersedes (E1) → same chain, not concurrent.
+    # existing E2 is in the chain of new_ep.supersedes (E1) → same chain, not
+    # concurrent. The chain exemption is op-gated: only improve invalidates its
+    # supersedes target, so only improve may exempt a chain rival.
     e1 = _episode("e1", body="# Subject\n")
     e2 = _episode("e2", body="# Subject\n")
     new_ep = _episode("e-new", body="# Subject\n", supersedes="e1")
     repo = _FakeRepo(vigent=e2, chain=[e1, e2])
-    assert CollisionDetector().detect(new_ep, repo) == []
+    assert CollisionDetector().detect(new_ep, repo, op="improve") == []
+
+
+def test_detect_same_chain_active_rival_is_collision_on_apply_fact():
+    # apply_fact treats supersedes as a SOFT reference (merge — the sources
+    # remain valid): a chain rival that is still active HOLDS the fact_id slot,
+    # so it must be reported. Exempting it let the uq_one_active_per_subject
+    # backstop fire as a raw IntegrityError instead (loop L6b re-run,
+    # 2026-09-02: the untagged rival chosen as the cluster's representative).
+    e1 = _episode("e1", body="# Subject\n")
+    e2 = _episode("e2", body="# Subject\n")
+    new_ep = _episode("e-new", body="# Subject\n", supersedes="e1")
+    repo = _FakeRepo(vigent=e2, chain=[e1, e2])
+    collisions = CollisionDetector().detect(new_ep, repo)
+    assert len(collisions) == 1
+    assert collisions[0].existing_id == "e2"
 
 
 def test_detect_different_chain_is_collision():
