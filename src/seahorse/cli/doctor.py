@@ -149,17 +149,50 @@ def _hooks_check() -> tuple[str, str]:
     return "OK", f"installed ({len(_OBSERVER_EVENTS)} events)"
 
 
+def _db_check(config: SeahorseConfig) -> tuple[str, str]:
+    """Existence + writability + integrity of the memory database.
+
+    Existence alone reports "OK" on a corrupt (garbage bytes) or read-only
+    file — states a user can hit after a bad rsync or a chmod accident — so
+    the probe runs a read-only ``PRAGMA quick_check`` and an os.access check.
+    """
+    db = config.db_path
+    if not db.exists():
+        return "WARN", f"missing: {db} (run `seahorse init`)"
+    if not os.access(db, os.W_OK) or not os.access(db.parent, os.W_OK):
+        return "FAIL", f"not writable: {db} (restore write permission on the vault)"
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            row = con.execute("PRAGMA quick_check").fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        return "FAIL", f"unreadable: {exc} (restore from backup or re-init)"
+    result = row[0] if row else "unknown"
+    if result != "ok":
+        return "FAIL", f"quick_check: {result} (restore from backup or re-init)"
+    return "OK", str(db)
+
+
 def _observer_check(config: SeahorseConfig) -> tuple[str, str]:
-    """The observer worker as seen from the vault (socket presence)."""
+    """The observer worker as seen from the vault (pid liveness, not socket)."""
     if config.observe is None:
         return "WARN", "observer not configured; run `seahorse setup`"
-    from seahorse.observe.cli import socket_path
+    from seahorse.observe.cli import observer_liveness, socket_path
 
-    if socket_path(config).exists():
-        return "OK", "observer running (socket present)"
+    if not socket_path(config).exists():
+        return (
+            "WARN",
+            "observer not running; it auto-starts on the next Claude Code session",
+        )
+    running, pid = observer_liveness(config)
+    if running:
+        return "OK", f"observer running (pid {pid})"
     return (
         "WARN",
-        "observer not running; it auto-starts on the next Claude Code session",
+        f"stale socket without a live observer ({socket_path(config)}); "
+        "remove it or run `seahorse observe start`",
     )
 
 
@@ -249,13 +282,8 @@ def run_doctor(
             "detail": config.default_extraction_mode,
         }
     )
-    checks.append(
-        {
-            "check": "db",
-            "status": "OK" if config.db_path.exists() else "WARN",
-            "detail": str(config.db_path),
-        }
-    )
+    db_status, db_detail = _db_check(config)
+    checks.append({"check": "db", "status": db_status, "detail": db_detail})
 
     # Capture end-to-end: hooks installed in Claude Code, observer worker,
     # and the SessionStart context rendering through the real CLI.

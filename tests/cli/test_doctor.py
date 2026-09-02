@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import sqlite3
 from pathlib import Path
 
 from seahorse.cli.config import load_config, write_default_config
@@ -232,9 +234,90 @@ class TestCaptureChecks:
         sock = cfg.seahorse_dir / cfg.observe.socket_path
         sock.parent.mkdir(parents=True, exist_ok=True)
         sock.touch()
+        # Liveness is pid-based (L10): the socket alone is not proof the
+        # observer runs — the pid file must point at a live process.
+        pid = sock.parent / "observer.pid"
+        pid.write_text(str(os.getpid()), encoding="utf-8")
         payload = _doctor(cfg, monkeypatch)
         obs = next(c for c in payload["checks"] if c["check"] == "observer")
         assert obs["status"] == "OK"
+        assert str(os.getpid()) in obs["detail"]
+
+    def test_observer_stale_socket_warns(self, tmp_path, monkeypatch) -> None:
+        """L10 state 5: socket file left behind by a dead observer must be
+        flagged, not reported as running."""
+        write_default_config(tmp_path)
+        write_observe_config(tmp_path)
+        cfg = load_config(tmp_path)
+        sock = cfg.seahorse_dir / cfg.observe.socket_path  # type: ignore[union-attr]
+        sock.parent.mkdir(parents=True, exist_ok=True)
+        sock.touch()
+        payload = _doctor(cfg, monkeypatch)
+        obs = next(c for c in payload["checks"] if c["check"] == "observer")
+        assert obs["status"] == "WARN"
+        assert "stale" in obs["detail"]
+        assert payload["healthy"] is False
+
+    def test_observer_dead_pid_warns_stale(self, tmp_path, monkeypatch) -> None:
+        """A pid file pointing at a dead process is stale even with a socket."""
+        write_default_config(tmp_path)
+        write_observe_config(tmp_path)
+        cfg = load_config(tmp_path)
+        sock = cfg.seahorse_dir / cfg.observe.socket_path  # type: ignore[union-attr]
+        sock.parent.mkdir(parents=True, exist_ok=True)
+        sock.touch()
+        pid = sock.parent / "observer.pid"
+        pid.write_text("999999999", encoding="utf-8")
+        payload = _doctor(cfg, monkeypatch)
+        obs = next(c for c in payload["checks"] if c["check"] == "observer")
+        assert obs["status"] == "WARN"
+        assert "stale" in obs["detail"]
+
+
+class TestDbCheck:
+    """L10 states 1/6/6b: the db check must probe integrity, not just existence."""
+
+    def test_db_missing_warns(self, tmp_path, monkeypatch) -> None:
+        _write(tmp_path, '[seahorse]\ndb_path = "nope.db"\n')
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        db = next(c for c in payload["checks"] if c["check"] == "db")
+        assert db["status"] == "WARN"
+
+    def test_db_valid_ok(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        cfg = load_config(tmp_path)
+        con = sqlite3.connect(cfg.db_path)
+        con.execute("CREATE TABLE t (x)")
+        con.commit()
+        con.close()
+        payload = _doctor(cfg, monkeypatch)
+        db = next(c for c in payload["checks"] if c["check"] == "db")
+        assert db["status"] == "OK"
+
+    def test_db_garbage_fails(self, tmp_path, monkeypatch) -> None:
+        """L10 state 6b: random bytes in the db file → FAIL, never 'OK'."""
+        write_default_config(tmp_path)
+        cfg = load_config(tmp_path)
+        cfg.db_path.write_bytes(os.urandom(65536))
+        payload = _doctor(cfg, monkeypatch)
+        db = next(c for c in payload["checks"] if c["check"] == "db")
+        assert db["status"] == "FAIL"
+        assert payload["healthy"] is False
+
+    def test_db_unwritable_fails(self, tmp_path, monkeypatch) -> None:
+        """L10 state 1: read-only vault → the db check names the fix."""
+        write_default_config(tmp_path)
+        cfg = load_config(tmp_path)
+        cfg.db_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg.db_path.touch()
+        cfg.db_path.chmod(0o444)
+        try:
+            payload = _doctor(cfg, monkeypatch)
+        finally:
+            cfg.db_path.chmod(0o644)
+        db = next(c for c in payload["checks"] if c["check"] == "db")
+        assert db["status"] == "FAIL"
+        assert "writable" in db["detail"]
 
     def test_observer_socket_absent_warns_autostart(self, tmp_path, monkeypatch) -> None:
         write_default_config(tmp_path)

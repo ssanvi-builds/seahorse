@@ -94,6 +94,18 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def observer_liveness(cfg: SeahorseConfig) -> tuple[bool, int | None]:
+    """``(running, pid)`` from the pid file + a kernel liveness check.
+
+    Socket presence is NOT liveness: a killed worker leaves the socket file
+    behind until the next start unlinks it. Callers that must distinguish
+    "running" from "stale socket" (status, doctor) go through here.
+    """
+    pid = _read_pid(cfg)
+    running = pid is not None and _pid_alive(pid)
+    return running, pid if running else None
+
+
 def _write_pid(cfg: SeahorseConfig, pid: int) -> None:
     observer_dir(cfg).mkdir(parents=True, exist_ok=True)
     pid_file(cfg).write_text(str(pid), encoding="utf-8")
@@ -141,9 +153,8 @@ def acquire_observer_lock(cfg: SeahorseConfig) -> int | None:
 
 def run_observe_status(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
     """Report whether the observer is running."""
-    pid = _read_pid(cfg)
-    running = pid is not None and _pid_alive(pid)
-    _emit(cfg, fmt, out, {"running": running, "pid": pid if running else None})
+    running, pid = observer_liveness(cfg)
+    _emit(cfg, fmt, out, {"running": running, "pid": pid})
 
 
 def _spawn_observer(cfg: SeahorseConfig) -> int:
