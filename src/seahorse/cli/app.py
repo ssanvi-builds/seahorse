@@ -60,6 +60,8 @@ from seahorse.cli.primitives import (
     run_recall_full,
     run_recall_timeline,
     run_remember,
+    validate_improve_inputs,
+    validate_remember_inputs,
 )
 from seahorse.cli.skills import (
     run_skill_add,
@@ -317,6 +319,9 @@ def remember(
     extraction_mode: str | None = typer.Option(None, "--extraction-mode", help="skip | llm."),
 ) -> None:
     """Remember a fact (clean creation, near-zero cost)."""
+    # Cap-check BEFORE the facade builds (the ONNX stack load segfaults under
+    # a large argv) — the same checks run_remember enforces, hoisted here.
+    validate_remember_inputs(body=body, title=title, summary=summary)
     run_remember(
         ctx.obj.facade(),
         body=body,
@@ -473,6 +478,7 @@ def improve(
     valid_at: str | None = typer.Option(None, "--valid-at"),
 ) -> None:
     """Improve a fact (editorial correction: invalidate + append)."""
+    validate_improve_inputs(ep_id=ep_id, new_body=new_body, reason=reason)
     run_improve(
         ctx.obj.facade(),
         ep_id=ep_id,

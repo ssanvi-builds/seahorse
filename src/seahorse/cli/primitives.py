@@ -142,6 +142,33 @@ def _validate_cognitive_type(value: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def validate_remember_inputs(
+    *,
+    body: str,
+    title: str | None = None,
+    summary: str | None = None,
+) -> None:
+    """Cap-check the bounded remember inputs BEFORE the facade builds.
+
+    The command bodies call this before ``ctx.obj.facade()``: the facade build
+    loads the ONNX stack, which segfaults under a large process argv
+    (onnxruntime >= 1.29, stack-exhaustion interaction) — so an oversized body
+    must surface as the typed usage error before any heavy import runs.
+    """
+    _require_le(body, limit=BODY_MAX_CHARS, field="body")
+    if title is not None:
+        _require_le(title, limit=SUBJECT_FILTER_MAX_CHARS, field="title")
+    if summary is not None:
+        _require_le(summary, limit=SUMMARY_MAX_CHARS, field="summary")
+
+
+def validate_improve_inputs(*, ep_id: str, new_body: str, reason: str) -> None:
+    """Pre-facade cap-check for ``improve`` (same rationale as remember)."""
+    _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
+    _require_le(new_body, limit=BODY_MAX_CHARS, field="new-body")
+    _require_le(reason, limit=REASON_MAX_CHARS, field="reason")
+
+
 def run_remember(
     facade: MemoryFacade,
     *,
@@ -168,14 +195,10 @@ def run_remember(
     field: when omitted, the write path derives a deterministic fallback
     (first sentence of the body).
     """
-    _require_le(body, limit=BODY_MAX_CHARS, field="body")
+    validate_remember_inputs(body=body, title=title, summary=summary)
     _validate_cognitive_type(cognitive_type)
     by = _build_provenance(source_type=source_type, agent_id=agent_id, session_id=session_id)
     va = _parse_dt(valid_at, field="valid-at") if valid_at is not None else None
-    if title is not None:
-        _require_le(title, limit=SUBJECT_FILTER_MAX_CHARS, field="title")
-    if summary is not None:
-        _require_le(summary, limit=SUMMARY_MAX_CHARS, field="summary")
 
     payload = RememberPayload(
         body=body,
@@ -609,9 +632,7 @@ def run_improve(
 ) -> None:
     """``seahorse improve`` — editorial correction (invalidate + append)."""
 
-    _require_le(ep_id, limit=EP_ID_MAX_CHARS, field="ep-id")
-    _require_le(new_body, limit=BODY_MAX_CHARS, field="new-body")
-    _require_le(reason, limit=REASON_MAX_CHARS, field="reason")
+    validate_improve_inputs(ep_id=ep_id, new_body=new_body, reason=reason)
     by = _build_provenance(source_type=source_type, agent_id=agent_id, session_id=None)
     va = _parse_dt(valid_at, field="valid-at") if valid_at is not None else None
 
