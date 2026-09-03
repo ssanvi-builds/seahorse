@@ -46,6 +46,75 @@ def test_version_flag_works_before_subcommand():
     assert out.strip() != ""
 
 
+class TestLlmClientCredentials:
+    """Headless commands get keys from the 0600 credentials store."""
+
+    def _context_with_llm(self, tmp_path, monkeypatch, primary: str):
+        from seahorse.cli.app import CliContext
+        from seahorse.cli.config import DEFAULT_LLM_TIMEOUT_S, LlmConfig, SeahorseConfig
+
+        monkeypatch.setenv("SEAHORSE_CREDENTIALS", str(tmp_path / "credentials.json"))
+        cfg = SeahorseConfig(
+            vault=tmp_path,
+            seahorse_dir=tmp_path / ".seahorse",
+            db_path=tmp_path / "seahorse.db",
+            llm=LlmConfig(
+                primary=primary, secondary=None, tertiary=None, timeout_s=DEFAULT_LLM_TIMEOUT_S
+            )
+        )
+        return CliContext(vault=None, config=None, fmt="human", quiet=False, verbose=False), cfg
+
+    def test_llm_client_build_loads_credentials_env(
+        self, tmp_path, monkeypatch, request
+    ) -> None:
+        import os
+
+        from seahorse.cli.credentials import save_api_key
+
+        # SEAHORSE_CREDENTIALS must point at the tmp store BEFORE saving —
+        # save_api_key with no override writes the real user credentials file
+        ctx, cfg = self._context_with_llm(tmp_path, monkeypatch, "gemini/gemini-2.5-flash")
+        # the var must be ABSENT so load_credentials_env pushes the stored
+        # key; _build_llm_client writes the REAL environ (delenv on an absent
+        # var records no monkeypatch undo) — pop it explicitly after the test
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        request.addfinalizer(lambda: os.environ.pop("GEMINI_API_KEY", None))
+        save_api_key("GEMINI_API_KEY", "stored-key")
+        client = ctx._build_llm_client(cfg)
+
+        assert client is not None
+        assert os.environ["GEMINI_API_KEY"] == "stored-key"
+
+    def test_preexisting_env_not_overridden(self, tmp_path, monkeypatch) -> None:
+        import os
+
+        from seahorse.cli.credentials import save_api_key
+
+        ctx, cfg = self._context_with_llm(tmp_path, monkeypatch, "gemini/gemini-2.5-flash")
+        monkeypatch.setenv("GEMINI_API_KEY", "exported-wins")
+        save_api_key("GEMINI_API_KEY", "stored-key")
+        ctx._build_llm_client(cfg)
+        assert os.environ["GEMINI_API_KEY"] == "exported-wins"
+
+    def test_no_llm_section_never_touches_credentials(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import os
+
+        from seahorse.cli.app import CliContext
+        from seahorse.cli.config import SeahorseConfig
+
+        monkeypatch.setenv("SEAHORSE_CREDENTIALS", str(tmp_path / "credentials.json"))
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        (tmp_path / "credentials.json").write_text('{"GEMINI_API_KEY": "k"}', encoding="utf-8")
+        ctx = CliContext(vault=None, config=None, fmt="human", quiet=False, verbose=False)
+        cfg = SeahorseConfig(
+            vault=tmp_path, seahorse_dir=tmp_path / ".seahorse", db_path=tmp_path / "s.db"
+        )
+        assert ctx._build_llm_client(cfg) is None
+        assert "GEMINI_API_KEY" not in os.environ
+
+
 def _make_claude_mem_db(tmp_path) -> str:
     """Create a minimal claude-mem observations DB for the import command."""
     import sqlite3

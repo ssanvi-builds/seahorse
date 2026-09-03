@@ -151,10 +151,16 @@ class CliContext:
         ``None`` (no ``[llm]`` section) keeps the honest llm→skip degrade. A
         configured section builds the ``LiteLLMBackend`` over the extraction
         route; a missing ``llm`` extra surfaces later as a setup hint (the
-        backend degrades with "install seahorse[llm]"), never a crash.
+        backend degrades with "install seahorse[llm]"), never a crash. The
+        API key never comes from ``seahorse.toml`` (``LlmConfig`` has no key
+        fields) — the 0600 credentials store is pushed into the environment
+        so LiteLLM finds it where it always looks.
         """
         if cfg.llm is None:
             return None
+        from seahorse.cli.credentials import load_credentials_env
+
+        load_credentials_env()
         from seahorse.llm.lite_llm_backend import LiteLLMBackend
 
         return LiteLLMBackend(
