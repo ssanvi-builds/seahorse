@@ -126,7 +126,12 @@ def remove_agent_instructions(path: Path | None = None) -> tuple[bool, str]:
     existing = _read_block(path)
     if existing is None:
         return True, "not installed — nothing to remove"
-    cleaned = text.replace("\n" + existing, "").replace(existing, "")
+    cleaned = (
+        text.replace("\n" + existing + "\n", "")
+        .replace(existing + "\n", "")
+        .replace("\n" + existing, "")
+        .replace(existing, "")
+    )
     while "\n\n\n" in cleaned:
         cleaned = cleaned.replace("\n\n\n", "\n\n")
     try:
