@@ -23,6 +23,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `remember`/`improve`/`forget` and warns against sending tags. Re-run
   `seahorse setup` (or `seahorse doctor --fix`) to refresh an installed
   block.
+- **Legacy markerless instruction blocks are migrated, not duplicated** —
+  pre-0.22 installs wrote the `~/.claude/CLAUDE.md` block without the
+  HTML-comment markers, so the updater (which only recognizes marked blocks)
+  appended a second copy. `install_agent_instructions` now replaces a legacy
+  unmarked section in place and strips any stale marked block, so the file
+  always ends with exactly one current block.
 
 ## [0.22.0] - 2026-09-03
 

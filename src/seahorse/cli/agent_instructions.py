@@ -17,6 +17,12 @@ from pathlib import Path
 BEGIN_MARKER = "<!-- seahorse-memory:begin -->"
 END_MARKER = "<!-- seahorse-memory:end -->"
 
+# Legacy (pre-0.22) installs wrote the instructions WITHOUT the HTML-comment
+# markers, so _read_block cannot see them — an updater that only knows the
+# marked block would append a duplicate. Every legacy block starts with this
+# exact H1.
+_LEGACY_HEADING = "# Persistent memory (Seahorse)"
+
 _INSTRUCTIONS = """\
 # Persistent memory (Seahorse)
 
@@ -70,12 +76,8 @@ def installed(path: Path | None = None) -> bool:
     return _read_block(path) is not None
 
 
-def _read_block(path: Path | None) -> str | None:
-    path = path or claude_md_path()
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
+def _extract_block(text: str) -> str | None:
+    """The marked block present in ``text``, or None."""
     start = text.find(BEGIN_MARKER)
     end = text.find(END_MARKER)
     if start == -1 or end == -1 or end < start:
@@ -83,11 +85,76 @@ def _read_block(path: Path | None) -> str | None:
     return text[start : end + len(END_MARKER)]
 
 
+def _read_block(path: Path | None) -> str | None:
+    path = path or claude_md_path()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return _extract_block(text)
+
+
+def _strip_stale_blocks(text: str) -> str:
+    """Remove every marked block that is not the current one.
+
+    ``_extract_block`` only sees the first marked block; when several exist
+    (a legacy migration landing next to a stale block), the non-current ones
+    are stripped, together with any blank-line gaps they leave behind.
+    """
+    while True:
+        stale = None
+        idx = 0
+        while True:
+            start = text.find(BEGIN_MARKER, idx)
+            if start == -1:
+                break
+            end = text.find(END_MARKER, start)
+            if end == -1:
+                break
+            end += len(END_MARKER)
+            block = text[start:end]
+            if block != _BLOCK:
+                stale = block
+                break
+            idx = end
+        if stale is None:
+            return text
+        text = text.replace(stale + "\n", "").replace(stale, "")
+        while "\n\n\n" in text:
+            text = text.replace("\n\n\n", "\n\n")
+
+
+def _legacy_span(lines: list[str]) -> tuple[int, str, int] | None:
+    """Locate a legacy markerless instructions section.
+
+    Returns ``(start_line, section_text, end_line_exclusive)`` for the first
+    legacy H1 found OUTSIDE a marked block, spanning to the next marker, the
+    next top-level heading, or EOF. Lines inside a marked block are ignored
+    (the same H1 opens the current block too).
+    """
+    inside = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == BEGIN_MARKER:
+            inside = True
+        elif stripped == END_MARKER:
+            inside = False
+        elif not inside and stripped == _LEGACY_HEADING:
+            for j in range(i + 1, len(lines)):
+                s = lines[j].strip()
+                if s == BEGIN_MARKER or (s.startswith("# ") and s != _LEGACY_HEADING):
+                    return i, "".join(lines[i:j]), j
+            return i, "".join(lines[i:]), len(lines)
+    return None
+
+
 def install_agent_instructions(path: Path | None = None) -> tuple[bool, str]:
     """Idempotently ensure the block exists (updating a stale one in place).
 
-    Returns ``(installed, detail)``. Anything the user wrote around the
-    block is preserved byte-for-byte; a fresh file gets just the block.
+    A legacy markerless block (pre-0.22 installs) is replaced, not appended
+    after — the result is always exactly one current block. Returns
+    ``(installed, detail)``. Anything the user wrote around the block is
+    preserved byte-for-byte; a fresh file gets just the block.
     """
     path = path or claude_md_path()
     try:
@@ -99,21 +166,41 @@ def install_agent_instructions(path: Path | None = None) -> tuple[bool, str]:
     except OSError as exc:
         return False, f"cannot read {path}: {exc}"
 
-    existing = _read_block(path)
+    # Migrate any legacy unmarked section first, so a stale-or-current marked
+    # block plus an orphan legacy one never both survive.
+    legacy_detail = ""
+    lines = text.splitlines(keepends=True)
+    span = _legacy_span(lines)
+    if span is not None:
+        start, _, end = span
+        while end > start and not lines[end - 1].strip():
+            end -= 1  # trailing blanks of the legacy section
+        lines[start:end] = [_BLOCK + "\n"]
+        if start + 1 < len(lines) and lines[start + 1].strip():
+            lines.insert(start + 1, "\n")  # blank line before what follows
+        text = "".join(lines)
+        # A stale MARKED block from a later install must not survive next to
+        # the migrated one.
+        text = _strip_stale_blocks(text)
+        legacy_detail = "legacy unmarked block replaced, "
+
+    existing = _extract_block(text)
     if existing == _BLOCK:
-        return True, f"already installed in {path}"
-    if existing is not None:
+        detail = legacy_detail + f"already installed in {path}"
+        if not legacy_detail:
+            return True, f"instructions already installed in {path}"
+    elif existing is not None:
         text = text.replace(existing, _BLOCK)
-        detail = "updated"
+        detail = legacy_detail + "updated"
     else:
         sep = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
         text = text + sep + _BLOCK + "\n"
-        detail = "appended"
+        detail = legacy_detail + "appended"
     try:
         path.write_text(text, encoding="utf-8")
     except OSError as exc:
         return False, f"cannot write {path}: {exc}"
-    return True, f"instructions {detail} in {path}"
+    return True, f"instructions {detail}"
 
 
 def remove_agent_instructions(path: Path | None = None) -> tuple[bool, str]:

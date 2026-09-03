@@ -67,6 +67,46 @@ class TestInstall:
         ok, _ = install_agent_instructions()
         assert ok and path.exists()
 
+    def test_legacy_unmarked_block_replaced(self, md_path: Path) -> None:
+        # Pre-0.22 installs wrote the instructions without the HTML-comment
+        # markers; install must replace that orphan section, not append a
+        # duplicate after it.
+        legacy = (
+            "# Persistent memory (Seahorse)\n\nold preamble (14 tools...)\n\n"
+            "- stale bullet\n- another stale bullet\n"
+        )
+        md_path.write_text(legacy + "\n# My rules\n\nBe terse.\n")
+        ok, detail = install_agent_instructions()
+        assert ok and "legacy" in detail
+        text = md_path.read_text()
+        assert text.count("# Persistent memory (Seahorse)") == 1
+        assert text.count(BEGIN_MARKER) == 1 and text.count(END_MARKER) == 1
+        assert "stale bullet" not in text
+        assert instructions_block() in text
+        assert "# My rules\n\nBe terse." in text
+
+    def test_legacy_orphan_plus_stale_marked_block(self, md_path: Path) -> None:
+        # Both generations present (an upgrade from a markerless install that
+        # later gained a marked block): the result is exactly one current block.
+        legacy = "# Persistent memory (Seahorse)\n\nold content\n"
+        stale = f"{BEGIN_MARKER}\n# old marked content\n{END_MARKER}"
+        md_path.write_text(f"{legacy}\n{stale}\n\ntrailing note\n")
+        ok, detail = install_agent_instructions()
+        assert ok and "legacy" in detail
+        text = md_path.read_text()
+        assert text.count(BEGIN_MARKER) == 1
+        assert "old content" not in text and "old marked content" not in text
+        assert "trailing note" in text
+        assert instructions_block() in text
+
+    def test_legacy_replacement_is_idempotent(self, md_path: Path) -> None:
+        md_path.write_text("# Persistent memory (Seahorse)\n\nold content\n")
+        install_agent_instructions()
+        before = md_path.read_text()
+        ok, detail = install_agent_instructions()
+        assert ok and "already" in detail
+        assert md_path.read_text() == before
+
 
 class TestRemove:
     def test_remove_leaves_user_content(self, md_path: Path) -> None:
