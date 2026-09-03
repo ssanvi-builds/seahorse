@@ -13,10 +13,7 @@ import json
 import os
 from pathlib import Path
 
-import pytest
-
 from seahorse.cli.config import load_config, write_default_config
-from seahorse.cli.errors import CliVaultNotFound
 from seahorse.cli.setup import (
     HOOK_MARKER,
     discover_obsidian_vaults,
@@ -362,7 +359,7 @@ def test_ensure_vault_wizard_picks_discovered_vault(tmp_path, monkeypatch) -> No
 
 
 def test_ensure_vault_wizard_create_default(tmp_path, monkeypatch) -> None:
-    """The last option creates a fresh vault at ~/Seahorse."""
+    """The last option creates a fresh vault at the portable ~/seahorse-mem."""
     _isolate_global_config(monkeypatch, tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     (tmp_path / "home").mkdir()
@@ -372,18 +369,25 @@ def test_ensure_vault_wizard_create_default(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("sys.stdin", type("_TTY", (), {"isatty": lambda _s: True})())
     monkeypatch.setattr("builtins.input", lambda _prompt: "1")
     picked = ensure_vault(None)
-    assert picked == (tmp_path / "home" / "Seahorse").resolve()
+    assert picked == (tmp_path / "home" / "seahorse-mem").resolve()
     assert (picked / ".seahorse" / "seahorse.toml").is_file()
 
 
-def test_ensure_vault_non_tty_raises_actionable(tmp_path, monkeypatch) -> None:
-    """No resolution + no TTY: exit 82 with a hint that names --vault."""
+def test_ensure_vault_non_tty_bootstraps_portable_default(tmp_path, monkeypatch) -> None:
+    """No resolution + no TTY: the portable ~/seahorse-mem is bootstrapped.
+
+    An agent running one-command onboarding without a TTY must never hit the
+    cold-start exit 82.
+    """
     _isolate_global_config(monkeypatch, tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
     monkeypatch.chdir(tmp_path)
-    with pytest.raises(CliVaultNotFound) as exc:
-        ensure_vault(None)
-    assert "--vault" in exc.value.detail
+    monkeypatch.setattr("sys.stdin", type("_NO_TTY", (), {"isatty": lambda _s: False})())
+    picked = ensure_vault(None)
+    assert picked == (tmp_path / "home" / "seahorse-mem").resolve()
+    assert (picked / ".seahorse" / "seahorse.toml").is_file()
 
 
 def test_discover_obsidian_vaults_parses_registry(tmp_path, monkeypatch) -> None:

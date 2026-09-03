@@ -212,6 +212,20 @@ class MaterializeConfig:
 
 
 @dataclass(frozen=True)
+class ConsolidateConfig:
+    """The ``[consolidate]`` section — auto-consolidation policy.
+
+    ``auto_on_stop`` (default False) opts into the consolidate-on-stop hook:
+    at Claude Code's Stop event ``seahorse consolidate --auto`` distills the
+    session's recurrent episodes into knowledge notes. The flag lives in the
+    vault config (not the hook) so the hook is a no-op the moment it is
+    turned off — the hook never blocks the session either way.
+    """
+
+    auto_on_stop: bool = False
+
+
+@dataclass(frozen=True)
 class SeahorseConfig:
     """Resolved Seahorse configuration for a vault.
 
@@ -232,6 +246,7 @@ class SeahorseConfig:
     procedural: ProceduralSection | None = None
     distill: DistillConfig | None = None
     materialize: MaterializeConfig | None = None
+    consolidate: ConsolidateConfig | None = None
 
     def with_overrides(
         self, *, extraction_mode: str | None = None, top_k: int | None = None
@@ -351,6 +366,10 @@ def load_config(
     # materialization until `seahorse setup` writes it).
     materialize = _parse_materialize_section(data.get("materialize"))
 
+    # Optional [consolidate] section. Missing → consolidate=None
+    # (auto-consolidation is opt-in: `seahorse setup --auto-consolidate`).
+    consolidate = _parse_consolidate_section(data.get("consolidate"))
+
     return SeahorseConfig(
         vault=vault,
         seahorse_dir=seahorse_dir,
@@ -362,6 +381,7 @@ def load_config(
         procedural=procedural,
         distill=distill,
         materialize=materialize,
+        consolidate=consolidate,
     )
 
 
@@ -529,6 +549,24 @@ def _parse_materialize_section(raw: object) -> MaterializeConfig | None:
     return MaterializeConfig(mode=mode, dir=dir_name)
 
 
+def _parse_consolidate_section(raw: object) -> ConsolidateConfig | None:
+    """Validate an optional ``[consolidate]`` section into a ``ConsolidateConfig``.
+
+    ``None`` input (no section) → ``None`` (auto-consolidation is opt-in).
+    Any structurally wrong value is a ``CliConfigInvalid`` (Cat C, exit 83).
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise CliConfigInvalid("consolidate must be a [consolidate] table")
+
+    auto_on_stop = raw.get("auto_on_stop", False)
+    if not isinstance(auto_on_stop, bool):
+        raise CliConfigInvalid("consolidate.auto_on_stop must be a boolean")
+
+    return ConsolidateConfig(auto_on_stop=auto_on_stop)
+
+
 def write_default_config(vault: Path) -> Path:
     """Write the minimal ``seahorse.toml`` into ``<vault>/.seahorse/``.
 
@@ -606,6 +644,23 @@ def write_materialize_config(vault: Path, materialize: MaterializeConfig) -> Pat
     return cfg_path
 
 
+def write_consolidate_config(vault: Path, consolidate: ConsolidateConfig) -> Path:
+    """Write the ``[consolidate]`` section to ``seahorse.toml`` (idempotent).
+
+    A present section is preserved (the user's config wins — flip the flag by
+    editing the file); a missing one is appended. Returns the config path.
+    """
+    cfg_path = config_path_for(vault)
+    content = cfg_path.read_text(encoding="utf-8")
+    if "[consolidate]" not in content:
+        content += (
+            "\n[consolidate]\n"
+            f"auto_on_stop = {'true' if consolidate.auto_on_stop else 'false'}\n"
+        )
+        cfg_path.write_text(content, encoding="utf-8")
+    return cfg_path
+
+
 __all__ = [
     "SEAHORSE_DIR_NAME",
     "CONFIG_FILENAME",
@@ -623,6 +678,7 @@ __all__ = [
     "LlmConfig",
     "ObserveConfig",
     "MaterializeConfig",
+    "ConsolidateConfig",
     "is_initialized",
     "resolve_vault",
     "config_path_for",
@@ -630,4 +686,5 @@ __all__ = [
     "write_default_config",
     "write_llm_config",
     "write_materialize_config",
+    "write_consolidate_config",
 ]

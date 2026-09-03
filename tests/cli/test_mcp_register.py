@@ -83,8 +83,13 @@ class TestRegister:
         assert ok
         assert is_mcp_registered()
 
-    def test_corrupt_file_is_never_touched(self, claude_json: Path) -> None:
+    def test_corrupt_file_is_never_touched(
+        self, claude_json: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         claude_json.write_text("{not json")
+        monkeypatch.setattr(
+            "seahorse.cli.mcp_register.shutil.which", lambda _: None
+        )  # no real `claude` subprocess in tests
         ok, detail = register_mcp()
         assert not ok
         assert "cannot parse" in detail

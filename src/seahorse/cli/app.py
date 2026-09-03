@@ -382,8 +382,30 @@ def consolidate(
     supersede: bool = typer.Option(
         False, "--supersede", help="Update existing notes when new episodes arrive (opt-in)."
     ),
+    auto: bool = typer.Option(
+        False,
+        "--auto",
+        help="Consolidate-on-stop entry: no-op unless [consolidate] auto_on_stop = true.",
+    ),
 ) -> None:
-    """Distill recurrent episodes into semantic knowledge notes."""
+    """Distill recurrent episodes into semantic knowledge notes.
+
+    ``--auto`` is what the Stop hook invokes: it reads the vault's
+    ``[consolidate]`` section and no-ops (exit 0) when auto-consolidation is
+    off — the hook never blocks a session. The auto path runs the
+    deterministic synthesis (a Stop hook must be fast; run
+    ``consolidate --synthesis llm`` interactively for LLM bodies).
+    """
+    config = ctx.obj.resolved_config()
+    if auto:
+        consolidate_cfg = config.consolidate
+        if consolidate_cfg is None or not consolidate_cfg.auto_on_stop:
+            if ctx.obj.fmt == "human":
+                _out(ctx).write("consolidate: auto-consolidation off — no-op\n")
+            else:
+                _out(ctx).write('{"auto": false, "ran": false}\n')
+            return
+        synthesis = "skip"
     run_consolidate(
         ctx.obj.facade(),
         fmt=ctx.obj.fmt,
@@ -391,7 +413,7 @@ def consolidate(
         verbose=ctx.obj.verbose,
         synthesis=synthesis,
         llm_client=ctx.obj.llm_client(),
-        vault_path=ctx.obj.resolved_config().vault,
+        vault_path=config.vault,
         supersede=supersede,
     )
 
@@ -877,22 +899,44 @@ def mcp(ctx: typer.Context) -> None:
 def setup(
     ctx: typer.Context,
     uninstall: bool = typer.Option(
-        False, "--uninstall", help="Remove the observer hooks + [observe] config."
+        False, "--uninstall", help="Remove hooks, [observe], MCP registration, instructions."
     ),
     vault: Path | None = typer.Option(
         None,
         "--vault",
         help="Vault to set up (bootstrapped if missing; overrides resolution).",
     ),
+    no_mcp: bool = typer.Option(
+        False, "--no-mcp", help="Skip the user-scope MCP registration."
+    ),
+    no_agent_instructions: bool = typer.Option(
+        False,
+        "--no-agent-instructions",
+        help="Skip the ~/.claude/CLAUDE.md memory instructions block.",
+    ),
+    skip_llm: bool = typer.Option(
+        False, "--skip-llm", help="Skip the LLM provider detection + self-test."
+    ),
+    warm_embeddings: bool = typer.Option(
+        False,
+        "--warm-embeddings",
+        help="Pre-download the embeddings model (~235MB; otherwise lazy on first embed).",
+    ),
+    auto_consolidate: bool = typer.Option(
+        False,
+        "--auto-consolidate",
+        help="Opt in: run `consolidate --auto` at the Claude Code Stop event.",
+    ),
 ) -> None:
-    """Install the observer: merge Claude Code hooks + write [observe] config.
+    """One-command onboarding: configure everything, exit 0 always.
 
-    On the install path the vault is resolved, then bootstrapped if missing
-    (``--vault`` forces a path; on a TTY an interactive picker offers the
-    Obsidian-registered vaults). This removes the cold-start exit 82: a fresh
-    user runs ``seahorse setup`` and leaves with a working vault.
+    Installs the capture stack (hooks, [observe]/[materialize] config,
+    observer, eager DB), registers the MCP server user-scope, writes the
+    agent instructions block, and detects + self-tests an LLM provider.
+    Every step degrades to a WARN line — the command never fails the caller.
     """
-    from seahorse.cli.setup import ensure_vault, run_setup, run_setup_uninstall
+    from seahorse.cli.onboarding import run_full_setup
+    from seahorse.cli.setup import ensure_vault, run_setup_uninstall
 
     if uninstall:
         run_setup_uninstall(
@@ -900,7 +944,16 @@ def setup(
         )
         return
     resolved_vault = ensure_vault(vault)
-    run_setup(resolved_vault, fmt=ctx.obj.fmt, out=_out(ctx))
+    run_full_setup(
+        resolved_vault,
+        fmt=ctx.obj.fmt,
+        out=_out(ctx),
+        no_mcp=no_mcp,
+        no_agent_instructions=no_agent_instructions,
+        skip_llm=skip_llm,
+        warm_embeddings=warm_embeddings,
+        auto_consolidate=auto_consolidate,
+    )
 
 
 @app.command()

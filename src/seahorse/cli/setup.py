@@ -13,6 +13,7 @@ preserving other hooks and config.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -27,11 +28,12 @@ from seahorse.cli.config import (
     DEFAULT_SKIP_TOOLS,
     config_path_for,
     is_initialized,
+    load_config,
     resolve_vault,
     write_default_config,
     write_global_pointer,
 )
-from seahorse.cli.errors import CliVaultNotFound
+from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
 from seahorse.cli.output import OutputFormat
 
 # The marker that identifies the observer hooks in settings.json (the uninstall
@@ -47,13 +49,19 @@ _OBSERVER_HOOKS: dict[str, str] = {
     "Stop": "*",
 }
 
+# The opt-in consolidate-on-stop hook is identified by its own marker so the
+# uninstall removes exactly it (the observer Stop hook is a different entry).
+CONSOLIDATE_HOOK_MARKER = "consolidate --auto"
+
 _OBSERVE_SECTION_RE = re.compile(r"\n\[observe\].*?(?=\n\[|\Z)", re.DOTALL)
 
 # Obsidian's vault registry (obsidian.json) lives next to Seahorse's global
 # pointer, under the same config-home convention.
 _OBSIDIAN_APP_DIR = "obsidian"
 _OBSIDIAN_REGISTRY_NAME = "obsidian.json"
-_DEFAULT_VAULT_DIRNAME = "Seahorse"
+# Portable per-user default vault (the global pointer stores the literal
+# ``~/seahorse-mem``; ``expanduser`` resolves it per user at read time).
+_DEFAULT_VAULT_DIRNAME = "seahorse-mem"
 
 
 def _obsidian_registry_path() -> Path:
@@ -122,8 +130,9 @@ def ensure_vault(explicit: Path | None) -> Path:
     An explicit ``--vault`` is created and initialized if missing. Otherwise
     the normal resolution order applies (env / cwd walk / global pointer);
     only when nothing resolves does setup interact: on a TTY it offers a
-    numbered pick, without a TTY it fails loud with a ``--vault`` hint so
-    scripts never hang on a prompt.
+    numbered pick, without a TTY it bootstraps the portable per-user default
+    (``~/seahorse-mem``) — an agent running one-command onboarding without a
+    TTY must never hit the cold-start exit 82.
     """
     if explicit is not None:
         return _bootstrap_vault(explicit.expanduser().resolve())
@@ -131,9 +140,7 @@ def ensure_vault(explicit: Path | None) -> Path:
         return resolve_vault(None)
     except CliVaultNotFound:
         if not sys.stdin.isatty():
-            raise CliVaultNotFound(
-                hint="pass --vault <path> (or run `seahorse setup` in a terminal)"
-            ) from None
+            return _bootstrap_vault(Path.home() / _DEFAULT_VAULT_DIRNAME)
         return _pick_vault_interactively()
 
 
@@ -227,6 +234,44 @@ def merge_hooks(settings_path: Path | str, *, hook_command: str) -> None:
 
 def remove_hooks(settings_path: Path | str) -> None:
     """Remove the observer hooks from settings.json (preserving others)."""
+    _remove_hooks_matching(settings_path, marker=HOOK_MARKER)
+
+
+def merge_consolidate_hook(settings_path: Path | str, *, hook_command: str) -> None:
+    """Merge the consolidate-on-stop hook (Stop event) into settings.json.
+
+    Opt-in: only ``seahorse setup --auto-consolidate`` calls this. Idempotent
+    by its own marker; the flag lives in the vault config, so the hook stays
+    a no-op while ``[consolidate] auto_on_stop = false``.
+    """
+    path = Path(settings_path)
+    data: dict = {}
+    if path.exists():
+        data = json.loads(path.read_text(encoding="utf-8"))
+    stop_entries = data.setdefault("hooks", {}).setdefault("Stop", [])
+    already_installed = any(
+        CONSOLIDATE_HOOK_MARKER in c
+        for h in stop_entries
+        for c in _hook_commands(h)
+    )
+    if not already_installed:
+        stop_entries.append(
+            {
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": hook_command}],
+            }
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def remove_consolidate_hook(settings_path: Path | str) -> None:
+    """Remove the consolidate-on-stop hook (preserving the observer hooks)."""
+    _remove_hooks_matching(settings_path, marker=CONSOLIDATE_HOOK_MARKER)
+
+
+def _remove_hooks_matching(settings_path: Path | str, *, marker: str) -> None:
+    """Remove every hook entry whose command contains ``marker``."""
     path = Path(settings_path)
     if not path.exists():
         return
@@ -236,7 +281,7 @@ def remove_hooks(settings_path: Path | str) -> None:
         kept = [
             h
             for h in hooks[event]
-            if not any(HOOK_MARKER in c for c in _hook_commands(h))
+            if not any(marker in c for c in _hook_commands(h))
         ]
         if kept:
             hooks[event] = kept
@@ -256,6 +301,7 @@ def run_setup(
     settings_path: Path | str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    auto_consolidate: bool = False,
 ) -> None:
     """Install the observer + materialization: config sections + Claude Code hooks.
 
@@ -263,16 +309,30 @@ def run_setup(
     ``[materialize]`` section (defaults — the opt-in path for episode → .md
     materialization), then merges the observer hooks into the Claude Code
     settings. Both config writes are idempotent appends: a present section is
-    preserved (the user's config wins).
+    preserved (the user's config wins). ``auto_consolidate`` additionally
+    writes the ``[consolidate]`` section and merges the consolidate-on-stop
+    hook.
     """
-    from seahorse.cli.config import MaterializeConfig, write_materialize_config
+    from seahorse.cli.config import (
+        ConsolidateConfig,
+        MaterializeConfig,
+        write_consolidate_config,
+        write_materialize_config,
+    )
 
     write_observe_config(vault)
     write_materialize_config(vault, MaterializeConfig())
+    if auto_consolidate:
+        write_consolidate_config(vault, ConsolidateConfig(auto_on_stop=True))
     write_global_pointer(vault)
     settings = Path(settings_path) if settings_path is not None else _default_settings_path()
     hook_command = f"{sys.executable} -m seahorse.cli.app observe event"
     merge_hooks(settings, hook_command=hook_command)
+    if auto_consolidate:
+        consolidate_command = (
+            f"{sys.executable} -m seahorse.cli.app consolidate --auto"
+        )
+        merge_consolidate_hook(settings, hook_command=consolidate_command)
     if fmt == "human":
         out.write(
             "seahorse setup: observer installed "
@@ -287,21 +347,62 @@ def run_setup_uninstall(
     fmt: OutputFormat = "human",
     out: TextIO,
 ) -> None:
-    """Remove the observer hooks + the ``[observe]`` config section."""
+    """Symmetric uninstall: hooks, config section, MCP, instructions, observer.
+
+    Removes the observer + consolidate hooks, the ``[observe]`` section, the
+    MCP registration and the agent instructions block, and stops the
+    observer. The ``[materialize]`` section and the global pointer are kept —
+    they only affect the vault's own layout, nothing global.
+    """
+    from seahorse.cli.agent_instructions import remove_agent_instructions
+    from seahorse.cli.mcp_register import remove_mcp_registration
+    from seahorse.observe.cli import run_observe_stop
+
     settings = Path(settings_path) if settings_path is not None else _default_settings_path()
     remove_hooks(settings)
+    remove_consolidate_hook(settings)
     _remove_observe_section(vault)
+    observer_detail = "not configured"
+    try:
+        cfg = load_config(vault)
+        buf = io.StringIO()
+        run_observe_stop(cfg, fmt="json", out=buf)
+        observer_detail = buf.getvalue().strip()
+    except CliConfigInvalid:
+        pass  # config already gone — nothing to stop
+    mcp_ok, mcp_detail = remove_mcp_registration()
+    ai_ok, ai_detail = remove_agent_instructions()
     if fmt == "human":
-        out.write("seahorse setup: observer uninstalled (hooks + [observe] config removed)\n")
+        out.write("seahorse setup: uninstalled (hooks + [observe] removed)\n")
+        out.write(f"  observer: {observer_detail}\n")
+        out.write(f"  mcp: {mcp_detail}\n" if mcp_ok else f"  mcp: WARN {mcp_detail}\n")
+        out.write(
+            f"  agent instructions: {ai_detail}\n"
+            if ai_ok
+            else f"  agent instructions: WARN {ai_detail}\n"
+        )
+    mcp_ok, mcp_detail = remove_mcp_registration()
+    ai_ok, ai_detail = remove_agent_instructions()
+    if fmt == "human":
+        out.write("seahorse setup: uninstalled (hooks + [observe] removed)\n")
+        out.write(f"  mcp: {mcp_detail}\n" if mcp_ok else f"  mcp: WARN {mcp_detail}\n")
+        out.write(
+            f"  agent instructions: {ai_detail}\n"
+            if ai_ok
+            else f"  agent instructions: WARN {ai_detail}\n"
+        )
 
 
 __all__ = [
+    "CONSOLIDATE_HOOK_MARKER",
     "HOOK_MARKER",
     "discover_obsidian_vaults",
     "ensure_vault",
     "write_observe_config",
     "merge_hooks",
+    "merge_consolidate_hook",
     "remove_hooks",
+    "remove_consolidate_hook",
     "run_setup",
     "run_setup_uninstall",
 ]
