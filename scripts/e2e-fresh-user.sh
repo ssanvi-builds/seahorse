@@ -6,12 +6,17 @@
 # What it does (mirrors the README Quickstart + the agent surface):
 #   install (uv tool install) → init → core CLI (remember/recall/improve/forget/
 #   doctor/inspect/migrate/uuid7/index) → hybrid embeddings → LLM (Ollama, with
-#   honest degrade) → setup/observer → import (claude-mem bridge) → MCP stdio.
+#   honest degrade) → ONE-COMMAND setup (hooks + config + observer + MCP
+#   registration + agent instructions + auto-consolidate opt-in + doctor --fix)
+#   → symmetric uninstall → import (claude-mem bridge) → MCP stdio.
 #
 # Isolation strategy:
 #   * HOME is overridden to a temp sandbox — the master switch that neutralises
-#     the only two global paths Seahorse touches: ~/.claude/settings.json
-#     (seahorse setup) and ~/.claude-mem/claude-mem.db (import default source).
+#     the global paths Seahorse touches: ~/.claude/settings.json,
+#     ~/.claude.json, ~/.claude/CLAUDE.md (seahorse setup) and
+#     ~/.claude-mem/claude-mem.db (import default source).
+#     SEAHORSE_CLAUDE_JSON / SEAHORSE_CLAUDE_MD / SEAHORSE_CLAUDE_SETTINGS
+#     pin the exact paths into the sandbox.
 #   * The vault is a fresh temp dir; every command resolves it via SEAHORSE_VAULT.
 #   * The embedding model downloads into a temp FASTEMBED_CACHE_PATH.
 #   * The real claude-mem DB is only ever READ (sqlite3 .backup to the sandbox).
@@ -170,10 +175,16 @@ fi
 # Shared across runs so re-runs reuse the ~235MB model instead of re-downloading.
 export FASTEMBED_CACHE_PATH="$SANDBOX_BASE/seahorse-e2e-cache"
 export SEAHORSE_VAULT="$VAULT"
+# One-command onboarding global surfaces → sandbox (setup touches all three).
+export SEAHORSE_CLAUDE_JSON="$SANDBOX/home/.claude.json"
+export SEAHORSE_CLAUDE_MD="$SANDBOX/home/.claude/CLAUDE.md"
+export SEAHORSE_CLAUDE_SETTINGS="$SANDBOX/home/.claude/settings.json"
 cd "$SANDBOX"
 info "  HOME=$HOME"
 info "  SEAHORSE_VAULT=$SEAHORSE_VAULT"
 info "  FASTEMBED_CACHE_PATH=$FASTEMBED_CACHE_PATH"
+info "  SEAHORSE_CLAUDE_JSON=$SEAHORSE_CLAUDE_JSON"
+info "  SEAHORSE_CLAUDE_MD=$SEAHORSE_CLAUDE_MD"
 
 # --- install ----------------------------------------------------------------
 step 2 "Install (fresh user): uv tool install . --extra embeddings --extra llm"
@@ -255,31 +266,64 @@ else
     --title llm --extraction-mode llm
 fi
 
-# --- setup + observer --------------------------------------------------------
-step 7 "Setup + observer (isolated HOME)"
-run "seahorse setup" "$SEAHORSE" setup
+# --- setup: one command, everything -----------------------------------------
+step 7 "One-command setup (isolated HOME): hooks + config + observer + MCP + instructions"
+# --skip-llm keeps the flow deterministic (the LLM bootstrap self-tests live
+# providers; step 6 already covers extraction with the real Ollama).
+run "seahorse setup --skip-llm" "$SEAHORSE" setup --skip-llm
+OBSERVER_STARTED=1
+check "config written + DB created" test -f "$VAULT/.seahorse/seahorse.db"
 check "hooks written to isolated settings" test -f "$SANDBOX/home/.claude/settings.json"
 if grep -q "observe event" "$SANDBOX/home/.claude/settings.json" 2>/dev/null; then
   ok "isolated settings contain the 'observe event' hook marker"
 else
   fail "isolated settings contain the 'observe event' hook marker"
 fi
-run "observe start" "$SEAHORSE" observe start
-OBSERVER_STARTED=1
-check "observer pid file" test -f "$VAULT/.seahorse/observer/observer.pid"
+check "observer auto-started by setup" test -f "$VAULT/.seahorse/observer/observer.pid"
 if "$SEAHORSE" observe status 2>&1 | grep -q "running"; then
-  ok "observer is running after start"
+  ok "observer is running after setup"
 else
-  fail "observer is running after start"
+  fail "observer is running after setup"
 fi
-run "observe stop" "$SEAHORSE" observe stop
+if grep -q "seahorse-mcp" "$SANDBOX/home/.claude.json" 2>/dev/null; then
+  ok "MCP registered in the isolated ~/.claude.json"
+else
+  fail "MCP registered in the isolated ~/.claude.json"
+fi
+if grep -q "seahorse-memory:begin" "$SANDBOX/home/.claude/CLAUDE.md" 2>/dev/null; then
+  ok "agent instructions block in the isolated CLAUDE.md"
+else
+  fail "agent instructions block in the isolated CLAUDE.md"
+fi
+run "consolidate --auto (off → no-op, exit 0)" "$SEAHORSE" consolidate --auto
+run "setup --auto-consolidate (opt-in)" "$SEAHORSE" setup --skip-llm --auto-consolidate
+if grep -q "consolidate --auto" "$SANDBOX/home/.claude/settings.json" 2>/dev/null; then
+  ok "consolidate-on-stop hook installed"
+else
+  fail "consolidate-on-stop hook installed"
+fi
+run "doctor (healthy after setup)" "$SEAHORSE" doctor
+run "doctor --fix (idempotent)" "$SEAHORSE" doctor --fix
+run "setup --uninstall (symmetric)" "$SEAHORSE" setup --uninstall
 OBSERVER_STARTED=0
-run "setup --uninstall" "$SEAHORSE" setup --uninstall
 if grep -q "observe event" "$SANDBOX/home/.claude/settings.json" 2>/dev/null; then
   fail "hooks removed after setup --uninstall"
 else
   ok "hooks removed after setup --uninstall"
 fi
+if grep -q "seahorse-mcp" "$SANDBOX/home/.claude.json" 2>/dev/null; then
+  fail "MCP registration removed after --uninstall"
+else
+  ok "MCP registration removed after --uninstall"
+fi
+if grep -q "seahorse-memory:begin" "$SANDBOX/home/.claude/CLAUDE.md" 2>/dev/null; then
+  fail "instructions removed after --uninstall"
+else
+  ok "instructions removed after --uninstall"
+fi
+# Re-install for the MCP step that follows (the uninstall must not be sticky).
+run "re-setup for MCP step" "$SEAHORSE" setup --skip-llm
+OBSERVER_STARTED=1
 
 # --- import ------------------------------------------------------------------
 step 8 "Import (claude-mem bridge, read-only copy)"
