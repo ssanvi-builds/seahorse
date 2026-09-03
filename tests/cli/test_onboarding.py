@@ -36,10 +36,14 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Path]
     settings = tmp_path / "settings.json"
     claude_json = tmp_path / "claude.json"
     claude_md = home / ".claude" / "CLAUDE.md"
+    skills = home / ".claude" / "skills"
+    credentials = tmp_path / "credentials.json"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("SEAHORSE_CLAUDE_JSON", str(claude_json))
     monkeypatch.setenv("SEAHORSE_CLAUDE_MD", str(claude_md))
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SKILLS_DIR", str(skills))
+    monkeypatch.setenv("SEAHORSE_CREDENTIALS", str(credentials))
     monkeypatch.setattr("pathlib.Path.home", lambda: home)
     monkeypatch.setattr(
         "seahorse.cli.config.global_pointer_path",
@@ -53,6 +57,8 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Path]
         "settings": settings,
         "claude_json": claude_json,
         "claude_md": claude_md,
+        "skills": skills,
+        "credentials": credentials,
         "pointer": xdg / "seahorse" / "vault",
     }
 
@@ -156,6 +162,41 @@ class TestRunFullSetup:
         assert by_name["llm"] == "SKIP"
         assert not paths["claude_json"].exists()
         assert not paths["claude_md"].exists()
+
+    def test_skills_step_installs_packaged_skills(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths)
+        by_name = {c["check"]: c["status"] for c in checks}
+        assert by_name["skills"] == "OK"
+        skill_md = paths["skills"] / "consolidate" / "SKILL.md"
+        assert skill_md.exists()
+        assert "seahorse-memory:skill" in skill_md.read_text(encoding="utf-8")
+
+    def test_no_skills_flag_skips_step(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths, no_skills=True)
+        by_name = {c["check"]: c["status"] for c in checks}
+        assert by_name["skills"] == "SKIP"
+        assert not (paths["skills"] / "consolidate").exists()
+
+    def test_foreign_skill_fails_step_and_keeps_file(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        skill_dir = paths["skills"] / "consolidate"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# user's own\n", encoding="utf-8")
+        checks, _ = _run(vault, paths)
+        skills = _status(checks, "skills")
+        assert skills["status"] == "WARN" and "left untouched" in skills["detail"]
+        assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == "# user's own\n"
 
     def test_auto_consolidate_opt_in_writes_config_and_hook(
         self, tmp_path, monkeypatch, no_observer, llm_skipped
@@ -298,7 +339,7 @@ class TestRepairSteps:
         paths = _isolate(monkeypatch, tmp_path)
         vault = _cfg(tmp_path / "vault")
         steps = repair_steps_for(
-            ["claude_hooks", "mcp_registered", "agent_instructions"],
+            ["claude_hooks", "mcp_registered", "agent_instructions", "skills_installed"],
             vault=vault,
             settings_path=str(paths["settings"]),
         )
@@ -307,3 +348,4 @@ class TestRepairSteps:
         assert paths["claude_json"].exists()
         assert "seahorse-memory:begin" in paths["claude_md"].read_text()
         assert "hooks" in json.loads(paths["settings"].read_text())
+        assert (paths["skills"] / "consolidate" / "SKILL.md").exists()

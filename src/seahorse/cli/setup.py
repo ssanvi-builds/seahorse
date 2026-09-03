@@ -356,6 +356,7 @@ def run_setup_uninstall(
     """
     from seahorse.cli.agent_instructions import remove_agent_instructions
     from seahorse.cli.mcp_register import remove_mcp_registration
+    from seahorse.cli.skill_install import remove_skills
     from seahorse.observe.cli import run_observe_stop
 
     settings = Path(settings_path) if settings_path is not None else _default_settings_path()
@@ -372,6 +373,7 @@ def run_setup_uninstall(
         pass  # config already gone — nothing to stop
     mcp_ok, mcp_detail = remove_mcp_registration()
     ai_ok, ai_detail = remove_agent_instructions()
+    skill_rows = remove_skills()
     if fmt == "human":
         out.write("seahorse setup: uninstalled (hooks + [observe] removed)\n")
         out.write(f"  observer: {observer_detail}\n")
@@ -381,16 +383,8 @@ def run_setup_uninstall(
             if ai_ok
             else f"  agent instructions: WARN {ai_detail}\n"
         )
-    mcp_ok, mcp_detail = remove_mcp_registration()
-    ai_ok, ai_detail = remove_agent_instructions()
-    if fmt == "human":
-        out.write("seahorse setup: uninstalled (hooks + [observe] removed)\n")
-        out.write(f"  mcp: {mcp_detail}\n" if mcp_ok else f"  mcp: WARN {mcp_detail}\n")
-        out.write(
-            f"  agent instructions: {ai_detail}\n"
-            if ai_ok
-            else f"  agent instructions: WARN {ai_detail}\n"
-        )
+        for _, ok, detail in skill_rows:
+            out.write(f"  skill: {detail}\n" if ok else f"  skill: WARN {detail}\n")
 
 
 __all__ = [

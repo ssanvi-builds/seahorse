@@ -14,10 +14,11 @@ The contract (ADR: one command, everything configured, exit 0 always):
 7. Observer started (already running = fine).
 8. MCP server registered user-scope (``--no-mcp`` to skip).
 9. Agent instructions block installed (``--no-agent-instructions`` to skip).
-10. LLM provider detected + self-test-gated (``--skip-llm`` to skip).
-11. Embeddings model warmed ONLY with ``--warm-embeddings`` (~235MB download
+10. Packaged agent skills installed (``--no-skills`` to skip).
+11. LLM provider detected + self-test-gated (``--skip-llm`` to skip).
+12. Embeddings model warmed ONLY with ``--warm-embeddings`` (~235MB download
     needs explicit consent — never in a non-TTY default path).
-12. Doctor-style summary printed. Individual step failures degrade to WARN
+13. Doctor-style summary printed. Individual step failures degrade to WARN
     lines — the command itself never fails the caller (a hook path calls it).
 
 ``repair_steps_for`` maps doctor check names to the repair callables —
@@ -56,6 +57,7 @@ def run_full_setup(
     out: TextIO,
     no_mcp: bool = False,
     no_agent_instructions: bool = False,
+    no_skills: bool = False,
     skip_llm: bool = False,
     warm_embeddings: bool = False,
     auto_consolidate: bool = False,
@@ -130,6 +132,15 @@ def run_full_setup(
             raise RuntimeError(detail)
         return detail
 
+    def _skills() -> str:
+        from seahorse.cli.skill_install import install_skills
+
+        rows = install_skills()
+        failed = [f"{name}: {detail}" for name, ok, detail in rows if not ok]
+        if failed:
+            raise RuntimeError("; ".join(failed))
+        return "; ".join(detail for _, _, detail in rows)
+
     def _llm() -> str:
         decision = bootstrap_llm_provider(vault, out=out)
         if decision.primary is None:
@@ -161,6 +172,10 @@ def run_full_setup(
         checks.append(
             {"check": "agent_instructions", "status": _SKIP, "detail": "--no-agent-instructions"}
         )
+    if not no_skills:
+        step("skills", _skills)
+    else:
+        checks.append({"check": "skills", "status": _SKIP, "detail": "--no-skills"})
     if not skip_llm:
         step("llm", _llm)
     else:
@@ -290,6 +305,15 @@ def repair_steps_for(
             raise RuntimeError(detail)
         return detail
 
+    def _skills() -> str:
+        from seahorse.cli.skill_install import install_skills
+
+        rows = install_skills()
+        failed = [f"{name}: {detail}" for name, ok, detail in rows if not ok]
+        if failed:
+            raise RuntimeError("; ".join(failed))
+        return "; ".join(detail for _, _, detail in rows)
+
     def _db() -> str:
         from seahorse.cli.vault_ops import run_migrate
 
@@ -305,6 +329,7 @@ def repair_steps_for(
         "consolidate": ("consolidate-on-stop installed", _consolidate),
         "mcp_registered": ("MCP server registered", _mcp),
         "agent_instructions": ("agent instructions installed", _instructions),
+        "skills_installed": ("agent skills installed", _skills),
         "db": ("schema applied", _db),
         "global_pointer": ("global pointer written", _pointer),
     }

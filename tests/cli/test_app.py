@@ -115,6 +115,20 @@ class TestLlmClientCredentials:
         assert "GEMINI_API_KEY" not in os.environ
 
 
+def test_setup_passes_no_skills_flag(tmp_path, monkeypatch) -> None:
+    """``setup --no-skills`` reaches run_full_setup (option wiring, not TUI)."""
+    captured: dict = {}
+
+    def fake_run_full_setup(vault, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("seahorse.cli.onboarding.run_full_setup", fake_run_full_setup)
+    code, _, err = invoke(["setup", "--vault", str(tmp_path / "v"), "--no-skills"])
+    assert code == 0, err
+    assert captured["no_skills"] is True
+
+
 def _make_claude_mem_db(tmp_path) -> str:
     """Create a minimal claude-mem observations DB for the import command."""
     import sqlite3

@@ -432,3 +432,39 @@ def test_run_setup_uninstall_removes_hooks(tmp_path, monkeypatch) -> None:
         data = json.load(fh)
     # The only hook was the observer's — the empty event key is removed.
     assert "UserPromptSubmit" not in data["hooks"]
+
+
+def test_run_setup_uninstall_removes_ours_skills_keeps_foreign(
+    tmp_path, monkeypatch
+) -> None:
+    vault = _cfg(tmp_path)
+    home = tmp_path / "home"
+    monkeypatch.setenv(
+        "SEAHORSE_CLAUDE_SKILLS_DIR", str(home / ".claude" / "skills")
+    )
+    from seahorse.cli.skill_install import install_skill, skill_state
+
+    install_skill("consolidate")
+    foreign_dir = home / ".claude" / "skills" / "my-own"
+    foreign_dir.mkdir(parents=True)
+    (foreign_dir / "SKILL.md").write_text("# mine\n", encoding="utf-8")
+    import io
+
+    out = io.StringIO()
+    run_setup_uninstall(vault, settings_path=tmp_path / "settings.json", fmt="human", out=out)
+    assert skill_state("consolidate") == "absent"
+    assert (foreign_dir / "SKILL.md").read_text(encoding="utf-8") == "# mine\n"
+    assert "skill: consolidate: removed" in out.getvalue()
+
+
+def test_run_setup_uninstall_reports_each_surface_once(tmp_path) -> None:
+    """Regression: the MCP/instructions block used to run twice."""
+    vault = _cfg(tmp_path)
+    import io
+
+    out = io.StringIO()
+    run_setup_uninstall(vault, settings_path=tmp_path / "settings.json", fmt="human", out=out)
+    text = out.getvalue()
+    assert text.count("seahorse setup: uninstalled") == 1
+    assert text.count("mcp:") == 1
+    assert text.count("agent instructions:") == 1

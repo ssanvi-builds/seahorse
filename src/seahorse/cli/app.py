@@ -929,7 +929,9 @@ def mcp(ctx: typer.Context) -> None:
 def setup(
     ctx: typer.Context,
     uninstall: bool = typer.Option(
-        False, "--uninstall", help="Remove hooks, [observe], MCP registration, instructions."
+        False,
+        "--uninstall",
+        help="Remove hooks, [observe], MCP registration, instructions, skills.",
     ),
     vault: Path | None = typer.Option(
         None,
@@ -943,6 +945,9 @@ def setup(
         False,
         "--no-agent-instructions",
         help="Skip the ~/.claude/CLAUDE.md memory instructions block.",
+    ),
+    no_skills: bool = typer.Option(
+        False, "--no-skills", help="Skip installing the packaged agent skills."
     ),
     skip_llm: bool = typer.Option(
         False, "--skip-llm", help="Skip the LLM provider detection + self-test."
@@ -980,6 +985,7 @@ def setup(
         out=_out(ctx),
         no_mcp=no_mcp,
         no_agent_instructions=no_agent_instructions,
+        no_skills=no_skills,
         skip_llm=skip_llm,
         warm_embeddings=warm_embeddings,
         auto_consolidate=auto_consolidate,
