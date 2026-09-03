@@ -23,6 +23,8 @@ The wire enums follow the current model:
 - ``recall_full.ep_ids`` ``maxItems = MAX_FULL_BATCH`` (wire-level REJECT —
   ``FullBatchTooLarge`` is a progressive-disclosure exception without a stable
   code).
+- ``remember`` has NO ``tags`` (the facade refuses them this release —
+  ``E_NOT_IN_MVP_0_1``; the wire never advertises a field the facade rejects).
 """
 
 from __future__ import annotations
@@ -39,8 +41,6 @@ from seahorse.constants import (
     REASON_MAX_CHARS,
     SOURCE_TYPES,
     SUBJECT_FILTER_MAX_CHARS,
-    TAG_MAX_CHARS,
-    TAGS_MAX_ITEMS,
 )
 from seahorse.contracts.index import MAX_HOPS_MVP1, PIT_KIND_VALUES
 from seahorse.disclosure.types import MAX_FULL_BATCH, SUMMARY_MAX_CHARS
@@ -139,11 +139,11 @@ REMEMBER_SCHEMA: dict[str, Any] = {
         "valid_at": {"type": ["string", "null"], "format": "date-time"},
         "cognitive_type": {"type": ["string", "null"], "enum": _COGNITIVE_ENUM},
         "summary": {"type": ["string", "null"], "maxLength": SUMMARY_MAX_CHARS},
-        "tags": {
-            "type": "array",
-            "items": {"type": "string", "maxLength": TAG_MAX_CHARS},
-            "maxItems": TAGS_MAX_ITEMS,
-        },
+        # ``tags`` is NOT advertised: the facade rejects any non-empty tags in
+        # this release (E_NOT_IN_MVP_0_1), so the wire must not accept them
+        # either — advertising schema-invalid-at-the-facade fields caused
+        # agents to send tags and hit an opaque "Primitive not available".
+        # Re-add here only together with facade support.
         "skip_extraction": {"type": ["boolean", "null"]},
         "extraction_mode": {"type": ["string", "null"], "enum": _EXTRACTION_MODE_ENUM},
     },

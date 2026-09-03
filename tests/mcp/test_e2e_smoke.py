@@ -165,10 +165,10 @@ class TestFullLifecycle:
         )
         assert self._content(resps[0]) is None
 
-    def test_remember_with_tags_rejected_by_facade(self, real_facade) -> None:
-        # tags are wire-accepted (maxItems 32) but the facade rejects non-empty
-        # tags in the first release (E_NOT_IN_MVP_0_1) — honest, the MCP server
-        # delegates.
+    def test_remember_with_tags_rejected_at_wire(self, real_facade) -> None:
+        # tags are NOT advertised (the facade refuses them this release), so
+        # additionalProperties: false rejects them at the wire — the facade is
+        # never touched on a wire-shape failure.
         resps = self._run(
             real_facade,
             [
@@ -180,7 +180,7 @@ class TestFullLifecycle:
                             }}}),
             ],
         )
-        assert resps[0]["error"]["data"]["seahorse_code"] == "E_NOT_IN_MVP_0_1"
+        assert resps[0]["error"]["code"] == -32602
 
     def test_full_lifecycle_single_session(self, real_facade) -> None:
         # ONE stdin stream, ONE serve() call: initialize → tools/list →

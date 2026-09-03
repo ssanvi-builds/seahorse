@@ -22,7 +22,6 @@ from seahorse.constants import (
     PROVENANCE_SHORT_MAX_CHARS,
     SOURCE_TYPES,
     SUBJECT_FILTER_MAX_CHARS,
-    TAG_MAX_CHARS,
 )
 from seahorse.contracts.index import MAX_HOPS_MVP1, PIT_KIND_VALUES, PITKind
 from seahorse.disclosure.types import MAX_FULL_BATCH
@@ -173,10 +172,10 @@ class TestRememberSchema:
 
         assert body["maxLength"] == BODY_MAX_CHARS
 
-    def test_tags_max_items(self) -> None:
-        from seahorse.constants import TAGS_MAX_ITEMS
-
-        assert REMEMBER_SCHEMA["properties"]["tags"]["maxItems"] == TAGS_MAX_ITEMS
+    def test_tags_not_advertised(self) -> None:
+        # The facade refuses tags this release (E_NOT_IN_MVP_0_1), so the wire
+        # must not advertise them — agents that send tags get a wire reject.
+        assert "tags" not in REMEMBER_SCHEMA["properties"]
 
     def test_no_subject_property(self) -> None:
         assert "subject" not in REMEMBER_SCHEMA["properties"]
@@ -328,8 +327,8 @@ class TestWireCaps:
     """
 
     def test_tags_item_max_length(self) -> None:
-        items = REMEMBER_SCHEMA["properties"]["tags"]["items"]
-        assert items["maxLength"] == TAG_MAX_CHARS
+        # tags removed from the advertised schema — nothing left to cap.
+        assert "tags" not in REMEMBER_SCHEMA["properties"]
 
     def test_provenance_id_fields_max_length(self) -> None:
         props = DEFS["Provenance"]["properties"]

@@ -4,6 +4,26 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`remember` no longer advertises `tags`** — the facade rejects any
+  non-empty tags in this release (`E_NOT_IN_MVP_0_1`), but the wire schema
+  still advertised the field, so agents sent tags and hit an opaque
+  "Primitive not available in this release". The wire now rejects unknown
+  fields like `tags` up front (`-32602`), before the facade is touched.
+  Re-advertise `tags` only together with facade support.
+- **`remember` tool description documents the `by` provenance shape** —
+  `by` must be an object with the required keys `agent_id`, `session_id`
+  and `source_type`; sending a string produced an unexplained
+  `Invalid params`. The description now carries a concrete example.
+- **Agent instructions updated** — the block `seahorse setup` installs in
+  `~/.claude/CLAUDE.md` now spells out the provenance-object shape for
+  `remember`/`improve`/`forget` and warns against sending tags. Re-run
+  `seahorse setup` (or `seahorse doctor --fix`) to refresh an installed
+  block.
+
 ## [0.22.0] - 2026-09-03
 
 ### Added

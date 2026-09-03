@@ -72,10 +72,13 @@ class TestRememberHandler:
         assert resp["error"]["code"] == -32602
         assert len(facade.remember_calls) == 0
 
-    def test_tags_forwarded_as_tuple(self) -> None:
+    def test_tags_rejected_at_wire(self) -> None:
+        # tags are not advertised this release (the facade refuses them), so
+        # the wire rejects them like any unknown field.
         facade = RecordingFacade()
-        dispatch("remember", {"body": "hi", "by": _by(), "tags": ["a", "b"]}, facade, 1)
-        assert facade.remember_calls[0]["payload"].tags == ("a", "b")
+        resp = dispatch("remember", {"body": "hi", "by": _by(), "tags": ["a", "b"]}, facade, 1)
+        assert resp["error"]["code"] == -32602
+        assert len(facade.remember_calls) == 0
 
     def test_summary_forwarded(self) -> None:
         # The wire accepts summary as an additive editorial field.

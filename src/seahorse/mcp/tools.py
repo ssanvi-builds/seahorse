@@ -270,7 +270,11 @@ TOOL_LIST: list[dict[str, Any]] = [
     {
         "name": "remember",
         "description": "Persist a fact (episodic memory write). Delegates to the "
-        "write-path; the first release uses the deterministic skip extraction path.",
+        "write-path; the first release uses the deterministic skip extraction path. "
+        "'by' MUST be a provenance OBJECT with the required keys agent_id, "
+        "session_id and source_type (a string is rejected): "
+        '{"by": {"agent_id": "claude-code", "session_id": "<session>", '
+        '"source_type": "agent"}}. Tags are not supported in this release.',
         "inputSchema": schema_for("remember"),
     },
     {

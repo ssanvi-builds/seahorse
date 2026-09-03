@@ -32,6 +32,12 @@ directory, else the user's default vault.
   save it with `remember` (concise body, meaningful `title`). Prefer
   `improve` (not a duplicate `remember`) when correcting an existing memory;
   the history is preserved.
+  **Call shape for `remember`/`improve`/`forget`**: the `by` parameter is a
+  provenance OBJECT with the required keys `agent_id`, `session_id` and
+  `source_type` (one of `agent`/`human`/`importer`/`system`) — never a
+  string:
+  `{"by": {"agent_id": "claude-code", "session_id": "<current session>", "source_type": "agent"}}`.
+  Tags are not supported in this release — do not send them.
 - **Procedural knowledge** (repeatable workflows, "how we do X") goes in via
   `skill_add`; retrieve it with `skill_search`.
 - **Session capture is automatic** (hooks + observer): you do not need to
