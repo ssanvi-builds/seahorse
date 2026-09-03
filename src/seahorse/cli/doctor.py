@@ -192,7 +192,8 @@ def _observer_check(config: SeahorseConfig) -> tuple[str, str]:
     return (
         "WARN",
         f"stale socket without a live observer ({socket_path(config)}); "
-        "remove it or run `seahorse observe start`",
+        "remove it or run `seahorse observe start` (an orphaned observer.lock "
+        "is harmless — liveness comes from the kernel flock, not the file)",
     )
 
 
