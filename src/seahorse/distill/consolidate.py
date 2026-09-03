@@ -6,6 +6,16 @@ episode via the facade. The consolidated body uses the stable clustering key as
 its H1 (no ``[session_tag:n]`` suffix). The sources remain valid (they are the
 evidence).
 
+Rival absorb (design review post-v1.0, decision 1): a rival vigent episode
+holding the cluster key (e.g. an untagged ``remember`` on the same subject)
+used to collide forever — one COLLISION row per run, no note, no progress.
+When the collision's rival is a CLUSTER MEMBER (its content is already carried
+in the distilled body) with a NON-HUMAN ``source_type``, the rival is absorbed:
+soft-invalidated via ``forget`` (reason ``absorbed_by_consolidate`` — the audit
+trail and the bi-temporal history keep it queryable at any PIT) and the
+distill is retried once. A human-authored rival prevails (editorial authority):
+the collision is reported with a resolution hint instead.
+
 The trigger is ON-DEMAND (``seahorse consolidate``) — the session-end signal is
 OFF by default (single-session consolidation contradicts the evidence; it is
 conditioned on real budget pressure).
@@ -17,12 +27,23 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from seahorse.contracts.engine import InvalidationConflictError, NotFound
 from seahorse.distill.cluster import Cluster, cluster_episodes
 from seahorse.distill.synthesis import synthesize_cluster
 from seahorse.engine.errors import E_COLLISION_EXISTS, EngineError
 from seahorse.llm import LLMClient
 
 CONSOLIDATOR_AGENT = "consolidator"
+
+# Absorb policy (decision 1): only machine-authored rivals are absorbed — a
+# human ``remember`` on the same subject may be a deliberate standalone note.
+_ABSORBABLE_SOURCES = frozenset({"agent", "system", "importer"})
+_ABSORB_REASON = "absorbed_by_consolidate"
+_RESOLUTION_HINT = (
+    "human-authored rival holds the cluster key; resolve with "
+    "`seahorse forget <rival_id>` or `seahorse improve <rival_id>` "
+    "(a body with a different H1)"
+)
 
 
 @dataclass(frozen=True)
@@ -31,7 +52,10 @@ class ConsolidateItem:
 
     ``synthesis`` is the body provenance mode: ``"skip"`` (deterministic),
     ``"llm"`` (LLM-synthesized) or ``"degraded"`` (LLM failed → honest
-    fallback with the ``degraded_from`` marker).
+    fallback with the ``degraded_from`` marker). ``absorbed_rivals`` lists the
+    rival episode ids soft-invalidated by the absorb policy. ``detail`` carries
+    a human-readable note on non-success rows (e.g. the resolution hint for a
+    human-rival COLLISION).
     """
 
     key: str
@@ -39,6 +63,8 @@ class ConsolidateItem:
     status: str
     ep_id: str | None = None
     synthesis: str = "skip"
+    absorbed_rivals: tuple[str, ...] = ()
+    detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -186,9 +212,49 @@ def consolidate(
                     status="COLLISION",
                     ep_id=None,
                     synthesis=synthesis_label,
+                    detail=_RESOLUTION_HINT,
                 )
             )
             continue
+        absorbed: tuple[str, ...] = ()
+        if wr.status == "COLLISION" and supersede_ep_id is None:
+            # Absorb policy (decision 1): the collision names a vigent rival
+            # holding the key's fact_id. Cluster members with a non-human
+            # source_type are absorbed — their content already lives in the
+            # distilled body, the soft invalidation keeps them PIT-queryable.
+            # A human-authored (or foreign) rival prevails: reported with the
+            # resolution hint. One retry, never a loop.
+            rival_ids = [
+                e.id
+                for e in cluster.episodes
+                if e.id in {c.existing_id for c in wr.collisions_detected}
+                and e.source_type in _ABSORBABLE_SOURCES
+            ]
+            if rival_ids:
+                try:
+                    for rival_id in rival_ids:
+                        facade.forget(
+                            rival_id, reason=_ABSORB_REASON, by=dict(effective_by)
+                        )
+                    absorbed = tuple(rival_ids)
+                    wr = facade.distill(
+                        source_ep_ids=[e.id for e in cluster.episodes],
+                        representative=cluster.representative,
+                        consolidated_body=consolidated_body,
+                        by={**effective_by, **llm_by},
+                        supersede_ep_id=supersede_ep_id,
+                    )
+                except EngineError as exc:
+                    if exc.code != E_COLLISION_EXISTS:
+                        raise
+                except (InvalidationConflictError, NotFound):
+                    pass  # a concurrent actor won the race — report honestly
+        detail = ""
+        if wr.status == "COLLISION":
+            detail = _RESOLUTION_HINT if not absorbed else (
+                "rival(s) absorbed but the key is still held; resolve with "
+                "`seahorse forget <rival_id>`"
+            )
         items.append(
             ConsolidateItem(
                 key=cluster.key,
@@ -196,6 +262,8 @@ def consolidate(
                 status=wr.status,
                 ep_id=wr.ep_id,
                 synthesis=synthesis_label,
+                absorbed_rivals=absorbed,
+                detail=detail,
             )
         )
     return ConsolidateReport(clusters_found=len(clusters), items=items)

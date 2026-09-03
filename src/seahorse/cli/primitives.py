@@ -417,10 +417,15 @@ def run_consolidate(
                     suffix = " [llm]"
                 elif item.synthesis == "degraded":
                     suffix = " [degraded]"
-                out.write(
+                if item.absorbed_rivals:
+                    suffix += f" [absorbed {len(item.absorbed_rivals)}]"
+                line = (
                     f"consolidated: {item.key} ({item.source_count} sources) "
-                    f"-> {item.status}{suffix}\n"
+                    f"-> {item.status}{suffix}"
                 )
+                if item.detail:
+                    line += f"\n  {item.detail}"
+                out.write(line + "\n")
         else:
             out.write(f"consolidate: no clusters to distill ({report.clusters_found} found)\n")
     else:
@@ -437,6 +442,8 @@ def run_consolidate(
                             "status": i.status,
                             "ep_id": i.ep_id,
                             "synthesis": i.synthesis,
+                            "absorbed_rivals": list(i.absorbed_rivals),
+                            "detail": i.detail,
                         }
                         for i in report.items
                     ],

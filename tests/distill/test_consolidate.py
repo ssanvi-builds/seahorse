@@ -54,11 +54,15 @@ def _degraded_result() -> ExtractResult:
     return ExtractResult(data={}, prompt_hash="", degraded_to_skip=True)
 
 
-def _remember(facade, *, body: str, now: datetime) -> None:
+def _remember(facade, *, body: str, now: datetime, source_type: str = "agent") -> None:
     facade.remember(
         RememberPayload(
             body=body,
-            by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+            by={
+                "source_type": source_type,
+                "agent_id": "a1",
+                "session_id": "sess-1",
+            },
         ),
         now=now,
     )
@@ -443,3 +447,151 @@ def test_consolidate_reraises_non_collision_engine_error() -> None:
     )
     with pytest.raises(EngineError):
         consolidate(facade)
+
+
+# --- absorb (design review post-v1.0, decision 1) -----------------------------
+#
+# A rival vigent episode holding the cluster key (e.g. an untagged remember on
+# the same subject) used to collide FOREVER: the cluster regenerated a COLLISION
+# row on every run and never distilled. The absorb policy invalidates a
+# NON-HUMAN cluster-member rival (reason ``absorbed_by_consolidate`` — the
+# audit trail preserves it, bi-temporally queryable at any PIT) and retries the
+# distill once. A human-authored rival prevails: it may be a deliberate note,
+# so the collision is reported with a resolution hint.
+
+
+def test_consolidate_absorbs_untagged_agent_rival(tmp_path) -> None:
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        # The untagged rival: same cluster key, holds the key's fact_id.
+        _remember(
+            facade,
+            body="# deploy story\n\nA standalone untagged note.",
+            now=T0 + timedelta(minutes=5),
+        )
+        report = consolidate(facade)
+        assert report.clusters_found == 1
+        item = report.items[0]
+        assert item.status == "ACTIVE"
+        assert item.ep_id is not None
+        assert len(item.absorbed_rivals) == 1
+        eps = facade.get_vigente()
+        # The absorbed rival is no longer current-state...
+        assert all(e.id not in item.absorbed_rivals for e in eps)
+        # ...and exactly one consolidated note exists (no duplicate).
+        consolidated = [e for e in eps if e.cognitive_type == "semantic"]
+        assert len(consolidated) == 1
+        # The rival survives bi-temporally (soft-invalidated, never deleted):
+        # the audit trail keeps the absorb traceable.
+        row = facade.audit_log(item.absorbed_rivals[0])
+        assert any(ev.primitive == "forget" for ev in row)
+    finally:
+        storage.close()
+
+
+def test_consolidate_absorb_is_idempotent(tmp_path) -> None:
+    """After an absorb, the next run skips the cluster (the note exists and
+    the absorbed rival is no longer vigent) — no repeated absorb, no noise."""
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        _remember(
+            facade,
+            body="# deploy story\n\nA standalone untagged note.",
+            now=T0 + timedelta(minutes=5),
+        )
+        first = consolidate(facade)
+        assert first.items[0].status == "ACTIVE"
+        second = consolidate(facade)
+        assert second.items == []  # idempotent skip — the note exists
+    finally:
+        storage.close()
+
+
+def test_consolidate_human_rival_keeps_collision_with_hint(tmp_path) -> None:
+    """A human-authored untagged rival is NEVER absorbed (editorial authority):
+    the collision is reported honestly, with the resolution hint."""
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        _remember(
+            facade,
+            body="# deploy story\n\nA human-authored standalone note.",
+            now=T0 + timedelta(minutes=5),
+            source_type="human",
+        )
+        report = consolidate(facade)
+        item = report.items[0]
+        assert item.status == "COLLISION"
+        assert item.ep_id is None
+        assert item.absorbed_rivals == ()
+        assert "seahorse forget" in item.detail
+        # The human rival is untouched.
+        eps = facade.get_vigente()
+        assert len(eps) == 4
+    finally:
+        storage.close()
+
+
+class _RetryCollidingFacade:
+    """Stub facade: distill returns a COLLISION WriteResult whose rival is an
+    absorbable cluster member, forget works, but the RETRY still collides
+    (another rival appeared). Pins the honest report: absorbed rivals are
+    surfaced even when the note still fails."""
+
+    def __init__(self, eps) -> None:
+        self._eps = eps
+        self.forgotten: list[str] = []
+        self.distill_calls = 0
+
+    def get_vigente(self):
+        return list(self._eps)
+
+    def distill(self, source_ep_ids, representative, consolidated_body, by,
+                supersede_ep_id=None):
+        from seahorse.contracts.engine import WriteResult
+        from seahorse.engine.collision import Collision
+
+        self.distill_calls += 1
+        return WriteResult(
+            ep_id=None,
+            fact_id=None,
+            status="COLLISION",
+            collisions_detected=[Collision(kind="concurrent", existing_id="rival-1",
+                                           fact_id="f" * 32)],
+        )
+
+    def forget(self, ep_id, *, reason, by, now=None):
+        self.forgotten.append((ep_id, reason))
+
+
+def test_consolidate_retry_collision_still_reports_absorbed_rivals() -> None:
+    eps = [
+        _stub_episode(f"e{i}", "hot cluster", now=T0 + timedelta(minutes=i))
+        for i in range(3)
+    ]
+    # Make e0 the rival the collision names (a cluster member, agent source).
+    eps[0] = eps[0].model_copy(update={"id": "rival-1"})
+    facade = _RetryCollidingFacade(eps)
+    report = consolidate(facade)
+    item = report.items[0]
+    assert item.status == "COLLISION"
+    assert item.absorbed_rivals == ("rival-1",)
+    assert facade.forgotten == [("rival-1", "absorbed_by_consolidate")]
+    assert facade.distill_calls == 2  # initial + one retry, no loop
