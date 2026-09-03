@@ -137,3 +137,40 @@ def test_run_observer_max_drains_exits(tmp_path) -> None:
     finally:
         queue.close()
         storage.close()
+
+
+def test_run_observer_drains_spool_at_startup(tmp_path) -> None:
+    """Lossless spool (3B): envelopes the hook spooled while the observer was
+    down are enqueued into the queue BEFORE the first drain — the hook never
+    needs the worker alive to persist an event durably."""
+    from seahorse.observe.spool import spool_event
+
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    queue = ObserverQueue(tmp_path / "observer.db")
+    spool = tmp_path / "spool"
+    spool_event(
+        spool,
+        {
+            "session_id": "sess-spool",
+            "event_type": EVENT_USER_PROMPT_SUBMIT,
+            "payload": {"prompt": "Fix the flaky recall test"},
+        },
+    )
+    socket_path = _short_socket_path()
+    try:
+        run_observer(
+            facade,
+            queue,
+            ObserverConfig(),
+            socket_path=socket_path,
+            max_drains=1,
+            interval_s=0.01,
+            spool_dir=spool,
+        )
+        # The spooled event was enqueued and consumed by the first drain.
+        assert queue.pending_count() == 0
+        assert list(spool.glob("*.json")) == []
+        assert len(facade.recall("flaky recall", k=10)) == 1
+    finally:
+        queue.close()
+        storage.close()

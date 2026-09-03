@@ -31,6 +31,7 @@ from seahorse.cli.errors import CliError, CliObserverRunning
 from seahorse.cli.exit_codes import CLI_CONFIG_INVALID
 from seahorse.cli.output import OutputFormat
 from seahorse.observe.endpoint import validate_socket_path
+from seahorse.observe.spool import spool_event
 from seahorse.observe.worker import ObserverConfig
 
 OBSERVER_DIR_NAME = "observer"
@@ -38,6 +39,7 @@ PID_FILENAME = "observer.pid"
 LOG_FILENAME = "observer.log"
 QUEUE_FILENAME = "observer.db"
 LOCK_FILENAME = "observer.lock"
+SPOOL_DIRNAME = "spool"
 _LOCK_MODE = 0o600
 
 # Hook-path tuning. The SessionStart respawn waits at most this long for the
@@ -64,6 +66,15 @@ def lock_file(cfg: SeahorseConfig) -> Path:
 
 def queue_path(cfg: SeahorseConfig) -> Path:
     return observer_dir(cfg) / QUEUE_FILENAME
+
+
+def spool_dir(cfg: SeahorseConfig) -> Path:
+    """The hook-side spool directory (``{observer_dir}/spool/``).
+
+    The hook writes undeliverable envelopes here (lossless spool, 3B); the
+    observer drains the directory into the queue DB at startup.
+    """
+    return observer_dir(cfg) / SPOOL_DIRNAME
 
 
 def socket_path(cfg: SeahorseConfig) -> Path:
@@ -408,9 +419,13 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
             cfg, wait_s=_ENSURE_RUNNING_WAIT_S, poll_s=_ENSURE_RUNNING_POLL_INTERVAL_S
         ):
             with contextlib.suppress(OSError):
-                _post_event(cfg, raw)  # advisory retry — result is best-effort
-    # status >= 200: the worker received (or explicitly rejected) the envelope
-    # and logs its own errors. Nothing to do.
+                status, _message = _post_event(cfg, raw)  # advisory retry
+    # Lossless spool (3B): delivery failed everywhere (status 0) — persist the
+    # envelope so the observer drains it into the queue at the next startup.
+    # A status >= 200 means the worker received (or explicitly rejected) the
+    # envelope — it is ALIVE and logs its own errors; nothing to spool.
+    if status == 0:
+        spool_event(spool_dir(cfg), raw)
     if is_session_start:
         _inject_context(cfg, out)
 
@@ -460,6 +475,7 @@ def run_observe_run(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> N
             config,
             socket_path=socket_path(cfg),
             token=cfg.observe.token,
+            spool_dir=spool_dir(cfg),
         )
     finally:
         queue.close()
@@ -472,6 +488,7 @@ __all__ = [
     "observer_dir",
     "pid_file",
     "queue_path",
+    "spool_dir",
     "socket_path",
     "lock_file",
     "run_observe_status",

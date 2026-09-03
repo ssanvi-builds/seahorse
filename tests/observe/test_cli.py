@@ -29,6 +29,7 @@ from seahorse.observe.cli import (
     run_observe_status,
     run_observe_stop,
     socket_path,
+    spool_dir,
 )
 
 
@@ -395,7 +396,7 @@ def test_observe_run_acquires_lock_and_releases(tmp_path, monkeypatch) -> None:
     cfg = _cfg_observe(tmp_path)
     ran = {}
 
-    def _fake_run_observer(facade, queue, config, *, socket_path, token):
+    def _fake_run_observer(facade, queue, config, *, socket_path, token, **kwargs):
         ran["socket_path"] = socket_path
         ran["token"] = token
 
@@ -580,6 +581,82 @@ def test_event_no_respawn_on_non_200(tmp_path, monkeypatch) -> None:
     _capture_inject(monkeypatch, injected)
     run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
     assert len(injected) == 1  # a live-but-rejecting worker still gets injection
+
+
+# --- lossless spool (design review post-v1.0, 3B) ------------------------------
+
+
+def test_event_spools_when_delivery_fails(tmp_path, monkeypatch) -> None:
+    """A mid-session POST failure (status 0) spools the envelope — the event
+    survives the observer downtime and is drained into the queue at the next
+    startup. Used to be lost: the envelope existed only in memory."""
+    import json
+
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-spool")
+    monkeypatch.setenv("CLAUDE_PROMPT", "remember me")
+    cfg = _cfg_observe(tmp_path)
+    monkeypatch.setattr("seahorse.observe.cli._post_event", lambda _c, _r: (0, "down"))
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", lambda _c: 4247)
+    run_observe_event(cfg, fmt="human", out=_out())
+    files = list(spool_dir(cfg).glob("*.json"))
+    assert len(files) == 1
+    raw = json.loads(files[0].read_text(encoding="utf-8"))
+    assert raw["session_id"] == "sess-spool"
+    assert raw["payload"] == {"prompt": "remember me"}
+
+
+def test_event_no_spool_when_delivered(tmp_path, monkeypatch) -> None:
+    """A 200 POST means the event reached the queue (durable) — nothing to
+    spool, zero cost on the healthy path."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-ok")
+    monkeypatch.setenv("CLAUDE_PROMPT", "hello")
+    cfg = _cfg_observe(tmp_path)
+
+    def _boom(_path):
+        raise AssertionError("healthy path must not touch the spool")
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", lambda _c, _r: (200, ""))
+    monkeypatch.setattr("seahorse.observe.cli.spool_event", _boom)
+    run_observe_event(cfg, fmt="human", out=_out())
+    assert not spool_dir(cfg).exists()
+
+
+def test_event_no_spool_when_worker_rejects(tmp_path, monkeypatch) -> None:
+    """A 400/401 means the worker is ALIVE and explicitly rejected the
+    envelope — spooling it would create a file that can never be delivered
+    (a poison file). The worker logs its own errors."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-reject")
+    cfg = _cfg_observe(tmp_path)
+    monkeypatch.setattr("seahorse.observe.cli._post_event", lambda _c, _r: (400, "bad"))
+    run_observe_event(cfg, fmt="human", out=_out())
+    assert not spool_dir(cfg).exists() or list(spool_dir(cfg).glob("*.json")) == []
+
+
+def test_event_spools_when_session_start_retry_also_fails(
+    tmp_path, monkeypatch
+) -> None:
+    """SessionStart where even the advisory retry cannot reach the worker:
+    the envelope is spooled (both attempts failed)."""
+    import json
+
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-ss")
+    cfg = _cfg_observe(tmp_path)
+    monkeypatch.setattr("seahorse.observe.cli._post_event", lambda _c, _r: (0, "down"))
+    monkeypatch.setattr("seahorse.observe.cli._spawn_observer", lambda _c: 4248)
+    monkeypatch.setattr(
+        "seahorse.observe.cli._wait_for_observer", lambda _c, *, wait_s, poll_s: True
+    )
+    injected: list = []
+    _capture_inject(monkeypatch, injected)
+    run_observe_event(cfg, fmt="human", out=_out())
+    files = list(spool_dir(cfg).glob("*.json"))
+    assert len(files) == 1
+    assert json.loads(files[0].read_text(encoding="utf-8"))["session_id"] == "sess-ss"
+    assert injected == [cfg]  # injection is independent of the capture plane
 
 
 def test_event_missing_observe_config_is_silent_noop(tmp_path, monkeypatch) -> None:

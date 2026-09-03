@@ -20,6 +20,7 @@ from typing import Any
 
 from seahorse.observe.endpoint import ObserverEndpoint, validate_socket_path
 from seahorse.observe.queue import ObserverQueue
+from seahorse.observe.spool import drain_spool
 from seahorse.observe.worker import ObserverConfig, ObserverWorker
 
 _logger = logging.getLogger("seahorse.observe.runner")
@@ -40,17 +41,27 @@ def run_observer(
     interval_s: float = 5.0,
     stop_event: threading.Event | None = None,
     max_drains: int | None = None,
+    spool_dir: Path | None = None,
 ) -> None:
     """Run the observer: serve the endpoint (thread) + drain the queue (main).
 
     The endpoint thread receives envelopes on the unix socket; the main loop
     drains the queue every ``interval_s`` seconds. Exits on ``stop_event``,
     ``max_drains`` (test control), or KeyboardInterrupt.
+
+    With ``spool_dir`` (lossless spool, 3B), any envelopes the hook spooled
+    while the observer was down are enqueued into the queue first — the
+    worker is the single DB writer, so the drain happens here, before the
+    endpoint thread starts.
     """
     # Fail loud before the endpoint thread starts: a socket path over the
     # AF_UNIX limit would kill the thread silently (daemon) and drop every
     # envelope while the worker keeps draining an empty queue.
     validate_socket_path(socket_path)
+    if spool_dir is not None:
+        spooled = drain_spool(spool_dir, queue)
+        if spooled:
+            _logger.info("observe.spool drained=%d", spooled)
     endpoint = ObserverEndpoint(
         queue, socket_path=socket_path, token=token, drop_tools=config.drop_tools
     )
