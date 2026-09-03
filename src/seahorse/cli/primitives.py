@@ -398,6 +398,15 @@ def run_consolidate(
     """
     from seahorse.distill.consolidate import consolidate
 
+    if synthesis == "llm" and llm_client is None:
+        # Silent degrade is a trap: the user asked for LLM synthesis and got
+        # deterministic bodies with no signal. WARN once, then carry on.
+        out.write(
+            "WARN: synthesis=llm requested but no LLM client is wired — "
+            "deterministic bodies only. Run `seahorse setup` to configure a "
+            "provider (a pasted API key lives in the 0600 credentials store).\n"
+        )
+
     report = _timed(
         "consolidate",
         lambda: consolidate(

@@ -119,6 +119,63 @@ def test_consolidate_synthesis_llm_human_output(tmp_path) -> None:
         storage.close()
 
 
+def test_consolidate_llm_without_client_warns_not_silent(tmp_path) -> None:
+    """synthesis=llm with no wired client degrades LOUDLY, not silently."""
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            facade.remember(
+                RememberPayload(
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+                )
+            )
+        out = _out()
+        run_consolidate(facade, fmt="human", out=out, synthesis="llm", llm_client=None)
+        text = out.getvalue()
+        assert "WARN" in text
+        assert "seahorse setup" in text
+        assert "consolidated: topic" in text  # the run still completes
+    finally:
+        storage.close()
+
+
+def test_consolidate_llm_without_client_json_warns(tmp_path) -> None:
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            facade.remember(
+                RememberPayload(
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+                )
+            )
+        out = _out()
+        run_consolidate(facade, fmt="json", out=out, synthesis="llm", llm_client=None)
+        text = out.getvalue()
+        assert "WARN" in text
+    finally:
+        storage.close()
+
+
+def test_consolidate_default_skip_does_not_warn(tmp_path) -> None:
+    """Deterministic consolidation is a valid state — never a warning."""
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            facade.remember(
+                RememberPayload(
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+                )
+            )
+        out = _out()
+        run_consolidate(facade, fmt="human", out=out)
+        assert "WARN" not in out.getvalue()
+    finally:
+        storage.close()
+
+
 def test_consolidate_supersede_updates_note(tmp_path) -> None:
     facade, storage = build_facade(tmp_path / "seahorse.db")
     try:
