@@ -72,3 +72,6 @@ seahorse.sqlite*
 # F7 experiment output (reproducible artifacts)
 exp-*/
 benchmark-output/
+
+# --- Obsidian local config (any vault example opened locally) ---
+.obsidian/

@@ -205,6 +205,18 @@ search, FTS5 for full-text), and once as a markdown file with F3.1 frontmatter
 in the vault. The human edits the same markdown. The format is versioned and
 documented in [docs/f3.1-format.md](docs/f3.1-format.md).
 
+What that looks like on disk: the memory graph of a fictional demo vault
+([examples/demo-vault/](examples/demo-vault/), 105 F3.1 episodes — projects,
+people, decisions, sessions — entirely invented, nothing real). Red edges are
+`supersedes` chains: a correction never overwrites, it appends.
+
+![Memory graph of a fictional demo vault](examples/demo-vault/graph.svg)
+
+Open [examples/demo-vault/graph.html](examples/demo-vault/graph.html) for the
+same graph, interactive (zoom, pan, drag, tooltips — self-contained, no
+dependencies). Every note in the folder is a valid F3.1 episode you can open
+in Obsidian; the graph is regenerated with `python3 render_graph.py`.
+
 ## The agent surface — 7 memory-native primitives + 7 procedural/read-only tools
 
 Exposed over stdio MCP (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`) and
