@@ -16,7 +16,8 @@
 #     ~/.claude.json, ~/.claude/CLAUDE.md (seahorse setup) and
 #     ~/.claude-mem/claude-mem.db (import default source).
 #     SEAHORSE_CLAUDE_JSON / SEAHORSE_CLAUDE_MD / SEAHORSE_CLAUDE_SETTINGS
-#     pin the exact paths into the sandbox.
+#     pin the exact paths into the sandbox; SEAHORSE_CLAUDE_SKILLS_DIR and
+#     SEAHORSE_CREDENTIALS pin the skills dir and the API-key store.
 #   * The vault is a fresh temp dir; every command resolves it via SEAHORSE_VAULT.
 #   * The embedding model downloads into a temp FASTEMBED_CACHE_PATH.
 #   * The real claude-mem DB is only ever READ (sqlite3 .backup to the sandbox).
@@ -179,12 +180,16 @@ export SEAHORSE_VAULT="$VAULT"
 export SEAHORSE_CLAUDE_JSON="$SANDBOX/home/.claude.json"
 export SEAHORSE_CLAUDE_MD="$SANDBOX/home/.claude/CLAUDE.md"
 export SEAHORSE_CLAUDE_SETTINGS="$SANDBOX/home/.claude/settings.json"
+export SEAHORSE_CLAUDE_SKILLS_DIR="$SANDBOX/home/.claude/skills"
+export SEAHORSE_CREDENTIALS="$SANDBOX/home/.config/seahorse/credentials.json"
 cd "$SANDBOX"
 info "  HOME=$HOME"
 info "  SEAHORSE_VAULT=$SEAHORSE_VAULT"
 info "  FASTEMBED_CACHE_PATH=$FASTEMBED_CACHE_PATH"
 info "  SEAHORSE_CLAUDE_JSON=$SEAHORSE_CLAUDE_JSON"
 info "  SEAHORSE_CLAUDE_MD=$SEAHORSE_CLAUDE_MD"
+info "  SEAHORSE_CLAUDE_SKILLS_DIR=$SEAHORSE_CLAUDE_SKILLS_DIR"
+info "  SEAHORSE_CREDENTIALS=$SEAHORSE_CREDENTIALS"
 
 # --- install ----------------------------------------------------------------
 step 2 "Install (fresh user): uv tool install . --extra embeddings --extra llm"
@@ -267,7 +272,16 @@ else
 fi
 
 # --- setup: one command, everything -----------------------------------------
-step 7 "One-command setup (isolated HOME): hooks + config + observer + MCP + instructions"
+step 7 "One-command setup (isolated HOME): hooks + config + observer + MCP + instructions + skills"
+# A fake pasted key written BEFORE setup: the credentials store must survive
+# the run, stay 0600, and count as present in doctor's api_keys check.
+mkdir -p "$(dirname "$SEAHORSE_CREDENTIALS")"
+printf '{"GEMINI_API_KEY": "e2e-fake-key-0123"}\n' > "$SEAHORSE_CREDENTIALS"
+chmod 600 "$SEAHORSE_CREDENTIALS"
+check "fake credentials store written (0600)" python3 -c "
+import os, sys
+sys.exit(0 if (os.stat(sys.argv[1]).st_mode & 0o777) == 0o600 else 1)
+" "$SEAHORSE_CREDENTIALS"
 # --skip-llm keeps the flow deterministic (the LLM bootstrap self-tests live
 # providers; step 6 already covers extraction with the real Ollama).
 run "seahorse setup --skip-llm" "$SEAHORSE" setup --skip-llm
@@ -295,6 +309,12 @@ if grep -q "seahorse-memory:begin" "$SANDBOX/home/.claude/CLAUDE.md" 2>/dev/null
 else
   fail "agent instructions block in the isolated CLAUDE.md"
 fi
+if [[ -f "$SEAHORSE_CLAUDE_SKILLS_DIR/consolidate/SKILL.md" ]] \
+  && grep -q "seahorse-memory:skill" "$SEAHORSE_CLAUDE_SKILLS_DIR/consolidate/SKILL.md"; then
+  ok "consolidate skill installed in the isolated skills dir"
+else
+  fail "consolidate skill installed in the isolated skills dir"
+fi
 run "consolidate --auto (off → no-op, exit 0)" "$SEAHORSE" consolidate --auto
 run "setup --auto-consolidate (opt-in)" "$SEAHORSE" setup --skip-llm --auto-consolidate
 if grep -q "consolidate --auto" "$SANDBOX/home/.claude/settings.json" 2>/dev/null; then
@@ -304,6 +324,33 @@ else
 fi
 run "doctor (healthy after setup)" "$SEAHORSE" doctor
 run "doctor --fix (idempotent)" "$SEAHORSE" doctor --fix
+# Credentials wiring: point [llm] at a cloud provider whose key is ONLY in the
+# 0600 store — the api_keys check must count it as present (names only).
+python3 - "$VAULT/.seahorse/seahorse.toml" <<'PY'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+text = re.sub(r'^primary = .*$',
+              'primary = "gemini/gemini-2.5-flash"', text, count=1, flags=re.M)
+p.write_text(text, encoding="utf-8")
+PY
+DOCTOR_OUT="$("$SEAHORSE" doctor 2>&1 | tee -a "$LOG" || true)"
+if grep -E "OK +api_keys" <<<"$DOCTOR_OUT" >/dev/null; then
+  ok "stored credentials key satisfies the api_keys check"
+else
+  fail "stored credentials key satisfies the api_keys check"
+  grep "api_keys" <<<"$DOCTOR_OUT" | tee -a "$LOG" >&2
+fi
+if grep -q "e2e-fake-key-0123" <<<"$DOCTOR_OUT"; then
+  fail "credentials value never printed"
+else
+  ok "credentials value never printed"
+fi
+if grep -E "OK +credentials|WARN +credentials" <<<"$DOCTOR_OUT" >/dev/null; then
+  ok "doctor reports the credentials store"
+else
+  fail "doctor reports the credentials store"
+fi
 run "setup --uninstall (symmetric)" "$SEAHORSE" setup --uninstall
 OBSERVER_STARTED=0
 if grep -q "observe event" "$SANDBOX/home/.claude/settings.json" 2>/dev/null; then
@@ -320,6 +367,11 @@ if grep -q "seahorse-memory:begin" "$SANDBOX/home/.claude/CLAUDE.md" 2>/dev/null
   fail "instructions removed after --uninstall"
 else
   ok "instructions removed after --uninstall"
+fi
+if [[ -d "$SEAHORSE_CLAUDE_SKILLS_DIR/consolidate" ]]; then
+  fail "skills removed after --uninstall"
+else
+  ok "skills removed after --uninstall"
 fi
 # Re-install for the MCP step that follows (the uninstall must not be sticky).
 run "re-setup for MCP step" "$SEAHORSE" setup --skip-llm
