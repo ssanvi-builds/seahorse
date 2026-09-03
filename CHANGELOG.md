@@ -4,6 +4,14 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-09-03
+
+### Added
+
+- `seahorse --version` — prints the installed `seahorse-memory` version and
+  exits 0 (single-sourced from package metadata; eager, so it wins even when
+  combined with a subcommand).
+
 ## [0.20.0] - 2026-09-03
 
 ### Added
