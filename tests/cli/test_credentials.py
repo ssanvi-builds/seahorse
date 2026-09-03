@@ -34,9 +34,23 @@ def creds_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_default_path_is_config_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import sys
+
+    from seahorse.cli.credentials import CREDENTIALS_FILENAME
+
     monkeypatch.delenv("SEAHORSE_CREDENTIALS", raising=False)
+    # POSIX branch: XDG_CONFIG_HOME (or ~/.config)
+    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    assert credentials_path() == tmp_path / "xdg" / "seahorse" / "credentials.json"
+    assert credentials_path() == tmp_path / "xdg" / "seahorse" / CREDENTIALS_FILENAME
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    assert credentials_path() == Path.home() / ".config" / "seahorse" / CREDENTIALS_FILENAME
+    # macOS branch: ~/Library/Application Support (XDG_CONFIG_HOME ignored)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert (
+        credentials_path()
+        == Path.home() / "Library" / "Application Support" / "seahorse" / CREDENTIALS_FILENAME
+    )
 
 
 def test_env_override_wins(creds_path: Path) -> None:
