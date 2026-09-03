@@ -23,6 +23,7 @@ import typer
 from pydantic import BaseModel, ConfigDict
 
 from seahorse.cli.config import DEFAULT_LLM_TIMEOUT_S, LlmConfig, write_llm_config
+from seahorse.llm.providers import CLOUD_PROVIDER_MODELS
 
 
 @dataclass(frozen=True)
@@ -36,17 +37,23 @@ class _ProviderMeta:
 
 
 # Provider catalog. Ordered: Ollama first (local-first), then the cloud
-# quality lever.
+# quality lever. The cloud entries derive from the single-source catalog in
+# ``llm.providers`` (env var + default model); only the UI label lives here.
+_WIZARD_LABELS: dict[str, str] = {
+    "gemini": "Gemini (free tier)",
+    "groq": "Groq (free tier)",
+    "openrouter": "OpenRouter (:free)",
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "deepseek": "DeepSeek",
+}
+
 _PROVIDERS: dict[str, _ProviderMeta] = {
     "ollama": _ProviderMeta(None, "qwen3:1.7b", "Ollama local (private, zero config)"),
-    "gemini": _ProviderMeta("GEMINI_API_KEY", "gemini-2.5-flash", "Gemini (free tier)"),
-    "groq": _ProviderMeta("GROQ_API_KEY", "llama-3.3-70b-versatile", "Groq (free tier)"),
-    "openrouter": _ProviderMeta(
-        "OPENROUTER_API_KEY", "deepseek/deepseek-r1:free", "OpenRouter (:free)"
-    ),
-    "openai": _ProviderMeta("OPENAI_API_KEY", "gpt-5-mini", "OpenAI"),
-    "anthropic": _ProviderMeta("ANTHROPIC_API_KEY", "claude-haiku-4-5", "Anthropic"),
-    "deepseek": _ProviderMeta("DEEPSEEK_API_KEY", "deepseek-chat", "DeepSeek"),
+    **{
+        name: _ProviderMeta(env, model, _WIZARD_LABELS[name])
+        for name, env, model in CLOUD_PROVIDER_MODELS
+    },
 }
 
 

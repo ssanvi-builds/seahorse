@@ -104,6 +104,21 @@ PROVIDERS: dict[str, ProviderConfig] = {
 }
 
 
+# Cloud provider catalog: (provider prefix, api-key env var, default model id),
+# in free-tier-quality preference order. SINGLE SOURCE — both the setup
+# bootstrap (``cli/provider_bootstrap``) and the interactive wizard
+# (``cli/wizard``) derive their menus from this tuple, so a new provider is
+# registered exactly once.
+CLOUD_PROVIDER_MODELS: tuple[tuple[str, str, str], ...] = (
+    ("gemini", "GEMINI_API_KEY", "gemini-2.5-flash"),
+    ("groq", "GROQ_API_KEY", "llama-3.3-70b-versatile"),
+    ("openrouter", "OPENROUTER_API_KEY", "deepseek/deepseek-r1:free"),
+    ("openai", "OPENAI_API_KEY", "gpt-5-mini"),
+    ("anthropic", "ANTHROPIC_API_KEY", "claude-haiku-4-5"),
+    ("deepseek", "DEEPSEEK_API_KEY", "deepseek-chat"),
+)
+
+
 def resolve_provider(model_id: str) -> ProviderConfig:
     """Map a ``provider/model`` id to its ``ProviderConfig``.
 
@@ -117,4 +132,9 @@ def resolve_provider(model_id: str) -> ProviderConfig:
     return PROVIDERS[prefix]
 
 
-__all__ = ["ProviderConfig", "PROVIDERS", "resolve_provider"]
+__all__ = [
+    "CLOUD_PROVIDER_MODELS",
+    "ProviderConfig",
+    "PROVIDERS",
+    "resolve_provider",
+]

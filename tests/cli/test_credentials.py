@@ -88,16 +88,16 @@ def test_save_never_leaves_partial_file(creds_path: Path) -> None:
 def test_load_sets_missing_env_only(
     creds_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    # exercise the injectable-environ seam: no real-env writes, no leaks
     monkeypatch.setenv("GROQ_API_KEY", "preset")
     save_api_key("GEMINI_API_KEY", "k1")
     save_api_key("GROQ_API_KEY", "from-file")
-    set_names = load_credentials_env()
-    import os
+    env = {"GROQ_API_KEY": "preset"}
+    set_names = load_credentials_env(environ=env)
 
     assert set(set_names) == {"GEMINI_API_KEY"}
-    assert os.environ["GEMINI_API_KEY"] == "k1"
-    assert os.environ["GROQ_API_KEY"] == "preset"
+    assert env["GEMINI_API_KEY"] == "k1"
+    assert env["GROQ_API_KEY"] == "preset"
 
 
 def test_load_missing_file_is_empty_list(creds_path: Path) -> None:
