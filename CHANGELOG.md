@@ -4,6 +4,37 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-09-03
+
+### Added
+
+- **Consolidate absorbs non-human collisions** — when a distilled note
+  collides with a rival untagged episode that already fed the cluster
+  (source `agent`/`system`/`importer`), consolidate forgets the rival
+  (`absorbed_by_consolidate`) and retries once; human-authored rivals still
+  win. The report names absorbed rivals (`absorbed_rivals` in JSON,
+  `[absorbed N]` in human output) instead of emitting a perpetual COLLISION
+  row every run.
+- **Lossless spool for hook events** — when a hook cannot deliver an
+  envelope to the observer (connection failure, worker down), it writes the
+  envelope to a spool directory (atomic writes, capped at 1000 files); the
+  observer drains the spool into the queue at startup, so a downed observer
+  no longer loses mid-session events.
+
+### Fixed
+
+- **`improve` preserves consolidated identity** — improving a consolidated
+  note no longer breaks the semantic chain: the successor inherits
+  `extraction_mode=consolidated` (no duplicate note on the next consolidate)
+  and inherits the subject when the new body derives none.
+- **Envelope `schema_version` is validated at the edge** — semver-shaped
+  versions with known major `1` are accepted (additive evolution); unknown
+  majors or malformed values fail fast with a 400 at the endpoint instead of
+  being silently tolerated.
+- **Doctor clarifies the orphaned `observer.lock`** — the stale-socket
+  message now explains that a leftover lock file is harmless (liveness comes
+  from the kernel flock, not the file).
+
 ## [0.18.0] - 2026-09-01
 
 ### Added
