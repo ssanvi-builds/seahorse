@@ -157,7 +157,14 @@ def remove_mcp_registration(path: Path | None = None) -> tuple[bool, str]:
 
 
 def _fallback_via_claude_cli() -> tuple[bool, str]:
-    """Last resort: `claude mcp add` (user scope) when direct write failed."""
+    """Last resort: `claude mcp add` (user scope) when direct write failed.
+
+    Skipped when the config path is redirected (``SEAHORSE_CLAUDE_JSON``):
+    the fallback would write the REAL user config while the caller aimed at
+    a sandboxed path — a side-channel write is worse than a reported failure.
+    """
+    if os.environ.get("SEAHORSE_CLAUDE_JSON"):
+        return False, "SEAHORSE_CLAUDE_JSON redirects the config — claude fallback disabled"
     claude = shutil.which("claude")
     if claude is None:
         return False, "claude binary not found"

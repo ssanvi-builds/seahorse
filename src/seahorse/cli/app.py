@@ -983,9 +983,16 @@ def status(ctx: typer.Context) -> None:
 
 
 @app.command()
-def doctor(ctx: typer.Context) -> None:
+def doctor(
+    ctx: typer.Context,
+    fix: bool = typer.Option(
+        False,
+        "--fix",
+        help="Attempt the repairs Seahorse owns for each WARN/FAIL check.",
+    ),
+) -> None:
     """Diagnose the vault: LLM provider, keys, self-test, extraction mode."""
-    run_doctor(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+    run_doctor(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx), fix=fix)
 
 
 @app.command()

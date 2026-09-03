@@ -41,6 +41,11 @@ _OBSERVER_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop")
 _HOOK_MARKER = "observe event"
 _CONTEXT_PROBE_TIMEOUT_S = 10.0
 
+# Check names doctor --fix can repair (via onboarding.repair_steps_for).
+_REPAIRABLE_CHECKS = frozenset(
+    {"claude_hooks", "mcp_registered", "agent_instructions", "consolidate", "db"}
+)
+
 
 def _sqlite_load_extension_supported() -> bool:
     """True when the runtime ``sqlite3`` can load extensions (sqlite-vec needs it).
@@ -127,7 +132,7 @@ def _db_check(config: SeahorseConfig) -> tuple[str, str]:
     """
     db = config.db_path
     if not db.exists():
-        return "WARN", f"missing: {db} (run `seahorse init`)"
+        return "WARN", f"missing: {db} (run `seahorse setup` — it creates it)"
     if not os.access(db, os.W_OK) or not os.access(db.parent, os.W_OK):
         return "FAIL", f"not writable: {db} (restore write permission on the vault)"
     try:
@@ -194,9 +199,18 @@ def _context_probe(config: SeahorseConfig) -> tuple[bool, str]:
 
 
 def run_doctor(
-    config: SeahorseConfig, *, fmt: OutputFormat = "human", out: TextIO
+    config: SeahorseConfig,
+    *,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+    fix: bool = False,
 ) -> None:
-    """Render the diagnostic report for the resolved vault config."""
+    """Render the diagnostic report for the resolved vault config.
+
+    ``fix=True`` attempts the repairs Seahorse owns for every actionable
+    (WARN/FAIL) check in ``_REPAIRABLE_CHECKS`` and appends one
+    ``fix:<check>`` line per attempt — the diagnosis itself is untouched.
+    """
     checks: list[dict[str, str]] = []
 
     if config.llm is None:
@@ -266,6 +280,48 @@ def run_doctor(
         {"check": "context", "status": "OK" if ctx_ok else "WARN", "detail": ctx_detail}
     )
 
+    # The agent surface: MCP registration, agent instructions, auto-consolidate
+    # (opt-in — off is a valid state, never a WARN).
+    from seahorse.cli.agent_instructions import installed as _ai_installed
+    from seahorse.cli.mcp_register import is_mcp_registered
+
+    checks.append(
+        {
+            "check": "mcp_registered",
+            "status": "OK" if is_mcp_registered() else "WARN",
+            "detail": (
+                "registered (user scope)"
+                if is_mcp_registered()
+                else "seahorse-mcp not registered; run `seahorse setup`"
+            ),
+        }
+    )
+    if _ai_installed():
+        checks.append(
+            {"check": "agent_instructions", "status": "OK", "detail": "installed"}
+        )
+    else:
+        checks.append(
+            {
+                "check": "agent_instructions",
+                "status": "WARN",
+                "detail": "no memory instructions in ~/.claude/CLAUDE.md; run `seahorse setup`",
+            }
+        )
+    consolidate = config.consolidate
+    if consolidate is not None and consolidate.auto_on_stop:
+        checks.append(
+            {"check": "consolidate", "status": "OK", "detail": "auto_on_stop = true"}
+        )
+    else:
+        checks.append(
+            {
+                "check": "consolidate",
+                "status": "OK",
+                "detail": "off (opt-in: seahorse setup --auto-consolidate)",
+            }
+        )
+
     checks.append(
         {
             "check": "python",
@@ -311,6 +367,25 @@ def run_doctor(
                 ),
             }
         )
+
+    if fix:
+        actionable = [
+            c["check"]
+            for c in checks
+            if c["status"] in ("WARN", "FAIL") and c["check"] in _REPAIRABLE_CHECKS
+        ]
+        if actionable:
+            from seahorse.cli.onboarding import repair_steps_for
+
+            for step in repair_steps_for(actionable, vault=config.vault):
+                try:
+                    detail = step.run()
+                except Exception as exc:  # noqa: BLE001 — a failed repair is a report, not a crash
+                    detail = f"error: {exc}"
+                status = "FAIL" if detail.startswith("error:") else "OK"
+                checks.append(
+                    {"check": f"fix:{step.check}", "status": status, "detail": detail}
+                )
 
     healthy = all(c["status"] == "OK" for c in checks)
     payload = {"command": "doctor", "healthy": healthy, "checks": checks}

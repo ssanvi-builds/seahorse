@@ -14,6 +14,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from seahorse.cli.config import load_config, write_default_config
 from seahorse.cli.doctor import _context_probe, run_doctor
 from seahorse.cli.setup import write_observe_config
@@ -360,3 +362,91 @@ class TestDbCheck:
         ok, detail = _context_probe(cfg)
         assert ok is True
         assert "ok" in detail
+
+
+class TestOnboardingChecks:
+    """The agent-surface checks: MCP, instructions, auto-consolidate + --fix."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_globals(self, monkeypatch, tmp_path):
+        xdg = tmp_path / "xdg"
+        home = tmp_path / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("SEAHORSE_CLAUDE_JSON", str(tmp_path / "claude.json"))
+        monkeypatch.setenv("SEAHORSE_CLAUDE_MD", str(home / ".claude" / "CLAUDE.md"))
+        monkeypatch.setenv(
+            "SEAHORSE_CLAUDE_SETTINGS", str(tmp_path / "settings.json")
+        )
+
+    def _config(self, tmp_path):
+        write_default_config(tmp_path)
+        return load_config(tmp_path)
+
+    def test_mcp_unregistered_warns(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        mcp = next(c for c in payload["checks"] if c["check"] == "mcp_registered")
+        assert mcp["status"] == "WARN"
+        assert "seahorse setup" in mcp["detail"]
+
+    def test_agent_instructions_missing_warns(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        ai = next(c for c in payload["checks"] if c["check"] == "agent_instructions")
+        assert ai["status"] == "WARN"
+
+    def test_consolidate_off_is_ok_not_warn(self, tmp_path, monkeypatch) -> None:
+        """Auto-consolidation is opt-in: off is a valid, healthy state."""
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        con = next(c for c in payload["checks"] if c["check"] == "consolidate")
+        assert con["status"] == "OK"
+        assert "opt-in" in con["detail"]
+
+    def test_consolidate_on_reports_enabled(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        from seahorse.cli.config import ConsolidateConfig, write_consolidate_config
+
+        write_consolidate_config(tmp_path, ConsolidateConfig(auto_on_stop=True))
+        config = load_config(tmp_path)
+        payload = _doctor(config, monkeypatch)
+        con = next(c for c in payload["checks"] if c["check"] == "consolidate")
+        assert con["status"] == "OK" and "true" in con["detail"]
+
+    def test_fix_repairs_unhealthy_surface(self, tmp_path, monkeypatch) -> None:
+        """--fix registers MCP + installs instructions; the fix lines are OK."""
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        out = io.StringIO()
+        run_doctor(config, fmt="json", out=out, fix=True)
+        payload = json.loads(out.getvalue())
+        fix_rows = {
+            c["check"]: c["status"]
+            for c in payload["checks"]
+            if c["check"].startswith("fix:")
+        }
+        assert fix_rows.get("fix:mcp_registered") == "OK"
+        assert fix_rows.get("fix:agent_instructions") == "OK"
+        # The repairs actually landed on disk.
+        assert Path(os.environ["SEAHORSE_CLAUDE_JSON"]).exists()
+
+    def test_fix_is_reported_not_raised_on_failure(self, tmp_path, monkeypatch) -> None:
+        """A repair that raises becomes a FAIL line — doctor never crashes."""
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        monkeypatch.setenv("SEAHORSE_CLAUDE_JSON", "/proc/nope/impossible.json")
+        monkeypatch.setattr(
+            "seahorse.cli.mcp_register.shutil.which", lambda _: None
+        )  # no real `claude` subprocess in tests
+        out = io.StringIO()
+        run_doctor(config, fmt="json", out=out, fix=True)
+        payload = json.loads(out.getvalue())
+        fix_rows = [c for c in payload["checks"] if c["check"] == "fix:mcp_registered"]
+        assert len(fix_rows) == 1
+        assert fix_rows[0]["status"] == "FAIL"
