@@ -166,37 +166,40 @@ documented in [docs/f3.1-format.md](docs/f3.1-format.md).
 ```bash
 # Install (PyPI):
 pip install seahorse-memory
-# …or with uv:
-uv tool install seahorse-memory
+# …or with uv (with the optional extras baked in):
+uv tool install seahorse-memory --with "seahorse-memory[embeddings,llm]"
 # For hybrid semantic retrieval (FastEmbed ONNX, downloads mE5-small on first
 # embed): pip install "seahorse-memory[embeddings]"
 # For the multi-LLM extraction path (LiteLLM): pip install "seahorse-memory[llm]"
 
-# Create a vault and write your first episode:
-seahorse init myvault
-seahorse remember "Sergio lives in Madrid" --title home
+# ONE COMMAND configures everything — vault, DB, capture hooks, observer,
+# MCP registration (user scope), agent instructions, and a self-tested LLM
+# provider when one is available. Exit 0 always; every step degrades to a
+# WARN line instead of failing:
+seahorse setup
+# …then just use it (in any Claude Code session, the agent now has the
+# seahorse-mcp tools; sessions are captured automatically):
 seahorse recall "madrid"
 
-# Improve and forget (append-only; history is preserved):
+# Fine-grained control — every step is opt-out-able:
+seahorse setup --no-mcp                    # skip the MCP registration
+seahorse setup --no-agent-instructions     # skip the ~/.claude/CLAUDE.md block
+seahorse setup --skip-llm                  # skip provider detection + self-test
+seahorse setup --warm-embeddings           # pre-download the model (~235MB)
+seahorse setup --auto-consolidate          # distill at the Stop event (opt-in)
+
+# Human-facing basics (the CLI still works for shell/scripts):
+seahorse init myvault
+seahorse remember "Sergio lives in Madrid" --title home
 seahorse improve <ep_id> "Sergio lives in Barcelona" --reason correction
 seahorse forget <ep_id> --reason done
-
-# Session capture, context, and consolidation:
-# Install the observer (writes [observe] + merges the Claude Code hooks into
-# ~/.claude/settings.json):
-seahorse setup
-# Start the observer (unix socket + worker), then the next session is captured
-# automatically (skip-first, redacted, deterministic summary):
-seahorse observe start
 seahorse observe status
-# Bootstrap context by recency (the SessionStart hook injects this):
-seahorse context
-# Distill recurrent episodes into semantic knowledge notes (N≥3, idempotent):
 seahorse consolidate
-# Materialize distilled knowledge + project notes as editable .md in the vault
-# (setup writes [materialize]; the consolidated note lands in Memory/):
 seahorse materialize
-# Remove the observer:
+# Diagnose everything (and attempt the repairs Seahorse owns):
+seahorse doctor --fix
+# Symmetric uninstall (hooks + [observe] + MCP + instructions; the vault
+# and its notes stay):
 seahorse setup --uninstall
 
 # Serve an agent over stdio MCP (io.seahorse.memory/v1):

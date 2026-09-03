@@ -4,6 +4,63 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-09-03
+
+### Added
+
+- **One-command onboarding** — `seahorse setup` now configures the whole
+  stack and always exits 0 (individual failures degrade to WARN lines):
+  vault bootstrap (portable `~/seahorse-mem` default when nothing resolves
+  without a TTY), eager DB creation, `[observe]`/`[materialize]` config,
+  Claude Code hooks, observer start, user-scope MCP registration, the
+  agent-instructions block in `~/.claude/CLAUDE.md`, and an LLM provider
+  that is only written after a passing live self-test. Every step has an
+  opt-out flag: `--no-mcp`, `--no-agent-instructions`, `--skip-llm`,
+  `--warm-embeddings`, `--auto-consolidate`.
+- **Provider bootstrap** (`seahorse.cli.provider_bootstrap`): detection in
+  preference order (local Ollama qwen3-first, then cloud keys present in
+  the environment), a failing primary falls through to the next candidate,
+  and a big `ollama pull` is only ever offered on an interactive TTY. The
+  live self-test probe moved here from `doctor` (single source of truth;
+  the wizard and doctor import it).
+- **`seahorse setup --auto-consolidate`** (opt-in): writes the
+  `[consolidate]` section and merges a consolidate-on-stop hook. The hook
+  invokes `seahorse consolidate --auto`, which no-ops (exit 0) while
+  `[consolidate] auto_on_stop = false` — the Stop event never blocks a
+  session, and turning the feature off is a config edit, not a hook edit.
+- **`seahorse doctor --fix`**: attempts the repairs Seahorse owns for each
+  actionable WARN/FAIL check (hooks, MCP, instructions, DB, consolidate);
+  a failed repair is a FAIL line, never a crash. Doctor also diagnoses the
+  new agent surface (`mcp_registered`, `agent_instructions`,
+  `consolidate`).
+- **Symmetric uninstall**: `seahorse setup --uninstall` now also removes
+  the MCP registration and the agent-instructions block and stops the
+  observer; the vault, its notes, `[materialize]`, and the global pointer
+  stay.
+
+### Changed
+
+- **MCP registration is atomic and conservative**
+  (`seahorse.cli.mcp_register`): direct write to `~/.claude.json` via
+  tempfile + `os.replace`, a one-time `.seahorse-bak` backup, foreign
+  servers preserved verbatim, a corrupt file reported and never touched,
+  and a `claude mcp add` subprocess as fallback — skipped when
+  `SEAHORSE_CLAUDE_JSON` redirects the config (no side-channel writes).
+  `SEAHORSE_CLAUDE_MD` and `SEAHORSE_CLAUDE_JSON` override the Claude
+  config paths (tests/sandboxes).
+- **Agent instructions are a delimited block** in `~/.claude/CLAUDE.md`
+  (`<!-- seahorse-memory:begin -->` … `<!-- seahorse-memory:end -->`):
+  idempotent merge, stale blocks updated in place, user content preserved
+  byte-for-byte, clean removal.
+- **Non-TTY setup never hits the cold-start exit 82**: without a TTY and
+  without any resolvable vault, setup bootstraps the portable per-user
+  default (`~/seahorse-mem`, resolved per user at read time) so an agent
+  can run onboarding unattended.
+- **The SessionStart context pointer leads with the `seahorse-mcp` MCP
+  tools** (the agentic use case is primary), CLI as fallback.
+- The default vault option in the interactive picker is the portable
+  `~/seahorse-mem` (was `~/Seahorse`).
+
 ## [0.19.0] - 2026-09-03
 
 ### Added
