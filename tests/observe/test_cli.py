@@ -9,6 +9,7 @@ exit 95).
 from __future__ import annotations
 
 import io
+import json
 import os
 
 import pytest
@@ -303,6 +304,96 @@ def test_observe_event_missing_env_noop(tmp_path, monkeypatch) -> None:
     _capture_post(monkeypatch, posted)
     run_observe_event(_cfg(tmp_path), fmt="human", out=_out())
     assert posted == []
+
+
+def test_observe_event_stdin_payload(tmp_path, monkeypatch) -> None:
+    """The Claude Code contract: the hook payload arrives as stdin JSON."""
+    hook_input = {
+        "session_id": "sess-stdin",
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Grep",
+        "tool_input": {"pattern": "secret", "path": "src/"},
+        "tool_response": {"content": "match"},
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(hook_input)))
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+    assert posted == [
+        {
+            "session_id": "sess-stdin",
+            "event_type": "post_tool_use",
+            "payload": {
+                "tool_name": "Grep",
+                "tool_use_id": "",
+                # Structured stdin fields are serialized so the redactor's
+                # string walk covers nested secrets.
+                "tool_input": '{"pattern": "secret", "path": "src/"}',
+                "tool_response": '{"content": "match"}',
+            },
+        }
+    ]
+
+
+def test_observe_event_stdin_prompt(tmp_path, monkeypatch) -> None:
+    """UserPromptSubmit delivered on stdin maps to the prompt payload."""
+    hook_input = {
+        "session_id": "sess-stdin-2",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "recall the limine fix",
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(hook_input)))
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+    assert posted == [
+        {
+            "session_id": "sess-stdin-2",
+            "event_type": "user_prompt_submit",
+            "payload": {"prompt": "recall the limine fix"},
+        }
+    ]
+
+
+def test_observe_event_stdin_precedence(tmp_path, monkeypatch) -> None:
+    """stdin JSON wins over legacy env vars when both are present."""
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-env")
+    monkeypatch.setenv("CLAUDE_PROMPT", "from env")
+    hook_input = {
+        "session_id": "sess-stdin-3",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "from stdin",
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(hook_input)))
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+    assert posted == [
+        {
+            "session_id": "sess-stdin-3",
+            "event_type": "user_prompt_submit",
+            "payload": {"prompt": "from stdin"},
+        }
+    ]
+
+
+def test_observe_event_malformed_stdin_env_fallback(tmp_path, monkeypatch) -> None:
+    """Unparseable stdin is a silent no-op of itself — env vars still work."""
+    monkeypatch.setattr("sys.stdin", io.StringIO("not json {"))
+    monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-7")
+    monkeypatch.setenv("CLAUDE_PROMPT", "legacy path")
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+    assert posted == [
+        {
+            "session_id": "sess-7",
+            "event_type": "user_prompt_submit",
+            "payload": {"prompt": "legacy path"},
+        }
+    ]
 
 
 def test_observe_event_observer_not_running_noop(tmp_path, monkeypatch) -> None:

@@ -238,7 +238,7 @@ def run_observe_stop(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> 
         out.write(json.dumps({"stopped": True, "pid": pid}) + "\n")
 
 
-# Hook event name → envelope event_type (Claude Code hook env vars).
+# Hook event name → envelope event_type (Claude Code hook_event_name values).
 _HOOK_EVENT_TYPES: dict[str, str] = {
     "SessionStart": "session_start",
     "UserPromptSubmit": "user_prompt_submit",
@@ -247,16 +247,48 @@ _HOOK_EVENT_TYPES: dict[str, str] = {
 }
 
 
-def _build_payload(event_name: str) -> dict:
-    """Build the envelope payload from the Claude Code hook env vars."""
+def _read_hook_input() -> dict:
+    """Read the hook payload Claude Code passes on stdin (JSON line).
+
+    Claude Code delivers every hook event as a JSON object on stdin —
+    ``hook_event_name`` / ``session_id`` / ``tool_name`` / ``tool_input`` / ...
+    The legacy env-var contract (``CLAUDE_HOOK_EVENT_NAME`` etc.) never
+    existed in the harness, but it is kept as fallback for tests and manual
+    invocations. Anything unreadable → empty dict: the hook must never
+    abort the session.
+    """
+    try:
+        if sys.stdin is None or sys.stdin.isatty():
+            return {}
+        raw = sys.stdin.read()
+        if not raw.strip():
+            return {}
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}  # observer failure is a silent no-op (never abort the session)
+
+
+def _hook_field(hook_input: dict, key: str, env_name: str) -> str:
+    """Hook input value (stdin JSON first, legacy env var fallback)."""
+    value = hook_input.get(key)
+    if value is None or value == "":
+        return os.environ.get(env_name, "")
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    return str(value)
+
+
+def _build_payload(event_name: str, hook_input: dict) -> dict:
+    """Build the envelope payload from the hook input (stdin JSON / env vars)."""
     if event_name == "UserPromptSubmit":
-        return {"prompt": os.environ.get("CLAUDE_PROMPT", "")}
+        return {"prompt": _hook_field(hook_input, "prompt", "CLAUDE_PROMPT")}
     if event_name == "PostToolUse":
         return {
-            "tool_name": os.environ.get("CLAUDE_TOOL_NAME", ""),
-            "tool_use_id": os.environ.get("CLAUDE_TOOL_USE_ID", ""),
-            "tool_input": os.environ.get("CLAUDE_TOOL_INPUT", ""),
-            "tool_response": os.environ.get("CLAUDE_TOOL_RESPONSE", ""),
+            "tool_name": _hook_field(hook_input, "tool_name", "CLAUDE_TOOL_NAME"),
+            "tool_use_id": _hook_field(hook_input, "tool_use_id", "CLAUDE_TOOL_USE_ID"),
+            "tool_input": _hook_field(hook_input, "tool_input", "CLAUDE_TOOL_INPUT"),
+            "tool_response": _hook_field(hook_input, "tool_response", "CLAUDE_TOOL_RESPONSE"),
         }
     return {}
 
@@ -376,10 +408,11 @@ def _inject_context(cfg: SeahorseConfig, out: TextIO) -> None:
 def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
     """POST a hook event to the observer socket (called by the Claude Code hooks).
 
-    Reads the hook env vars (``CLAUDE_HOOK_EVENT_NAME`` / ``CLAUDE_SESSION_ID``
-    / ``CLAUDE_PROMPT`` / ``CLAUDE_TOOL_*``) and POSTs the envelope to the unix
-    socket. The hook must NEVER abort the agent session: any observer failure
-    is a silent no-op (exit 0).
+    Reads the hook payload from stdin (the Claude Code contract: a JSON object
+    with ``hook_event_name`` / ``session_id`` / ``prompt`` / ``tool_name`` /
+    ``tool_input`` / ``tool_response``), with the legacy env-var names as
+    fallback, and POSTs the envelope to the unix socket. The hook must NEVER
+    abort the agent session: any observer failure is a silent no-op (exit 0).
 
     Self-healing: when the POST cannot reach the worker (socket absent →
     status 0, or OSError), the hook respawns a dead observer. On SessionStart
@@ -393,20 +426,21 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
     """
     if cfg.observe is None:
         return  # observer not set up — silent no-op (never abort the session)
-    event_name = os.environ.get("CLAUDE_HOOK_EVENT_NAME", "")
+    hook_input = _read_hook_input()
+    event_name = _hook_field(hook_input, "hook_event_name", "CLAUDE_HOOK_EVENT_NAME")
     event_type = _HOOK_EVENT_TYPES.get(event_name)
     if event_type is None:
         return  # unknown hook event — the observer ignores it
-    session_id = os.environ.get("CLAUDE_SESSION_ID", "")
+    session_id = _hook_field(hook_input, "session_id", "CLAUDE_SESSION_ID")
     if not session_id:
         return  # no session — nothing to capture
     is_session_start = event_name == "SessionStart"
     raw: dict = {
         "session_id": session_id,
         "event_type": event_type,
-        "payload": _build_payload(event_name),
+        "payload": _build_payload(event_name, hook_input),
     }
-    agent_id = os.environ.get("CLAUDE_AGENT_ID")
+    agent_id = _hook_field(hook_input, "agent_id", "CLAUDE_AGENT_ID")
     if agent_id:
         raw["agent_id"] = agent_id
     try:
