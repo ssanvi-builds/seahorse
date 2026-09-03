@@ -95,6 +95,16 @@ def test_render_includes_pointer_hint() -> None:
     assert "recall-full" in text
 
 
+def test_pointer_leads_with_mcp_tools() -> None:
+    """The agentic use case is primary: the pointer names the seahorse-mcp
+    tools first, CLI as fallback."""
+    data = _data(total_episodes=1)
+    text = render_context(data)
+    pointer_line = next(line for line in text.splitlines() if "seahorse-mcp" in line)
+    assert "MCP" in pointer_line or "mcp" in pointer_line
+    assert pointer_line.index("seahorse-mcp") < pointer_line.index("seahorse recall")
+
+
 def test_render_is_deterministic() -> None:
     data = _data(
         recent=[_ep("alpha"), _ep("beta")],

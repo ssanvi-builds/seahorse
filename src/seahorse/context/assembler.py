@@ -13,7 +13,9 @@ from seahorse.facade.types import ContextData, ContextEpisode
 
 _HEADER = "# Seahorse memory context"
 _POINTER = (
-    "Use `seahorse recall <query>` / `seahorse recall-full <ep_id>` for details."
+    "Prefer the `seahorse-mcp` MCP tools (`recall`, `recall_full`) when "
+    "available; otherwise `seahorse recall <query>` / `seahorse recall-full "
+    "<ep_id>`."
 )
 
 
