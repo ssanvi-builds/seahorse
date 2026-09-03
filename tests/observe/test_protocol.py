@@ -80,6 +80,46 @@ def test_parse_envelope_missing_event_type_raises() -> None:
         parse_envelope({"session_id": "s"})
 
 
+# --- schema_version strictness (design review post-v1.0, 3A) -------------------
+#
+# A string schema_version must be semver-shaped with a KNOWN major: an
+# unknown MAJOR means the harness contract changed incompatibly — that drift
+# must surface loudly at the edge (400), not silently persist into episodes.
+# Any 1.x is accepted (additive evolution); non-string keeps the tolerant
+# default (a type drift is a one-line harness fix, never a crash).
+
+
+@pytest.mark.parametrize("version", ["1.0", "1.2", "1.10.3", "1.0.0-rc.1"])
+def test_parse_envelope_accepts_known_major_versions(version) -> None:
+    env = parse_envelope(
+        {"session_id": "s", "event_type": "stop", "schema_version": version}
+    )
+    assert env.schema_version == version
+
+
+@pytest.mark.parametrize("version", ["2.0", "2.0.0", "9.9"])
+def test_parse_envelope_rejects_unknown_major(version) -> None:
+    with pytest.raises(EnvelopeError):
+        parse_envelope(
+            {"session_id": "s", "event_type": "stop", "schema_version": version}
+        )
+
+
+@pytest.mark.parametrize("version", ["garbage", "", "1", "v1.0", "1.0 "])
+def test_parse_envelope_rejects_malformed_version_string(version) -> None:
+    with pytest.raises(EnvelopeError):
+        parse_envelope(
+            {"session_id": "s", "event_type": "stop", "schema_version": version}
+        )
+
+
+def test_parse_envelope_non_string_version_keeps_tolerant_default() -> None:
+    env = parse_envelope(
+        {"session_id": "s", "event_type": "stop", "schema_version": 2}
+    )
+    assert env.schema_version == DEFAULT_SCHEMA_VERSION
+
+
 def test_parse_envelope_non_dict_raises() -> None:
     with pytest.raises(EnvelopeError):
         parse_envelope("not-a-dict")  # type: ignore[arg-type]

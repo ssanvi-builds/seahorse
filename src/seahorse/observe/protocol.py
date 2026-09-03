@@ -2,9 +2,13 @@
 
 The envelope is an internal contract of one module with one consumer (the
 batcher). Parsing is TOLERANT (``.get()`` + defaults) so a harness field
-change is a one-line fix, never a crash. There is deliberately NO
-``HarnessAdapter`` interface and no ``cursor.py`` (YAGNI): ``harness_id`` is a
-free string from day 1; multi-harness is a later phase.
+change is a one-line fix, never a crash — with one deliberate exception: a
+string ``schema_version`` is validated (semver shape, known major) because an
+unknown major is incompatible contract drift that must surface loudly at the
+edge, not silently persist into episodes (design review post-v1.0, 3A).
+There is deliberately NO ``HarnessAdapter`` interface and no ``cursor.py``
+(YAGNI): ``harness_id`` is a free string from day 1; multi-harness is a later
+phase.
 
 Envelope shape: ``{schema_version, harness_id, session_id, agent_id,
 prompt_number, event_type, ts, payload}``. ``session_id`` / ``agent_id`` are
@@ -15,6 +19,7 @@ only ``RememberPayload`` (delegation purity).
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +27,19 @@ DEFAULT_SCHEMA_VERSION = "1.0"
 DEFAULT_HARNESS_ID = "unknown"
 DEFAULT_AGENT_ID = "unknown"
 MAX_ID_CHARS = 256
+
+# Known envelope MAJOR (design review post-v1.0, 3A). A string
+# ``schema_version`` must be semver-shaped with this major; a different major
+# means incompatible harness-contract drift and is rejected at the edge (the
+# HTTP endpoint answers 400 — loud, not silently persisted). Any 1.x is
+# accepted (additive evolution). Non-string values keep the tolerant default
+# (a type drift is a one-line harness fix, never a crash). Semver 2.0.0 with
+# optional patch and pre-release/build — mirrors the engine's
+# ``_SEMVER_RE`` (duplicated on purpose: observe never imports engine).
+_ENVELOPE_SEMVER_RE = re.compile(
+    r"^\d+\.\d+(\.\d+)?(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"
+)
+_ENVELOPE_MAJOR = DEFAULT_SCHEMA_VERSION.split(".")[0]
 
 # The four Claude Code hooks. ``event_type`` is a free string
 # at the protocol level (tolerant parsing); the adapter uses these constants.
@@ -89,6 +107,15 @@ def parse_envelope(raw: object) -> Envelope:
     schema_version = raw.get("schema_version", DEFAULT_SCHEMA_VERSION)
     if not isinstance(schema_version, str):
         schema_version = DEFAULT_SCHEMA_VERSION
+    elif not _ENVELOPE_SEMVER_RE.match(schema_version):
+        raise EnvelopeError(
+            f"envelope schema_version must be semver-shaped, got {schema_version!r}"
+        )
+    elif schema_version.split(".", 1)[0] != _ENVELOPE_MAJOR:
+        raise EnvelopeError(
+            f"envelope schema_version major {schema_version!r} is not supported "
+            f"(known major: {_ENVELOPE_MAJOR})"
+        )
     harness_id = raw.get("harness_id", DEFAULT_HARNESS_ID)
     if not isinstance(harness_id, str):
         harness_id = DEFAULT_HARNESS_ID
