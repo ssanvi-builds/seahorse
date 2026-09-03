@@ -16,7 +16,6 @@ present, with Ollama available as the no-network tertiary.
 from __future__ import annotations
 
 import os
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,14 +59,10 @@ class _SelfTestSchema(BaseModel):
 
 
 def _ollama_running() -> bool:
-    """True when Ollama answers on ``:11434`` (a lightweight stdlib probe)."""
-    try:
-        with urllib.request.urlopen(
-            "http://localhost:11434/api/tags", timeout=0.5
-        ) as resp:
-            return resp.status == 200
-    except Exception:  # noqa: BLE001 — a probe failure just means "not running"
-        return False
+    """True when Ollama answers on ``:11434`` (single probe in provider_bootstrap)."""
+    from seahorse.cli.provider_bootstrap import ollama_status
+
+    return ollama_status()[0]
 
 
 def _detect() -> list[str]:

@@ -23,30 +23,23 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from pydantic import BaseModel, ConfigDict
-
 from seahorse.cli.config import LlmConfig, SeahorseConfig
 from seahorse.cli.output import OutputFormat, render_message
+
+# The live provider probe lives in provider_bootstrap (the onboarding owns it);
+# doctor imports it. The legacy aliases keep the historical import paths.
+from seahorse.cli.provider_bootstrap import (  # noqa: F401 — re-exported
+    SelfTestSchema as _SelfTestSchema,
+)
+from seahorse.cli.provider_bootstrap import (
+    provider_self_test as _provider_self_test,
+)
 from seahorse.llm import LLMError, resolve_provider
 
 # The observer hook events + marker (shared with setup, which installs them).
 _OBSERVER_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop")
 _HOOK_MARKER = "observe event"
 _CONTEXT_PROBE_TIMEOUT_S = 10.0
-
-
-class _SelfTestSchema(BaseModel):
-    """Minimal schema for the doctor's live provider probe.
-
-    ``subject`` is required (the probe must produce the core extraction field);
-    ``extra="allow"`` tolerates the extra fields small local models emit from
-    the extraction pattern (e.g. ``valid_at``) — the probe tests reachability
-    and schema-valid JSON, not strict field discipline.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    subject: str
 
 
 def _sqlite_load_extension_supported() -> bool:
@@ -87,30 +80,6 @@ def _missing_keys(llm: LlmConfig) -> list[str]:
         if prov.api_key_env is not None and not os.environ.get(prov.api_key_env):
             missing.append(prov.api_key_env)
     return missing
-
-
-def _provider_self_test(llm: LlmConfig) -> tuple[bool, str]:
-    """Run a real extraction against the configured route (live probe).
-
-    A raised ``LLMError`` (unreachable backend, unknown pricing, missing extra)
-    is a FAIL report, never a crash — the doctor diagnoses.
-    """
-    from seahorse.llm import BudgetContext, LiteLLMBackend, LLMError, RoleRoute
-
-    route = RoleRoute(
-        primary=llm.primary, secondary=llm.secondary, tertiary=llm.tertiary
-    )
-    try:
-        res = LiteLLMBackend(route=route, timeout_s=llm.timeout_s).extract(
-            "Doctor probe: Seahorse is a persistent memory engine for LLM agents.",
-            _SelfTestSchema,
-            budget=BudgetContext(),
-        )
-    except LLMError as exc:
-        return False, f"error: {exc}"
-    if res.degraded_to_skip:
-        return False, "provider unreachable or misconfigured"
-    return True, f"ok ({res.model_used})"
 
 
 def _claude_settings_path() -> Path:
