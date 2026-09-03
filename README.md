@@ -12,10 +12,17 @@ Persistent, bi-temporal memory for LLM agents — local-first, MCP-native,
 Obsidian-readable.
 
 ```bash
-pip install seahorse-memory
-seahorse init myvault && seahorse remember "Sergio lives in Madrid"
-seahorse recall "where does Sergio live?"
+uv tool install seahorse-memory --with "seahorse-memory[embeddings,llm]"
+seahorse setup
 ```
+
+That second command is the whole onboarding. It configures everything: a vault
+(portable `~/seahorse-mem` default), the database, Claude Code capture hooks,
+a running observer, the user-scope MCP registration, the agent instructions
+block, the packaged agent skills, and a self-tested LLM provider when one is
+available. It always exits 0 — every step that cannot complete degrades to a
+WARN line with the exact fix, instead of failing. Verify with `seahorse
+--version` and `seahorse doctor`.
 
 ## Why
 
@@ -53,50 +60,93 @@ correct, and that does not lock you into any runtime or provider.
 - **Teams that want portable memory** — a format they can migrate between
   vendors without replaying history.
 
-## Use case: Claude Code with persistent memory
-
-The fastest way to see Seahorse is to give Claude Code a memory that survives
-between sessions. Four steps:
-
-**1. Capture sessions.** `seahorse setup` bootstraps a vault if you do not
-have one (interactive picker on a terminal; `--vault <path>` to force one) and
-installs the observer hooks into `~/.claude/settings.json`; `seahorse observe
-start` runs the capture worker. Every session is recorded as episodes —
-skip-first (near-zero cost),
-redacted, with a deterministic summary. The hooks self-heal: if the worker
-dies, the next hook fires it back up, so capture resumes without manual
-intervention.
+## Quickstart
 
 ```bash
+# Install (with the optional extras — semantic retrieval + multi-LLM extraction):
+uv tool install seahorse-memory --with "seahorse-memory[embeddings,llm]"
+# …or with pip:
+pip install "seahorse-memory[embeddings,llm]"
+
+# One command, everything configured (vault, DB, hooks, observer, MCP,
+# agent instructions, skills, self-tested LLM provider). Exit 0 always:
 seahorse setup
-seahorse observe start
+# Force a specific vault (created if missing):
+seahorse setup --vault ~/obsidian-vaults/myvault
+
+# Verify the whole chain end to end (and attempt the repairs Seahorse owns):
+seahorse doctor --fix
+
+# Use it — in any Claude Code session the agent now has the memory tools;
+# sessions are captured automatically. From the shell:
+seahorse remember "Sergio lives in Madrid" --title home
+seahorse recall "where does Sergio live?"
 ```
 
-**2. Recall across sessions.** The SessionStart hook injects `seahorse context`
-into the next session, so the agent starts with what it learned before. Ask
-directly with `seahorse recall`:
+Without a terminal (an agent running onboarding unattended), setup bootstraps
+the portable per-user default `~/seahorse-mem` instead of failing — it never
+hits a cold-start prompt. On a terminal it offers an interactive picker of
+your registered Obsidian vaults.
 
-```bash
-seahorse context
-seahorse recall "what did we decide about the API design?"
-```
+> **First run**: the semantic-embedding model (mE5-small, ~235MB) downloads
+> lazily on the first `remember`/`recall` — the CLI announces it so the first
+> call doesn't look hung. `seahorse setup --warm-embeddings` pre-downloads it.
 
-**3. Verify the wiring.** `seahorse doctor` checks the whole capture chain
-end to end: hooks installed in Claude Code, observer worker alive, and the
-SessionStart context rendering.
+### Setup reference
 
-**4. Bring your existing memory.** If you already use claude-mem, `seahorse
-import` migrates its observations into canonical episodes — no replay, no
-lock-in:
+Every step is opt-out-able; every step is idempotent — run setup twice, nothing
+duplicates.
 
-```bash
-seahorse import --mode commit
-```
+| Flag | Effect |
+|------|--------|
+| `--vault <path>` | Use (and bootstrap) this vault instead of resolution. |
+| `--no-mcp` | Skip the user-scope MCP registration. |
+| `--no-agent-instructions` | Skip the `~/.claude/CLAUDE.md` instructions block. |
+| `--no-skills` | Skip installing the packaged agent skills. |
+| `--skip-llm` | Skip provider detection + live self-test. |
+| `--warm-embeddings` | Pre-download the embeddings model (~235MB). |
+| `--auto-consolidate` | Opt in: distill at the Claude Code Stop event. |
+| `--uninstall` | Symmetric removal (see below). |
 
-The key difference: the agent writes into **the same vault you edit in
-Obsidian**. Every episode is a markdown file with YAML frontmatter — readable,
-editable, diffable in git, and auditable by a human. The agent's memory is not a
-black box; it is your notes.
+**LLM provider.** Setup detects providers in preference order — local Ollama
+(qwen3 first), then cloud keys present in the environment (Gemini, Groq,
+OpenRouter, OpenAI, Anthropic, DeepSeek) — and writes the `[llm]` config only
+after a passing live self-test, so `seahorse doctor` never reports a default
+that was never verified. If nothing passes, an interactive terminal offers to
+pull a local Ollama model, paste a cloud API key, or skip (the default — big
+downloads never happen on a bare Enter). A pasted key is stored in the
+credentials store: `~/.config/seahorse/credentials.json`, mode 0600, atomic
+writes, never in `seahorse.toml`, values never printed. Headless commands and
+`seahorse doctor` load the store automatically; pre-existing environment
+variables win.
+
+**Uninstall.** `seahorse setup --uninstall` removes the hooks, the `[observe]`
+section, the MCP registration, the instructions block, and the packaged skills,
+and stops the observer. The vault, its notes, `[materialize]`, and the global
+pointer stay — your memory is yours.
+
+### The loop
+
+What the setup buys you, in use:
+
+1. **Capture.** The hooks record every Claude Code session as episodes —
+   skip-first (near-zero cost), redacted, with a deterministic summary. The
+   observer self-heals: if the worker dies, the next hook fires it back up, and
+   events it cannot deliver are spooled losslessly and drained on restart.
+2. **Recall.** The SessionStart hook injects `seahorse context` into the next
+   session, so the agent starts with what it learned before — pointing at the
+   seahorse-mcp tools first, the CLI as fallback.
+3. **Write back.** The agent reads and writes memory through the MCP tools
+   (`recall`, `remember`, `improve`…) instead of guessing.
+4. **Distill.** Setup installs a `consolidate` skill into `~/.claude/skills/`,
+   so an agent session can run the distillation itself and enrich the notes
+   with the MCP tools — the agent's own LLM does the synthesis, so
+   consolidating needs no API key. Prefer it on a schedule? `seahorse setup
+   --auto-consolidate` runs `seahorse consolidate --auto` at the Stop event
+   (opt-in; off by default, and a config edit turns it off again).
+5. **Human in the loop.** Episodes and distilled notes are markdown files in
+   the same vault you edit in Obsidian — readable, diffable in git, auditable.
+   If the agent is wrong, you correct the note, not a database.
 
 ## Use it from an agent (MCP)
 
@@ -104,27 +154,25 @@ Seahorse is built for agents: the memory surface is a stdio MCP server
 (`io.seahorse.memory/v1`) that any agent that speaks MCP can connect to. The
 CLI is for humans and scripts; agents talk to `seahorse-mcp`.
 
-**Register the server in Claude Code** (local scope, default):
+`seahorse setup` registers the server in Claude Code automatically (user
+scope). The vault resolves dynamically at each call — the vault containing the
+current working directory, else the per-user default — so one registration
+serves every project and every vault.
+
+Manual alternatives, when you need them:
 
 ```bash
-claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"
+# Register by hand (the `--` separates Claude's own flags from the server command):
+claude mcp add seahorse-mcp -- seahorse-mcp
 ```
 
-The `--` is required — it separates Claude's own flags from the server command.
-Use `--scope project` to share the server with a team via `.mcp.json` (checked
-into git). Verify with `claude mcp list` (should show `✔ Connected`) and
-`claude mcp get seahorse-mcp`.
-
-**Or configure it in `.mcp.json`** at the project root (works with any MCP
-client):
-
 ```json
+// .mcp.json at the project root — shares the server with a team via git:
 {
   "mcpServers": {
     "seahorse-mcp": {
       "type": "stdio",
-      "command": "uvx",
-      "args": ["--from", "seahorse-memory", "seahorse-mcp", "--vault", "${HOME}/myvault"]
+      "command": "seahorse-mcp"
     }
   }
 }
@@ -134,15 +182,11 @@ Note: `~` is not expanded in `.mcp.json` — use `${HOME}` or an absolute path.
 (`mcpServers` in `settings.json` is silently ignored; MCP servers live in
 `~/.claude.json` for user/local scope and in `.mcp.json` for project scope.)
 
-Once connected, the agent sees the 14 memory tools — `remember`, `recall`,
-`recall_timeline`, `recall_full`, `improve`, `forget`, `build_pit`,
-`skill_add`, `skill_show`, `skill_list`, `skill_search`, `freshness_view`,
-`audit_log`, `follow_supersedes_chain` (see [The agent
-surface](#the-agent-surface--7-memory-native-primitives--7-proceduralread-only-tools)).
-
-The observer (`seahorse setup`) is a separate piece: it captures Claude Code
-sessions into episodes. The MCP server is how the agent *reads and writes*
-memory. Both work together — capture sessions, then recall across them.
+Once connected, the agent sees the 14 memory tools — see
+[The agent surface](#the-agent-surface--7-memory-native-primitives--7-proceduralread-only-tools).
+The observer is a separate piece: it *captures* Claude Code sessions into
+episodes; the MCP server is how the agent *reads and writes* memory. Both work
+together — capture sessions, then recall across them.
 
 ## How it works
 
@@ -161,108 +205,84 @@ search, FTS5 for full-text), and once as a markdown file with F3.1 frontmatter
 in the vault. The human edits the same markdown. The format is versioned and
 documented in [docs/f3.1-format.md](docs/f3.1-format.md).
 
-## Quickstart
+## The agent surface — 7 memory-native primitives + 7 procedural/read-only tools
+
+Exposed over stdio MCP (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`) and
+mirrored on the CLI. These are memory primitives, not generic CRUD: an agent calls
+`remember` / `recall` / `improve` / `forget` the way a human would talk about memory.
+
+The 7 primitives (write + retrieve):
+
+| Primitive | What it does |
+|-----------|--------------|
+| `remember` | Record an episode (body, source, optional title/subject). |
+| `recall` | INDEX level — the current-state listing, clamped to `top_k`. |
+| `recall_timeline` | TIMELINE level — the supersedes chain around an anchor episode. |
+| `recall_full` | FULL level — the hydrated episode with all provenance. |
+| `improve` | Supersede an episode with a corrected one (append-only). |
+| `forget` | Soft-delete an episode (append-only; history preserved). |
+| `build_pit` | Build a point-in-time projection (all-None → current state). |
+
+Plus 7 procedural / read-only tools (skills + facade introspection):
+
+| Tool | What it does |
+|------|--------------|
+| `skill_add` | Create a procedural skill (deterministic, near-zero cost). |
+| `skill_show` | Show a skill's gated body (trust gate). |
+| `skill_list` | List procedural skills (Discovery level). |
+| `skill_search` | Search procedural skills (hybrid recall, procedural filter). |
+| `freshness_view` | Freshness snapshot of an episode (age, stale, pending_ingest). |
+| `audit_log` | Audit events for an episode (write-path history). |
+| `follow_supersedes_chain` | The supersedes closure for an episode (version history). |
+
+Three retrieval levels give **progressive disclosure**: a cheap listing first
+(INDEX), the chain on demand (TIMELINE), and the full record only when needed
+(FULL). This keeps the common path cheap.
+
+## Everyday commands
+
+The CLI mirrors the agent surface for humans, scripts, and cron jobs:
 
 ```bash
-# Install (PyPI):
-pip install seahorse-memory
-# …or with uv (with the optional extras baked in):
-uv tool install seahorse-memory --with "seahorse-memory[embeddings,llm]"
-# For hybrid semantic retrieval (FastEmbed ONNX, downloads mE5-small on first
-# embed): pip install "seahorse-memory[embeddings]"
-# For the multi-LLM extraction path (LiteLLM): pip install "seahorse-memory[llm]"
-
-# ONE COMMAND configures everything — vault, DB, capture hooks, observer,
-# MCP registration (user scope), agent instructions, and a self-tested LLM
-# provider when one is available. Exit 0 always; every step degrades to a
-# WARN line instead of failing:
-seahorse setup
-# …then just use it (in any Claude Code session, the agent now has the
-# seahorse-mcp tools; sessions are captured automatically):
-seahorse recall "madrid"
-
-# Fine-grained control — every step is opt-out-able:
-seahorse setup --no-mcp                    # skip the MCP registration
-seahorse setup --no-agent-instructions     # skip the ~/.claude/CLAUDE.md block
-seahorse setup --no-skills                 # skip the packaged agent skills
-seahorse setup --skip-llm                  # skip provider detection + self-test
-seahorse setup --warm-embeddings           # pre-download the model (~235MB)
-seahorse setup --auto-consolidate          # distill at the Stop event (opt-in)
-
-Setup also installs a `consolidate` skill into `~/.claude/skills/`, so an
-agent session can run the distillation itself: the agent runs
-`seahorse consolidate` and enriches the resulting notes with the seahorse-mcp
-tools — the agent's own LLM does the synthesis, so consolidating needs no API
-key. If setup finds no LLM provider, an interactive terminal offers to pull a
-local Ollama model, paste a cloud API key (Gemini, Groq, OpenRouter, OpenAI,
-Anthropic, DeepSeek), or skip. A pasted key is stored in
-`~/.config/seahorse/credentials.json` (mode 0600, atomic writes, never in
-`seahorse.toml` or logs) and headless commands pick it up automatically;
-`seahorse doctor` reports the skills and the credentials store.
-
-# Human-facing basics (the CLI still works for shell/scripts):
-seahorse init myvault
-seahorse remember "Sergio lives in Madrid" --title home
-seahorse improve <ep_id> "Sergio lives in Barcelona" --reason correction
+seahorse remember "deployed the API behind auth" --title deploy
+seahorse improve <ep_id> "deployed the API behind oauth" --reason correction
 seahorse forget <ep_id> --reason done
-seahorse observe status
-seahorse consolidate
-seahorse materialize
-# Diagnose everything (and attempt the repairs Seahorse owns):
-seahorse doctor --fix
-# Symmetric uninstall (hooks + [observe] + MCP + instructions + skills; the
-# vault and its notes stay):
-seahorse setup --uninstall
-
-# Serve an agent over stdio MCP (io.seahorse.memory/v1):
-seahorse-mcp --vault myvault
-# …equivalently:
-seahorse mcp --vault myvault
+seahorse recall "what did we decide about the API design?"
+seahorse observe status              # capture worker state
+seahorse consolidate                 # batch-distill episodes into a note
+seahorse materialize                 # backfill distilled notes into Memory/
+seahorse import --mode commit        # migrate claude-mem observations
+seahorse doctor --fix                # diagnose + repair what Seahorse owns
+seahorse setup --uninstall           # remove the surfaces, keep the vault
 ```
 
-The `seahorse` console script is for humans and shell scripts; `seahorse-mcp` is
-for agents. The `seahorse mcp` subcommand invokes the same stdio server as
-`seahorse-mcp`, so both agent entry points are equivalent. To connect an agent,
-see [Use it from an agent](#use-it-from-an-agent-mcp).
+## Your vault stays yours
 
-### Prerequisites
-
-- **Python ≥ 3.11** (any recent 3.11/3.12/3.13 works). The interpreter's
-  `sqlite3` must support `enable_load_extension` (sqlite-vec needs it); most
-  standard builds do — `seahorse doctor` reports it as a FAIL if not.
+- **Python ≥ 3.11** is the only requirement. The interpreter's `sqlite3` must
+  support `enable_load_extension` (sqlite-vec needs it); most standard builds do
+  — `seahorse doctor` reports it as a FAIL if not.
 - **Obsidian is optional.** Seahorse runs on any directory of markdown —
   `seahorse init` creates a `.seahorse/` sidecar in a plain folder. Obsidian is
   a human-facing editor for the same folder; its `.obsidian/` directory is
   ignored by Seahorse, never required.
-
-### Migrating a legacy Obsidian vault
-
-A vault of pre-existing Obsidian notes (no frontmatter, or legacy `tags`/
-`created` frontmatter) is not yet in the canonical format — `seahorse index
-rebuild` fails honestly on those notes. `seahorse frontmatter migrate` converts
-them:
+- **Legacy vaults migrate.** A vault of pre-existing Obsidian notes (no
+  frontmatter, or legacy `tags`/`created` frontmatter) is not yet in the
+  canonical format — `seahorse index rebuild` fails honestly on those notes.
+  `seahorse frontmatter migrate` converts them:
 
 ```bash
 # Preview: classify every note, write nothing (always exit 0):
 seahorse frontmatter migrate --vault myvault --dry-run
 # Apply: convert legacy notes, leave canonical notes untouched, refuse
-# incompatible notes:
+# incompatible notes (exit 97 — the manifest names which need manual work):
 seahorse frontmatter migrate --vault myvault
 # Rebuild the sidecar index from the converted notes:
 seahorse index rebuild --vault myvault
 ```
 
-Apply exits `97` when incompatible notes block a full migration — the manifest
-summary is printed first so the operator sees which notes need manual
-resolution. `--resume` skips notes unchanged since the last manifest;
-`--batch-size` sets the manifest checkpoint cadence. Migration works before
-`seahorse init` (it only touches `.md` files + the manifest).
-
-> **First run**: the semantic-embedding model (mE5-small, ~235MB) downloads
-> lazily on the first `remember`/`recall` — the CLI announces it so the first
-> call doesn't look hung. `seahorse status` shows the active retrieval regime
-> (`hybrid RRF (model cached)` vs `current-state listing — install
-> seahorse-memory[embeddings] for semantic recall`).
+`--resume` skips notes unchanged since the last manifest; `--batch-size` sets
+the checkpoint cadence. Migration works before `seahorse init` (it only
+touches `.md` files + the manifest).
 
 ## Compared to other memory tools
 
@@ -320,10 +340,6 @@ frontmatter carrying two time axes (`valid_at` — when it became true, and
 `created_at` — when it was recorded), provenance, and a cognitive type. The
 format is versioned and documented in [docs/f3.1-format.md](docs/f3.1-format.md).
 
-**Why Obsidian?** Because the human is part of the memory system. The agent
-writes into the same vault you edit — markdown is readable, diffable in git,
-and auditable. If the agent is wrong, you correct the note, not a database.
-
 **How is this different from claude-mem?** claude-mem stores session
 observations in its own schema. Seahorse is an open, bi-temporal standard with
 a portable format and a human-readable layer — and `seahorse import` migrates
@@ -331,53 +347,13 @@ claude-mem observations into canonical episodes, so it is a bridge, not a
 competitor.
 
 **Do I need an LLM?** No. The deterministic skip-path is the default for the
-bulk of writes (near-zero cost). LLM extraction is optional (`seahorse-memory[llm]`)
-and reserved for the few episodes that justify it.
+bulk of writes (near-zero cost). LLM extraction is optional
+(`seahorse-memory[llm]`) and reserved for the few episodes that justify it.
+Even distillation works without an API key: the packaged `consolidate` skill
+has the agent's own LLM do the synthesis through the MCP tools.
 
 **Is it free?** Yes. Apache-2.0, local-first, zero-infra. A managed SaaS and
 enterprise tier are planned for the future (see the project's strategy notes).
-
-**How do I contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-development setup, test/lint commands, and pull request workflow.
-
-## Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for what is built, what is next, and the direction
-of the project. Release history lives in [CHANGELOG.md](CHANGELOG.md).
-
-## The agent surface — 7 memory-native primitives + 7 procedural/read-only tools
-
-Exposed over stdio MCP (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`) and
-mirrored on the CLI. These are memory primitives, not generic CRUD: an agent calls
-`remember` / `recall` / `improve` / `forget` the way a human would talk about memory.
-
-The 7 primitives (write + retrieve):
-
-| Primitive | What it does |
-|-----------|--------------|
-| `remember` | Record an episode (body, source, optional title/subject). |
-| `recall` | INDEX level — the current-state listing, clamped to `top_k`. |
-| `recall_timeline` | TIMELINE level — the supersedes chain around an anchor episode. |
-| `recall_full` | FULL level — the hydrated episode with all provenance. |
-| `improve` | Supersede an episode with a corrected one (append-only). |
-| `forget` | Soft-delete an episode (append-only; history preserved). |
-| `build_pit` | Build a point-in-time projection (all-None → current state). |
-
-Plus 7 procedural / read-only tools (skills + facade introspection):
-
-| Tool | What it does |
-|------|--------------|
-| `skill_add` | Create a procedural skill (deterministic, near-zero cost). |
-| `skill_show` | Show a skill's gated body (trust gate). |
-| `skill_list` | List procedural skills (Discovery level). |
-| `skill_search` | Search procedural skills (hybrid recall, procedural filter). |
-| `freshness_view` | Freshness snapshot of an episode (age, stale, pending_ingest). |
-| `audit_log` | Audit events for an episode (write-path history). |
-| `follow_supersedes_chain` | The supersedes closure for an episode (version history). |
-
-Three retrieval levels give **progressive disclosure**: a cheap listing first
-(INDEX), the chain on demand (TIMELINE), and the full record only when needed
-(FULL). This keeps the common path cheap.
 
 ## What works
 
@@ -402,8 +378,9 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 - **LLM extraction**: a real multi-LLM path (ollama / gemini / groq /
   openrouter / openai / anthropic / deepseek / vllm, local-first) with a strict
   schema validator + repair loop, retry/fallback chain, and an operative cost cap
-  (local and free-tier models price at $0). `seahorse init --llm` bootstraps it;
-  the skip-path stays the near-zero-cost default for the bulk of writes.
+  (local and free-tier models price at $0). `seahorse setup` detects and
+  self-tests a provider; the skip-path stays the near-zero-cost default for the
+  bulk of writes.
 - **Local-first CI gate**: the real extraction path runs in CI against the
   weakest model of the family (`ollama/qwen3:0.6b`) so the validator + repair
   must carry the load — the path does not silently depend on native structured
@@ -412,7 +389,8 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 - **Batch distillation** (`seahorse consolidate`): distill many episodes into a
   single consolidated note — deterministic by default, with opt-in LLM synthesis
   (`--synthesis llm`) and supersession (`--supersede`) so the consolidated note
-  supersedes its sources.
+  supersedes its sources. Non-human rivals are absorbed; human-authored notes
+  always win.
 - **Materialization** (`[materialize]`, default `consolidated`): distilled
   knowledge and project notes become visible, editable F3.1 `.md` notes in the
   vault (`Memory/` by default) — the agent works with the same notes the human
@@ -426,6 +404,9 @@ Three retrieval levels give **progressive disclosure**: a cheap listing first
 - **Legacy-vault migration**: `seahorse frontmatter migrate` converts legacy
   Obsidian notes with a `--dry-run` preview, `--resume`, and honest exit `97`
   when incompatible notes block a full migration.
+- **One-command onboarding**: `seahorse setup` configures the whole stack
+  (vault, DB, hooks, observer, MCP, agent instructions, skills, provider) and
+  always exits 0; `seahorse doctor --fix` diagnoses and repairs the chain.
 - Honest exit codes and a structured `{"error": {...}}` envelope on stderr, so
   agents and scripts can branch on `seahorse_code` / `cli_code` deterministically.
 
@@ -460,9 +441,9 @@ reserved.
 ## Testing
 
 - **Unit + integration**: `uv run pytest` (coverage ≥ 80% gate).
-- **Fresh-user e2e**: `scripts/e2e-fresh-user.sh` — the full
-  install → init → core CLI → embeddings → LLM → import → MCP flow from a clean,
-  isolated HOME (never touches the real `~/.claude` / `~/.claude-mem`).
+- **Fresh-user e2e**: `scripts/e2e-fresh-user.sh` — the full install → setup →
+  core CLI → embeddings → LLM → import → MCP flow from a clean, isolated HOME
+  (never touches the real `~/.claude` / `~/.claude-mem`).
 - **Environment matrix**: `scripts/e2e-matrix.sh` — the fresh-user flow across
   environment combinations (install method × extras × Obsidian × Ollama ×
   online/offline × vault state × concurrency). `--ci-subset` runs the CI-safe
@@ -483,15 +464,11 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 ## Current status
 
-**v0.19.0.** The memory engine works end-to-end from a clean install: write
-episodes, recall them with hybrid semantic retrieval, extract with a real
-multi-LLM path (local-first, CI-gated), improve and forget them, and serve an
-agent over stdio MCP. Recall ranks by relevance when vectors are populated and
-the embedder is wired, and honestly degrades to a current-state listing
-otherwise. An opt-in decay ranking bias (default-off) downweights stale
-knowledge by age. `seahorse import` migrates claude-mem observations to
-episodes, and batch distillation (`seahorse consolidate`) turns many episodes
-into one consolidated note, with opt-in LLM synthesis and supersession. The
-benchmark harness ships in the repo with caveats and reproduction commands in
-[docs/benchmark.md](docs/benchmark.md). See [What works](#what-works) and
-[ROADMAP.md](ROADMAP.md) for what is next.
+**v0.22.0.** The full agentic loop works end to end from a one-command setup:
+sessions are captured automatically, recalled across sessions (hybrid semantic
+retrieval when vectors are populated, honest listing otherwise), the agent
+reads and writes memory over stdio MCP, and batch distillation turns episodes
+into consolidated notes that materialize in the vault. The benchmark harness
+ships in the repo with caveats in [docs/benchmark.md](docs/benchmark.md). See
+[What works](#what-works) for the inventory and [ROADMAP.md](ROADMAP.md) for
+what is next.
