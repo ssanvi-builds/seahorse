@@ -4,9 +4,11 @@
 write path owns first ingestion, not the supersede edit). The effective
 provenance marks the edit as a skip-path extraction (``extraction_mode='skip'``,
 ``model_used=None``, ``prompt_hash=None``, ``confidence=1.0``) while preserving
-the caller's ``source_type``. The primitives facade does NOT call
-``write_path.ingest`` and does NOT open ``repo.atomic()`` (the engine owns the
-atomic invalidate-then-append).
+the caller's ``source_type``. Exception (design review post-v1.0, decision 2):
+when the OLD episode is a consolidated semantic note, the regime marker
+``extraction_mode='consolidated'`` is inherited — the other skip keys are still
+forced. The primitives facade does NOT call ``write_path.ingest`` and does NOT
+open ``repo.atomic()`` (the engine owns the atomic invalidate-then-append).
 
 ``EngineError(E_COLLISION_EXISTS)`` is propagated verbatim — the gap is
 resolved in the engine (atomic rollback).
@@ -15,6 +17,7 @@ resolved in the engine (atomic rollback).
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -101,6 +104,65 @@ class TestImproveEffectiveProvenance:
         # caller-supplied non-skip keys are still preserved
         assert by["source_type"] == "human"
         assert by["agent_id"] == "a1"
+
+
+class TestImproveConsolidatedInheritance:
+    """Design review post-v1.0, decision 2: editing a consolidated note must
+    NOT break the semantic chain. ``extraction_mode='skip'`` would drop the
+    successor out of the consolidated regime (``_is_consolidated`` fails →
+    duplicate note on the next consolidate; the note stops materializing).
+    The marker is the note's REGIME, not its authorship — authorship stays
+    honest in ``by.source_type`` and ``supersedes_reason=CORRECTION``."""
+
+    def _consolidated_old(self) -> Any:
+        return make_episode(
+            "e1",
+            cognitive_type="semantic",
+            provenance={"source_type": "system", "extraction_mode": "consolidated"},
+        )
+
+    def test_consolidated_old_inherits_extraction_mode(self, facade, engine) -> None:
+        engine.get_result = self._consolidated_old()
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())
+        assert engine.improve_calls[0]["by"]["extraction_mode"] == "consolidated"
+
+    def test_consolidated_old_still_forces_other_skip_keys(self, facade, engine) -> None:
+        # Only the regime marker is inherited; the model/provenance keys stay
+        # skip-path (the human edit did not run a model).
+        engine.get_result = self._consolidated_old()
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())
+        by = engine.improve_calls[0]["by"]
+        assert by["model_used"] is None
+        assert by["prompt_hash"] is None
+        assert by["confidence"] == 1.0
+
+    def test_non_consolidated_old_keeps_skip(self, facade, engine) -> None:
+        engine.get_result = make_episode(
+            "e1", cognitive_type="semantic", provenance={"extraction_mode": "llm"}
+        )
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())
+        assert engine.improve_calls[0]["by"]["extraction_mode"] == "skip"
+
+    def test_episodic_old_keeps_skip(self, facade, engine) -> None:
+        engine.get_result = make_episode(
+            "e1",
+            cognitive_type="episodic",
+            provenance={"extraction_mode": "consolidated"},
+        )
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())
+        assert engine.improve_calls[0]["by"]["extraction_mode"] == "skip"
+
+    def test_ghost_ep_id_keeps_skip(self, facade, engine) -> None:
+        # Old episode not found (engine raises later) — the facade must not
+        # inherit from None; effective_by is built for the skip regime.
+        engine.get_result = None
+        engine.improve_result = make_episode("e2")
+        facade.improve("e1", "new body", by=_by())
+        assert engine.improve_calls[0]["by"]["extraction_mode"] == "skip"
 
 
 class TestImproveCollisionPropagation:

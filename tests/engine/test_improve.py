@@ -175,18 +175,46 @@ def test_improve_same_subject_no_collision(engine):
     assert {e.id for e in repo.query_vigent()} == {new_ep.id}
 
 
-def test_improve_new_body_without_heading_stores_fact_id_none(engine):
-    # The successor derives subject/fact_id from the new body only (LWW regime):
-    # a new body with no H1 and no title -> fact_id None. improve must still
-    # derive them (not store the constructor default), which this pins.
+def test_improve_new_body_without_heading_inherits_old_subject(engine):
+    # Identity inheritance (design review post-v1.0, decision 2 option C): when
+    # the new body derives no subject (no H1, no title), the successor inherits
+    # the old episode's subject and fact_id instead of silently leaving the
+    # subject un-keyed (which used to break the consolidated-note regime: the
+    # successor vanished from _is_consolidated matching and from the vault).
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\nv1\n")
     new_ep = eng.improve(
         "e1", "plain text with no heading\n", by={"source_type": "human"}, now=LATER
     )
     stored = repo.get(new_ep.id)
+    assert stored.subject == repo.get("e1").subject
+    assert stored.fact_id == repo.get("e1").fact_id
+
+
+def test_improve_new_body_without_heading_and_no_old_subject_stores_none(engine):
+    # Nothing to inherit: when the old episode has no subject either, the
+    # successor still stores subject/fact_id None (the old un-keyed contract).
+    eng, repo, audit = engine
+    _apply(eng, "e1", "no heading at all\n")
+    assert repo.get("e1").subject is None
+    new_ep = eng.improve(
+        "e1", "still no heading\n", by={"source_type": "human"}, now=LATER
+    )
+    stored = repo.get(new_ep.id)
     assert stored.subject is None
     assert stored.fact_id is None
+
+
+def test_improve_new_body_with_new_heading_rekeys_explicitly(engine):
+    # An explicit new H1 is a deliberate re-key: the successor derives the NEW
+    # subject (and may collide with a third episode — tested above), it does
+    # NOT inherit the old subject.
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\nv1\n")
+    new_ep = eng.improve("e1", "# Barcelona\nv2\n", by={"source_type": "human"}, now=LATER)
+    stored = repo.get(new_ep.id)
+    assert stored.subject == "barcelona"
+    assert stored.fact_id is not None  # derived from the new subject, not inherited
 
 
 def test_improve_collision_rollback_emits_no_audit(engine):

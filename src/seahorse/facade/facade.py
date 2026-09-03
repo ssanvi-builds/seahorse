@@ -472,11 +472,27 @@ class MemoryFacade:
         ``EngineError(E_COLLISION_EXISTS)`` is propagated verbatim (the engine
         resolves it: atomic rollback, target stays valid). The facade never
         catches it.
+
+        Regime inheritance (design review post-v1.0, decision 2): when the OLD
+        episode is a consolidated semantic note, the successor inherits
+        ``extraction_mode='consolidated'`` — the marker is the note's regime,
+        not its authorship (the human authorship stays in ``by.source_type``
+        and ``supersedes_reason=CORRECTION``). Without the inheritance the
+        successor dropped out of the consolidated regime: ``_is_consolidated``
+        stopped matching, the next ``consolidate`` created a duplicate note,
+        and the successor stopped materializing/embedding. The other skip keys
+        (``model_used``/``prompt_hash``/``confidence``) are still forced.
         """
         self._validate_improve_input(ep_id, new_body, by)
+        old = self._engine.get(ep_id)
+        inherits_consolidated = (
+            old is not None
+            and old.cognitive_type == "semantic"
+            and old.provenance.get("extraction_mode") == "consolidated"
+        )
         effective_by: dict[str, Any] = {
             **by,
-            "extraction_mode": "skip",
+            "extraction_mode": "consolidated" if inherits_consolidated else "skip",
             "model_used": None,
             "prompt_hash": None,
             "confidence": 1.0,

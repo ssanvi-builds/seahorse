@@ -364,12 +364,18 @@ class BiTemporalEngine:
             # Derive subject/fact_id from the new body — apply_fact does this via
             # model_copy, but improve appends directly, so it must replicate the
             # derivation or the successor is stored with fact_id=None.
-            new_ep = new_ep.model_copy(
-                update={
-                    "subject": _derive_subject(new_ep),
-                    "fact_id": fact_id_for(new_ep.body or "", title=new_ep.title),
-                }
-            )
+            subject = _derive_subject(new_ep)
+            fact_id = fact_id_for(new_ep.body or "", title=new_ep.title)
+            if subject is None and old.subject is not None:
+                # Identity inheritance (design review post-v1.0, decision 2C):
+                # a body edit that drops the heading must not silently un-key
+                # the note — the successor keeps the old subject/fact_id so the
+                # episode stays in its subject regime (e.g. a consolidated note
+                # keeps holding the cluster key). An explicit new H1 is a
+                # deliberate re-key and is respected above.
+                subject = old.subject
+                fact_id = fact_id_of(old.subject)
+            new_ep = new_ep.model_copy(update={"subject": subject, "fact_id": fact_id})
             with self._repo.atomic():  # atomic: full rollback if the 2nd write fails
                 self._repo.set_invalid_at(ep_id, now)  # invalidate-then-append order
                 self._guards.validate(new_ep, repo=self._repo, op="improve", now=now)
