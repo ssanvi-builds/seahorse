@@ -24,6 +24,28 @@ from tests.cli.conftest import invoke
 # ---------------------------------------------------------------------------
 
 
+def test_version_flag_prints_package_version():
+    """``seahorse --version`` exits 0 and prints the installed dist version."""
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as pkg_version
+
+    try:
+        expected = pkg_version("seahorse-memory")
+    except PackageNotFoundError:  # bare checkout, no metadata
+        expected = "0.0.0"
+    code, out, err = invoke(["--version"])
+    assert code == 0
+    assert out.strip() == expected
+    assert err == ""
+
+
+def test_version_flag_works_before_subcommand():
+    """``--version`` is eager: it wins even when combined with a subcommand."""
+    code, out, _ = invoke(["--version", "status"])
+    assert code == 0
+    assert out.strip() != ""
+
+
 def _make_claude_mem_db(tmp_path) -> str:
     """Create a minimal claude-mem observations DB for the import command."""
     import sqlite3

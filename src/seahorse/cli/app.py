@@ -27,6 +27,8 @@ import io
 import logging
 import sys
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Literal, TextIO, cast
 
@@ -192,6 +194,21 @@ app = typer.Typer(
 )
 
 
+# Single-source the CLI version from the installed package metadata (same
+# pattern as the MCP serverInfo version). Falls back to "0.0.0" on a bare
+# checkout run via PYTHONPATH, no metadata.
+try:
+    _CLI_VERSION = _pkg_version("seahorse-memory")
+except PackageNotFoundError:
+    _CLI_VERSION = "0.0.0"
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(_CLI_VERSION)
+        raise typer.Exit()
+
+
 def _fmt_from(format_opt: str, json_flag: bool, jsonl_flag: bool) -> OutputFormat:
     if json_flag and jsonl_flag:
         raise typer.BadParameter("--json and --jsonl are mutually exclusive.")
@@ -267,6 +284,13 @@ def _announce_model_download(ctx: CliContext) -> None:
 @app.callback()
 def _callback(
     ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Print the seahorse-memory package version and exit.",
+    ),
     vault: Path | None = typer.Option(None, "--vault", help="Vault root dir (default: discover)."),
     config: Path | None = typer.Option(None, "--config", help="Explicit seahorse.toml path."),
     format: str = typer.Option("human", "--format", "-f", help="human | json | jsonl."),
