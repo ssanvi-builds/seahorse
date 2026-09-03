@@ -184,9 +184,21 @@ seahorse recall "madrid"
 # Fine-grained control — every step is opt-out-able:
 seahorse setup --no-mcp                    # skip the MCP registration
 seahorse setup --no-agent-instructions     # skip the ~/.claude/CLAUDE.md block
+seahorse setup --no-skills                 # skip the packaged agent skills
 seahorse setup --skip-llm                  # skip provider detection + self-test
 seahorse setup --warm-embeddings           # pre-download the model (~235MB)
 seahorse setup --auto-consolidate          # distill at the Stop event (opt-in)
+
+Setup also installs a `consolidate` skill into `~/.claude/skills/`, so an
+agent session can run the distillation itself: the agent runs
+`seahorse consolidate` and enriches the resulting notes with the seahorse-mcp
+tools — the agent's own LLM does the synthesis, so consolidating needs no API
+key. If setup finds no LLM provider, an interactive terminal offers to pull a
+local Ollama model, paste a cloud API key (Gemini, Groq, OpenRouter, OpenAI,
+Anthropic, DeepSeek), or skip. A pasted key is stored in
+`~/.config/seahorse/credentials.json` (mode 0600, atomic writes, never in
+`seahorse.toml` or logs) and headless commands pick it up automatically;
+`seahorse doctor` reports the skills and the credentials store.
 
 # Human-facing basics (the CLI still works for shell/scripts):
 seahorse init myvault
@@ -198,8 +210,8 @@ seahorse consolidate
 seahorse materialize
 # Diagnose everything (and attempt the repairs Seahorse owns):
 seahorse doctor --fix
-# Symmetric uninstall (hooks + [observe] + MCP + instructions; the vault
-# and its notes stay):
+# Symmetric uninstall (hooks + [observe] + MCP + instructions + skills; the
+# vault and its notes stay):
 seahorse setup --uninstall
 
 # Serve an agent over stdio MCP (io.seahorse.memory/v1):

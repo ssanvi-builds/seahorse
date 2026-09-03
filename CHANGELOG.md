@@ -4,6 +4,42 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-09-03
+
+### Added
+
+- **Packaged agent skills** — `seahorse setup` installs a `consolidate` skill
+  into `~/.claude/skills/consolidate/` so an agent session can run the
+  distillation pass and enrich the notes via the seahorse-mcp tools: the
+  agent's own LLM does the synthesis, so consolidating needs no API key.
+  Skills carry an HTML-comment marker; a foreign `SKILL.md` is never touched
+  by install or uninstall. `--no-skills` opts out; `seahorse doctor` reports
+  `skills_installed` and `--fix` repairs an absent skill.
+- **Paste-key provider onboarding** — the interactive remediation menu (when
+  no provider passes the self-test) now offers to pull a local Ollama model,
+  paste a cloud API key (Gemini, Groq, OpenRouter, OpenAI, Anthropic,
+  DeepSeek — single-source catalog shared with the wizard), or skip (the
+  default). The `[llm]` section is still written only after a passing live
+  self-test; a failing pasted key is kept in the store and never written to
+  the config.
+- **Credentials store** — `~/.config/seahorse/credentials.json` maps
+  env-var names to API keys: mode 0600, atomic writes, never in
+  `seahorse.toml`, values never printed (masking helper). Headless commands
+  (`_build_llm_client`) and `seahorse doctor` load the store automatically;
+  pre-existing environment variables win. `seahorse doctor` reports the
+  store (`credentials` check) and `--fix` repairs loose permissions.
+
+### Changed
+
+- The TTY remediation menu default is now **skip** (was: pull the Ollama
+  model) — big downloads never happen on a bare Enter.
+- `seahorse consolidate` with `synthesis=llm` but no wired LLM client prints
+  an explicit WARN line instead of silently degrading to deterministic
+  bodies.
+- `setup --uninstall` also removes Seahorse agent skills (never foreign
+  ones) and reports each surface once (the MCP/instructions removal block
+  used to run twice).
+
 ## [0.21.0] - 2026-09-03
 
 ### Added
