@@ -379,6 +379,10 @@ class TestOnboardingChecks:
         monkeypatch.setenv(
             "SEAHORSE_CLAUDE_SETTINGS", str(tmp_path / "settings.json")
         )
+        monkeypatch.setenv(
+            "SEAHORSE_CLAUDE_SKILLS_DIR", str(home / ".claude" / "skills")
+        )
+        monkeypatch.setenv("SEAHORSE_CREDENTIALS", str(tmp_path / "credentials.json"))
 
     def _config(self, tmp_path):
         write_default_config(tmp_path)
@@ -450,3 +454,96 @@ class TestOnboardingChecks:
         fix_rows = [c for c in payload["checks"] if c["check"] == "fix:mcp_registered"]
         assert len(fix_rows) == 1
         assert fix_rows[0]["status"] == "FAIL"
+
+    # -- skills_installed ---------------------------------------------------
+
+    def test_skills_absent_warns(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        skills = next(c for c in payload["checks"] if c["check"] == "skills_installed")
+        assert skills["status"] == "WARN" and "seahorse setup" in skills["detail"]
+
+    def test_skills_installed_ok(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        from seahorse.cli.skill_install import install_skill
+
+        install_skill("consolidate")
+        payload = _doctor(config, monkeypatch)
+        skills = next(c for c in payload["checks"] if c["check"] == "skills_installed")
+        assert skills["status"] == "OK"
+
+    def test_foreign_skill_warns_and_never_repaired(self, tmp_path, monkeypatch) -> None:
+        from pathlib import Path as _P
+
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        skill_dir = _P(os.environ["SEAHORSE_CLAUDE_SKILLS_DIR"]) / "consolidate"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# user's own\n", encoding="utf-8")
+        out = io.StringIO()
+        run_doctor(config, fmt="json", out=out, fix=True)
+        payload = json.loads(out.getvalue())
+        skills = next(c for c in payload["checks"] if c["check"] == "skills_installed")
+        assert skills["status"] == "WARN" and "not repaired" in skills["detail"]
+        # --fix must NOT clobber the foreign file — the attempt reports FAIL.
+        assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == "# user's own\n"
+        fix_row = next(c for c in payload["checks"] if c["check"] == "fix:skills_installed")
+        assert fix_row["status"] == "FAIL" and "left untouched" in fix_row["detail"]
+
+    # -- credentials --------------------------------------------------------
+
+    def test_credentials_absent_is_ok(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        cred = next(c for c in payload["checks"] if c["check"] == "credentials")
+        assert cred["status"] == "OK"
+
+    def test_credentials_loose_permissions_warn_and_fix(self, tmp_path, monkeypatch) -> None:
+        cred_path = Path(os.environ["SEAHORSE_CREDENTIALS"])
+        cred_path.write_text("{}", encoding="utf-8")
+        cred_path.chmod(0o644)
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        out = io.StringIO()
+        run_doctor(config, fmt="json", out=out, fix=True)
+        payload = json.loads(out.getvalue())
+        cred = next(c for c in payload["checks"] if c["check"] == "credentials")
+        assert cred["status"] == "WARN" and "0600" in cred["detail"]
+        fix_row = next(c for c in payload["checks"] if c["check"] == "fix:credentials")
+        assert fix_row["status"] == "OK"
+        assert cred_path.stat().st_mode & 0o777 == 0o600
+
+    def test_stored_credentials_key_counts_as_present(
+        self, tmp_path, monkeypatch, request
+    ) -> None:
+        """A key pasted during setup satisfies the api_keys check (name only)."""
+        import os
+
+        from seahorse.cli.config import LlmConfig, write_default_config, write_llm_config
+        from seahorse.cli.credentials import save_api_key
+
+        write_default_config(tmp_path)
+        write_llm_config(
+            tmp_path,
+            LlmConfig(
+                primary="gemini/gemini-2.5-flash",
+                secondary=None,
+                tertiary=None,
+                timeout_s=5.0,
+            ),
+        )
+        save_api_key("GEMINI_API_KEY", "stored-key")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        # run_doctor's load_credentials_env writes the REAL environ (delenv on
+        # an absent var records no undo) — pop it explicitly after the test
+        request.addfinalizer(lambda: os.environ.pop("GEMINI_API_KEY", None))
+        config = load_config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        monkeypatch.setattr("seahorse.cli.doctor._provider_self_test", lambda _l: (True, "ok"))
+        payload = _doctor(config, monkeypatch, litellm=True)
+        keys = next(c for c in payload["checks"] if c["check"] == "api_keys")
+        assert keys["status"] == "OK"
+        assert os.environ.get("GEMINI_API_KEY") == "stored-key"

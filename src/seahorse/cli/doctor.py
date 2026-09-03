@@ -43,7 +43,15 @@ _CONTEXT_PROBE_TIMEOUT_S = 10.0
 
 # Check names doctor --fix can repair (via onboarding.repair_steps_for).
 _REPAIRABLE_CHECKS = frozenset(
-    {"claude_hooks", "mcp_registered", "agent_instructions", "consolidate", "db"}
+    {
+        "claude_hooks",
+        "mcp_registered",
+        "agent_instructions",
+        "skills_installed",
+        "credentials",
+        "consolidate",
+        "db",
+    }
 )
 
 
@@ -241,6 +249,11 @@ def run_doctor(
         )
 
     if config.llm is not None:
+        # Keys pasted during setup live in the credentials store — load the
+        # NAMES into the environment so a stored key counts as present.
+        from seahorse.cli.credentials import load_credentials_env
+
+        load_credentials_env()
         missing = _missing_keys(config.llm)
         if missing:
             checks.append(
@@ -308,6 +321,39 @@ def run_doctor(
                 "detail": "no memory instructions in ~/.claude/CLAUDE.md; run `seahorse setup`",
             }
         )
+    from seahorse.cli.skill_install import skill_path, skill_state
+
+    state = skill_state("consolidate")
+    if state == "ours":
+        checks.append({"check": "skills_installed", "status": "OK", "detail": "installed"})
+    elif state == "foreign":
+        checks.append(
+            {
+                "check": "skills_installed",
+                "status": "WARN",
+                "detail": (
+                    f"foreign SKILL.md at {skill_path('consolidate')} — not repaired; "
+                    "remove it or merge the Seahorse skill manually"
+                ),
+            }
+        )
+    else:
+        checks.append(
+            {
+                "check": "skills_installed",
+                "status": "WARN",
+                "detail": "no agent skills installed; run `seahorse setup`",
+            }
+        )
+
+    from seahorse.cli.credentials import check_permissions
+
+    cred_ok, cred_detail = check_permissions()
+    if cred_ok:
+        checks.append({"check": "credentials", "status": "OK", "detail": cred_detail})
+    else:
+        checks.append({"check": "credentials", "status": "WARN", "detail": cred_detail})
+
     consolidate = config.consolidate
     if consolidate is not None and consolidate.auto_on_stop:
         checks.append(

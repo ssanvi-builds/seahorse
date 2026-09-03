@@ -320,6 +320,15 @@ def repair_steps_for(
         run_migrate(load_config(vault), up_to=None, fmt="json", out=io.StringIO())
         return "schema applied"
 
+    def _credentials() -> str:
+        from seahorse.cli.credentials import credentials_path
+
+        target = credentials_path()
+        if not target.exists():
+            return "no credentials file — nothing to repair"
+        target.chmod(0o600)
+        return f"permissions set to 0600 on {target}"
+
     def _pointer() -> str:
         write_global_pointer(vault)
         return f"pointer -> {vault}"
@@ -330,6 +339,7 @@ def repair_steps_for(
         "mcp_registered": ("MCP server registered", _mcp),
         "agent_instructions": ("agent instructions installed", _instructions),
         "skills_installed": ("agent skills installed", _skills),
+        "credentials": ("credentials store permissions fixed", _credentials),
         "db": ("schema applied", _db),
         "global_pointer": ("global pointer written", _pointer),
     }
