@@ -117,15 +117,19 @@ def main() -> None:
                 d2 = ddx * ddx + ddy * ddy + 1e-6
                 f = k * k / d2
                 ddx, ddy = ddx / math.sqrt(d2) * f, ddy / math.sqrt(d2) * f
-                dx[i] += ddx; dy[i] += ddy
-                dx[j] -= ddx; dy[j] -= ddy
+                dx[i] += ddx
+                dy[i] += ddy
+                dx[j] -= ddx
+                dy[j] -= ddy
         for a, b in all_edges:
             ddx, ddy = xs[a] - xs[b], ys[a] - ys[b]
             d = math.sqrt(ddx * ddx + ddy * ddy) + 1e-6
             f = d * d / k / 8
             ddx, ddy = ddx / d * f, ddy / d * f
-            dx[a] -= ddx; dy[a] -= ddy
-            dx[b] += ddx; dy[b] += ddy
+            dx[a] -= ddx
+            dy[a] -= ddy
+            dx[b] += ddx
+            dy[b] += ddy
         for i in range(N):
             # gentle gravity keeps disconnected components on canvas
             dx[i] += (W / 2 - xs[i]) * 0.04

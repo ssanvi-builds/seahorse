@@ -80,7 +80,8 @@ def episode(day, title, *, ctype, tags, body, mode="llm", confidence=None,
     }
     if mode == "llm":
         prov["model_used"] = "claude-sonnet-5"
-        prov["confidence"] = confidence if confidence is not None else round(random.uniform(0.85, 0.97), 2)
+        prov["confidence"] = (confidence if confidence is not None
+                              else round(random.uniform(0.85, 0.97), 2))
         prov["tool"] = "seahorse-mcp"
     fm = [
         "---",
@@ -200,10 +201,11 @@ for proj, chain in supersede_chains:
     parent_id, parent_slug = None, None
     for i, (title, why) in enumerate(chain):
         d = d0 + dt.timedelta(days=30 * (i + 1))
-        res = episode(d, title, ctype="project_doc", tags=["decision", "superseded" if i == 0 else "current"],
+        res = episode(d, title, ctype="project_doc",
+                      tags=["decision", "superseded" if i == 0 else "current"],
                       body=f"# {title}\n\n**Why:** {why}. Decided in the weekly "
                            f"sync of [[{proj}]]."
-                           + (f"\n\nSupersedes the earlier decision on this subject."
+                           + ("\n\nSupersedes the earlier decision on this subject."
                               if i else "\n\nLater revised — see the current decision."),
                       supersedes=parent_id, reason="correction")
         if parent_slug:  # make the chain visible in the Obsidian graph too
@@ -225,7 +227,7 @@ statuses = [
     ("Ember", ["token TTL migration done", "audit log shipped", "pen test passed"]),
 ]
 for proj, updates in statuses:
-    for i, upd in enumerate(updates):
+    for _i, upd in enumerate(updates):
         d = FIRST_DAY + dt.timedelta(days=random.randint(60, 220))
         episode(d, f"{proj} status: {upd}", ctype="episodic", tags=[proj.lower(), "status"],
                 body=f"# {proj} status update\n\n{upd.capitalize()}. Shared in the "
@@ -258,7 +260,7 @@ semantics = [
     "On-call rotation is weekly, starting Mondays",
     "Alex Vega drinks too much coffee during incident reviews",
 ]
-for i, fact in enumerate(semantics):
+for _i, fact in enumerate(semantics):
     d = FIRST_DAY + dt.timedelta(days=random.randint(5, 200))
     anchor = "Alex Vega" if fact.startswith("Alex Vega") else ORG
     episode(d, fact, ctype="semantic", tags=["preference", "infra"],
@@ -273,7 +275,7 @@ episode(FIRST_DAY + dt.timedelta(days=60), "How to deploy Atlas safely",
 episode(FIRST_DAY + dt.timedelta(days=90), "How to take the on-call handover",
         ctype="procedural", tags=["runbook", "oncall"],
         body="# On-call handover\n\n1. Read the open incidents\n2. Check [[Beacon]] "
-             "alert noise\n3. Ping [[%s]] with open questions" % colleagues[0])
+             f"alert noise\n3. Ping [[{colleagues[0]}]] with open questions")
 
 # --------------------------------------------------------- stable-name hubs -
 # Hub notes with stable filenames so the [[wiki-links]] in other bodies resolve
