@@ -12,9 +12,12 @@ Notes:
   from ``episode_index`` (aux columns for filter pushdown) so the impl stays
   within the signed ``upsert(ep_id, vector, *, dim, model_identity,
   content_hash, embedded_at)`` surface.
-- **kNN (current-state / filtered)**: sqlite-vec v0.1.9 flat scan applies
-  auxiliary filters DURING the scan, so ``k`` is the final cap — no over-fetch
-  needed. ``score = 1/(1+distance)`` (L2 over unit vectors).
+- **kNN (current-state / filtered)**: vec0 forbids auxiliary-column WHERE
+  constraints inside a kNN scan (verified against 0.1.9 and 0.1.10-alpha.4), so
+  the aux filters apply in the outer SELECT — AFTER the kNN. Over-fetch is
+  therefore load-bearing here too whenever a filter is active (``vigent_only``
+  defaults to True and the engine always passes it). ``score = 1/(1+distance)``
+  (L2 over unit vectors).
 - **kNN PIT**: ``state_at`` / ``known_at`` span ``valid_at`` / ``expired_at``
   which vec0 does not carry, so they JOIN ``episode_index`` with the canonical
   ``_pit_predicate`` (``valid_at IS NULL`` = from-forever included) AFTER the
@@ -34,8 +37,12 @@ from seahorse.contracts.persistence import VectorHit
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.sqlite_episode_index import _pit_predicate
 
-# v0.1.9 flat: filters apply during the scan, so k is final for current-state
-# kNN; the PIT variants over-fetch because the JOIN predicate drops hits after kNN.
+# Aux-column filters cannot be pushed into a vec0 kNN scan ("illegal WHERE
+# constraint on a vec0 auxiliary column", 0.1.9 and 0.1.10-alpha.4 alike): they
+# apply post-kNN, so the over-fetch protects recall in BOTH the filtered
+# current-state path and the PIT variants (whose JOIN predicate also drops
+# hits). Only an unfiltered current-state query would be safe at 1 — no such
+# caller exists today (engine always passes vigent_only=True).
 KNN_OVERFETCH_FACTOR = 5
 
 
