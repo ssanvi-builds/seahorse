@@ -4,9 +4,19 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.22.1] - 2026-09-07
 
 ### Fixed
+
+- **Session capture actually captures** — Claude Code delivers hook events
+  as a JSON object on stdin (`hook_event_name` / `session_id` /
+  `tool_input` / `tool_response`); the hook read a legacy env-var contract
+  the harness never exports, so every invocation early-returned on an
+  empty event name and capture had been silently zero since the hooks
+  were installed. The hook now reads stdin JSON as the primary source
+  (legacy env vars stay as fallback for tests and manual runs), and the
+  structured stdin fields are JSON-serialized so the redactor's string
+  walk still covers nested secrets.
 
 - **`remember` no longer advertises `tags`** — the facade rejects any
   non-empty tags in this release (`E_NOT_IN_MVP_0_1`), but the wire schema
@@ -29,6 +39,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   appended a second copy. `install_agent_instructions` now replaces a legacy
   unmarked section in place and strips any stale marked block, so the file
   always ends with exactly one current block.
+
+### Changed
+
+- **`vector_index` documentation corrected** — the module docstring claimed
+  vec0 applies auxiliary filters during the kNN scan (making the over-fetch
+  factor PIT-only). Verified false against both 0.1.9 and 0.1.10-alpha.4
+  during the vec0 upsert spike: auxiliary-column WHERE constraints are
+  illegal inside a kNN scan, so filters apply post-kNN and the over-fetch
+  factor (5) is load-bearing for the filtered current-state path too. No
+  behavior change.
 
 ## [0.22.0] - 2026-09-03
 
