@@ -375,6 +375,14 @@ class TestOnboardingChecks:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("SEAHORSE_CLAUDE_JSON", str(tmp_path / "claude.json"))
+        # Redirect the other harnesses too — the real home dir must never leak in.
+        monkeypatch.setenv("SEAHORSE_CODEX_CONFIG", str(tmp_path / "codex" / "config.toml"))
+        monkeypatch.setenv("SEAHORSE_CURSOR_MCP_JSON", str(tmp_path / "cursor" / "mcp.json"))
+        monkeypatch.setenv("SEAHORSE_VSCODE_MCP_JSON", str(tmp_path / "vscode" / "mcp.json"))
+        monkeypatch.setenv(
+            "SEAHORSE_ANTIGRAVITY_CONFIG", str(tmp_path / "antigravity" / "mcp_config.json")
+        )
+        monkeypatch.setenv("SEAHORSE_GEMINI_SETTINGS", str(tmp_path / "gemini" / "settings.json"))
         monkeypatch.setenv("SEAHORSE_CLAUDE_MD", str(home / ".claude" / "CLAUDE.md"))
         monkeypatch.setenv(
             "SEAHORSE_CLAUDE_SETTINGS", str(tmp_path / "settings.json")
@@ -454,6 +462,62 @@ class TestOnboardingChecks:
         fix_rows = [c for c in payload["checks"] if c["check"] == "fix:mcp_registered"]
         assert len(fix_rows) == 1
         assert fix_rows[0]["status"] == "FAIL"
+
+    # -- per-harness MCP checks ---------------------------------------------
+
+    def test_per_harness_mcp_registered_ok(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        from seahorse.cli.harness_targets import resolve_target
+
+        target = resolve_target("codex")
+        codex_config = Path(os.environ["SEAHORSE_CODEX_CONFIG"])
+        codex_config.parent.mkdir(parents=True, exist_ok=True)
+        ok, _ = target.register(codex_config)
+        assert ok
+        payload = _doctor(config, monkeypatch)
+        by_name = {c["check"]: c for c in payload["checks"]}
+        assert by_name["mcp_registered:codex"]["status"] == "OK"
+        assert "registered" in by_name["mcp_registered:codex"]["detail"]
+
+    def test_per_harness_mcp_installed_but_unregistered_warns(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        codex_config = Path(os.environ["SEAHORSE_CODEX_CONFIG"])
+        codex_config.parent.mkdir(parents=True, exist_ok=True)
+        codex_config.write_text('model = "o4-mini"\n', encoding="utf-8")
+        payload = _doctor(config, monkeypatch)
+        check = next(c for c in payload["checks"] if c["check"] == "mcp_registered:codex")
+        assert check["status"] == "WARN"
+        assert "--harness codex" in check["detail"]
+
+    def test_per_harness_absent_config_is_skipped_ok(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        for hid in ("cursor", "vscode", "antigravity", "gemini"):
+            check = next(
+                c for c in payload["checks"] if c["check"] == f"mcp_registered:{hid}"
+            )
+            assert check["status"] == "OK"
+            assert "skipped" in check["detail"]
+
+    def test_fix_repairs_per_harness_mcp(self, tmp_path, monkeypatch) -> None:
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        codex_config = Path(os.environ["SEAHORSE_CODEX_CONFIG"])
+        codex_config.parent.mkdir(parents=True, exist_ok=True)
+        codex_config.write_text('model = "o4-mini"\n', encoding="utf-8")
+        out = io.StringIO()
+        run_doctor(config, fmt="json", out=out, fix=True)
+        payload = json.loads(out.getvalue())
+        fix_rows = [c for c in payload["checks"] if c["check"] == "fix:mcp_registered:codex"]
+        assert len(fix_rows) == 1 and fix_rows[0]["status"] == "OK"
+        from seahorse.cli.harness_targets import resolve_target
+
+        assert resolve_target("codex").is_registered(codex_config)
 
     # -- skills_installed ---------------------------------------------------
 

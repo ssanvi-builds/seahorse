@@ -42,6 +42,7 @@ _HOOK_MARKER = "observe event"
 _CONTEXT_PROBE_TIMEOUT_S = 10.0
 
 # Check names doctor --fix can repair (via onboarding.repair_steps_for).
+# Per-harness MCP checks use the "mcp_registered:<harness>" prefix.
 _REPAIRABLE_CHECKS = frozenset(
     {
         "claude_hooks",
@@ -53,6 +54,10 @@ _REPAIRABLE_CHECKS = frozenset(
         "db",
     }
 )
+
+
+def _repairable(check_name: str) -> bool:
+    return check_name in _REPAIRABLE_CHECKS or check_name.startswith("mcp_registered:")
 
 
 def _sqlite_load_extension_supported() -> bool:
@@ -309,6 +314,40 @@ def run_doctor(
             ),
         }
     )
+    # The other harnesses: only relevant when the harness itself appears
+    # installed (its config file exists) — never WARN a Codex-only user
+    # about a machine where Seahorse would be noise.
+    from seahorse.cli.harness_targets import harness_ids, resolve_target
+
+    for hid in harness_ids():
+        if hid == "claude-code":
+            continue
+        target = resolve_target(hid)
+        path = target.config_path()
+        if not path.exists():
+            checks.append(
+                {
+                    "check": f"mcp_registered:{hid}",
+                    "status": "OK",
+                    "detail": f"{hid} not installed ({path} absent) — skipped",
+                }
+            )
+        elif target.is_registered(path):
+            checks.append(
+                {
+                    "check": f"mcp_registered:{hid}",
+                    "status": "OK",
+                    "detail": f"registered in {path}",
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "check": f"mcp_registered:{hid}",
+                    "status": "WARN",
+                    "detail": f"seahorse-mcp not in {path}; run `seahorse setup --harness {hid}`",
+                }
+            )
     if _ai_installed():
         checks.append(
             {"check": "agent_instructions", "status": "OK", "detail": "installed"}
@@ -418,7 +457,7 @@ def run_doctor(
         actionable = [
             c["check"]
             for c in checks
-            if c["status"] in ("WARN", "FAIL") and c["check"] in _REPAIRABLE_CHECKS
+            if c["status"] in ("WARN", "FAIL") and _repairable(c["check"])
         ]
         if actionable:
             from seahorse.cli.onboarding import repair_steps_for

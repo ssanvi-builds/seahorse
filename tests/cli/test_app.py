@@ -127,6 +127,33 @@ def test_setup_passes_no_skills_flag(tmp_path, monkeypatch) -> None:
     code, _, err = invoke(["setup", "--vault", str(tmp_path / "v"), "--no-skills"])
     assert code == 0, err
     assert captured["no_skills"] is True
+    assert captured["harnesses"] == ("claude-code",)
+
+
+def test_setup_harness_flag_parses_multi_and_validates(
+    tmp_path, monkeypatch
+) -> None:
+    """``--harness codex,cursor`` reaches run_full_setup as a validated tuple."""
+    captured: dict = {}
+
+    def fake_run_full_setup(vault, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("seahorse.cli.onboarding.run_full_setup", fake_run_full_setup)
+    code, _, err = invoke(
+        ["setup", "--vault", str(tmp_path / "v"), "--harness", "codex,cursor"]
+    )
+    assert code == 0, err
+    assert captured["harnesses"] == ("codex", "cursor")
+
+
+def test_setup_unknown_harness_is_a_parameter_error(tmp_path) -> None:
+    code, _, err = invoke(
+        ["setup", "--vault", str(tmp_path / "v"), "--harness", "chatgpt"]
+    )
+    assert code != 0
+    assert "claude-code" in err  # the valid ids are listed
 
 
 def _make_claude_mem_db(tmp_path) -> str:

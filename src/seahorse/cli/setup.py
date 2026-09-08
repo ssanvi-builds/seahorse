@@ -346,6 +346,7 @@ def run_setup_uninstall(
     settings_path: Path | str | None = None,
     fmt: OutputFormat = "human",
     out: TextIO,
+    harnesses: tuple[str, ...] = ("claude-code",),
 ) -> None:
     """Symmetric uninstall: hooks, config section, MCP, instructions, observer.
 
@@ -353,38 +354,57 @@ def run_setup_uninstall(
     MCP registration and the agent instructions block, and stops the
     observer. The ``[materialize]`` section and the global pointer are kept —
     they only affect the vault's own layout, nothing global.
+
+    The Claude-specific parts (hooks, instructions, skills, Claude MCP) run
+    only when ``claude-code`` is in ``harnesses``; the other harnesses get
+    their MCP entries removed symmetrically to what ``setup --harness``
+    installed.
     """
     from seahorse.cli.agent_instructions import remove_agent_instructions
     from seahorse.cli.mcp_register import remove_mcp_registration
     from seahorse.cli.skill_install import remove_skills
     from seahorse.observe.cli import run_observe_stop
 
-    settings = Path(settings_path) if settings_path is not None else _default_settings_path()
-    remove_hooks(settings)
-    remove_consolidate_hook(settings)
-    _remove_observe_section(vault)
-    observer_detail = "not configured"
-    try:
-        cfg = load_config(vault)
-        buf = io.StringIO()
-        run_observe_stop(cfg, fmt="json", out=buf)
-        observer_detail = buf.getvalue().strip()
-    except CliConfigInvalid:
-        pass  # config already gone — nothing to stop
-    mcp_ok, mcp_detail = remove_mcp_registration()
-    ai_ok, ai_detail = remove_agent_instructions()
-    skill_rows = remove_skills()
-    if fmt == "human":
-        out.write("seahorse setup: uninstalled (hooks + [observe] removed)\n")
-        out.write(f"  observer: {observer_detail}\n")
-        out.write(f"  mcp: {mcp_detail}\n" if mcp_ok else f"  mcp: WARN {mcp_detail}\n")
-        out.write(
-            f"  agent instructions: {ai_detail}\n"
-            if ai_ok
-            else f"  agent instructions: WARN {ai_detail}\n"
-        )
-        for _, ok, detail in skill_rows:
-            out.write(f"  skill: {detail}\n" if ok else f"  skill: WARN {detail}\n")
+    claude_selected = "claude-code" in harnesses
+    if claude_selected:
+        settings = Path(settings_path) if settings_path is not None else _default_settings_path()
+        remove_hooks(settings)
+        remove_consolidate_hook(settings)
+        _remove_observe_section(vault)
+        observer_detail = "not configured"
+        try:
+            cfg = load_config(vault)
+            buf = io.StringIO()
+            run_observe_stop(cfg, fmt="json", out=buf)
+            observer_detail = buf.getvalue().strip()
+        except CliConfigInvalid:
+            pass  # config already gone — nothing to stop
+        mcp_ok, mcp_detail = remove_mcp_registration()
+        ai_ok, ai_detail = remove_agent_instructions()
+        skill_rows = remove_skills()
+        if fmt == "human":
+            out.write("seahorse setup: uninstalled (hooks + [observe] removed)\n")
+            out.write(f"  observer: {observer_detail}\n")
+            out.write(f"  mcp: {mcp_detail}\n" if mcp_ok else f"  mcp: WARN {mcp_detail}\n")
+            out.write(
+                f"  agent instructions: {ai_detail}\n"
+                if ai_ok
+                else f"  agent instructions: WARN {ai_detail}\n"
+            )
+            for _, ok, detail in skill_rows:
+                out.write(f"  skill: {detail}\n" if ok else f"  skill: WARN {detail}\n")
+    else:
+        if fmt == "human":
+            out.write("seahorse setup: uninstalling MCP entries (claude-code not in --harness)\n")
+    for hid in harnesses:
+        if hid == "claude-code":
+            continue
+        from seahorse.cli.harness_targets import resolve_target
+
+        target = resolve_target(hid)
+        ok, detail = target.remove(target.config_path())
+        if fmt == "human":
+            out.write(f"  mcp:{hid}: {detail}\n" if ok else f"  mcp:{hid}: WARN {detail}\n")
 
 
 __all__ = [

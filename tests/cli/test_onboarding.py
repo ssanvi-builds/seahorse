@@ -123,7 +123,7 @@ class TestRunFullSetup:
         assert by_name["db"] == "OK"  # eager DB
         assert by_name["capture"] == "OK"
         assert by_name["observer"] == "OK"
-        assert by_name["mcp"] == "OK"
+        assert by_name["mcp:claude-code"] == "OK"
         assert by_name["agent_instructions"] == "OK"
         assert by_name["llm"] == "OK"
         assert by_name["embeddings"] == "SKIP"  # opt-in download
@@ -237,7 +237,7 @@ class TestRunFullSetup:
             "seahorse.cli.onboarding._register_mcp", boom
         )
         checks, human = _run(vault, paths)
-        mcp = _status(checks, "mcp")
+        mcp = _status(checks, "mcp:claude-code")
         assert mcp["status"] == "WARN" and "disk exploded" in mcp["detail"]
         assert "some steps need attention" in human
 
@@ -349,3 +349,89 @@ class TestRepairSteps:
         assert "seahorse-memory:begin" in paths["claude_md"].read_text()
         assert "hooks" in json.loads(paths["settings"].read_text())
         assert (paths["skills"] / "consolidate" / "SKILL.md").exists()
+
+class TestMultiHarnessSetup:
+    """setup --harness: per-destination MCP registration + Claude-only artifacts."""
+
+    @pytest.fixture()
+    def codex_sandbox(self, monkeypatch, tmp_path) -> Path:
+        codex_config = tmp_path / "codex" / "config.toml"
+        monkeypatch.setenv("SEAHORSE_CODEX_CONFIG", str(codex_config))
+        return codex_config
+
+    def test_codex_only_setup_skips_claude_artifacts(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped, codex_sandbox
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths, harnesses=("codex",))
+
+        by_name = {c["check"]: c["status"] for c in checks}
+        assert by_name["mcp:codex"] == "OK"
+        assert by_name["agent_instructions"] == "SKIP"
+        assert by_name["skills"] == "SKIP"
+        # Claude surfaces are untouched: no ~/.claude.json, no hooks step side effects.
+        assert not paths["claude_json"].exists()
+        text = codex_sandbox.read_text()
+        assert "[mcp_servers.seahorse-mcp]" in text
+        assert "command = \"seahorse-mcp\"" in text
+
+    def test_multi_harness_setup_registers_each_destination(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        codex_config = tmp_path / "codex" / "config.toml"
+        cursor_json = tmp_path / "cursor" / "mcp.json"
+        monkeypatch.setenv("SEAHORSE_CODEX_CONFIG", str(codex_config))
+        monkeypatch.setenv("SEAHORSE_CURSOR_MCP_JSON", str(cursor_json))
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths, harnesses=("codex", "cursor", "claude-code"))
+
+        by_name = {c["check"]: c["status"] for c in checks}
+        assert by_name["mcp:codex"] == "OK"
+        assert by_name["mcp:cursor"] == "OK"
+        assert by_name["mcp:claude-code"] == "OK"
+        # Claude selected → instructions + skills installed (stub-free paths run).
+        assert by_name["agent_instructions"] == "OK"
+        assert "[mcp_servers.seahorse-mcp]" in codex_config.read_text()
+        servers = json.loads(cursor_json.read_text())["mcpServers"]
+        assert servers["seahorse-mcp"]["command"] == "seahorse-mcp"
+
+    def test_uninstall_removes_harness_entry_symmetrically(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped, codex_sandbox
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        _run(vault, paths, harnesses=("codex",))
+        assert "[mcp_servers.seahorse-mcp]" in codex_sandbox.read_text()
+
+        from seahorse.cli.setup import run_setup_uninstall
+
+        out = io.StringIO()
+        run_setup_uninstall(vault, fmt="human", out=out, harnesses=("codex",))
+        assert "seahorse-mcp" not in codex_sandbox.read_text()
+        assert "mcp:codex" in out.getvalue()
+
+    def test_uninstall_without_harness_keeps_other_destinations(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped, codex_sandbox
+    ) -> None:
+        """Default uninstall (--harness claude-code) leaves Codex untouched."""
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        _run(vault, paths, harnesses=("codex",))
+
+        from seahorse.cli.setup import run_setup_uninstall
+
+        out = io.StringIO()
+        run_setup_uninstall(vault, fmt="human", out=out)
+        assert "[mcp_servers.seahorse-mcp]" in codex_sandbox.read_text()
+
+    def test_repair_steps_for_per_harness_check(self, tmp_path, monkeypatch) -> None:
+        codex_config = tmp_path / "codex" / "config.toml"
+        monkeypatch.setenv("SEAHORSE_CODEX_CONFIG", str(codex_config))
+        vault = _cfg(tmp_path / "vault")
+        steps = repair_steps_for(["mcp_registered:codex"], vault=vault)
+        assert [s.check for s in steps] == ["mcp_registered:codex"]
+        for step in steps:
+            step.run()
+        assert "[mcp_servers.seahorse-mcp]" in codex_config.read_text()

@@ -962,6 +962,15 @@ def setup(
         "--auto-consolidate",
         help="Opt in: run `consolidate --auto` at the Claude Code Stop event.",
     ),
+    harness: str = typer.Option(
+        "claude-code",
+        "--harness",
+        help=(
+            "Comma-separated harness(es) for MCP registration: "
+            "claude-code, codex, cursor, vscode, antigravity, gemini. "
+            "Agent instructions + skills are Claude-Code-only artifacts."
+        ),
+    ),
 ) -> None:
     """One-command onboarding: configure everything, exit 0 always.
 
@@ -970,12 +979,23 @@ def setup(
     agent instructions block, and detects + self-tests an LLM provider.
     Every step degrades to a WARN line — the command never fails the caller.
     """
+    from seahorse.cli.harness_targets import resolve_target
     from seahorse.cli.onboarding import run_full_setup
     from seahorse.cli.setup import ensure_vault, run_setup_uninstall
 
+    selected = tuple(h.strip() for h in harness.split(",") if h.strip())
+    try:
+        for hid in selected:
+            resolve_target(hid)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
     if uninstall:
         run_setup_uninstall(
-            ctx.obj.resolved_config().vault, fmt=ctx.obj.fmt, out=_out(ctx)
+            ctx.obj.resolved_config().vault,
+            fmt=ctx.obj.fmt,
+            out=_out(ctx),
+            harnesses=selected,
         )
         return
     resolved_vault = ensure_vault(vault)
@@ -989,6 +1009,7 @@ def setup(
         skip_llm=skip_llm,
         warm_embeddings=warm_embeddings,
         auto_consolidate=auto_consolidate,
+        harnesses=selected,
     )
 
 
