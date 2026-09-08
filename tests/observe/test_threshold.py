@@ -15,6 +15,8 @@ from __future__ import annotations
 from seahorse.observe.threshold import (
     DEFAULT_DROP_TOOLS,
     DEFAULT_SKIP_TOOLS,
+    SYNTHETIC_PROMPT_PREFIXES,
+    is_synthetic_prompt,
     should_drop_event,
     should_skip_event,
 )
@@ -63,3 +65,29 @@ def test_skip_and_drop_are_independent() -> None:
     # A tool can be in both lists (skip wins for the event, drop for the turn).
     assert should_skip_event("Bash", skip_tools=frozenset({"Bash"})) is True
     assert should_drop_event("Bash") is True
+
+
+def test_synthetic_prompt_prefixes_cover_harness_injections() -> None:
+    # Harness-generated user turns (verified 2026-09-08: background-task
+    # completions arrive as user_prompt_submit events whose whole prompt is the
+    # <task-notification> wrapper). Prefixes are the known injection family.
+    assert "<task-notification>" in SYNTHETIC_PROMPT_PREFIXES
+    assert "<system-reminder>" in SYNTHETIC_PROMPT_PREFIXES
+    assert "<local-command-stdout>" in SYNTHETIC_PROMPT_PREFIXES
+    assert "<local-command-stderr>" in SYNTHETIC_PROMPT_PREFIXES
+
+
+def test_is_synthetic_prompt_matches_first_line_prefix() -> None:
+    assert is_synthetic_prompt("<task-notification>\n<task-id>bg2ui5ele</task-id>")
+    assert is_synthetic_prompt("<system-reminder>plan mode</system-reminder>")
+    assert is_synthetic_prompt("<local-command-stdout>ok</local-command-stdout>")
+    # Leading whitespace on the first line is tolerated.
+    assert is_synthetic_prompt("\n<task-notification>\n<task-id>x</task-id>")
+
+
+def test_is_synthetic_prompt_rejects_real_prompts() -> None:
+    assert is_synthetic_prompt("Fix the flaky recall test") is False
+    assert is_synthetic_prompt("") is False
+    assert is_synthetic_prompt("note about <task-notification> handling") is False
+    # The prefix must open the prompt — mid-prompt tags are user content.
+    assert is_synthetic_prompt("see <task-notification> below") is False

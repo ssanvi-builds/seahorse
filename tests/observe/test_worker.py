@@ -203,6 +203,27 @@ def test_drain_body_below_min_chars_is_skipped(facade_and_queue) -> None:
     assert report.episodes_written == 0
 
 
+def test_drain_synthetic_task_notification_turn_is_skipped(facade_and_queue) -> None:
+    # Harness-injected background-task completions arrive as user_prompt_submit
+    # events (verified 2026-09-08) — the whole prompt is the <task-notification>
+    # wrapper, no user knowledge. The turn is skipped and counted, not written.
+    facade, queue = facade_and_queue
+    _enqueue_turn(
+        queue,
+        prompt=(
+            "<task-notification>\n<task-id>bg2ui5ele</task-id>\n"
+            '<summary>Background command "Run baseline benchmark" completed (exit 0)'
+            "</summary>\n</task-notification>"
+        ),
+    )
+    report = _worker(facade, queue).drain()
+    assert report.episodes_written == 0
+    assert report.synthetic_turns == 1
+    assert report.turns_skipped == 0
+    assert queue.pending_count() == 0  # consumed, not retried
+    assert facade.recall("task-notification", k=5) == []
+
+
 def _full_body(facade, query: str) -> str:
     """Hydrate the FULL body of the first recall hit (INDEX has no body)."""
     rows = facade.recall(query, k=10)

@@ -81,12 +81,14 @@ def run_observer(
     try:
         while True:
             report = worker.drain()
-            if report.episodes_written or report.failures:
+            if report.episodes_written or report.failures or report.synthetic_turns:
                 _logger.info(
-                    "observe.drain events=%d written=%d skipped=%d failures=%d",
+                    "observe.drain events=%d written=%d skipped=%d "
+                    "synthetic=%d failures=%d",
                     report.events_read,
                     report.episodes_written,
                     report.turns_skipped,
+                    report.synthetic_turns,
                     report.failures,
                 )
             drains += 1

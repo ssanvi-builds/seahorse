@@ -7,6 +7,7 @@ recoverable unit), renders each turn via the deterministic batcher, and writes
 one episode per turn via ``facade.remember`` (skip-first, the skip path).
 
 Thresholding: a turn without a user prompt → no episode; body < 40 chars → no
+episode; a synthetic harness-injected prompt (<task-notification> etc.) → no
 episode; ``skip_tools`` discard the event; ``drop_tools`` discard the event
 entirely. The generated summary skips the H1 title.
 
@@ -38,6 +39,7 @@ from seahorse.observe.queue import ObserverQueue
 from seahorse.observe.threshold import (
     DEFAULT_DROP_TOOLS,
     DEFAULT_SKIP_TOOLS,
+    is_synthetic_prompt,
     should_drop_event,
     should_skip_event,
 )
@@ -70,6 +72,7 @@ class WorkerReport:
     events_read: int = 0
     episodes_written: int = 0
     turns_skipped: int = 0
+    synthetic_turns: int = 0
     events_skipped: int = 0
     events_dropped: int = 0
     collisions: int = 0
@@ -153,6 +156,14 @@ class ObserverWorker:
         if not prompt:
             # Threshold: a turn without a user prompt is not an episode.
             report.turns_skipped += 1
+            self._ack_all(turn_events)
+            return
+
+        if is_synthetic_prompt(prompt):
+            # Harness-injected user turn (<task-notification> etc.) — no user
+            # knowledge, never an episode. Own counter so the drain report
+            # keeps distinguishing noise from below-threshold turns.
+            report.synthetic_turns += 1
             self._ack_all(turn_events)
             return
 

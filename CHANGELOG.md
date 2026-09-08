@@ -73,6 +73,17 @@ support for Codex, Cursor, VS Code (Copilot), Antigravity and Gemini CLI.
 
 ### Fixed
 
+- **The observer no longer writes harness-injected synthetic prompts as
+  episodes** — Claude Code delivers background-task completions as
+  `user_prompt_submit` events whose whole prompt is the
+  `<task-notification>` wrapper (verified against a live queue), which
+  produced 18 identical episodes per vault that clustered and distilled
+  into a vacuous consolidated note. The worker now skips prompts whose
+  first line opens a known injection tag (`<task-notification>`,
+  `<system-reminder>`, `<local-command-stdout>`, `<local-command-stderr>`)
+  and counts them as `synthetic_turns` in the drain report (logged, never
+  silently dropped).
+
 - **The manifest no longer claims a judge dependency the pipeline does not
   have** — `docs/benchmark.md` described the retrieval numbers as scored by
   a small LLM judge (`qwen2.5:7b`) "unvalidated", but the retrieval metrics
