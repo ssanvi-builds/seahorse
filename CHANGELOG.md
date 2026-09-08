@@ -4,7 +4,48 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-09-08
+
+The standard-freeze release: the MCP profile `io.seahorse.memory/v1` and the
+F3.1 portable format stop changing in breaking ways (additive evolution only),
+and onboarding is no longer Claude-Code-only — Seahorse ships with real
+support for Codex, Cursor, VS Code (Copilot), Antigravity and Gemini CLI.
+
+### Added
+
+- **Multi-harness onboarding: `seahorse setup --harness <ids>`** — register
+  the `seahorse-mcp` server in Codex (`~/.codex/config.toml`), Cursor
+  (`~/.cursor/mcp.json`), VS Code (user-scope `mcp.json`), Antigravity
+  (`~/.gemini/config/mcp_config.json`) and Gemini CLI (`~/.gemini/settings.json`)
+  in one command, with the same guarantees as the Claude Code path: atomic
+  writes with a one-time backup, byte-identical idempotency, foreign content
+  preserved verbatim, and a config that cannot be parsed is never touched.
+  `seahorse doctor` gains per-harness checks (`mcp_registered:<harness>`,
+  repairable with `--fix`); `setup --uninstall --harness ...` removes exactly
+  what was installed. Every path is overridable via `SEAHORSE_*` env vars.
+- **Per-harness agent instructions** — the instruction block installs into each
+  harness's global instruction file (`~/.codex/AGENTS.md`, and
+  `~/.gemini/GEMINI.md` shared by Gemini CLI and Antigravity — the double
+  install is a no-op). Cursor and VS Code have no global file: setup reports
+  SKIP and docs/connect.md carries the manual snippet. The block is honest per
+  harness: Claude Code keeps the "session capture is automatic" bullet; the
+  others get the capture-on-intent variant (remember immediately, bootstrap
+  with `context`) — never claim automatic capture where there are no hooks.
+- **MCP tool `context` (15th tool)** — the session bootstrap (most recent
+  valid episodes, vigente count, last session grouped by session_id; INDEX
+  level, no body) is now reachable over the wire, not only via the CLI and the
+  Claude Code SessionStart hook. This is the surface that makes harnesses
+  without hooks useful. Backward compatible: `tools/list` is dynamic.
+- **`docs/connect.md`** — per-harness connection guide: one command, one-click
+  installs (Cursor deeplink, `code --add-mcp`), the manual instructions block,
+  and the honest capture rule (automatic capture = Claude Code only).
+- **Registry manifests** — `server.json` (official MCP registry, schema
+  2025-12-11, validated), `smithery.yaml` (stdio + optional vault config), and
+  the mcpm.sh manifest (`docs/registries/mcpm.json`, 15 tools), with publish
+  steps in `docs/registries/README.md`.
+- **`docs/related-work.md`** — the agent-memory landscape Seahorse was built
+  against (open-source systems, benchmark pitfalls, interchange formats),
+  with a primary source for every external claim.
 
 ### Changed
 
@@ -19,11 +60,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   survives the bump, and no `"0.1.0"` literal may appear outside
   `defaults.py`.
 
-### Added
-
-- **`docs/related-work.md`** — the agent-memory landscape Seahorse was built
-  against (open-source systems, benchmark pitfalls, interchange formats),
-  with a primary source for every external claim.
+- **Schema version frozen at 1.0.0 (accept-both, no rewrite)** — the on-disk
+  format version written by the migrator and new notes is now `1.0.0`
+  (`SCHEMA_VERSION_MVP0`). The reader accepts any semver-shaped
+  `schema_version`, so existing `0.1.0` notes stay valid and are NOT
+  rewritten; the benchmark manifest's `sut_version` now imports the same
+  constant instead of a literal. The migration path is pinned by 11 contract
+  tests (`tests/frontmatter/test_migration_path.py`): reader/engine accept the
+  0.x park, the migrator absorbs any semver shape as CASE_C, manifest/resume
+  survives the bump, and no `"0.1.0"` literal may appear outside
+  `defaults.py`.
 
 ### Fixed
 

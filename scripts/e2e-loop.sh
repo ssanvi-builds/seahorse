@@ -222,7 +222,18 @@ check "observe section in seahorse.toml" grep -q "\[observe\]" "$VAULT/.seahorse
 
 # --- observe -----------------------------------------------------------------
 step 4 "Observe: inject hook events → worker drains → episodes written"
-run "observe start" "$SEAHORSE" observe start
+# `seahorse setup` (above) already started the observer; an explicit start is
+# idempotent — CLI_OBSERVER_RUNNING (exit 95) is the healthy state here, and
+# the pid-file/socket checks below verify the real thing.
+observe_rc=0
+"$SEAHORSE" observe start >>"$LOG" 2>&1 || observe_rc=$?
+if [[ $observe_rc -eq 0 ]]; then
+  ok "observe start"
+elif [[ $observe_rc -eq 95 ]]; then
+  ok "observe start (already running from setup — idempotent)"
+else
+  fail "observe start (rc=$observe_rc)"
+fi
 OBSERVER_STARTED=1
 check "observer pid file" test -f "$VAULT/.seahorse/observer/observer.pid"
 

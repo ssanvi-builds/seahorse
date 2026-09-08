@@ -3,7 +3,7 @@
   "name": "io.github.ssanvi-builds/seahorse-memory",
   "title": "Seahorse — persistent memory for agents",
   "description": "Persistent, bi-temporal memory for LLM agents over stdio MCP, backed by an Obsidian-native vault.",
-  "version": "0.22.1",
+  "version": "1.0.0",
   "homepage": "https://github.com/ssanvi-builds/seahorse",
   "repository": {
     "source": "github",
@@ -20,7 +20,7 @@
     {
       "registryType": "pypi",
       "identifier": "seahorse-memory",
-      "version": "0.22.1",
+      "version": "1.0.0",
       "transport": {
         "type": "stdio"
       }
