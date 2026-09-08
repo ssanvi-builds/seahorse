@@ -339,14 +339,15 @@ is not a leaderboard; it is an honest, reproducible measurement.
 | latency p95 (INDEX) | 42 ms | retrieval-only, no rerank |
 
 Caveats: the run uses a **subsample** (n≈470–500 questions, not the full
-dataset); relevance is judged by a **small LLM without human validation**; and
+dataset); relevance is **derived from the dataset's golden labels** (no LLM
+judge in the scored path); and
 it measures **retrieval only**, not the agent's final answer. A cross-encoder
 rerank was tested and **rejected** — it degraded recall@10 to 0.11 with 1.2s
 latency. Full methodology and reproduction commands in
 [docs/benchmark.md](docs/benchmark.md).
 
-> These numbers measure **retrieval ranking only** on a subsample with a small
-> judge — they are **not comparable** to the end-to-end accuracy scores other
+> These numbers measure **retrieval ranking only** on a subsample with
+> golden-derived relevance labels — they are **not comparable** to the end-to-end accuracy scores other
 > memory systems publish (e.g. Graphiti 63.8% with gpt-4o-mini, Mem0 94.8 at top_50, Hindsight 91.4%).
 > See [docs/benchmark.md](docs/benchmark.md) for how not to compare.
 

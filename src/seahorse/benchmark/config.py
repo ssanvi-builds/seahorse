@@ -65,7 +65,10 @@ class BenchmarkConfig:
     repetitions: int = 1
     reproducibility_class: ReproducibilityClass = "local_near_deterministic"
     expected_match_rate: float = 0.956
-    judge_validation_status: str = "unvalidated_with_small_model"
+    # The retrieval metrics are computed against golden annotations with no
+    # LLM in the scored path; the optional LLM judge (end-to-end only) would
+    # carry its own status once exercised (e.g. "validated_against_human_labels").
+    judge_validation_status: str = "llm_free_golden_labels"
 
     # Output
     output_dir: str = "benchmark-output"

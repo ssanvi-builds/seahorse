@@ -14,6 +14,16 @@ def test_default_config_validates():
     cfg.validate()  # reader != judge by default
 
 
+def test_default_judge_validation_status_is_llm_free():
+    """The retrieval metrics are golden-derived with no LLM in the scored
+    path — the manifest must not claim an unvalidated-judge dependency the
+    pipeline does not have (docs/benchmark.md caveats #2)."""
+    assert BenchmarkConfig().judge_validation_status == "llm_free_golden_labels"
+    from seahorse.benchmark.reporters.manifest import PinningFingerprint
+
+    assert PinningFingerprint.judge_validation_status == "llm_free_golden_labels"
+
+
 def test_validate_rejects_reader_equals_judge():
     """The load-bearing gate: generator != judge."""
     cfg = BenchmarkConfig(reader_model="ollama/qwen3:1.7b", judge_model="ollama/qwen3:1.7b")

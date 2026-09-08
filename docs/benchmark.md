@@ -17,9 +17,10 @@ harness and its numbers together, with the caveats spelled out.
   the full dataset.
 - **Retrieval**: hybrid semantic retrieval — sqlite-vec kNN + FTS5 BM25 fused
   with Reciprocal Rank Fusion (`score_source: mvp1_rrf`), top-k 10.
-- **Judge**: relevance is scored by a small LLM (`ollama/qwen2.5:7b`), with
-  `judge validation: unvalidated_with_small_model` — the judge has **not** been
-  validated against human labels.
+- **Relevance labels**: derived from the dataset's golden annotations — **no
+  LLM is in the scored path**. The optional LLM judge (`ollama/qwen2.5:7b`)
+  ships for the end-to-end metrics only and is not exercised by the retrieval
+  numbers (see caveats below); `judge_validation_status: llm_free_golden_labels`.
 - **Reader**: `ollama/qwen3:1.7b` (t=0, seed=42).
 - **Reproducibility**: `local_near_deterministic` (0.956 expected match) —
   reproducible locally, not bit-exact across machines.
@@ -363,8 +364,8 @@ much the missing session-retrieval stage would be worth if it existed.
    absolute values are not a full-dataset measurement.
 2. **Judge applies only to end-to-end metrics.** The retrieval metrics
    (recall@10, ndcg@10, mrr, precision@10) are computed against the dataset's
-   ground-truth golden sessions — **no LLM judge is involved**. The small,
-   unvalidated judge (`ollama/qwen2.5:7b`) is used only for the end-to-end
+   ground-truth golden sessions — **no LLM judge is involved**. The optional
+   LLM judge (`ollama/qwen2.5:7b`) is used only for the end-to-end
    metrics (`knowledge_update_accuracy`, `fama_gap`), which are 0.0 by design
    in retrieval-only mode. The retrieval numbers do not depend on the judge.
 3. **Retrieval-only.** This measures the ranking, not the agent's final answer.
@@ -406,7 +407,7 @@ a different metric:
 | Mem0 | 94.8 LongMemEval (self-reported, top_50) | end-to-end accuracy, full dataset | [mem0 blog, 2026-05-12](https://mem0.ai/blog/introducing-temporal-reasoning-in-mem0) |
 | Hindsight (Vectorize) | 91.4% LongMemEval (self-reported) | end-to-end accuracy, Gemini-3 Pro reader | [hindsight-benchmarks README](https://github.com/vectorize-io/hindsight-benchmarks/blob/main/README.md) |
 | MemPalace | 96.6% R@5 LongMemEval | verbatim exact-match retrieval, no LLM (retrieval recall, not QA; an independent tester reports ~82.6% QA) | [MemPalace benchmarks README](https://github.com/MemPalace/mempalace/blob/develop/benchmarks/README.md) |
-| **Seahorse** | **recall@10 0.13** | **retrieval ranking only, subsample, small judge** | [docs/benchmark.md](benchmark.md) |
+| **Seahorse** | **recall@10 0.13** | **retrieval ranking only, subsample, golden-derived relevance labels (no judge)** | [docs/benchmark.md](benchmark.md) |
 
 The differences that make a direct comparison invalid:
 
@@ -416,9 +417,10 @@ The differences that make a direct comparison invalid:
    mediocre retriever if its reader is strong — and vice versa.
 2. **Coverage.** Seahorse runs on a subsample (n≈470–500) of `longmemeval-s-s`;
    the others report on the full dataset.
-3. **Judge.** Seahorse's relevance scores come from a small, unvalidated LLM
-   judge — stated as such. The others use larger LLM judges (GPT-4o-class) and
-   strong readers; none publishes human validation of its judge either.
+3. **Judge.** Seahorse's retrieval metrics use golden-derived relevance
+   labels — no LLM judge at all in the scored path. The others score
+   end-to-end with larger LLM judges (GPT-4o-class) and strong readers;
+   none publishes human validation of its judge either.
 
 A fair comparison would require running the same harness in the same
 configuration — retrieval-only, same subsample, same judge — for each system.

@@ -27,6 +27,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The manifest no longer claims a judge dependency the pipeline does not
+  have** — `docs/benchmark.md` described the retrieval numbers as scored by
+  a small LLM judge (`qwen2.5:7b`) "unvalidated", but the retrieval metrics
+  are computed against the dataset's golden annotations with **no LLM in
+  the scored path** (the `LLMJudge` machinery ships for the end-to-end
+  metrics only, which are 0.0 in retrieval-only mode). The docs now state
+  the golden-derived labels in the methodology bullet, the score table, and
+  the comparability section; `judge_validation_status` defaults to
+  `llm_free_golden_labels` in the benchmark config and run manifest.
+
 - **Public claims now carry their primary sources** — the LOCOMO 6.4% figure
   is cited to the independent audit in README and `docs/benchmark.md`; the
   score table gained a Source column (Graphiti 63.8% is the gpt-4o-mini

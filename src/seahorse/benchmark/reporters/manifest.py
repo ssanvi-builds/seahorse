@@ -62,7 +62,7 @@ class PinningFingerprint:
     score_source: str = "mvp1_rrf"
     reproducibility_class: str = "local_near_deterministic"
     expected_match_rate: float = 0.956
-    judge_validation_status: str = "unvalidated_with_small_model"
+    judge_validation_status: str = "llm_free_golden_labels"
 
     @property
     def run_id(self) -> str:

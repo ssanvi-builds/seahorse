@@ -38,7 +38,7 @@ def _fingerprint() -> PinningFingerprint:
         score_source="mvp1_rrf",
         reproducibility_class="local_near_deterministic",
         expected_match_rate=0.956,
-        judge_validation_status="unvalidated_with_small_model",
+        judge_validation_status="llm_free_golden_labels",
     )
 
 
