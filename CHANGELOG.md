@@ -4,6 +4,38 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Schema version frozen at 1.0.0 (accept-both, no rewrite)** — the on-disk
+  format version written by the migrator and new notes is now `1.0.0`
+  (`SCHEMA_VERSION_MVP0`). The reader accepts any semver-shaped
+  `schema_version`, so existing `0.1.0` notes stay valid and are NOT
+  rewritten; the benchmark manifest's `sut_version` now imports the same
+  constant instead of a literal. The migration path is pinned by 11 contract
+  tests (`tests/frontmatter/test_migration_path.py`): reader/engine accept the
+  0.x park, the migrator absorbs any semver shape as CASE_C, manifest/resume
+  survives the bump, and no `"0.1.0"` literal may appear outside
+  `defaults.py`.
+
+### Added
+
+- **`docs/related-work.md`** — the agent-memory landscape Seahorse was built
+  against (open-source systems, benchmark pitfalls, interchange formats),
+  with a primary source for every external claim.
+
+### Fixed
+
+- **Public claims now carry their primary sources** — the LOCOMO 6.4% figure
+  is cited to the independent audit in README and `docs/benchmark.md`; the
+  score table gained a Source column (Graphiti 63.8% is the gpt-4o-mini
+  config, Mem0 94.8 is top_50); the "validated judges" claim was corrected
+  (no published system human-validates its judge); the "nobody publishes
+  same-harness comparisons" sentence now reflects the mid-2026 same-harness
+  papers; the dead "research notes" link now points to
+  `docs/related-work.md`.
+
 ## [0.22.1] - 2026-09-07
 
 ### Fixed
