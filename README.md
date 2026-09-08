@@ -41,7 +41,7 @@ problems:
 - **They lock you in.** Adopting a memory system often means adopting its
   runtime, its provider, or its ecosystem.
 - **Their benchmarks are not trustworthy.** The field's own numbers are hard to
-  reproduce: the LOCOMO benchmark has 6.4% wrong gold answers, Mem0's
+  reproduce: the LOCOMO benchmark has [6.4% wrong gold answers](https://github.com/dial481/locomo-audit/blob/main/AUDIT_REPORT.md) (Penfield Labs audit), Mem0's
   reproduction is broken (issue
   [#2800](https://github.com/mem0ai/mem0/issues/2800)), and MTEB embedding
   scores do not predict memory-retrieval performance (LMEB, arXiv
@@ -298,9 +298,8 @@ touches `.md` files + the manifest).
 
 ## Compared to other memory tools
 
-A comparison of verified facts, not a ranking. Sources: the project's
-state-of-the-art analysis (see the [research
-notes](https://github.com/ssanvi-builds/seahorse) and the claims cited below).
+A comparison of verified facts, not a ranking. Sources:
+[docs/related-work.md](docs/related-work.md) and the claims cited below.
 
 | | Seahorse | mem0 | Letta / MemGPT | Zep / Graphiti | claude-mem | LangMem |
 |---|---|---|---|---|---|---|
@@ -313,10 +312,16 @@ notes](https://github.com/ssanvi-builds/seahorse) and the claims cited below).
 
 Legend: ✓ yes · ~ partial · ✗ no · — not verified.
 
-The two facts that matter most: **mem0 paywalls the features that produce its
-benchmark numbers**, and **Zep abandoned self-host for cloud-only**. Seahorse
-is local-first by default, publishes its benchmark harness in the repo, and
-keeps the memory format portable so you are never locked in.
+The two facts that matter most: **mem0's headline benchmark numbers are
+produced by its managed platform and platform-only features, which the
+open-source library cannot exactly reproduce** (its own eval suite shows ~91%
+open-source vs 94.4% platform on LongMemEval; [memory-benchmarks README](https://github.com/mem0ai/memory-benchmarks), [issue #2800](https://github.com/mem0ai/mem0/issues/2800)), and **Zep
+discontinued its self-hostable Community Edition in April 2025 and now ships
+cloud-only** ([deprecation post](https://blog.getzep.com/announcing-a-new-direction-for-zeps-open-source-strategy/),
+[PR #390](https://github.com/getzep/zep/pull/390)), keeping only the Graphiti
+engine open source. Seahorse is local-first by default, publishes its
+benchmark harness in the repo, and keeps the memory format portable so you
+are never locked in.
 
 ## Benchmark
 
@@ -342,7 +347,7 @@ latency. Full methodology and reproduction commands in
 
 > These numbers measure **retrieval ranking only** on a subsample with a small
 > judge — they are **not comparable** to the end-to-end accuracy scores other
-> memory systems publish (e.g. Graphiti 63.8%, Mem0 94.8, Hindsight 91.4%).
+> memory systems publish (e.g. Graphiti 63.8% with gpt-4o-mini, Mem0 94.8 at top_50, Hindsight 91.4%).
 > See [docs/benchmark.md](docs/benchmark.md) for how not to compare.
 
 ## FAQ
