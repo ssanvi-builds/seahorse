@@ -100,8 +100,9 @@ duplicates.
 | Flag | Effect |
 |------|--------|
 | `--vault <path>` | Use (and bootstrap) this vault instead of resolution. |
+| `--harness <ids>` | Comma-separated MCP destinations (default `claude-code`). See [docs/connect.md](docs/connect.md). |
 | `--no-mcp` | Skip the user-scope MCP registration. |
-| `--no-agent-instructions` | Skip the `~/.claude/CLAUDE.md` instructions block. |
+| `--no-agent-instructions` | Skip the instructions blocks (per harness). |
 | `--no-skills` | Skip installing the packaged agent skills. |
 | `--skip-llm` | Skip provider detection + live self-test. |
 | `--warm-embeddings` | Pre-download the embeddings model (~235MB). |
@@ -121,9 +122,10 @@ writes, never in `seahorse.toml`, values never printed. Headless commands and
 variables win.
 
 **Uninstall.** `seahorse setup --uninstall` removes the hooks, the `[observe]`
-section, the MCP registration, the instructions block, and the packaged skills,
-and stops the observer. The vault, its notes, `[materialize]`, and the global
-pointer stay — your memory is yours.
+section, the MCP registration, the instructions blocks, and the packaged
+skills, and stops the observer. With `--harness` it removes exactly what that
+harness selection installed. The vault, its notes, `[materialize]`, and the
+global pointer stay — your memory is yours.
 
 ### The loop
 
@@ -155,9 +157,12 @@ Seahorse is built for agents: the memory surface is a stdio MCP server
 CLI is for humans and scripts; agents talk to `seahorse-mcp`.
 
 `seahorse setup` registers the server in Claude Code automatically (user
-scope). The vault resolves dynamically at each call — the vault containing the
-current working directory, else the per-user default — so one registration
-serves every project and every vault.
+scope); `seahorse setup --harness codex,cursor,vscode,antigravity,gemini`
+registers it in the other MCP agents (each one's config file + instruction
+block — see [docs/connect.md](docs/connect.md)). The vault resolves
+dynamically at each call — the vault containing the current working
+directory, else the per-user default — so one registration serves every
+project and every vault.
 
 Manual alternatives, when you need them:
 

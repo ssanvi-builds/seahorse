@@ -357,8 +357,8 @@ def run_setup_uninstall(
 
     The Claude-specific parts (hooks, instructions, skills, Claude MCP) run
     only when ``claude-code`` is in ``harnesses``; the other harnesses get
-    their MCP entries removed symmetrically to what ``setup --harness``
-    installed.
+    their MCP entries and instructions blocks removed symmetrically to what
+    ``setup --harness`` installed.
     """
     from seahorse.cli.agent_instructions import remove_agent_instructions
     from seahorse.cli.mcp_register import remove_mcp_registration
@@ -399,12 +399,26 @@ def run_setup_uninstall(
     for hid in harnesses:
         if hid == "claude-code":
             continue
+        from seahorse.cli.agent_instructions import (
+            instructions_path_for,
+            remove_instructions_for,
+        )
         from seahorse.cli.harness_targets import resolve_target
 
         target = resolve_target(hid)
         ok, detail = target.remove(target.config_path())
         if fmt == "human":
             out.write(f"  mcp:{hid}: {detail}\n" if ok else f"  mcp:{hid}: WARN {detail}\n")
+        # Symmetric removal of the instructions block too (Gemini CLI and
+        # Antigravity share the same file — the second remove is a no-op).
+        if instructions_path_for(hid) is not None:
+            ai_ok, ai_detail = remove_instructions_for(hid)
+            if fmt == "human":
+                out.write(
+                    f"  instructions:{hid}: {ai_detail}\n"
+                    if ai_ok
+                    else f"  instructions:{hid}: WARN {ai_detail}\n"
+                )
 
 
 __all__ = [

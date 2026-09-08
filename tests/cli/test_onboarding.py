@@ -42,6 +42,9 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Path]
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("SEAHORSE_CLAUDE_JSON", str(claude_json))
     monkeypatch.setenv("SEAHORSE_CLAUDE_MD", str(claude_md))
+    monkeypatch.setenv("SEAHORSE_CODEX_AGENTS_MD", str(tmp_path / "codex" / "AGENTS.md"))
+    monkeypatch.setenv("SEAHORSE_GEMINI_MD", str(home / ".gemini" / "GEMINI.md"))
+    monkeypatch.setenv("SEAHORSE_ANTIGRAVITY_MD", str(home / ".gemini" / "GEMINI.md"))
     monkeypatch.setenv("SEAHORSE_CLAUDE_SKILLS_DIR", str(skills))
     monkeypatch.setenv("SEAHORSE_CREDENTIALS", str(credentials))
     monkeypatch.setattr("pathlib.Path.home", lambda: home)
@@ -368,7 +371,10 @@ class TestMultiHarnessSetup:
 
         by_name = {c["check"]: c["status"] for c in checks}
         assert by_name["mcp:codex"] == "OK"
-        assert by_name["agent_instructions"] == "SKIP"
+        # Codex HAS a global instruction file — the block lands in AGENTS.md.
+        assert by_name["agent_instructions:codex"] == "OK"
+        assert "agent_instructions" not in by_name  # claude-code not selected
+        assert "Persistent memory (Seahorse)" in (tmp_path / "codex" / "AGENTS.md").read_text()
         assert by_name["skills"] == "SKIP"
         # Claude surfaces are untouched: no ~/.claude.json, no hooks step side effects.
         assert not paths["claude_json"].exists()
@@ -435,3 +441,67 @@ class TestMultiHarnessSetup:
         for step in steps:
             step.run()
         assert "[mcp_servers.seahorse-mcp]" in codex_config.read_text()
+
+    def test_gemini_and_antigravity_share_the_gemini_md_file(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        """Both Google harnesses write ~/.gemini/GEMINI.md — double install is a no-op."""
+        paths = _isolate(monkeypatch, tmp_path)
+        gemini_md = tmp_path / "gemini" / "GEMINI.md"
+        monkeypatch.setenv("SEAHORSE_GEMINI_MD", str(gemini_md))
+        monkeypatch.setenv("SEAHORSE_ANTIGRAVITY_MD", str(gemini_md))
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(
+            vault,
+            paths,
+            harnesses=("gemini", "antigravity"),
+            no_mcp=True,
+        )
+
+        by_name = {c["check"]: c["detail"] for c in checks}
+        assert by_name["agent_instructions:gemini"] == "instructions written to " + str(gemini_md)
+        assert by_name["agent_instructions:antigravity"] == (
+            f"instructions already installed in {gemini_md}"
+        )
+        assert gemini_md.read_text().count("seahorse-memory:begin") == 1
+
+    def test_cursor_and_vscode_instructions_skip(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        """No global instruction file → SKIP with the manual-snippet pointer."""
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths, harnesses=("cursor", "vscode"), no_mcp=True)
+
+        by_status = {c["check"]: c["status"] for c in checks}
+        by_detail = {c["check"]: c["detail"] for c in checks}
+        assert by_status["agent_instructions:cursor"] == "SKIP"
+        assert "manually" in by_detail["agent_instructions:cursor"]
+        assert by_status["agent_instructions:vscode"] == "SKIP"
+
+    def test_uninstall_removes_instructions_block_symmetrically(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped, codex_sandbox
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        codex_agents_md = tmp_path / "codex" / "AGENTS.md"
+        monkeypatch.setenv("SEAHORSE_CODEX_AGENTS_MD", str(codex_agents_md))
+        vault = _cfg(tmp_path / "vault")
+        _run(vault, paths, harnesses=("codex",))
+        assert "seahorse-memory:begin" in codex_agents_md.read_text()
+
+        from seahorse.cli.setup import run_setup_uninstall
+
+        out = io.StringIO()
+        run_setup_uninstall(vault, fmt="human", out=out, harnesses=("codex",))
+        assert "seahorse-memory:begin" not in codex_agents_md.read_text()
+        assert "instructions:codex" in out.getvalue()
+
+    def test_repair_steps_for_agent_instructions_per_harness(self, tmp_path, monkeypatch) -> None:
+        codex_agents_md = tmp_path / "codex" / "AGENTS.md"
+        monkeypatch.setenv("SEAHORSE_CODEX_AGENTS_MD", str(codex_agents_md))
+        vault = _cfg(tmp_path / "vault")
+        steps = repair_steps_for(["agent_instructions:codex"], vault=vault)
+        assert [s.check for s in steps] == ["agent_instructions:codex"]
+        for step in steps:
+            step.run()
+        assert "seahorse-memory:begin" in codex_agents_md.read_text()

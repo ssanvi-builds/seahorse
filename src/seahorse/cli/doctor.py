@@ -57,7 +57,11 @@ _REPAIRABLE_CHECKS = frozenset(
 
 
 def _repairable(check_name: str) -> bool:
-    return check_name in _REPAIRABLE_CHECKS or check_name.startswith("mcp_registered:")
+    return (
+        check_name in _REPAIRABLE_CHECKS
+        or check_name.startswith("mcp_registered:")
+        or check_name.startswith("agent_instructions:")
+    )
 
 
 def _sqlite_load_extension_supported() -> bool:
@@ -360,6 +364,40 @@ def run_doctor(
                 "detail": "no memory instructions in ~/.claude/CLAUDE.md; run `seahorse setup`",
             }
         )
+    # The other harnesses' instruction files: same "only when the harness
+    # appears installed" rule as the MCP checks above (proxy: the harness's
+    # global instruction file exists).
+    from seahorse.cli.agent_instructions import instructions_path_for
+
+    for hid in ("codex", "antigravity", "gemini"):
+        instr_path = instructions_path_for(hid)
+        if instr_path is None or not instr_path.exists():
+            checks.append(
+                {
+                    "check": f"agent_instructions:{hid}",
+                    "status": "OK",
+                    "detail": f"{hid} not installed ({instr_path} absent) — skipped",
+                }
+            )
+        elif _ai_installed(instr_path):
+            checks.append(
+                {
+                    "check": f"agent_instructions:{hid}",
+                    "status": "OK",
+                    "detail": f"installed in {instr_path}",
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "check": f"agent_instructions:{hid}",
+                    "status": "WARN",
+                    "detail": (
+                        f"no memory instructions in {instr_path}; "
+                        f"run `seahorse setup --harness {hid}`"
+                    ),
+                }
+            )
     from seahorse.cli.skill_install import skill_path, skill_state
 
     state = skill_state("consolidate")

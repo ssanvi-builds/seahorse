@@ -385,6 +385,13 @@ class TestOnboardingChecks:
         monkeypatch.setenv("SEAHORSE_GEMINI_SETTINGS", str(tmp_path / "gemini" / "settings.json"))
         monkeypatch.setenv("SEAHORSE_CLAUDE_MD", str(home / ".claude" / "CLAUDE.md"))
         monkeypatch.setenv(
+            "SEAHORSE_CODEX_AGENTS_MD", str(tmp_path / "codex" / "AGENTS.md")
+        )
+        monkeypatch.setenv("SEAHORSE_GEMINI_MD", str(home / ".gemini" / "GEMINI.md"))
+        monkeypatch.setenv(
+            "SEAHORSE_ANTIGRAVITY_MD", str(home / ".gemini" / "GEMINI.md")
+        )
+        monkeypatch.setenv(
             "SEAHORSE_CLAUDE_SETTINGS", str(tmp_path / "settings.json")
         )
         monkeypatch.setenv(
@@ -395,6 +402,12 @@ class TestOnboardingChecks:
     def _config(self, tmp_path):
         write_default_config(tmp_path)
         return load_config(tmp_path)
+
+    def _doctor(self, tmp_path, *, fix: bool = False):
+        config = self._config(tmp_path)
+        out = io.StringIO()
+        run_doctor(config, fmt="json", out=out, fix=fix)
+        return json.loads(out.getvalue())["checks"]
 
     def test_mcp_unregistered_warns(self, tmp_path, monkeypatch) -> None:
         config = self._config(tmp_path)
@@ -520,6 +533,48 @@ class TestOnboardingChecks:
         assert resolve_target("codex").is_registered(codex_config)
 
     # -- skills_installed ---------------------------------------------------
+
+    def test_per_harness_instructions_ok_when_block_installed(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        gemini_md = tmp_path / "home" / ".gemini" / "GEMINI.md"
+        gemini_md.parent.mkdir(parents=True, exist_ok=True)
+        gemini_md.write_text(
+            "user rules\n\n"
+            "<!-- seahorse-memory:begin -->\nblock\n<!-- seahorse-memory:end -->\n"
+        )
+        checks = self._doctor(tmp_path)
+        by_name = {c["check"]: (c["status"], c["detail"]) for c in checks}
+        assert by_name["agent_instructions:gemini"][0] == "OK"
+        assert "installed" in by_name["agent_instructions:gemini"][1]
+
+    def test_per_harness_instructions_installed_but_missing_block_warns(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        codex_md = tmp_path / "codex" / "AGENTS.md"
+        codex_md.parent.mkdir(parents=True, exist_ok=True)
+        codex_md.write_text("# my agent rules\n")
+        checks = self._doctor(tmp_path)
+        by_name = {c["check"]: (c["status"], c["detail"]) for c in checks}
+        assert by_name["agent_instructions:codex"][0] == "WARN"
+        assert "--harness codex" in by_name["agent_instructions:codex"][1]
+
+    def test_per_harness_instructions_absent_file_is_skipped_ok(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        checks = self._doctor(tmp_path)
+        by_name = {c["check"]: c["status"] for c in checks}
+        for hid in ("codex", "antigravity", "gemini"):
+            assert by_name[f"agent_instructions:{hid}"] == "OK"
+
+    def test_fix_repairs_per_harness_instructions(self, tmp_path, monkeypatch) -> None:
+        codex_md = tmp_path / "codex" / "AGENTS.md"
+        codex_md.parent.mkdir(parents=True, exist_ok=True)
+        codex_md.write_text("# my agent rules\n")
+        checks = self._doctor(tmp_path, fix=True)
+        by_name = {c["check"]: c["status"] for c in checks}
+        assert by_name["fix:agent_instructions:codex"] == "OK"
+        assert "seahorse-memory:begin" in codex_md.read_text()
 
     def test_skills_absent_warns(self, tmp_path, monkeypatch) -> None:
         config = self._config(tmp_path)

@@ -102,6 +102,11 @@ export SEAHORSE_CURSOR_MCP_JSON="$HOME/.cursor/mcp.json"
 export SEAHORSE_VSCODE_MCP_JSON="$HOME/.config/Code/User/mcp.json"
 export SEAHORSE_ANTIGRAVITY_CONFIG="$HOME/.gemini/config/mcp_config.json"
 export SEAHORSE_GEMINI_SETTINGS="$HOME/.gemini/settings.json"
+# Global instruction files (the agent-instructions block per harness).
+# Gemini CLI and Antigravity share ~/.gemini/GEMINI.md — double install is a no-op.
+export SEAHORSE_CODEX_AGENTS_MD="$HOME/.codex/AGENTS.md"
+export SEAHORSE_GEMINI_MD="$HOME/.gemini/GEMINI.md"
+export SEAHORSE_ANTIGRAVITY_MD="$HOME/.gemini/GEMINI.md"
 export SEAHORSE_CLAUDE_MD="$HOME/.claude/CLAUDE.md"
 export SEAHORSE_CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 export SEAHORSE_CLAUDE_SKILLS_DIR="$HOME/.claude/skills"
@@ -138,6 +143,9 @@ printf '{"theme": "auto", "mcpServers": {"other": {"command": "other-cmd"}}}\n' 
   > "$SEAHORSE_GEMINI_SETTINGS"
 printf '{"numStartups": 42, "mcpServers": {"other": {"type": "stdio", "command": "other-cmd"}}}\n' \
   > "$SEAHORSE_CLAUDE_JSON"
+printf '# my global agent rules\n- be terse\n' > "$SEAHORSE_CODEX_AGENTS_MD"
+mkdir -p "$(dirname "$SEAHORSE_GEMINI_MD")"
+printf 'My global rules for Gemini.\n' > "$SEAHORSE_GEMINI_MD"
 
 check "fake configs written" test -f "$SEAHORSE_CODEX_CONFIG" -a -f "$SEAHORSE_CLAUDE_JSON"
 
@@ -208,6 +216,23 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 sys.exit(0 if d['numStartups'] == 42 else 1)
 " "$SEAHORSE_CLAUDE_JSON"
+
+# --- instructions blocks: installed per harness, foreign content preserved ---
+info ""
+info "── agent instructions blocks ──"
+check "codex AGENTS.md block installed" \
+  grep -q "seahorse-memory:begin" "$SEAHORSE_CODEX_AGENTS_MD"
+check "codex AGENTS.md foreign rules preserved" \
+  grep -q 'be terse' "$SEAHORSE_CODEX_AGENTS_MD"
+check "gemini GEMINI.md block installed" \
+  grep -q "seahorse-memory:begin" "$SEAHORSE_GEMINI_MD"
+check "gemini foreign rules preserved" \
+  grep -q 'My global rules for Gemini' "$SEAHORSE_GEMINI_MD"
+if [[ "$(grep -c 'seahorse-memory:begin' "$SEAHORSE_GEMINI_MD")" -eq 1 ]]; then
+  ok "gemini+antigravity share GEMINI.md (exactly one block)"
+else
+  fail "gemini+antigravity share GEMINI.md (exactly one block)"
+fi
 
 # --- idempotency: second setup leaves files byte-identical ---------------------
 info ""
@@ -303,3 +328,17 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 sys.exit(0 if d['servers'].get('other', {}).get('command') == 'other-cmd' else 1)
 " "$SEAHORSE_VSCODE_MCP_JSON"
+if [[ "$(grep -c 'seahorse-memory:begin' "$SEAHORSE_CODEX_AGENTS_MD")" -eq 0 ]]; then
+  ok "codex instructions block removed"
+else
+  fail "codex instructions block removed"
+fi
+check "codex AGENTS.md foreign rules STILL intact" \
+  grep -q 'be terse' "$SEAHORSE_CODEX_AGENTS_MD"
+if [[ "$(grep -c 'seahorse-memory:begin' "$SEAHORSE_GEMINI_MD")" -eq 0 ]]; then
+  ok "gemini instructions block removed"
+else
+  fail "gemini instructions block removed"
+fi
+check "gemini foreign rules STILL intact" \
+  grep -q 'My global rules for Gemini' "$SEAHORSE_GEMINI_MD"

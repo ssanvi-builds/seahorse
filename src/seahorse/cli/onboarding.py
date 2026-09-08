@@ -13,7 +13,9 @@ The contract (ADR: one command, everything configured, exit 0 always):
 6. Global pointer written.
 7. Observer started (already running = fine).
 8. MCP server registered user-scope (``--no-mcp`` to skip).
-9. Agent instructions block installed (``--no-agent-instructions`` to skip).
+9. Agent instructions block installed per harness (each harness's global
+   instruction file — CLAUDE.md / AGENTS.md / GEMINI.md; SKIP for harnesses
+   without one). ``--no-agent-instructions`` skips all of them.
 10. Packaged agent skills installed (``--no-skills`` to skip).
 11. LLM provider detected + self-test-gated (``--skip-llm`` to skip).
 12. Embeddings model warmed ONLY with ``--warm-embeddings`` (~235MB download
@@ -69,7 +71,12 @@ def run_full_setup(
     (a partially-configured machine with an actionable message beats a
     crashed half-setup).
     """
-    from seahorse.cli.agent_instructions import install_agent_instructions
+    from seahorse.cli.agent_instructions import (
+        _NO_GLOBAL_INSTRUCTIONS_DETAIL,
+        install_agent_instructions,
+        install_instructions_for,
+        instructions_path_for,
+    )
     from seahorse.cli.errors import CliObserverRunning
     from seahorse.cli.provider_bootstrap import bootstrap_llm_provider
     from seahorse.cli.setup import (
@@ -180,19 +187,32 @@ def run_full_setup(
             step(f"mcp:{harness_id}", _mcp_step)
     else:
         checks.append({"check": "mcp", "status": _SKIP, "detail": "--no-mcp"})
-    # Agent instructions + skills are Claude-Code artifacts (~/.claude/...):
-    # installing them for a Codex-only user would litter a foreign home dir.
+    # Agent instructions are per-harness (each harness reads its own global
+    # file); skills are a Claude-Code artifact (~/.claude/skills) — installing
+    # them for a Codex-only user would litter a foreign home dir.
     claude_selected = "claude-code" in harnesses
-    if not no_agent_instructions and claude_selected:
-        step("agent_instructions", _instructions)
-    elif not claude_selected:
-        checks.append(
-            {
-                "check": "agent_instructions",
-                "status": _SKIP,
-                "detail": "claude-code not in --harness (Claude-specific artifact)",
-            }
-        )
+    if not no_agent_instructions:
+        for harness_id in harnesses:
+            if instructions_path_for(harness_id) is None:
+                checks.append(
+                    {
+                        "check": f"agent_instructions:{harness_id}",
+                        "status": _SKIP,
+                        "detail": _NO_GLOBAL_INSTRUCTIONS_DETAIL,
+                    }
+                )
+            elif harness_id == "claude-code":
+                step("agent_instructions", _instructions)
+            else:
+                check_name = f"agent_instructions:{harness_id}"
+
+                def _instr_step(hid: str = harness_id) -> str:
+                    ok, detail = install_instructions_for(hid)
+                    if not ok:
+                        raise RuntimeError(detail)
+                    return detail
+
+                step(check_name, _instr_step)
     else:
         checks.append(
             {"check": "agent_instructions", "status": _SKIP, "detail": "--no-agent-instructions"}
@@ -300,7 +320,7 @@ def repair_steps_for(
 
     Unknown names are ignored — ``--fix`` only repairs checks Seahorse owns.
     """
-    from seahorse.cli.agent_instructions import install_agent_instructions
+    from seahorse.cli.agent_instructions import install_agent_instructions, install_instructions_for
     from seahorse.cli.config import (
         write_consolidate_config,
         write_global_pointer,
@@ -388,7 +408,17 @@ def repair_steps_for(
         "db": ("schema applied", _db),
         "global_pointer": ("global pointer written", _pointer),
     }
+    from seahorse.cli.agent_instructions import instructions_path_for
     from seahorse.cli.harness_targets import harness_ids
+
+    def _instructions_for(harness_id: str) -> Callable[[], str]:
+        def run() -> str:
+            ok, detail = install_instructions_for(harness_id)
+            if not ok:
+                raise RuntimeError(detail)
+            return detail
+
+        return run
 
     for hid in harness_ids():
         if hid != "claude-code":
@@ -396,6 +426,11 @@ def repair_steps_for(
                 f"MCP server registered ({hid})",
                 _mcp_for(hid),
             )
+            if instructions_path_for(hid) is not None:
+                mapping[f"agent_instructions:{hid}"] = (
+                    f"agent instructions installed ({hid})",
+                    _instructions_for(hid),
+                )
     for name in check_names:
         if name in mapping:
             detail, run = mapping[name]

@@ -23,7 +23,7 @@ END_MARKER = "<!-- seahorse-memory:end -->"
 # exact H1.
 _LEGACY_HEADING = "# Persistent memory (Seahorse)"
 
-_INSTRUCTIONS = """\
+_INSTRUCTIONS_CORE = """\
 # Persistent memory (Seahorse)
 
 You have a persistent, bi-temporal memory via the `seahorse-mcp` MCP server.
@@ -46,14 +46,35 @@ directory, else the user's default vault.
   Tags are not supported in this release — do not send them.
 - **Procedural knowledge** (repeatable workflows, "how we do X") goes in via
   `skill_add`; retrieve it with `skill_search`.
+"""
+
+# Claude Code has hooks + an observer: sessions land in the vault without the
+# agent doing anything. Every other harness has no hooks — capture happens
+# only when the agent calls remember, so the block must NOT claim otherwise.
+_CAPTURE_AUTOMATIC = """\
 - **Session capture is automatic** (hooks + observer): you do not need to
   log what happened in the session. Distillation into consolidated knowledge
   notes is done by `seahorse consolidate` — run it when the user asks or at
   a natural milestone.
+"""
+
+_CAPTURE_ON_INTENT = """\
+- **Session capture is NOT automatic in this harness** (no hooks): when you
+  learn something durable, `remember` it immediately — there is no later
+  capture pass. Bootstrap each new session with `context` (the most recent
+  valid episodes + the last session's episodes) instead of waiting for
+  injection.
+"""
+
+_INSTRUCTIONS_TAIL = """\
 - The memory is the user's own Obsidian vault: the human reads and edits the
   same notes. If `recall` returns something that contradicts what the user
   just said, the user is right — correct the memory with `improve`.\
 """
+
+_INSTRUCTIONS = (
+    f"{_INSTRUCTIONS_CORE}{_CAPTURE_AUTOMATIC}{_INSTRUCTIONS_TAIL}"
+)
 
 _BLOCK = f"{BEGIN_MARKER}\n{_INSTRUCTIONS}\n{END_MARKER}"
 
@@ -67,8 +88,23 @@ def claude_md_path() -> Path:
 
 
 def instructions_block() -> str:
-    """The exact block setup installs (exposed for tests and doctor)."""
+    """The exact block setup installs for Claude Code (exposed for tests/doctor)."""
     return _BLOCK
+
+
+def instructions_block_for(harness_id: str) -> str:
+    """The exact block setup installs for ``harness_id``.
+
+    Claude Code gets the hooks-aware capture bullet; every other harness gets
+    the capture-on-intent variant (honesty: never claim automatic capture
+    where there are no hooks). The markers and everything else are identical.
+    """
+    if harness_id == "claude-code":
+        return _BLOCK
+    body = (
+        f"{_INSTRUCTIONS_CORE}{_CAPTURE_ON_INTENT}{_INSTRUCTIONS_TAIL}"
+    )
+    return f"{BEGIN_MARKER}\n{body}\n{END_MARKER}"
 
 
 def installed(path: Path | None = None) -> bool:
@@ -94,7 +130,7 @@ def _read_block(path: Path | None) -> str | None:
     return _extract_block(text)
 
 
-def _strip_stale_blocks(text: str) -> str:
+def _strip_stale_blocks(text: str, current: str) -> str:
     """Remove every marked block that is not the current one.
 
     ``_extract_block`` only sees the first marked block; when several exist
@@ -113,7 +149,7 @@ def _strip_stale_blocks(text: str) -> str:
                 break
             end += len(END_MARKER)
             block = text[start:end]
-            if block != _BLOCK:
+            if block != current:
                 stale = block
                 break
             idx = end
@@ -149,19 +185,24 @@ def _legacy_span(lines: list[str]) -> tuple[int, str, int] | None:
 
 
 def install_agent_instructions(path: Path | None = None) -> tuple[bool, str]:
-    """Idempotently ensure the block exists (updating a stale one in place).
+    """Idempotently ensure the Claude Code block exists (update stale in place)."""
+    return _install_block(path or claude_md_path(), _BLOCK)
 
-    A legacy markerless block (pre-0.22 installs) is replaced, not appended
-    after — the result is always exactly one current block. Returns
-    ``(installed, detail)``. Anything the user wrote around the block is
-    preserved byte-for-byte; a fresh file gets just the block.
+
+def _install_block(path: Path, block: str) -> tuple[bool, str]:
+    """Idempotently ensure ``block`` exists in ``path`` (updating a stale one).
+
+    A legacy markerless block (pre-0.22 CLAUDE.md installs — only possible on
+    the Claude path) is replaced, not appended after — the result is always
+    exactly one current block. Returns ``(installed, detail)``. Anything the
+    user wrote around the block is preserved byte-for-byte; a fresh file gets
+    just the block.
     """
-    path = path or claude_md_path()
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_BLOCK + "\n", encoding="utf-8")
+        path.write_text(block + "\n", encoding="utf-8")
         return True, f"instructions written to {path}"
     except OSError as exc:
         return False, f"cannot read {path}: {exc}"
@@ -175,26 +216,26 @@ def install_agent_instructions(path: Path | None = None) -> tuple[bool, str]:
         start, _, end = span
         while end > start and not lines[end - 1].strip():
             end -= 1  # trailing blanks of the legacy section
-        lines[start:end] = [_BLOCK + "\n"]
+        lines[start:end] = [block + "\n"]
         if start + 1 < len(lines) and lines[start + 1].strip():
             lines.insert(start + 1, "\n")  # blank line before what follows
         text = "".join(lines)
         # A stale MARKED block from a later install must not survive next to
         # the migrated one.
-        text = _strip_stale_blocks(text)
+        text = _strip_stale_blocks(text, block)
         legacy_detail = "legacy unmarked block replaced, "
 
     existing = _extract_block(text)
-    if existing == _BLOCK:
+    if existing == block:
         detail = legacy_detail + f"already installed in {path}"
         if not legacy_detail:
             return True, f"instructions already installed in {path}"
     elif existing is not None:
-        text = text.replace(existing, _BLOCK)
+        text = text.replace(existing, block)
         detail = legacy_detail + "updated"
     else:
         sep = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-        text = text + sep + _BLOCK + "\n"
+        text = text + sep + block + "\n"
         detail = legacy_detail + "appended"
     try:
         path.write_text(text, encoding="utf-8")
@@ -213,7 +254,7 @@ def remove_agent_instructions(path: Path | None = None) -> tuple[bool, str]:
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return True, "no user CLAUDE.md — nothing to remove"
+        return True, f"no instructions file at {path} — nothing to remove"
     except OSError as exc:
         return False, f"cannot read {path}: {exc}"
     existing = _read_block(path)
@@ -234,12 +275,66 @@ def remove_agent_instructions(path: Path | None = None) -> tuple[bool, str]:
     return True, f"instructions removed from {path}"
 
 
+_CODEX_AGENTS_MD_ENV = "SEAHORSE_CODEX_AGENTS_MD"
+_GEMINI_MD_ENV = "SEAHORSE_GEMINI_MD"
+_ANTIGRAVITY_MD_ENV = "SEAHORSE_ANTIGRAVITY_MD"
+
+_NO_GLOBAL_INSTRUCTIONS_DETAIL = (
+    "no global instruction file — add the block manually (docs/connect.md)"
+)
+
+
+def instructions_path_for(harness_id: str) -> Path | None:
+    """The harness's global instruction file, or None when it has none.
+
+    Codex reads ``~/.codex/AGENTS.md`` as its global scope (``AGENTS.md`` in
+    the Codex home). Gemini CLI and Antigravity share ``~/.gemini/GEMINI.md``
+    (Antigravity's global rules live there too) — the marked block is
+    identical, so a double install is a no-op. Cursor (user rules live in its
+    settings UI) and VS Code (copilot-instructions.md is workspace-scoped)
+    have no global file to write: setup reports SKIP and docs/connect.md
+    shows the manual snippet.
+    """
+    if harness_id == "claude-code":
+        return claude_md_path()
+    if harness_id == "codex":
+        env = os.environ.get(_CODEX_AGENTS_MD_ENV)
+        return Path(env) if env else Path.home() / ".codex" / "AGENTS.md"
+    if harness_id == "gemini":
+        env = os.environ.get(_GEMINI_MD_ENV)
+        return Path(env) if env else Path.home() / ".gemini" / "GEMINI.md"
+    if harness_id == "antigravity":
+        env = os.environ.get(_ANTIGRAVITY_MD_ENV)
+        return Path(env) if env else Path.home() / ".gemini" / "GEMINI.md"
+    return None
+
+
+def install_instructions_for(harness_id: str) -> tuple[bool, str]:
+    """Install the harness's block into its global instruction file."""
+    path = instructions_path_for(harness_id)
+    if path is None:
+        return False, _NO_GLOBAL_INSTRUCTIONS_DETAIL
+    return _install_block(path, instructions_block_for(harness_id))
+
+
+def remove_instructions_for(harness_id: str) -> tuple[bool, str]:
+    """Remove the marked block from the harness's global instruction file."""
+    path = instructions_path_for(harness_id)
+    if path is None:
+        return False, _NO_GLOBAL_INSTRUCTIONS_DETAIL
+    return remove_agent_instructions(path)
+
+
 __all__ = [
     "BEGIN_MARKER",
     "END_MARKER",
     "claude_md_path",
     "install_agent_instructions",
+    "install_instructions_for",
     "installed",
     "instructions_block",
+    "instructions_block_for",
+    "instructions_path_for",
     "remove_agent_instructions",
+    "remove_instructions_for",
 ]
