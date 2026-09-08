@@ -18,17 +18,20 @@ because it works even when the ``claude`` binary is not on PATH.
 
 from __future__ import annotations
 
-import contextlib
-import json
 import os
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
-MCP_SERVER_NAME = "seahorse-mcp"
-MCP_SERVER_COMMAND = "seahorse-mcp"
-_BACKUP_SUFFIX = ".seahorse-bak"
+# Shared write guarantees (atomic write, one-time backup, corrupt gate)
+# live in harness_targets so all six destinations inherit them.
+from seahorse.cli.harness_targets import (
+    MCP_SERVER_COMMAND,
+    MCP_SERVER_NAME,
+    atomic_write_json,
+    backup_once,
+    read_json_dict,
+)
 
 _MCP_ENTRY: dict[str, object] = {
     "type": "stdio",
@@ -47,12 +50,7 @@ def claude_json_path() -> Path:
 
 
 def _read_json(path: Path) -> dict[str, object] | None:
-    """Parsed top-level object, or None when absent/corrupt/unreadable."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
+    return read_json_dict(path)
 
 
 def is_mcp_registered(path: Path | None = None) -> bool:
@@ -63,22 +61,6 @@ def is_mcp_registered(path: Path | None = None) -> bool:
         return False
     servers = data.get("mcpServers")
     return isinstance(servers, dict) and servers.get(MCP_SERVER_NAME) == _MCP_ENTRY
-
-
-def _atomic_write(path: Path, data: dict[str, object]) -> None:
-    """Write JSON atomically: same-directory tempfile + ``os.replace``."""
-    fd, tmp_name = tempfile.mkstemp(
-        dir=path.parent, prefix=path.name + ".", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2)
-            fh.write("\n")
-        os.replace(tmp_name, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_name)
-        raise
 
 
 def register_mcp(path: Path | None = None) -> tuple[bool, str]:
@@ -108,9 +90,7 @@ def register_mcp(path: Path | None = None) -> tuple[bool, str]:
                 "with `claude mcp add`)",
             )
         data = existing
-        backup = path.with_suffix(path.suffix + _BACKUP_SUFFIX)
-        if not backup.exists():
-            shutil.copy2(path, backup)
+        backup_once(path)
 
     servers = data.get("mcpServers")
     if not isinstance(servers, dict):
@@ -120,7 +100,7 @@ def register_mcp(path: Path | None = None) -> tuple[bool, str]:
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write(path, data)
+        atomic_write_json(path, data)
     except OSError as exc:
         ok, detail = _fallback_via_claude_cli()
         if ok:
@@ -147,10 +127,8 @@ def remove_mcp_registration(path: Path | None = None) -> tuple[bool, str]:
     del servers[MCP_SERVER_NAME]
     data["mcpServers"] = servers
     try:
-        backup = path.with_suffix(path.suffix + _BACKUP_SUFFIX)
-        if not backup.exists():
-            shutil.copy2(path, backup)
-        _atomic_write(path, data)
+        backup_once(path)
+        atomic_write_json(path, data)
     except OSError as exc:
         return False, f"cannot write {path}: {exc}"
     return True, f"removed {MCP_SERVER_NAME} from {path}"
