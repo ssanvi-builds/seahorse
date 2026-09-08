@@ -485,6 +485,8 @@ lives in [CHANGELOG.md](CHANGELOG.md).
 
 Apache-2.0. See [LICENSE](LICENSE).
 
+mcp-name: io.github.ssanvi-builds/seahorse-memory
+
 ## Current status
 
 **v0.22.0.** The full agentic loop works end to end from a one-command setup:

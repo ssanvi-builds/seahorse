@@ -1,0 +1,51 @@
+{
+  "name": "seahorse-memory",
+  "display_name": "Seahorse — persistent memory for agents",
+  "description": "Persistent, bi-temporal memory for LLM agents over stdio MCP: append-only episodes (valid_at/created_at), supersedes chains, procedural skills, and a session-context bootstrap — backed by an Obsidian-native vault the human reads and edits.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ssanvi-builds/seahorse"
+  },
+  "homepage": "https://github.com/ssanvi-builds/seahorse",
+  "author": {
+    "name": "ssanvi-builds",
+    "url": "https://github.com/ssanvi-builds"
+  },
+  "license": "Apache-2.0",
+  "categories": ["Knowledge Base", "AI Systems"],
+  "tags": ["memory", "obsidian", "bi-temporal", "agents", "local-first"],
+  "installations": {
+    "uvx": {
+      "type": "uvx",
+      "command": "uvx",
+      "args": ["--from", "seahorse-memory", "seahorse-mcp"],
+      "package": "seahorse-memory",
+      "description": "Run the stdio MCP server in an isolated uvx environment (no install).",
+      "recommended": true
+    },
+    "python": {
+      "type": "python",
+      "command": "uv",
+      "args": ["tool", "install", "seahorse-memory", "--with", "seahorse-memory[embeddings,llm]"],
+      "package": "seahorse-memory",
+      "description": "Persistent install with the semantic-retrieval + LLM extras (then register with `seahorse setup --harness <ids>`)."
+    }
+  },
+  "tools": [
+    { "name": "remember", "description": "Persist a fact (episodic write, provenance object required)." },
+    { "name": "recall", "description": "INDEX-level current-state listing (no body)." },
+    { "name": "recall_timeline", "description": "TIMELINE level for an anchor episode." },
+    { "name": "recall_full", "description": "FULL level (hydrates body), batch-capped." },
+    { "name": "improve", "description": "Supersede a fact with a correction (history preserved)." },
+    { "name": "forget", "description": "Soft-delete a fact (sets invalid_at)." },
+    { "name": "build_pit", "description": "Build a point-in-time carrier (state_at | known_at)." },
+    { "name": "skill_add", "description": "Create a procedural skill." },
+    { "name": "skill_show", "description": "Show a skill's gated body (trust gate)." },
+    { "name": "skill_list", "description": "List procedural skills, newest first." },
+    { "name": "skill_search", "description": "Hybrid search over procedural skills." },
+    { "name": "freshness_view", "description": "Freshness snapshot of an episode." },
+    { "name": "audit_log", "description": "Audit events for an episode." },
+    { "name": "follow_supersedes_chain", "description": "Version history of an episode." },
+    { "name": "context", "description": "Bootstrap context for a new session (recent episodes + last session)." }
+  ]
+}

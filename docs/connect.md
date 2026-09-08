@@ -133,3 +133,9 @@ You can verify the whole chain any time:
 ```bash
 seahorse doctor --fix
 ```
+
+## Listings
+
+The manifests for the MCP registry, Smithery and mcpm live in the repo — see
+[docs/registries/README.md](registries/README.md) for what ships and how each
+listing is published.

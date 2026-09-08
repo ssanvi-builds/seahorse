@@ -1,0 +1,26 @@
+# Smithery listing (https://smithery.ai) — local stdio server definition.
+#
+# Seahorse resolves its vault at each call (cwd discovery → per-user default),
+# so the only user-facing config is an optional explicit vault path. The
+# schema stays flat and tiny (Smithery caps: 20 fields / 1KB).
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      vault:
+        type: string
+        description: >-
+          Path to the Obsidian vault (optional — auto-resolves: the vault
+          containing the working directory, else the per-user default).
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: 'uvx',
+      args: [
+        '--from',
+        'seahorse-memory',
+        'seahorse-mcp',
+        ...(config.vault ? ['--vault', config.vault] : [])
+      ]
+    })

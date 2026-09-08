@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ssanvi-builds/seahorse-memory",
+  "title": "Seahorse — persistent memory for agents",
+  "description": "Persistent, bi-temporal memory for LLM agents over stdio MCP, backed by an Obsidian-native vault.",
+  "version": "0.22.1",
+  "homepage": "https://github.com/ssanvi-builds/seahorse",
+  "repository": {
+    "source": "github",
+    "id": "1300712725",
+    "url": "https://github.com/ssanvi-builds/seahorse"
+  },
+  "license": "Apache-2.0",
+  "authors": [
+    {
+      "name": "ssanvi-builds"
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "seahorse-memory",
+      "version": "0.22.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "toolDisplayName": "seahorse-mcp",
+      "io.github.ssanvi-builds/docs": "https://github.com/ssanvi-builds/seahorse/blob/main/docs/connect.md"
+    }
+  }
+}
