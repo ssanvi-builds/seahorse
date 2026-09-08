@@ -39,6 +39,7 @@ from seahorse.benchmark.reporters.manifest import (
 )
 from seahorse.benchmark.sut.seahorse_sut import SeahorseSUT
 from seahorse.facade import EmptyQueryError
+from seahorse.frontmatter.defaults import SCHEMA_VERSION_MVP0
 
 _PROMPTS_DIR = Path(__file__).parent / "harness" / "prompts"
 
@@ -168,7 +169,7 @@ class EvaluationRunner:
             judge_rubric_hashes={},
             ingest_template_sha256=_file_sha256(_PROMPTS_DIR / "ingest_template.txt"),
             sut_name="seahorse",
-            sut_version="0.1.0",
+            sut_version=SCHEMA_VERSION_MVP0,
             temporal_mode=self._config.temporal_mode,
             score_source=self._config.score_source,
             reproducibility_class=self._config.reproducibility_class,

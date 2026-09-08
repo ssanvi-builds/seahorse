@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from seahorse.frontmatter.adapter import parse_file
+from seahorse.frontmatter.defaults import SCHEMA_VERSION_MVP0
 from seahorse.frontmatter.manifest import CASE_A, CASE_B, CASE_C, CASE_D
 from seahorse.frontmatter.migrator import VaultMigrator
 
@@ -139,7 +140,7 @@ class TestMigrateNoteCaseA:
         # Re-parse: valid canonical-format episode with the body intact.
         _cm, body, ep = parse_file(note)
         assert body == original
-        assert ep.schema_version == "0.1.0"
+        assert ep.schema_version == SCHEMA_VERSION_MVP0
         assert ep.valid_at is not None
 
     def test_dry_run_does_not_write(
@@ -172,7 +173,7 @@ class TestMigrateNoteCaseB:
         cm, body, ep = parse_file(note)
         assert "tags" in cm  # legacy preserved
         assert "created" in cm  # legacy preserved
-        assert ep.schema_version == "0.1.0"  # canonical format added
+        assert ep.schema_version == SCHEMA_VERSION_MVP0  # canonical format added
         assert body == "# Madrid\nbody\n"
 
 

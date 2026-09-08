@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from seahorse.benchmark.contracts import MetricReport
+from seahorse.frontmatter.defaults import SCHEMA_VERSION_MVP0
 
 
 def _canonical(obj: Any) -> Any:
@@ -56,7 +57,7 @@ class PinningFingerprint:
     judge_rubric_hashes: dict[str, str] = field(default_factory=dict)
     ingest_template_sha256: str = ""
     sut_name: str = "seahorse"
-    sut_version: str = "0.1.0"
+    sut_version: str = SCHEMA_VERSION_MVP0
     temporal_mode: bool = False
     score_source: str = "mvp1_rrf"
     reproducibility_class: str = "local_near_deterministic"

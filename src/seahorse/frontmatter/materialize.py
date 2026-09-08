@@ -100,7 +100,8 @@ def _effective_episode(ep: Episode) -> Episode:
     keep their engine title.
 
     ``schema_version`` is the episode-contract semver in the DB ('1.1'); the
-    on-disk frontmatter carries its own format version ('0.1.0'). Stamping the
+    on-disk frontmatter carries its own format version
+    (``SCHEMA_VERSION_MVP0``). Stamping the
     payload's value made every engine-written note disagree with the migrator's
     on-disk marker (L7). """
     updated = {"schema_version": SCHEMA_VERSION_MVP0}

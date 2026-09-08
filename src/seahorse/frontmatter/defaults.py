@@ -22,8 +22,10 @@ from datetime import UTC, datetime
 from seahorse.contracts.episode import Episode
 from seahorse.facade import new_uuid7
 
-# First-release schema version. Bump only on a wire-breaking schema change.
-SCHEMA_VERSION_MVP0 = "0.1.0"
+# Format version frozen at the 1.0 release (D1). The reader accepts any semver
+# shape (accept-both), so existing 0.1.0 notes stay valid without a rewrite;
+# new writes carry this constant. Bump only on a wire-breaking schema change.
+SCHEMA_VERSION_MVP0 = "1.0.0"
 # The agent_id the migrator stamps into provenance.
 MIGRATOR_AGENT_ID = "seahorse/migrator"
 # The migrator version written to the manifest.
