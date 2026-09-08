@@ -5,7 +5,7 @@ document states the methodology, the current numbers, their caveats, and how to
 reproduce them.
 
 The point is not a leaderboard. It is an honest, reproducible measurement — the
-field's own benchmarks are hard to trust (LOCOMO has 6.4% wrong gold answers;
+field's own benchmarks are hard to trust (LOCOMO has [6.4% wrong gold answers](https://github.com/dial481/locomo-audit/blob/main/AUDIT_REPORT.md) per an independent audit;
 Mem0's reproduction is broken, issue
 [#2800](https://github.com/mem0ai/mem0/issues/2800)), so Seahorse publishes its
 harness and its numbers together, with the caveats spelled out.
@@ -400,13 +400,13 @@ These numbers are **not comparable** to the scores other memory systems
 publish, and reading them side by side is misleading. The published scores are
 a different metric:
 
-| System | Published score | What it actually measures |
-|---|---|---|
-| Graphiti (Zep) | 63.8% LongMemEval | end-to-end accuracy, full dataset, strong reader |
-| Mem0 | 94.8 LongMemEval (self-reported) | end-to-end accuracy, full dataset |
-| Hindsight (Vectorize) | 91.4% LongMemEval (self-reported) | end-to-end accuracy, Gemini-3 Pro reader |
-| MemPalace | 96.6% R@5 LongMemEval | verbatim exact-match retrieval, no LLM |
-| **Seahorse** | **recall@10 0.13** | **retrieval ranking only, subsample, small judge** |
+| System | Published score | What it actually measures | Source |
+|---|---|---|---|
+| Graphiti (Zep) | 63.8% LongMemEval (gpt-4o-mini) | end-to-end accuracy, full dataset, strong reader | [Zep paper, Table 2](https://arxiv.org/abs/2501.13956) |
+| Mem0 | 94.8 LongMemEval (self-reported, top_50) | end-to-end accuracy, full dataset | [mem0 blog, 2026-05-12](https://mem0.ai/blog/introducing-temporal-reasoning-in-mem0) |
+| Hindsight (Vectorize) | 91.4% LongMemEval (self-reported) | end-to-end accuracy, Gemini-3 Pro reader | [hindsight-benchmarks README](https://github.com/vectorize-io/hindsight-benchmarks/blob/main/README.md) |
+| MemPalace | 96.6% R@5 LongMemEval | verbatim exact-match retrieval, no LLM (retrieval recall, not QA; an independent tester reports ~82.6% QA) | [MemPalace benchmarks README](https://github.com/MemPalace/mempalace/blob/develop/benchmarks/README.md) |
+| **Seahorse** | **recall@10 0.13** | **retrieval ranking only, subsample, small judge** | [docs/benchmark.md](benchmark.md) |
 
 The differences that make a direct comparison invalid:
 
@@ -417,11 +417,14 @@ The differences that make a direct comparison invalid:
 2. **Coverage.** Seahorse runs on a subsample (n≈470–500) of `longmemeval-s-s`;
    the others report on the full dataset.
 3. **Judge.** Seahorse's relevance scores come from a small, unvalidated LLM
-   judge. The others use validated judges and strong readers.
+   judge — stated as such. The others use larger LLM judges (GPT-4o-class) and
+   strong readers; none publishes human validation of its judge either.
 
 A fair comparison would require running the same harness in the same
 configuration — retrieval-only, same subsample, same judge — for each system.
-Nobody publishes that baseline today. That is exactly why Seahorse ships the
+A few same-harness comparisons appeared in mid-2026 ([arXiv:2604.01707](https://arxiv.org/abs/2604.01707), [MemDelta, arXiv:2606.29914](https://arxiv.org/abs/2606.29914)),
+but none measures the retrieval stage with a judge validated against humans.
+That is why Seahorse ships the
 harness in the repo: so the measurement can be checked, not trusted.
 
 ## Reproduce
