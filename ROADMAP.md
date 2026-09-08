@@ -13,7 +13,7 @@ What works today (v0.14.0):
   (`pip install seahorse-memory`). The import package and the `seahorse` /
   `seahorse-mcp` console scripts are unchanged.
 - **Agent-first MCP surface** — register the server in any MCP agent
-  (`claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"` or `.mcp.json`); the agent sees 14 memory tools.
+  (`claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"` or `.mcp.json`); the agent sees 15 memory tools.
 - **Bi-temporal, append-only memory engine** — every episode carries both when it
   became true (`valid_at`) and when it was recorded (`created_at`), so the
   knowledge base is reproducible at any past point in time. Supersession
@@ -112,7 +112,7 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
 - **v1.0 — the stable standard** — the milestone that promises not to break
   whoever depends on Seahorse. Three gates: (1) **frozen contracts** — the F3.1
   portable format (schema 1.0.0) and the MCP profile `io.seahorse.memory/v1`
-  (14 tools) stop changing in breaking ways; additive evolution only, with a
+  (15 tools) stop changing in breaking ways; additive evolution only, with a
   documented migration path for 0.x vaults; (2) **the self-evolving loop
   validated with data** — observe → consolidate/supersede → materialize →
   recall → decay working end-to-end, with an authoritative LMEB-S run published
@@ -124,7 +124,7 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   expansions gated by adoption, not requirements for 1.0. After 1.0, a breaking
   change is a 2.0. **The pre-v1.0 validation is complete (2026-08-31)**: all
   three gates are validated with evidence — frozen contracts (MCP
-  protocolVersion `2025-11-25` + 14 tools + CLI onboarding, `e2e-pypi.sh` 24
+  protocolVersion `2025-11-25` + 15 tools + CLI onboarding, `e2e-pypi.sh` 24
   passed), the self-evolving loop (`e2e-loop.sh` 39 passed), and release
   quality (CI green, `e2e-pypi.sh` 24 passed, `e2e-vm.sh` 32 passed on a clean
   Linux VM with no dev tooling). Pending: the 1.0.0 bump + tag.

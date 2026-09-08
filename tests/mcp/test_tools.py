@@ -549,6 +549,7 @@ class TestHandlerDirectCall:
             ("freshness_view", {"ep_id": "ep-1"}, "freshness_calls"),
             ("audit_log", {"ep_id": "ep-1"}, "audit_calls"),
             ("follow_supersedes_chain", {"ep_id": "ep-1"}, "chain_calls"),
+            ("context", {}, "context_calls"),
         ],
     )
     def test_all_handlers_direct_callable(self, tool, args, record_attr) -> None:
@@ -725,6 +726,43 @@ class TestReadOnlyTools:
         resp = dispatch("freshness_view", {}, facade, 1)
         assert resp["error"]["code"] == -32602
         assert facade.freshness_calls == []
+
+
+class TestContextTool:
+    def test_delegates_no_top_k_by_default(self) -> None:
+        # Absent key is ABSENT in the recording (not collapsed to None) — the
+        # facade default owns top_k.
+        facade = RecordingFacade()
+        resp = dispatch("context", {}, facade, 1)
+        assert resp["result"]["isError"] is False
+        assert facade.context_calls == [{}]
+
+    def test_forwards_top_k_only_when_present(self) -> None:
+        facade = RecordingFacade()
+        dispatch("context", {"top_k": 7}, facade, 1)
+        assert facade.context_calls == [{"top_k": 7}]
+
+    def test_bootstrap_serializes(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("context", {}, facade, 1)
+        out = json.loads(resp["result"]["content"][0]["text"])
+        assert out["recent"][0]["ep_id"] == "ep-1"
+        assert out["recent"][0]["created_at"] == "2026-09-08T12:00:00Z"
+        assert out["vigente_count"] == 1
+        assert out["last_session_id"] == "s-1"
+        assert out["total_episodes"] == 3
+
+    def test_wire_rejects_unknown_keys_before_any_read(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("context", {"query": "x"}, facade, 1)
+        assert resp["error"]["code"] == -32602
+        assert facade.context_calls == []
+
+    def test_wire_rejects_zero_top_k_before_any_read(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("context", {"top_k": 0}, facade, 1)
+        assert resp["error"]["code"] == -32602
+        assert facade.context_calls == []
 
 
 def make_full_detail_for(ep):

@@ -309,6 +309,15 @@ FOLLOW_SUPERSEDES_CHAIN_SCHEMA: dict[str, Any] = {
 }
 
 
+CONTEXT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [],
+    "properties": {
+        "top_k": {"type": "integer", "minimum": 1},
+    },
+}
+
 TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "remember": REMEMBER_SCHEMA,
     "recall": RECALL_SCHEMA,
@@ -324,6 +333,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
     "freshness_view": FRESHNESS_VIEW_SCHEMA,
     "audit_log": AUDIT_LOG_SCHEMA,
     "follow_supersedes_chain": FOLLOW_SUPERSEDES_CHAIN_SCHEMA,
+    "context": CONTEXT_SCHEMA,
 }
 
 
@@ -352,6 +362,7 @@ __all__ = [
     "FRESHNESS_VIEW_SCHEMA",
     "AUDIT_LOG_SCHEMA",
     "FOLLOW_SUPERSEDES_CHAIN_SCHEMA",
+    "CONTEXT_SCHEMA",
     "TOOL_SCHEMAS",
     "schema_for",
 ]

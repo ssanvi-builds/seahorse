@@ -30,7 +30,7 @@ from seahorse.disclosure.types import (
 )
 from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
-from seahorse.facade.types import FacadeConfig
+from seahorse.facade.types import ContextData, ContextEpisode, FacadeConfig
 from seahorse.facade.vigente_retriever import VigenteListingRetriever
 from seahorse.persistence.storage import Storage
 from seahorse.write_path.stub import StubWritePath
@@ -230,6 +230,7 @@ class RecordingFacade:
         self.audit_calls: list[dict[str, Any]] = []
         self.chain_calls: list[dict[str, Any]] = []
         self.get_vigente_calls: list[dict[str, Any]] = []
+        self.context_calls: list[dict[str, Any]] = []
 
         # configurable returns
         self.remember_result = make_write_result()
@@ -249,6 +250,21 @@ class RecordingFacade:
         self.audit_result: list = []
         self.chain_result: list = []
         self.vigente_result: list = []
+        self.context_result = ContextData(
+            recent=[
+                ContextEpisode(
+                    ep_id="ep-1",
+                    subject="subject-a",
+                    summary=None,
+                    created_at=datetime(2026, 9, 8, 12, 0, tzinfo=UTC),
+                    session_id="s-1",
+                )
+            ],
+            vigente_count=1,
+            last_session_id="s-1",
+            last_session=[],
+            total_episodes=3,
+        )
 
     # The facade method names + signatures the MCP server calls.
     def remember(self, payload, *, skip_extraction=None, extraction_mode=None, now=None):
@@ -327,6 +343,12 @@ class RecordingFacade:
     def get_vigente(self, subject=None, *, now=None):
         self.get_vigente_calls.append({"subject": subject, "now": now})
         return list(self.vigente_result)
+
+    def context(self, **kwargs):
+        # **kwargs capture: only the keys the handler actually forwarded are
+        # recorded (same invariant as recall above).
+        self.context_calls.append(dict(kwargs))
+        return self.context_result
 
 
 __all__ = [

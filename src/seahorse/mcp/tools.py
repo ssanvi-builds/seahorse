@@ -245,6 +245,17 @@ def handle_follow_supersedes_chain(
     return success_response(request_id, result)
 
 
+def handle_context(facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId) -> dict:
+    validate(args, schema_for("context"))
+    # top_k defaults to the facade's configured top_k — only override when the
+    # caller set it (same pattern as handle_recall / handle_skill_search).
+    kwargs: dict[str, Any] = {}
+    if args.get("top_k") is not None:
+        kwargs["top_k"] = args["top_k"]
+    result = facade.context(**kwargs)
+    return success_response(request_id, result)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table + tool list (advertised via tools/list).
 # ---------------------------------------------------------------------------
@@ -264,6 +275,7 @@ TOOL_HANDLERS: dict[str, Callable[[MemoryFacade, dict[str, Any], _RequestId], di
     "freshness_view": handle_freshness_view,
     "audit_log": handle_audit_log,
     "follow_supersedes_chain": handle_follow_supersedes_chain,
+    "context": handle_context,
 }
 
 TOOL_LIST: list[dict[str, Any]] = [
@@ -352,6 +364,14 @@ TOOL_LIST: list[dict[str, Any]] = [
         "description": "The supersedes closure for an episode (version history).",
         "inputSchema": schema_for("follow_supersedes_chain"),
     },
+    {
+        "name": "context",
+        "description": "Bootstrap context for a new session (INDEX level, no "
+        "body): the most recent valid episodes, the count of currently valid "
+        "episodes, and the last session's episodes grouped by session_id. "
+        "Same bootstrap the SessionStart hook injects.",
+        "inputSchema": schema_for("context"),
+    },
 ]
 
 
@@ -399,4 +419,5 @@ __all__ = [
     "handle_freshness_view",
     "handle_audit_log",
     "handle_follow_supersedes_chain",
+    "handle_context",
 ]

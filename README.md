@@ -182,7 +182,7 @@ Note: `~` is not expanded in `.mcp.json` — use `${HOME}` or an absolute path.
 (`mcpServers` in `settings.json` is silently ignored; MCP servers live in
 `~/.claude.json` for user/local scope and in `.mcp.json` for project scope.)
 
-Once connected, the agent sees the 14 memory tools — see
+Once connected, the agent sees the 15 memory tools — see
 [The agent surface](#the-agent-surface--7-memory-native-primitives--7-proceduralread-only-tools).
 The observer is a separate piece: it *captures* Claude Code sessions into
 episodes; the MCP server is how the agent *reads and writes* memory. Both work
@@ -377,8 +377,8 @@ enterprise tier are planned for the future (see the project's strategy notes).
 
 - Bi-temporal, append-only episode store on stdlib `sqlite3` + sqlite-vec (FTS5
   + vec0). Auto-migrating schema.
-- The 7 memory-native primitives plus 7 procedural / read-only tools, on both
-  the CLI and stdio MCP (14 tools total).
+- The 7 memory-native primitives plus 8 procedural / read-only tools, on both
+  the CLI and stdio MCP (15 tools total).
 - Progressive disclosure (INDEX / TIMELINE / FULL) and point-in-time projection.
 - **Hybrid semantic retrieval**: `recall` ranks by relevance — sqlite-vec
   kNN + FTS5 BM25 fused with Reciprocal Rank Fusion, with point-in-time
