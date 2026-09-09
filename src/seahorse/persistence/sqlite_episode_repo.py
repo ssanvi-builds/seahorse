@@ -275,5 +275,18 @@ class SqliteEpisodeRepository:
             params.append(subject)
         return self._fetch_many(where, tuple(params))
 
+    def count_created_since(self, t: datetime) -> int:
+        """Episodes appended at or after ``t`` (the capture-health probe).
+
+        SQL-side COUNT on ``created_at`` — doctor only needs the number, never
+        the rows. Includes consolidated notes (they are writes too).
+        """
+        with self._cm.read() as w:
+            row = w.execute(
+                "SELECT COUNT(*) FROM episodes WHERE created_at >= ?",
+                (_fmt_dt(t),),
+            ).fetchone()
+            return int(row[0])
+
 
 __all__ = ["SqliteEpisodeRepository"]

@@ -40,6 +40,9 @@ from seahorse.llm import LLMError, resolve_provider
 _OBSERVER_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop")
 _HOOK_MARKER = "observe event"
 _CONTEXT_PROBE_TIMEOUT_S = 10.0
+# capture_health window: long enough to span quiet weeks, short enough that a
+# silently-dead capture surfaces on the next doctor run.
+CAPTURE_HEALTH_WINDOW_DAYS = 7
 
 # Check names doctor --fix can repair (via onboarding.repair_steps_for).
 # Per-harness MCP checks use the "mcp_registered:<harness>" prefix.
@@ -216,6 +219,50 @@ def _context_probe(config: SeahorseConfig) -> tuple[bool, str]:
     return True, f"ok ({len(res.stdout)} chars)"
 
 
+def _capture_health_check(config: SeahorseConfig) -> tuple[str, str]:
+    """Episodes actually written in the last window — capture's ground truth.
+
+    The file checks above can all be green while capture is silently dead
+    (hooks installed but never approved via Codex's /hooks trust review, or a
+    dead observer): zero episodes in the window is the observable symptom.
+    OK at >=1 episode; WARN at 0 when hooks are installed (Claude Code or
+    Codex); SKIP-OK with no hooks (capture-on-intent) or no db yet.
+    """
+    if not config.db_path.exists():
+        return "OK", "no db yet — nothing captured (expected before first use)"
+    hooks_installed = _hooks_check()[0] == "OK"
+    if not hooks_installed:
+        from seahorse.cli.codex_hooks import codex_hooks_installed
+
+        hooks_installed = codex_hooks_installed()
+    from datetime import UTC, datetime, timedelta
+
+    from seahorse.persistence.storage import Storage
+
+    since = datetime.now(UTC) - timedelta(days=CAPTURE_HEALTH_WINDOW_DAYS)
+    try:
+        storage = Storage(config.db_path)
+        try:
+            count = storage.episodes.count_created_since(since)
+        finally:
+            storage.close()
+    except Exception as exc:  # noqa: BLE001 — diagnosis must not crash
+        return "WARN", f"cannot probe db: {exc}"
+    if count >= 1:
+        return (
+            "OK",
+            f"{count} episode(s) written in the last {CAPTURE_HEALTH_WINDOW_DAYS}d",
+        )
+    if hooks_installed:
+        return (
+            "WARN",
+            f"hooks installed but 0 episodes in {CAPTURE_HEALTH_WINDOW_DAYS}d — "
+            "approve them via /hooks (Codex skips untrusted hooks) and check "
+            "`seahorse observe status`",
+        )
+    return "OK", "no hooks — capture-on-intent (episodes land when the agent writes)"
+
+
 def run_doctor(
     config: SeahorseConfig,
     *,
@@ -298,6 +345,8 @@ def run_doctor(
     checks.append({"check": "claude_hooks", "status": hooks_status, "detail": hooks_detail})
     obs_status, obs_detail = _observer_check(config)
     checks.append({"check": "observer", "status": obs_status, "detail": obs_detail})
+    cap_status, cap_detail = _capture_health_check(config)
+    checks.append({"check": "capture_health", "status": cap_status, "detail": cap_detail})
     ctx_ok, ctx_detail = _context_probe(config)
     checks.append(
         {"check": "context", "status": "OK" if ctx_ok else "WARN", "detail": ctx_detail}

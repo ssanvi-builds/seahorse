@@ -334,3 +334,16 @@ def test_find_vigent_by_fact_id_exclude(repo: SqliteEpisodeRepository) -> None:
     repo.append(_episode("e1", fact_id="f1"))
     assert repo.find_vigent_by_fact_id("f1", exclude="e1") is None
     assert repo.find_vigent_by_fact_id("f1", exclude="e2") is not None
+
+
+# --- count_created_since (capture-health probe) -----------------------------
+
+
+def test_count_created_since_counts_only_recent(repo: SqliteEpisodeRepository) -> None:
+    now = datetime.now(UTC)
+    repo.append(_episode("old-1", fact_id="f-old", created_at=now - timedelta(days=30)))
+    repo.append(_episode("recent-1", fact_id="f-r1", created_at=now - timedelta(days=1)))
+    repo.append(_episode("recent-2", fact_id="f-r2", created_at=now - timedelta(hours=1)))
+    cutoff = now - timedelta(days=7)
+    assert repo.count_created_since(cutoff) == 2
+    assert repo.count_created_since(now + timedelta(days=1)) == 0

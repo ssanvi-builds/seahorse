@@ -166,6 +166,18 @@ class TestRunFullSetup:
         assert not paths["claude_json"].exists()
         assert not paths["claude_md"].exists()
 
+    def test_smoke_test_row_guides_per_harness(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, human = _run(vault, paths, harnesses=("claude-code", "codex"))
+        row = _status(checks, "smoke_test")
+        assert row["status"] == "OK"  # a hint, never a failure
+        assert "Claude Code" in row["detail"]
+        assert "/hooks" in row["detail"]  # codex trust caveat reaches the hint
+        assert "smoke_test" in human
+
     def test_skills_step_installs_packaged_skills(
         self, tmp_path, monkeypatch, no_observer, llm_skipped
     ) -> None:

@@ -631,6 +631,74 @@ class TestOnboardingChecks:
         assert fix_row["status"] == "OK"
         assert codex_hooks_installed(hooks)
 
+    # -- capture_health -----------------------------------------------------
+
+    def _write_recent_episode(self, cfg) -> None:
+        from datetime import UTC, datetime
+
+        from seahorse.contracts.episode import Episode
+        from seahorse.persistence.storage import Storage
+
+        now = datetime.now(UTC)
+        ep = Episode(
+            id="cap-1",
+            created_at=now,
+            schema_version="1.1",
+            provenance={"source_type": "agent"},
+            body="# t\n\nb",
+            subject="t",
+            fact_id="f-cap-1",
+            valid_at=now,
+            cognitive_type="episodic",
+            source_type="agent",
+        )
+        storage = Storage(cfg.db_path)
+        try:
+            storage.episodes.append(ep)
+        finally:
+            storage.close()
+
+    def test_capture_health_no_db_is_ok(self, tmp_path) -> None:
+        checks = self._doctor(tmp_path)
+        check = next(c for c in checks if c["check"] == "capture_health")
+        assert check["status"] == "OK"
+        assert "no db yet" in check["detail"]
+
+    def test_capture_health_recent_episode_ok(self, tmp_path) -> None:
+        cfg = self._config(tmp_path)
+        self._write_recent_episode(cfg)
+        checks = self._doctor(tmp_path)
+        check = next(c for c in checks if c["check"] == "capture_health")
+        assert check["status"] == "OK"
+        assert "1 episode" in check["detail"]
+
+    def test_capture_health_zero_with_no_hooks_is_capture_on_intent(self, tmp_path) -> None:
+        cfg = self._config(tmp_path)
+        cfg.db_path.parent.mkdir(parents=True, exist_ok=True)
+        import sqlite3
+
+        sqlite3.connect(cfg.db_path).close()  # db exists, empty
+        checks = self._doctor(tmp_path)
+        check = next(c for c in checks if c["check"] == "capture_health")
+        assert check["status"] == "OK"
+        assert "capture-on-intent" in check["detail"]
+
+    def test_capture_health_zero_with_codex_hooks_warns_trust(self, tmp_path) -> None:
+        from seahorse.cli.codex_hooks import merge_codex_hooks
+
+        cfg = self._config(tmp_path)
+        cfg.db_path.parent.mkdir(parents=True, exist_ok=True)
+        import sqlite3
+
+        sqlite3.connect(cfg.db_path).close()  # db exists, empty
+        hooks = Path(os.environ["SEAHORSE_CODEX_HOOKS_JSON"])
+        installed, _ = merge_codex_hooks(hooks, hook_command="py -m seahorse observe event")
+        assert installed
+        checks = self._doctor(tmp_path)
+        check = next(c for c in checks if c["check"] == "capture_health")
+        assert check["status"] == "WARN"
+        assert "/hooks" in check["detail"]
+
     def test_skills_absent_warns(self, tmp_path, monkeypatch) -> None:
         config = self._config(tmp_path)
         monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))

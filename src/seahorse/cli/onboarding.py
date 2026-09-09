@@ -262,6 +262,26 @@ def run_full_setup(
             }
         )
 
+    # Smoke-test guidance (always OK — a hint to observe capture working on
+    # the real machine, not a check; there is nothing here to repair).
+    _SMOKE_HINTS = {
+        "claude-code": (
+            "open a new Claude Code session — context is injected on start; "
+            "say 'remember X', then verify with `seahorse context`"
+        ),
+        "codex": (
+            "open codex, say 'remember X', verify with `seahorse context`; "
+            "approve the hooks via /hooks when codex asks"
+        ),
+    }
+    hints = "; ".join(
+        _SMOKE_HINTS.get(
+            h, f"say 'remember X' in {h}, then verify with `seahorse context`"
+        )
+        for h in harnesses
+    )
+    checks.append({"check": "smoke_test", "status": _OK, "detail": hints})
+
     _render_summary(checks, fmt=fmt, out=out)
     return checks
 
