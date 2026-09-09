@@ -419,6 +419,17 @@ def run_setup_uninstall(
                     if ai_ok
                     else f"  instructions:{hid}: WARN {ai_detail}\n"
                 )
+        # Codex's capture hooks come down with its MCP entry.
+        if hid == "codex":
+            from seahorse.cli.codex_hooks import codex_hooks_path, remove_codex_hooks
+
+            ch_ok, ch_detail = remove_codex_hooks(codex_hooks_path())
+            if fmt == "human":
+                out.write(
+                    f"  codex_hooks: {ch_detail}\n"
+                    if ch_ok
+                    else f"  codex_hooks: WARN {ch_detail}\n"
+                )
 
 
 __all__ = [

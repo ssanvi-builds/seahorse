@@ -46,6 +46,7 @@ _CONTEXT_PROBE_TIMEOUT_S = 10.0
 _REPAIRABLE_CHECKS = frozenset(
     {
         "claude_hooks",
+        "codex_hooks",
         "mcp_registered",
         "agent_instructions",
         "skills_installed",
@@ -398,6 +399,59 @@ def run_doctor(
                     ),
                 }
             )
+    # Codex GA hooks: same "harness appears installed" proxy as above, but the
+    # directory is the proxy (the hooks file is exactly what may be missing).
+    from seahorse.cli.codex_hooks import codex_hooks_installed, codex_hooks_path
+    from seahorse.cli.harness_targets import read_json_dict
+
+    codex_file = codex_hooks_path()
+    if not codex_file.parent.exists():
+        checks.append(
+            {
+                "check": "codex_hooks",
+                "status": "OK",
+                "detail": f"codex not installed ({codex_file.parent} absent) — skipped",
+            }
+        )
+    elif not codex_file.exists():
+        checks.append(
+            {
+                "check": "codex_hooks",
+                "status": "WARN",
+                "detail": "no codex hooks file; run `seahorse setup --harness codex`",
+            }
+        )
+    elif read_json_dict(codex_file) is None:
+        checks.append(
+            {
+                "check": "codex_hooks",
+                "status": "WARN",
+                "detail": (
+                    f"cannot parse {codex_file} — fix or remove it, then re-run "
+                    "`seahorse setup --harness codex`"
+                ),
+            }
+        )
+    elif codex_hooks_installed(codex_file):
+        checks.append(
+            {
+                "check": "codex_hooks",
+                "status": "OK",
+                "detail": f"installed in {codex_file}",
+            }
+        )
+    else:
+        checks.append(
+            {
+                "check": "codex_hooks",
+                "status": "WARN",
+                "detail": (
+                    f"seahorse capture hooks missing from {codex_file}; "
+                    "run `seahorse setup --harness codex`"
+                ),
+            }
+        )
+
     from seahorse.cli.skill_install import skill_path, skill_state
 
     state = skill_state("consolidate")

@@ -17,6 +17,7 @@ from seahorse.cli.agent_instructions import (
     install_agent_instructions,
     installed,
     instructions_block,
+    instructions_block_for,
     remove_agent_instructions,
 )
 
@@ -26,6 +27,28 @@ def md_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "CLAUDE.md"
     monkeypatch.setenv("SEAHORSE_CLAUDE_MD", str(path))
     return path
+
+
+class TestVariants:
+    """Per-harness capture honesty: automatic only where hooks exist."""
+
+    def test_claude_code_gets_automatic_no_trust_line(self) -> None:
+        block = instructions_block_for("claude-code")
+        assert block == instructions_block()
+        assert "automatic" in block
+        assert "/hooks" not in block
+
+    def test_codex_gets_automatic_plus_trust_line(self) -> None:
+        block = instructions_block_for("codex")
+        assert "automatic" in block
+        assert "/hooks" in block
+
+    def test_hookless_harnesses_get_on_intent(self) -> None:
+        for hid in ("gemini", "antigravity", "cursor", "vscode"):
+            block = instructions_block_for(hid)
+            assert "NOT automatic" in block
+            assert "/hooks" not in block
+            assert block.startswith(BEGIN_MARKER) and block.endswith(END_MARKER)
 
 
 class TestInstall:

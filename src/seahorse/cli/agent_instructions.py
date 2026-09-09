@@ -66,6 +66,15 @@ _CAPTURE_ON_INTENT = """\
   injection.
 """
 
+# Codex has GA hooks with the same capture command as Claude Code, so it gets
+# the automatic variant — plus the one thing the installer cannot automate:
+# Codex skips untrusted hooks until the user approves them once via /hooks.
+_CODEX_TRUST = """\
+- **First-time setup**: Codex skips hooks it does not trust yet. Approve the
+  Seahorse hooks once via `/hooks` (hash-based trust review) or capture stays
+  off.
+"""
+
 _INSTRUCTIONS_TAIL = """\
 - The memory is the user's own Obsidian vault: the human reads and edits the
   same notes. If `recall` returns something that contradicts what the user
@@ -95,15 +104,17 @@ def instructions_block() -> str:
 def instructions_block_for(harness_id: str) -> str:
     """The exact block setup installs for ``harness_id``.
 
-    Claude Code gets the hooks-aware capture bullet; every other harness gets
-    the capture-on-intent variant (honesty: never claim automatic capture
-    where there are no hooks). The markers and everything else are identical.
+    Claude Code and Codex get the hooks-aware capture bullet (Codex plus the
+    one-time ``/hooks`` trust line); every other harness gets the
+    capture-on-intent variant (honesty: never claim automatic capture where
+    there are no hooks). The markers and everything else are identical.
     """
-    if harness_id == "claude-code":
-        return _BLOCK
-    body = (
-        f"{_INSTRUCTIONS_CORE}{_CAPTURE_ON_INTENT}{_INSTRUCTIONS_TAIL}"
-    )
+    capture = _CAPTURE_AUTOMATIC
+    if harness_id == "codex":
+        capture = f"{_CAPTURE_AUTOMATIC}{_CODEX_TRUST}"
+    elif harness_id != "claude-code":
+        capture = _CAPTURE_ON_INTENT
+    body = f"{_INSTRUCTIONS_CORE}{capture}{_INSTRUCTIONS_TAIL}"
     return f"{BEGIN_MARKER}\n{body}\n{END_MARKER}"
 
 

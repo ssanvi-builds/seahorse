@@ -77,6 +77,7 @@ def run_full_setup(
         install_instructions_for,
         instructions_path_for,
     )
+    from seahorse.cli.codex_hooks import codex_hooks_path, merge_codex_hooks
     from seahorse.cli.errors import CliObserverRunning
     from seahorse.cli.provider_bootstrap import bootstrap_llm_provider
     from seahorse.cli.setup import (
@@ -217,6 +218,23 @@ def run_full_setup(
         checks.append(
             {"check": "agent_instructions", "status": _SKIP, "detail": "--no-agent-instructions"}
         )
+    # Codex GA hooks: the SAME capture command as Claude Code, installed in
+    # ~/.codex/hooks.json — automatic capture + SessionStart bootstrap for
+    # codex (independent of --no-agent-instructions: it is capture, not text).
+    if "codex" in harnesses:
+
+        def _codex_hooks_step() -> str:
+            ok, detail = merge_codex_hooks(
+                codex_hooks_path(),
+                hook_command=(
+                    f"{sys.executable} -m seahorse.cli.app observe event --agent-id codex"
+                ),
+            )
+            if not ok:
+                raise RuntimeError(detail)
+            return detail
+
+        step("codex_hooks", _codex_hooks_step)
     if not no_skills and claude_selected:
         step("skills", _skills)
     elif not claude_selected:
@@ -398,8 +416,22 @@ def repair_steps_for(
         write_global_pointer(vault)
         return f"pointer -> {vault}"
 
+    def _codex_hooks() -> str:
+        from seahorse.cli.codex_hooks import codex_hooks_path, merge_codex_hooks
+
+        ok, detail = merge_codex_hooks(
+            codex_hooks_path(),
+            hook_command=(
+                f"{sys.executable} -m seahorse.cli.app observe event --agent-id codex"
+            ),
+        )
+        if not ok:
+            raise RuntimeError(detail)
+        return detail
+
     mapping: dict[str, tuple[str, Callable[[], str]]] = {
         "claude_hooks": ("observer hooks merged", _hooks),
+        "codex_hooks": ("codex capture hooks installed", _codex_hooks),
         "consolidate": ("consolidate-on-stop installed", _consolidate),
         "mcp_registered": ("MCP server registered", _mcp),
         "agent_instructions": ("agent instructions installed", _instructions),

@@ -377,6 +377,7 @@ class TestOnboardingChecks:
         monkeypatch.setenv("SEAHORSE_CLAUDE_JSON", str(tmp_path / "claude.json"))
         # Redirect the other harnesses too — the real home dir must never leak in.
         monkeypatch.setenv("SEAHORSE_CODEX_CONFIG", str(tmp_path / "codex" / "config.toml"))
+        monkeypatch.setenv("SEAHORSE_CODEX_HOOKS_JSON", str(tmp_path / "codex" / "hooks.json"))
         monkeypatch.setenv("SEAHORSE_CURSOR_MCP_JSON", str(tmp_path / "cursor" / "mcp.json"))
         monkeypatch.setenv("SEAHORSE_VSCODE_MCP_JSON", str(tmp_path / "vscode" / "mcp.json"))
         monkeypatch.setenv(
@@ -575,6 +576,60 @@ class TestOnboardingChecks:
         by_name = {c["check"]: c["status"] for c in checks}
         assert by_name["fix:agent_instructions:codex"] == "OK"
         assert "seahorse-memory:begin" in codex_md.read_text()
+
+    # -- codex_hooks --------------------------------------------------------
+
+    def test_codex_hooks_absent_home_is_skipped_ok(self, tmp_path) -> None:
+        checks = self._doctor(tmp_path)
+        check = next(c for c in checks if c["check"] == "codex_hooks")
+        assert check["status"] == "OK"
+        assert "skipped" in check["detail"]
+
+    def test_codex_home_without_hooks_file_warns(self, tmp_path) -> None:
+        Path(tmp_path / "codex").mkdir()
+        checks = self._doctor(tmp_path)
+        check = next(c for c in checks if c["check"] == "codex_hooks")
+        assert check["status"] == "WARN"
+        assert "--harness codex" in check["detail"]
+
+    def test_codex_hooks_corrupt_file_warns_never_repaired(self, tmp_path) -> None:
+        hooks = Path(os.environ["SEAHORSE_CODEX_HOOKS_JSON"])
+        hooks.parent.mkdir(parents=True)
+        hooks.write_text("{nope", encoding="utf-8")
+        checks = self._doctor(tmp_path, fix=True)
+        check = next(c for c in checks if c["check"] == "codex_hooks")
+        assert check["status"] == "WARN"
+        assert "cannot parse" in check["detail"]
+        assert hooks.read_text(encoding="utf-8") == "{nope"
+        # The repair attempt runs (the check warned) but reports FAIL loudly.
+        fix_row = next(c for c in checks if c["check"] == "fix:codex_hooks")
+        assert fix_row["status"] == "FAIL"
+
+    def test_codex_hooks_installed_ok(self, tmp_path) -> None:
+        from seahorse.cli.codex_hooks import merge_codex_hooks
+
+        hooks = Path(os.environ["SEAHORSE_CODEX_HOOKS_JSON"])
+        hooks.parent.mkdir(parents=True)
+        installed, _ = merge_codex_hooks(hooks, hook_command="py -m seahorse observe event")
+        assert installed
+        checks = self._doctor(tmp_path)
+        check = next(c for c in checks if c["check"] == "codex_hooks")
+        assert check["status"] == "OK"
+        assert "installed" in check["detail"]
+
+    def test_codex_hooks_file_without_marker_warns_and_fix_repairs(self, tmp_path) -> None:
+        from seahorse.cli.codex_hooks import codex_hooks_installed
+
+        hooks = Path(os.environ["SEAHORSE_CODEX_HOOKS_JSON"])
+        hooks.parent.mkdir(parents=True)
+        hooks.write_text(json.dumps({"hooks": {"Stop": []}}), encoding="utf-8")
+        checks = self._doctor(tmp_path, fix=True)
+        check = next(c for c in checks if c["check"] == "codex_hooks")
+        assert check["status"] == "WARN"
+        assert "missing" in check["detail"]
+        fix_row = next(c for c in checks if c["check"] == "fix:codex_hooks")
+        assert fix_row["status"] == "OK"
+        assert codex_hooks_installed(hooks)
 
     def test_skills_absent_warns(self, tmp_path, monkeypatch) -> None:
         config = self._config(tmp_path)
