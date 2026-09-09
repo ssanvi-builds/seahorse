@@ -159,7 +159,9 @@ CLI is for humans and scripts; agents talk to `seahorse-mcp`.
 `seahorse setup` registers the server in Claude Code automatically (user
 scope); `seahorse setup --harness codex,cursor,vscode,antigravity,gemini`
 registers it in the other MCP agents (each one's config file + instruction
-block — see [docs/connect.md](docs/connect.md)). The vault resolves
+block — see [docs/connect.md](docs/connect.md)); Codex additionally gets the
+same automatic session capture as Claude Code (its hooks run the same capture
+command — approve them once via `/hooks`). The vault resolves
 dynamically at each call — the vault containing the current working
 directory, else the per-user default — so one registration serves every
 project and every vault.

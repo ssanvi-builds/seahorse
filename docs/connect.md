@@ -31,6 +31,18 @@ What `--harness` touches per harness:
 | `antigravity` | `~/.gemini/config/mcp_config.json` | `~/.gemini/GEMINI.md` (global rules) |
 | `gemini` (Gemini CLI) | `~/.gemini/settings.json` | `~/.gemini/GEMINI.md` (global context) |
 
+## Codex: automatic capture too
+
+Codex's hooks (GA May 2026) speak the same stdin-JSON contract as Claude Code,
+so `seahorse setup --harness codex` installs the **same capture command** in
+`~/.codex/hooks.json` — sessions land in the vault without Codex doing
+anything, and the SessionStart hook injects your memory as bootstrap context.
+
+One step the installer cannot automate: Codex skips hooks it does not trust
+yet. Approve the Seahorse hooks **once** via `/hooks` (hash-based trust
+review) or capture stays off — `seahorse doctor` calls this out with its
+`capture_health` check (hooks installed but 0 episodes in the last 7 days).
+
 Guarantees, everywhere (same writers as the Claude Code path):
 
 - **Atomic writes** with a one-time `.seahorse-bak` backup next to the file.
@@ -113,16 +125,19 @@ directory, else the user's default vault.
 <!-- seahorse-memory:end -->
 ```
 
-This is the exact block `setup --harness` installs for Codex, Gemini CLI and
+This is the exact block `setup --harness` installs for Gemini CLI and
 Antigravity — the capture bullet is the honest, capture-on-intent variant (see
-below). For Claude Code the installed block differs only in that bullet
-(automatic capture, hooks + observer).
+below). For Claude Code and Codex the installed block differs only in that
+bullet (automatic capture, hooks + observer; Codex's adds the one-time
+`/hooks` trust line).
 
 ## Honest capture: what is automatic, what is not
 
 - **Automatic session capture** (hooks + observer → every session lands in the
-  vault without the agent doing anything) exists for **Claude Code** only.
-  That is why `seahorse setup` (default) also installs Claude Code hooks.
+  vault without the agent doing anything) exists for **Claude Code and Codex**
+  (Claude Code hooks in `settings.json`, Codex hooks in `hooks.json` — the
+  same capture command in both). That is why `seahorse setup` (default) also
+  installs Claude Code hooks.
 - **Every other harness** uses the memory through the MCP tools: the agent
   calls `remember` when it learns something durable and `context` at session
   start. The instructions block above teaches exactly that. It is real,

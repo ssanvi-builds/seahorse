@@ -98,6 +98,7 @@ export HOME="$SANDBOX/home"
 # Every harness config path → sandbox (the whole point of this e2e).
 export SEAHORSE_CLAUDE_JSON="$HOME/.claude.json"
 export SEAHORSE_CODEX_CONFIG="$HOME/.codex/config.toml"
+export SEAHORSE_CODEX_HOOKS_JSON="$HOME/.codex/hooks.json"
 export SEAHORSE_CURSOR_MCP_JSON="$HOME/.cursor/mcp.json"
 export SEAHORSE_VSCODE_MCP_JSON="$HOME/.config/Code/User/mcp.json"
 export SEAHORSE_ANTIGRAVITY_CONFIG="$HOME/.gemini/config/mcp_config.json"
@@ -133,6 +134,9 @@ mkdir -p "$(dirname "$SEAHORSE_CODEX_CONFIG")" "$(dirname "$SEAHORSE_CURSOR_MCP_
          "$(dirname "$SEAHORSE_GEMINI_SETTINGS")"
 printf '# user config\nmodel = "o4-mini"\n\n[profiles.work]\nmodel = "gpt-5.3"\n' \
   > "$SEAHORSE_CODEX_CONFIG"
+# Codex GA hooks: a FOREIGN hook the user already had (must survive merge+uninstall).
+printf '{"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "my-own-hook"}]}]}}\n' \
+  > "$SEAHORSE_CODEX_HOOKS_JSON"
 printf '{"model": "foreign-model", "mcpServers": {"other": {"command": "other-cmd"}}}\n' \
   > "$SEAHORSE_CURSOR_MCP_JSON"
 printf '{"chat.commandCenter.enabled": true, "servers": {"other": {"type": "stdio", "command": "other-cmd"}}}\n' \
@@ -234,17 +238,39 @@ else
   fail "gemini+antigravity share GEMINI.md (exactly one block)"
 fi
 
+# --- codex GA hooks: capture + bootstrap in ~/.codex/hooks.json ----------------
+info ""
+info "── codex hooks (capture + trust caveat) ──"
+check "codex hooks: all 4 events installed with agent-id + timeout" python3 -c "
+import json, sys
+hooks = json.load(open(sys.argv[1]))['hooks']
+events = ('SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop')
+for event in events:
+    entries = hooks[event]
+    handler = entries[-1]['hooks'][0]
+    assert handler['command'].endswith('observe event --agent-id codex'), (event, handler)
+    assert handler['timeout'] == 10, (event, handler)
+" "$SEAHORSE_CODEX_HOOKS_JSON"
+check "codex hooks: foreign hook preserved" python3 -c "
+import json, sys
+entries = json.load(open(sys.argv[1]))['hooks']['SessionStart']
+assert entries[0]['hooks'][0]['command'] == 'my-own-hook', entries
+" "$SEAHORSE_CODEX_HOOKS_JSON"
+check "codex hooks: one-time backup written" test -f "$SEAHORSE_CODEX_HOOKS_JSON.seahorse-bak"
+check "codex instructions: /hooks trust line present" \
+  grep -q 'Seahorse hooks once via' "$SEAHORSE_CODEX_AGENTS_MD"
+
 # --- idempotency: second setup leaves files byte-identical ---------------------
 info ""
 info "── idempotency: second setup run ──"
 sha_before="$(sha256sum "$SEAHORSE_CODEX_CONFIG" "$SEAHORSE_CURSOR_MCP_JSON" \
   "$SEAHORSE_VSCODE_MCP_JSON" "$SEAHORSE_ANTIGRAVITY_CONFIG" \
-  "$SEAHORSE_GEMINI_SETTINGS" "$SEAHORSE_CLAUDE_JSON")"
+  "$SEAHORSE_GEMINI_SETTINGS" "$SEAHORSE_CLAUDE_JSON" "$SEAHORSE_CODEX_HOOKS_JSON")"
 run "seahorse setup again (idempotent)" seahorse_cli setup --skip-llm \
   --harness codex,cursor,vscode,antigravity,gemini,claude-code
 sha_after="$(sha256sum "$SEAHORSE_CODEX_CONFIG" "$SEAHORSE_CURSOR_MCP_JSON" \
   "$SEAHORSE_VSCODE_MCP_JSON" "$SEAHORSE_ANTIGRAVITY_CONFIG" \
-  "$SEAHORSE_GEMINI_SETTINGS" "$SEAHORSE_CLAUDE_JSON")"
+  "$SEAHORSE_GEMINI_SETTINGS" "$SEAHORSE_CLAUDE_JSON" "$SEAHORSE_CODEX_HOOKS_JSON")"
 if [[ "$sha_before" == "$sha_after" ]]; then
   ok "second setup is byte-identical (idempotent)"
 else
@@ -260,11 +286,12 @@ import json, sys
 d = json.load(sys.stdin)
 checks = {c['check']: c['status'] for c in d['checks']}
 mcp = {k: v for k, v in checks.items() if k.startswith('mcp_registered')}
-sys.exit(0 if all(v == 'OK' for v in mcp.values()) and len(mcp) == 6 else 1)
+sys.exit(0 if all(v == 'OK' for v in mcp.values()) and len(mcp) == 6
+         and checks.get('codex_hooks') == 'OK' else 1)
 "; then
-  ok "doctor: all 6 mcp_registered checks OK"
+  ok "doctor: all 6 mcp_registered + codex_hooks OK"
 else
-  fail "doctor: all 6 mcp_registered checks OK"
+  fail "doctor: all 6 mcp_registered + codex_hooks OK"
 fi
 
 # Remove the codex block, then doctor --fix must repair it.
@@ -316,6 +343,16 @@ for dest in "codex:toml:" "cursor:json:mcpServers" "vscode:json:servers" \
   fi
 done
 
+check "codex hooks removed (no seahorse marker)" python3 -c "
+import json, sys
+raw = open(sys.argv[1]).read()
+assert 'observe event' not in raw, 'seahorse hook survived uninstall'
+" "$SEAHORSE_CODEX_HOOKS_JSON"
+check "codex hooks: foreign hook STILL intact" python3 -c "
+import json, sys
+entries = json.load(open(sys.argv[1]))['hooks']['SessionStart']
+assert entries[0]['hooks'][0]['command'] == 'my-own-hook', entries
+" "$SEAHORSE_CODEX_HOOKS_JSON"
 check "codex foreign content STILL intact" \
   grep -q 'model = "o4-mini"' "$SEAHORSE_CODEX_CONFIG"
 check "claude foreign content STILL intact" python3 -c "

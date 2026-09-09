@@ -38,7 +38,29 @@ support for Codex, Cursor, VS Code (Copilot), Antigravity and Gemini CLI.
   without hooks useful. Backward compatible: `tools/list` is dynamic.
 - **`docs/connect.md`** — per-harness connection guide: one command, one-click
   installs (Cursor deeplink, `code --add-mcp`), the manual instructions block,
-  and the honest capture rule (automatic capture = Claude Code only).
+  and the honest capture rule (automatic capture = Claude Code and Codex).
+- **Codex automatic capture (GA hooks)** — `seahorse setup --harness codex`
+  installs the SAME capture command Claude Code uses into `~/.codex/hooks.json`
+  (Codex hooks, GA May 2026, speak the same stdin-JSON contract): sessions
+  land in the vault without Codex doing anything, and the SessionStart hook
+  injects the memory as bootstrap context. The installer cannot automate
+  Codex's hash-based trust review — the instructions block and the new doctor
+  `capture_health` check surface it (approve once via `/hooks` or capture
+  stays off). Merge discipline identical to the Claude Code path: atomic,
+  idempotent, foreign hooks preserved, an unparseable file never touched,
+  10s timeout (Codex's own default is 600s — a hung capture must not stall a
+  turn). Symmetric removal with `setup --uninstall --harness codex`.
+- **`seahorse status` memory block** — vigente / unconsolidated /
+  consolidated-note counts, the oldest unconsolidated episode's age, and the
+  last consolidation date. At 20+ unconsolidated episodes it nudges toward
+  `seahorse consolidate` (textual hint, exit 0).
+- **`seahorse doctor` check `capture_health`** — episodes actually written in
+  the last 7 days (`SqliteEpisodeRepository.count_created_since`): the
+  hooks-installed-but-silently-dead state (untrusted hooks, dead observer) is
+  now observable as WARN with the fix in the detail.
+- **`seahorse setup` smoke-test hint** — the final summary row tells the user
+  how to observe capture working on their machine, per harness (Codex's hint
+  names the `/hooks` approval).
 - **Registry manifests** — `server.json` (official MCP registry, schema
   2025-12-11, validated), `smithery.yaml` (stdio + optional vault config), and
   the mcpm.sh manifest (`docs/registries/mcpm.json`, 15 tools), with publish
@@ -48,17 +70,6 @@ support for Codex, Cursor, VS Code (Copilot), Antigravity and Gemini CLI.
   with a primary source for every external claim.
 
 ### Changed
-
-- **Schema version frozen at 1.0.0 (accept-both, no rewrite)** — the on-disk
-  format version written by the migrator and new notes is now `1.0.0`
-  (`SCHEMA_VERSION_MVP0`). The reader accepts any semver-shaped
-  `schema_version`, so existing `0.1.0` notes stay valid and are NOT
-  rewritten; the benchmark manifest's `sut_version` now imports the same
-  constant instead of a literal. The migration path is pinned by 11 contract
-  tests (`tests/frontmatter/test_migration_path.py`): reader/engine accept the
-  0.x park, the migrator absorbs any semver shape as CASE_C, manifest/resume
-  survives the bump, and no `"0.1.0"` literal may appear outside
-  `defaults.py`.
 
 - **Schema version frozen at 1.0.0 (accept-both, no rewrite)** — the on-disk
   format version written by the migrator and new notes is now `1.0.0`
