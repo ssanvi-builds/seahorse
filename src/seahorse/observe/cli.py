@@ -405,14 +405,21 @@ def _inject_context(cfg: SeahorseConfig, out: TextIO) -> None:
     out.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
+def run_observe_event(
+    cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO, agent_id: str = ""
+) -> None:
     """POST a hook event to the observer socket (called by the Claude Code hooks).
 
-    Reads the hook payload from stdin (the Claude Code contract: a JSON object
-    with ``hook_event_name`` / ``session_id`` / ``prompt`` / ``tool_name`` /
-    ``tool_input`` / ``tool_response``), with the legacy env-var names as
-    fallback, and POSTs the envelope to the unix socket. The hook must NEVER
-    abort the agent session: any observer failure is a silent no-op (exit 0).
+    Reads the hook payload from stdin (the hook contract shared by Claude Code
+    and Codex GA hooks: a JSON object with ``hook_event_name`` / ``session_id``
+    / ``prompt`` / ``tool_name`` / ``tool_input`` / ``tool_response``), with
+    the legacy env-var names as fallback, and POSTs the envelope to the unix
+    socket. The hook must NEVER abort the agent session: any observer failure
+    is a silent no-op (exit 0).
+
+    ``agent_id`` (the ``--agent-id`` option) attributes the envelope when the
+    stdin JSON carries none — the Codex hooks command passes ``--agent-id
+    codex`` since Codex payloads have no agent field.
 
     Self-healing: when the POST cannot reach the worker (socket absent →
     status 0, or OSError), the hook respawns a dead observer. On SessionStart
@@ -440,7 +447,7 @@ def run_observe_event(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) ->
         "event_type": event_type,
         "payload": _build_payload(event_name, hook_input),
     }
-    agent_id = _hook_field(hook_input, "agent_id", "CLAUDE_AGENT_ID")
+    agent_id = _hook_field(hook_input, "agent_id", "CLAUDE_AGENT_ID") or agent_id
     if agent_id:
         raw["agent_id"] = agent_id
     try:

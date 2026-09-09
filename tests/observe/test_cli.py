@@ -355,6 +355,106 @@ def test_observe_event_stdin_prompt(tmp_path, monkeypatch) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("hook_input", "expected_type", "expected_payload"),
+    [
+        (
+            {
+                "session_id": "thr_123",
+                "transcript_path": "/workspace/.codex/rollout.jsonl",
+                "cwd": "/workspace",
+                "hook_event_name": "SessionStart",
+                "model": "gpt-5.2",
+                "permission_mode": "default",
+                "source": "startup",
+                "turn_id": "turn_1",
+            },
+            "session_start",
+            {},
+        ),
+        (
+            {
+                "session_id": "thr_123",
+                "cwd": "/workspace",
+                "hook_event_name": "UserPromptSubmit",
+                "model": "gpt-5.2",
+                "permission_mode": "default",
+                "turn_id": "turn_2",
+                "prompt": "remember the codex contract",
+            },
+            "user_prompt_submit",
+            {"prompt": "remember the codex contract"},
+        ),
+        (
+            {
+                "session_id": "thr_123",
+                "cwd": "/workspace",
+                "hook_event_name": "PostToolUse",
+                "tool_name": "shell",
+                "tool_use_id": "call_9",
+                "tool_input": {"command": ["pytest", "-q"]},
+                "tool_response": {"output": "1 passed", "exit_code": 0},
+            },
+            "post_tool_use",
+            {
+                "tool_name": "shell",
+                "tool_use_id": "call_9",
+                "tool_input": '{"command": ["pytest", "-q"]}',
+                "tool_response": '{"output": "1 passed", "exit_code": 0}',
+            },
+        ),
+        (
+            {
+                "session_id": "thr_123",
+                "cwd": "/workspace",
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "last_assistant_message": "Done.",
+            },
+            "stop",
+            {},
+        ),
+    ],
+)
+def test_observe_event_codex_stdin_payloads(
+    tmp_path, monkeypatch, hook_input, expected_type, expected_payload
+) -> None:
+    """The Codex hooks contract (GA 2026-05): same stdin-JSON convention, same
+    field names, Codex-specific extras (turn_id/model/source) ignored, tool
+    fields as structured objects (serialized for the redactor)."""
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(hook_input)))
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out())
+    assert posted == [
+        {
+            "session_id": hook_input["session_id"],
+            "event_type": expected_type,
+            "payload": expected_payload,
+        }
+    ]
+
+
+def test_observe_event_agent_id_option_fallback(tmp_path, monkeypatch) -> None:
+    """``--agent-id`` (the Codex hooks command sets it) attributes the envelope
+    when the stdin JSON carries no agent_id; an explicit stdin value wins."""
+    hook_input = {
+        "session_id": "thr_123",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "hello",
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(hook_input)))
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out(), agent_id="codex")
+    assert posted[0]["agent_id"] == "codex"
+
+    hook_input["agent_id"] = "explicit"
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(hook_input)))
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=_out(), agent_id="codex")
+    assert posted[-1]["agent_id"] == "explicit"
+
+
 def test_observe_event_stdin_precedence(tmp_path, monkeypatch) -> None:
     """stdin JSON wins over legacy env vars when both are present."""
     monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "UserPromptSubmit")

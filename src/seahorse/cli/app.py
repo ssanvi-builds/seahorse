@@ -695,11 +695,20 @@ def observe_run_cmd(ctx: typer.Context) -> None:
 
 
 @observe_app.command("event")
-def observe_event_cmd(ctx: typer.Context) -> None:
+def observe_event_cmd(
+    ctx: typer.Context,
+    agent_id: str = typer.Option(
+        "",
+        "--agent-id",
+        help="Attribute the event to this agent when the hook payload has none.",
+    ),
+) -> None:
     """POST a hook event to the observer socket (called by the hooks)."""
     from seahorse.observe.cli import run_observe_event
 
-    run_observe_event(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
+    run_observe_event(
+        ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx), agent_id=agent_id
+    )
 
 
 # ``benchmark`` group: ``benchmark run`` / ``benchmark list`` / ``benchmark adapters``.
