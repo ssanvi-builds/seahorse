@@ -595,3 +595,28 @@ def test_consolidate_retry_collision_still_reports_absorbed_rivals() -> None:
     assert item.absorbed_rivals == ("rival-1",)
     assert facade.forgotten == [("rival-1", "absorbed_by_consolidate")]
     assert facade.distill_calls == 2  # initial + one retry, no loop
+
+
+def test_unconsolidated_sources_filters_consolidated_notes() -> None:
+    from seahorse.distill.consolidate import is_consolidated, unconsolidated_sources
+
+    episodic = _stub_episode("e1", "topic a", now=T0)
+    note = _stub_episode("n1", "topic a", now=T0).model_copy(
+        update={"cognitive_type": "semantic",
+                "provenance": {"extraction_mode": "consolidated"}}
+    )
+    assert is_consolidated(note) and not is_consolidated(episodic)
+
+    class _StubFacade:
+        calls = 0
+
+        def get_vigente(self):
+            _StubFacade.calls += 1
+            return [episodic, note]
+
+    # Without eps: one get_vigente round-trip, only episodic sources come back.
+    assert unconsolidated_sources(_StubFacade()) == [episodic]
+    assert _StubFacade.calls == 1
+    # With eps held by the caller: no second round-trip.
+    assert unconsolidated_sources(_StubFacade(), eps=[episodic, note]) == [episodic]
+    assert _StubFacade.calls == 1

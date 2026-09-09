@@ -75,12 +75,27 @@ class ConsolidateReport:
     items: list[ConsolidateItem] = field(default_factory=list)
 
 
-def _is_consolidated(ep: Any) -> bool:
+def is_consolidated(ep: Any) -> bool:
     """True iff ``ep`` is a consolidated knowledge note (the distill OUTPUT)."""
     return (
         ep.cognitive_type == "semantic"
         and ep.provenance.get("extraction_mode") == "consolidated"
     )
+
+
+def unconsolidated_sources(
+    facade: Any, eps: list[Any] | None = None
+) -> list[Any]:
+    """The currently-valid EPISODIC sources — consolidate's only input.
+
+    Consolidated knowledge notes are the OUTPUT, not the input (idempotency),
+    so they are filtered out here. ``eps`` (the already-fetched
+    ``facade.get_vigente()`` list) is accepted so callers holding the list
+    avoid a second round-trip.
+    """
+    if eps is None:
+        eps = facade.get_vigente()
+    return [e for e in eps if not is_consolidated(e)]
 
 
 def _consolidated_body(cluster: Cluster) -> str:
@@ -162,10 +177,8 @@ def consolidate(
     """
     effective_by = by or {"source_type": "system", "agent_id": CONSOLIDATOR_AGENT}
     eps = facade.get_vigente()
-    # Cluster only EPISODIC sources — consolidated notes are the OUTPUT, not
-    # the input (idempotency).
-    sources = [e for e in eps if not _is_consolidated(e)]
-    existing_notes = {e.subject: e for e in eps if _is_consolidated(e)}
+    sources = unconsolidated_sources(facade, eps=eps)
+    existing_notes = {e.subject: e for e in eps if is_consolidated(e)}
     clusters = cluster_episodes(sources)
     items: list[ConsolidateItem] = []
     for cluster in clusters:
@@ -269,4 +282,11 @@ def consolidate(
     return ConsolidateReport(clusters_found=len(clusters), items=items)
 
 
-__all__ = ["consolidate", "ConsolidateItem", "ConsolidateReport", "CONSOLIDATOR_AGENT"]
+__all__ = [
+    "CONSOLIDATOR_AGENT",
+    "ConsolidateItem",
+    "ConsolidateReport",
+    "consolidate",
+    "is_consolidated",
+    "unconsolidated_sources",
+]

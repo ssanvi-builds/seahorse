@@ -88,6 +88,77 @@ def test_status_json(tmp_path):
     assert obj["initialized"] is True
     assert obj["db_exists"] is False  # no db written yet
     assert obj["top_k"] == 10
+    assert obj["memory"] == {"status": "no db yet"}
+
+
+def _remember_n(facade, n: int) -> None:
+    from seahorse.facade.types import RememberPayload
+
+    by = {"agent_id": "test", "session_id": "s1", "source_type": "agent"}
+    for i in range(n):
+        facade.remember(
+            RememberPayload(
+                body=f"# fact {i}\n\nDurable fact number {i}.",
+                by=by,
+                title=f"fact-{i}",
+            ),
+            extraction_mode="skip",
+        )
+
+
+def test_status_memory_block_counts_episodes(tmp_path):
+    v = tmp_path / "v"
+    write_default_config(v)
+    cfg = load_config(v)
+    from seahorse.facade.factory import build_facade
+
+    facade, storage = build_facade(cfg.db_path, retrieval_available=False)
+    _remember_n(facade, 3)
+    storage.close()
+    o = _out()
+    run_status(cfg, fmt="json", out=o)
+    mem = json.loads(o.getvalue())["memory"]
+    assert mem["vigente"] == 3
+    assert mem["unconsolidated"] == 3
+    assert mem["consolidated_notes"] == 0
+    assert mem["oldest_unconsolidated_age_days"] is not None
+    assert mem["last_consolidation"] is None
+    assert "hint" not in mem  # 3 << UNCONSOLIDATED_WARN
+
+
+def test_status_memory_hint_at_threshold(tmp_path):
+    v = tmp_path / "v"
+    write_default_config(v)
+    cfg = load_config(v)
+    from seahorse.cli.management import UNCONSOLIDATED_WARN
+    from seahorse.facade.factory import build_facade
+
+    facade, storage = build_facade(cfg.db_path, retrieval_available=False)
+    _remember_n(facade, UNCONSOLIDATED_WARN)
+    storage.close()
+    o = _out()
+    run_status(cfg, fmt="json", out=o)
+    mem = json.loads(o.getvalue())["memory"]
+    assert mem["unconsolidated"] == UNCONSOLIDATED_WARN
+    assert "seahorse consolidate" in mem["hint"]
+    human_o = _out()
+    run_status(cfg, fmt="human", out=human_o)
+    assert "seahorse consolidate" in human_o.getvalue()
+
+
+def test_status_memory_unavailable_reports_not_crashes(tmp_path, monkeypatch):
+    v = tmp_path / "v"
+    write_default_config(v)
+    cfg = load_config(v)
+    (cfg.db_path.parent).mkdir(parents=True, exist_ok=True)
+    cfg.db_path.write_bytes(b"not a sqlite db")
+    json_o = _out()
+    run_status(cfg, fmt="json", out=json_o)  # must not raise
+    mem = json.loads(json_o.getvalue())["memory"]
+    assert mem["status"].startswith("unavailable:")
+    human_o = _out()
+    run_status(cfg, fmt="human", out=human_o)  # the degradation reaches the surface
+    assert "unavailable:" in human_o.getvalue()
 
 
 # ---------------------------------------------------------------------------

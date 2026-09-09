@@ -25,7 +25,7 @@ fail-loud rather than silently disappear:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from seahorse.cli.config import SeahorseConfig, is_initialized, write_default_config
 from seahorse.cli.errors import CliNotInMVP0
@@ -80,6 +80,74 @@ def _llm_regime(config: SeahorseConfig) -> str:
     return f"llm:{provider}:{config.llm.primary}"
 
 
+# Beyond this many unconsolidated episodes, status nudges toward
+# `seahorse consolidate` (textual hint — status never fails on it).
+UNCONSOLIDATED_WARN = 20
+
+
+def _memory_snapshot(config: SeahorseConfig) -> dict[str, Any]:
+    """Vigente/unconsolidated counts + consolidation staleness from the vault db.
+
+    ``db absent`` → ``{"status": "no db yet"}``; a db that cannot be opened is
+    reported (never swallowed — a degradation status must reach the surface).
+    Read-only: the facade is built in the honest listing regime and closed
+    immediately.
+    """
+    if not config.db_path.exists():
+        return {"status": "no db yet"}
+    from datetime import UTC, datetime
+
+    from seahorse.distill.consolidate import is_consolidated, unconsolidated_sources
+    from seahorse.facade.factory import build_facade
+
+    try:
+        facade, storage = build_facade(config.db_path, retrieval_available=False)
+        try:
+            eps = facade.get_vigente()
+        finally:
+            storage.close()
+    except Exception as exc:  # noqa: BLE001 — status must render even on a broken db
+        return {"status": f"unavailable: {exc}"}
+    unconsolidated = unconsolidated_sources(facade, eps=eps)
+    consolidated = [e for e in eps if is_consolidated(e)]
+    now = datetime.now(UTC)
+    oldest = min((e.created_at for e in unconsolidated), default=None)
+    last = max((e.created_at for e in consolidated), default=None)
+    snapshot: dict[str, Any] = {
+        "vigente": len(eps),
+        "unconsolidated": len(unconsolidated),
+        "consolidated_notes": len(consolidated),
+        "oldest_unconsolidated_age_days": (
+            round((now - oldest).total_seconds() / 86400, 1) if oldest else None
+        ),
+        "last_consolidation": last.isoformat() if last else None,
+    }
+    if len(unconsolidated) >= UNCONSOLIDATED_WARN:
+        snapshot["hint"] = (
+            f"{len(unconsolidated)} unconsolidated episodes — run `seahorse consolidate`"
+        )
+    return snapshot
+
+
+def _memory_human(memory: dict[str, Any]) -> str:
+    """The memory block as status lines (empty when there is nothing to show)."""
+    if memory.get("status"):
+        return f"  memory:  {memory['status']}\n"
+    lines = (
+        f"  memory:  {memory['vigente']} vigente / "
+        f"{memory['unconsolidated']} unconsolidated / "
+        f"{memory['consolidated_notes']} consolidated notes\n"
+    )
+    oldest = memory["oldest_unconsolidated_age_days"]
+    if oldest is not None:
+        lines += f"  oldest unconsolidated episode: {oldest}d\n"
+    if memory["last_consolidation"]:
+        lines += f"  last consolidation: {memory['last_consolidation']}\n"
+    if memory.get("hint"):
+        lines += f"  ⚠ {memory['hint']}\n"
+    return lines
+
+
 def run_status(
     config: SeahorseConfig, *, fmt: OutputFormat = "human", out: TextIO
 ) -> None:
@@ -88,6 +156,7 @@ def run_status(
 
     retrieval = retrieval_status()
     llm_regime = _llm_regime(config)
+    memory = _memory_snapshot(config)
     payload = {
         "vault": str(config.vault),
         "seahorse_dir": str(config.seahorse_dir),
@@ -98,6 +167,7 @@ def run_status(
         "top_k": config.top_k,
         "retrieval": retrieval,
         "llm": llm_regime,
+        "memory": memory,
     }
     human = (
         f"Seahorse vault: {config.vault}\n"
@@ -107,6 +177,7 @@ def run_status(
         f"  top_k:   {config.top_k}\n"
         f"  retrieval: {retrieval}\n"
         f"  llm:     {llm_regime}\n"
+        f"{_memory_human(memory)}"
     )
     render_message(payload, fmt=fmt, out=out, human_text=human)
 
