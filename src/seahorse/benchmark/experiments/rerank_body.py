@@ -39,6 +39,15 @@ from pathlib import Path
 from typing import Any, cast
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import (
+    FALLBACK_G2 as _FALLBACK_G2,
+)
+from seahorse.benchmark.experiments._shared import (
+    ingest_episodes_stored_with_ids as _ingest_episodes,
+)
+from seahorse.benchmark.experiments._shared import (
+    is_fallback_regime,
+)
 from seahorse.benchmark.experiments.lmeb_corpus import (
     build_real_facade,
     ingest_haystack,
@@ -49,7 +58,6 @@ from seahorse.benchmark.experiments.synthetic import HashEmbedder, HashReranker
 from seahorse.contracts.episode import Episode
 from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder
 from seahorse.facade import build_facade
-from seahorse.facade.types import Provenance, RememberPayload
 from seahorse.retrieval.engine import recall
 
 # The k for the recall@k measurement (harness default).
@@ -61,9 +69,6 @@ RERANK_BODY_OVERFETCH_K = 50
 # Decision threshold: rerank(body) must recover >= 5pp more than rerank(summary)
 # to justify re-opening the keep_rrf decision.
 RERANK_BODY_DELTA_PP = 0.05
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 
 @dataclass(frozen=True)
@@ -188,37 +193,6 @@ def _make_synthetic_episodes() -> tuple[list[Episode], list[RerankBodyQuestion]]
     return episodes, questions
 
 
-def _ingest_episodes(
-    facade: Any, episodes: list[Episode]
-) -> tuple[list[Episode], dict[str, str]]:
-    """Ingest episodes via the facade's ``remember`` (the single write path, skip mode).
-
-    Returns ``(stored, id_map)`` where ``id_map`` maps the ORIGINAL episode id
-    to the STORED ``ep_id`` (the engine derives a deterministic UUIDv5 for
-    importer source, which may differ from ``Episode.id``). Episodes rejected by
-    a collision (``WriteResult.ep_id`` is None) are NOT stored and excluded.
-    """
-    stored: list[Episode] = []
-    id_map: dict[str, str] = {}
-    for ep in episodes:
-        result = facade.remember(
-            RememberPayload(
-                body=ep.body or "",
-                by=cast(Provenance, dict(ep.provenance)),
-                valid_at=ep.valid_at,
-                cognitive_type=ep.cognitive_type,
-                title=ep.title,
-                summary=ep.summary,
-            ),
-            extraction_mode="skip",
-        )
-        if result.ep_id is None:
-            continue  # COLLISION — not stored, not in the corpus
-        stored.append(ep.model_copy(update={"id": result.ep_id}))
-        id_map[ep.id] = result.ep_id
-    return stored, id_map
-
-
 def _build_real_reranker() -> Any:
     """The real fastembed cross-encoder (bge-reranker-v2-m3, MIT) for the LMEB-S run.
 
@@ -330,7 +304,7 @@ def _measure(
                 # experiment isolates the rerank stage's effect on recall.
                 session_boost=False,
             )
-            if rows and all(r.score == 0.0 for r in rows):
+            if is_fallback_regime(rows):
                 regime = _FALLBACK_G2
             if q.golden_session_ids and ep_id_to_session:
                 # session-level (LMEB-S): any retrieved episode from the golden session.

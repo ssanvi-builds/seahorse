@@ -31,6 +31,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from seahorse.benchmark.contracts import MetricReport
+from seahorse.benchmark.experiments._shared import FALLBACK_G2 as _FALLBACK_G2
 from seahorse.benchmark.experiments.variants import ExperimentVariant
 
 # 1pp = 0.01 (percent-point deltas on recall@10 / ndcg@10).
@@ -47,9 +48,6 @@ RECENCY_SLICES = ("temporal-reasoning", "knowledge-update")
 # The slice the decay bias must improve: the FAMA target (old/obsolete versions
 # out of the top-k, valid new versions retrievable).
 DECAY_SLICES = ("knowledge-update",)
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 
 @dataclass(frozen=True)

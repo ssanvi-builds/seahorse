@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import FALLBACK_G2 as _FALLBACK_G2
 from seahorse.benchmark.experiments.end_to_end import (
     EndToEndQuestion,
     ExtractiveReader,
@@ -57,9 +58,6 @@ READER_QUALITY_TOP_K = 10
 # accuracy than the weak baseline to attribute the loss to the reader MODEL
 # (the ceiling gap is recall@10 - e2e_weak, ~72pp on the real corpus).
 READER_QUALITY_DELTA_PP = 0.10
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 # The context representation is fixed at summary — the reader-context A/B
 # (2026-08-22) already decided ``keep_summary``; this experiment varies the

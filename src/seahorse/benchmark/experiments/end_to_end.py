@@ -41,6 +41,18 @@ from pathlib import Path
 from typing import Any, cast
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import (
+    FALLBACK_G2 as _FALLBACK_G2,
+)
+from seahorse.benchmark.experiments._shared import (
+    first_sentence as _first_sentence,
+)
+from seahorse.benchmark.experiments._shared import (
+    is_fallback_regime,
+)
+from seahorse.benchmark.experiments._shared import (
+    normalize_tokens as _normalize_tokens,
+)
 from seahorse.benchmark.experiments.lmeb_corpus import (
     build_real_facade,
     ingest_haystack,
@@ -62,9 +74,6 @@ END_TO_END_TOP_K = 10
 # Abstention golden answers: the reader must abstain (empty context -> empty
 # answer) for these to count correct.
 _ABSTENTION_ANSWERS = {"no", "none", "n/a", "not available"}
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 
 @dataclass(frozen=True)
@@ -109,11 +118,6 @@ class ExtractiveReader:
                 best_score = score
                 best_line = line
         return best_line
-
-
-def _normalize_tokens(text: str) -> list[str]:
-    """Lower-case + strip non-alphanumeric tokens (reader tokenizer)."""
-    return [t for t in re.sub(r"[^a-z0-9 ]", "", text.lower()).split() if t]
 
 
 def _normalize_answer(text: str) -> str:
@@ -244,14 +248,6 @@ def _make_synthetic_episodes() -> tuple[list[Episode], list[EndToEndQuestion]]:
         )
 
     return episodes, questions
-
-
-def _first_sentence(text: str) -> str:
-    """The first sentence of a body (the ``deterministic_extract`` summary)."""
-    stripped = text.strip()
-    if not stripped:
-        return ""
-    return stripped.split(".", 1)[0] + "." if "." in stripped else stripped
 
 
 def _ingest_episodes(
@@ -399,7 +395,7 @@ def measure_end_to_end(
                 rows = facade.recall(q.query, k=top_k, session_boost=False)
         else:
             rows = facade.recall(q.query, k=top_k, session_boost=False)
-        if rows and all(r.score == 0.0 for r in rows):
+        if is_fallback_regime(rows):
             regime = _FALLBACK_G2
         # recall@10 (the ceiling): any retrieved episode from the golden session.
         retrieved_sessions = {ep_id_to_session.get(r.ep_id, "") for r in rows}

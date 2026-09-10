@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import FALLBACK_G2 as _FALLBACK_G2
 from seahorse.benchmark.experiments.end_to_end import (
     EndToEndQuestion,
     ExtractiveReader,
@@ -53,9 +54,6 @@ READER_CONTEXT_TOP_K = 10
 # than summary to justify hydrating bodies in the product's answer path (the
 # ceiling gap is recall@10 - e2e_summary, ~72pp on the real corpus).
 READER_CONTEXT_DELTA_PP = 0.10
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 # The three modes the A/B measures (all in the harness context contract).
 CONTEXT_MODES: tuple[ContextMode, ...] = ("summary", "body", "body_bounded")

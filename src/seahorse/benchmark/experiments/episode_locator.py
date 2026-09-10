@@ -47,6 +47,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from seahorse.benchmark.experiments._shared import cosine as _cosine
 from seahorse.contracts.episode import Episode
 
 Embedder = Callable[[str], Sequence[float]]
@@ -87,15 +88,6 @@ def _longest_contiguous_ngram(answer_tokens: Sequence[str], body_tokens: Sequenc
             if tuple(body_tokens[j : j + n]) in answer_windows:
                 return n
     return 0
-
-
-def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(y * y for y in b) ** 0.5
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
 
 
 def locate_answer_episodes(

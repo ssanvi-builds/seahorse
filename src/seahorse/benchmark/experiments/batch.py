@@ -34,13 +34,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import (
+    FALLBACK_G2 as _FALLBACK_G2,
+)
+from seahorse.benchmark.experiments._shared import (
+    ingest_episodes_stored as _ingest_episodes,
+)
+from seahorse.benchmark.experiments._shared import (
+    is_fallback_regime,
+)
+from seahorse.benchmark.experiments._shared import (
+    subject_of as _subject_of,
+)
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
-from seahorse.facade.types import Provenance, RememberPayload
 from seahorse.importer.claude_mem import ClaudeMemReader, import_record
 
 # The k for the cluster recall@k measurement (harness default).
@@ -50,9 +61,6 @@ BATCH_TOP_K = 10
 # recoverable unit when, on average, >= half the turn cluster is retrieved by a
 # query about one observation's topic.
 BATCH_RECALL_THRESHOLD = 0.5
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 
 @dataclass(frozen=True)
@@ -77,17 +85,6 @@ class BatchExperimentResult:
     turn_sizes: tuple[int, ...]
     recoverable_turns: float  # fraction of turns with cluster recall@k >= threshold
     regime: str  # hybrid | fallback_g2
-
-
-def _subject_of(ep: Episode) -> str:
-    """The episode's subject: the H1 of the body (the importer guarantees it)."""
-    if ep.title:
-        return ep.title
-    body = ep.body or ""
-    for line in body.splitlines():
-        if line.startswith("# "):
-            return line[2:].strip()
-    return body.strip() or ""
 
 
 def compute_turn_clusters(episodes: list[Episode]) -> list[TurnCluster]:
@@ -116,33 +113,6 @@ def compute_turn_clusters(episodes: list[Episode]) -> list[TurnCluster]:
             )
         )
     return clusters
-
-
-def _ingest_episodes(facade: Any, episodes: list[Episode]) -> list[Episode]:
-    """Ingest episodes via the facade's ``remember`` (the single write path, skip mode).
-
-    Returns the episodes with their STORED ``ep_id`` (the engine derives the id
-    — a deterministic UUIDv5 for importer source, which may differ from
-    ``Episode.id``). Episodes rejected by a collision (``WriteResult.ep_id`` is
-    None) are NOT stored and are excluded from the corpus.
-    """
-    updated: list[Episode] = []
-    for ep in episodes:
-        result = facade.remember(
-            RememberPayload(
-                body=ep.body or "",
-                by=cast(Provenance, dict(ep.provenance)),
-                valid_at=ep.valid_at,
-                cognitive_type=ep.cognitive_type,
-                title=ep.title,
-                summary=ep.summary,
-            ),
-            extraction_mode="skip",
-        )
-        if result.ep_id is None:
-            continue  # COLLISION — not stored, not in the corpus
-        updated.append(ep.model_copy(update={"id": result.ep_id}))
-    return updated
 
 
 def _make_synthetic_episodes() -> list[Episode]:
@@ -286,7 +256,7 @@ def _measure(
             query = cluster.subjects[i]
             rows = facade.recall(query, k=top_k)
             retrieved = [r.ep_id for r in rows]
-            if rows and all(r.score == 0.0 for r in rows):
+            if is_fallback_regime(rows):
                 regime = _FALLBACK_G2
             golden = set(cluster.ep_ids) - {ep_id}
             if golden:

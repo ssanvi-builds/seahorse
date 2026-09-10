@@ -15,11 +15,11 @@ science — the authoritative feature decisions come from an LMEB-S run
 from __future__ import annotations
 
 import hashlib
-import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from seahorse.benchmark.contracts import BenchmarkDataset, BenchmarkInstance
+from seahorse.benchmark.experiments._shared import normalize_tokens as _normalize_tokens
 from seahorse.embeddings.types import ModelIdentity
 
 
@@ -246,11 +246,6 @@ class HashReranker:
             float(sum(1 for t in _normalize_tokens(doc) if t in q_tokens))
             for doc in docs
         ]
-
-
-def _normalize_tokens(text: str) -> list[str]:
-    """Lower-case + strip non-alphanumeric tokens (HashReranker tokenizer)."""
-    return [t for t in re.sub(r"[^a-z0-9 ]", "", text.lower()).split() if t]
 
 
 __all__ = ["make_synthetic_dataset", "HashEmbedder", "HashReranker"]

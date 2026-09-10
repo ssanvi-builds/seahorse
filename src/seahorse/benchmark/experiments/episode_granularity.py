@@ -40,13 +40,46 @@ fastembed backend.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import (
+    BENCH_EPOCH as _EPOCH,
+)
+from seahorse.benchmark.experiments._shared import (
+    FALLBACK_G2 as _FALLBACK_G2,
+)
+from seahorse.benchmark.experiments._shared import (
+    Embedder,
+    is_fallback_regime,
+)
+from seahorse.benchmark.experiments._shared import (
+    cosine as _cosine,
+)
+from seahorse.benchmark.experiments._shared import (
+    default_embedder as _default_embedder,
+)
+from seahorse.benchmark.experiments._shared import (
+    first_sentence as _first_sentence,
+)
+from seahorse.benchmark.experiments._shared import (
+    golden_session_ep_ids as _golden_session_ep_ids,
+)
+from seahorse.benchmark.experiments._shared import (
+    ingest_episodes_session_map as _ingest_episodes,
+)
+from seahorse.benchmark.experiments._shared import (
+    mean_or_zero as _rate,
+)
+from seahorse.benchmark.experiments._shared import (
+    recall_rows as _recall_rows,
+)
+from seahorse.benchmark.experiments._shared import (
+    stub_episode as _stub_episode,
+)
 from seahorse.benchmark.experiments.end_to_end import (
     EndToEndQuestion,
     build_real_corpus,
@@ -58,8 +91,6 @@ from seahorse.benchmark.experiments.episode_locator import (
 )
 from seahorse.benchmark.harness.context import assemble_context, batch_body_for
 from seahorse.contracts.episode import Episode
-from seahorse.facade.errors import PitRecallNotSupportedMVP0
-from seahorse.facade.types import Provenance, RememberPayload
 
 # The k for the recall@k measurement (harness default).
 EPISODE_GRANULARITY_TOP_K = 10
@@ -72,15 +103,9 @@ WITHIN_SESSION_RANK_THRESHOLD = 0.5
 WITHIN_SESSION_TOPS: tuple[int, ...] = (1, 3, 5)
 
 # The minimum distinctive answer-fragment length for answer_in_context (>= 2
-# tokens — a single shared token is not distinctive).
+# tokens — a single shared token is not distinctive). Single source: this
+# module owns the constant; context_assembly and two_stage_retrieval import it.
 ANSWER_FRAGMENT_MIN_NGRAM = 2
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
-
-_EPOCH = datetime(2026, 1, 1, tzinfo=UTC)
-
-Embedder = Callable[[Sequence[str], str], Sequence[Sequence[float]]]
 
 
 @dataclass(frozen=True)
@@ -104,55 +129,6 @@ class EpisodeGranularityExperimentResult:
     n_localized: int
     n_unlocalized: int
     regime: str  # hybrid | fallback_g2
-
-
-def _first_sentence(text: str) -> str:
-    """The first sentence of a body (the ``deterministic_extract`` summary)."""
-    stripped = text.strip()
-    if not stripped:
-        return ""
-    return stripped.split(".", 1)[0] + "." if "." in stripped else stripped
-
-
-def _stub_episode(ep_id: str, body: str) -> Episode:
-    """A lightweight Episode for the locator (only ``id`` + ``body`` are used)."""
-    return Episode(
-        id=ep_id,
-        created_at=_EPOCH,
-        schema_version="1.1",
-        provenance={"source_type": "agent", "session_id": ""},
-        body=body,
-        valid_at=_EPOCH,
-    )
-
-
-def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(y * y for y in b) ** 0.5
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
-def _ingest_episodes(facade: Any, episodes: Sequence[Episode]) -> dict[str, str]:
-    """Ingest episodes via the facade write path (skip mode) → stored ep_id→session."""
-    ep_id_to_session: dict[str, str] = {}
-    for ep in episodes:
-        result = facade.remember(
-            RememberPayload(
-                body=ep.body or "",
-                by=cast(Provenance, dict(ep.provenance)),
-                valid_at=ep.valid_at,
-                cognitive_type=ep.cognitive_type,
-                title=ep.title,
-                summary=ep.summary,
-            ),
-            skip_extraction=True,
-        )
-        if result.ep_id is not None:
-            ep_id_to_session[result.ep_id] = ep.provenance.get("session_id", "")
-    return ep_id_to_session
 
 
 def _build_synthetic_corpus(
@@ -263,68 +239,6 @@ def _build_synthetic_corpus(
     return facade, storage, questions, ep_id_to_session
 
 
-def _default_embedder(corpus: str) -> Embedder:
-    """The sync embedding seam for within-session ranking.
-
-    Synthetic → the deterministic ``HashEmbedder`` (CI); lmeb-s → the real
-    fastembed backend (the authoritative run). Returns a sync callable
-    ``(texts, role) -> list[vectors]``.
-    """
-    model: Any
-    if corpus == "synthetic":
-        from seahorse.benchmark.experiments.synthetic import HashEmbedder  # lazy
-
-        model = HashEmbedder()
-    else:
-        from seahorse.embeddings.fastembed_backend import build_fastembed_embedder  # lazy
-
-        model = build_fastembed_embedder()
-    from seahorse.embeddings.query_adapter import run_coroutine  # lazy
-
-    def _embed(texts: Sequence[str], role: str) -> Sequence[Sequence[float]]:
-        vecs = run_coroutine(model.embed(texts, role))
-        return [list(row) for row in vecs]
-
-    return _embed
-
-
-def _recall_rows(facade: Any, q: EndToEndQuestion, top_k: int):
-    """Recall the top-k rows (active-now, the honest PIT fallback mirroring
-    ``measure_end_to_end`` — a regime without a PIT axis raises
-    ``PitRecallNotSupportedMVP0`` → active-now, never crash the run).
-
-    ``session_boost=False``: this experiment measures the within-session re-rank
-    UPPER BOUND (the pre-fix baseline + its own hybrid re-rank). The engine's
-    session boost is the automatic version (imperfect identification); measuring
-    with it active would corrupt the baseline ``session_level_recall_at_k``.
-    """
-    if q.question_date is not None:
-        from seahorse.disclosure.types import PITPoint  # lazy
-
-        try:
-            return facade.recall(
-                q.query,
-                k=top_k,
-                pit=PITPoint(kind="state_at", t=q.question_date),
-                session_boost=False,
-            )
-        except PitRecallNotSupportedMVP0:
-            return facade.recall(q.query, k=top_k, session_boost=False)
-    return facade.recall(q.query, k=top_k, session_boost=False)
-
-
-def _golden_session_ep_ids(
-    golden_session_ids: Sequence[str], session_to_ep_ids: dict[str, list[str]]
-) -> list[str]:
-    """The stored episode ids of a question's golden sessions (deduped)."""
-    seen: list[str] = []
-    for sid in golden_session_ids:
-        for ep_id in session_to_ep_ids.get(sid, []):
-            if ep_id not in seen:
-                seen.append(ep_id)
-    return seen
-
-
 def _answer_rank_within_session(
     query: str,
     episodes: Sequence[Episode],
@@ -382,7 +296,7 @@ def _measure_episode_granularity(
 
     for q in questions:
         rows = _recall_rows(facade, q, top_k)
-        if rows and all(r.score == 0.0 for r in rows):
+        if is_fallback_regime(rows):
             regime = _FALLBACK_G2
         retrieved_ep_ids = [r.ep_id for r in rows]
         retrieved_sessions = {ep_id_to_session.get(rid, "") for rid in retrieved_ep_ids}
@@ -417,9 +331,6 @@ def _measure_episode_granularity(
             )
             else 0.0
         )
-
-    def _rate(values: Sequence[float]) -> float:
-        return sum(values) / len(values) if values else 0.0
 
     return EpisodeGranularityExperimentResult(
         session_level_recall_at_k=_rate(session_hits),

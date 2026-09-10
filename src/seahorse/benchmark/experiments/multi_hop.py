@@ -34,13 +34,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import (
+    FALLBACK_G2 as _FALLBACK_G2,
+)
+from seahorse.benchmark.experiments._shared import (
+    ingest_episodes_stored_with_ids as _ingest_episodes,
+)
+from seahorse.benchmark.experiments._shared import (
+    is_fallback_regime,
+)
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
-from seahorse.facade.types import Provenance, RememberPayload
 
 # The k for the recall@k measurement (harness default).
 MULTI_HOP_TOP_K = 10
@@ -50,9 +58,6 @@ MULTI_HOP_TOP_K = 10
 # recall; a larger gap means the answer is only reachable by traversing the
 # chain → Rung 3 (physical graph with edge traversal) is justified.
 MULTI_HOP_DELTA_PP = 0.05
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 
 @dataclass(frozen=True)
@@ -174,37 +179,6 @@ def _make_synthetic_episodes() -> tuple[list[Episode], list[MultiHopQuestion]]:
     return episodes, questions
 
 
-def _ingest_episodes(
-    facade: Any, episodes: list[Episode]
-) -> tuple[list[Episode], dict[str, str]]:
-    """Ingest episodes via the facade's ``remember`` (the single write path, skip mode).
-
-    Returns ``(stored, id_map)`` where ``id_map`` maps the ORIGINAL episode id
-    to the STORED ``ep_id`` (the engine derives a deterministic UUIDv5 for
-    importer source, which may differ from ``Episode.id``). Episodes rejected by
-    a collision (``WriteResult.ep_id`` is None) are NOT stored and excluded.
-    """
-    stored: list[Episode] = []
-    id_map: dict[str, str] = {}
-    for ep in episodes:
-        result = facade.remember(
-            RememberPayload(
-                body=ep.body or "",
-                by=cast(Provenance, dict(ep.provenance)),
-                valid_at=ep.valid_at,
-                cognitive_type=ep.cognitive_type,
-                title=ep.title,
-                summary=ep.summary,
-            ),
-            extraction_mode="skip",
-        )
-        if result.ep_id is None:
-            continue  # COLLISION — not stored, not in the corpus
-        stored.append(ep.model_copy(update={"id": result.ep_id}))
-        id_map[ep.id] = result.ep_id
-    return stored, id_map
-
-
 def build_synthetic_corpus(
     db_path: Path,
 ) -> tuple[Any, Any, list[Episode], list[MultiHopQuestion]]:
@@ -262,7 +236,7 @@ def _measure(
             continue  # the answer episode was not stored (collision)
         rows = facade.recall(q.query, k=top_k)
         retrieved = [r.ep_id for r in rows]
-        if rows and all(r.score == 0.0 for r in rows):
+        if is_fallback_regime(rows):
             regime = _FALLBACK_G2
         hit = 1.0 if q.answer_ep_id in retrieved else 0.0
         if q.hops == 1:

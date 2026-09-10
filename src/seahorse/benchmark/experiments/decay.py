@@ -44,6 +44,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
+from seahorse.benchmark.experiments._shared import (
+    FALLBACK_G2 as _FALLBACK_G2,
+)
+from seahorse.benchmark.experiments._shared import (
+    is_fallback_regime,
+)
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
@@ -64,9 +70,6 @@ DECAY_S_SWEEP = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 # improves FAMA-style by >= 5pp without damaging MPA by more than 5pp.
 DECAY_FAMA_GAIN_THRESHOLD = 0.05
 DECAY_MPA_DAMAGE_THRESHOLD = 0.05
-
-# The honest detected regime that invalidates a hybrid-regime experiment.
-_FALLBACK_G2 = "fallback_g2"
 
 # Corpus timestamps: old versions, new versions, distractors (newest).
 _T0 = datetime(2026, 1, 1, tzinfo=UTC)
@@ -363,7 +366,7 @@ def _measure(
         )
     for query, old_id, new_id in facts:
         rows = facade.recall(query, k=overfetch_k)
-        if rows and all(r.score == 0.0 for r in rows):
+        if is_fallback_regime(rows):
             regime = _FALLBACK_G2
         n_queries += 1
         for si, s in enumerate(DECAY_S_SWEEP):
