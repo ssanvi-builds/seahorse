@@ -37,7 +37,9 @@ def test_install_and_console_scripts_resolve(tmp_path: Path) -> None:
         timeout=180,
     )
     assert build.returncode == 0, f"uv build failed:\n{build.stderr}"
-    wheels = list(tmp_path.glob("seahorse-*.whl"))
+    # Distribution name is seahorse-memory (PEP 503: seahorse_memory in the
+    # wheel filename) since 79c6262 — a 'seahorse-*.whl' glob never matches.
+    wheels = list(tmp_path.glob("seahorse_memory-*.whl"))
     assert wheels, f"no wheel produced in {tmp_path}"
 
     venv_dir = tmp_path / "venv"
@@ -71,7 +73,7 @@ def test_install_and_console_scripts_resolve(tmp_path: Path) -> None:
     # serverInfo.version is single-sourced from the installed metadata: confirm
     # the installed wheel's version is readable and matches the build.
     ver = subprocess.run(
-        [str(py), "-c", "import importlib.metadata as m; print(m.version('seahorse'))"],
+        [str(py), "-c", "import importlib.metadata as m; print(m.version('seahorse-memory'))"],
         capture_output=True,
         text=True,
         timeout=15,
