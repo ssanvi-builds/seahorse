@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from seahorse.context.assembler import render_context
 from seahorse.facade.types import ContextData, ContextEpisode
 
@@ -120,3 +122,320 @@ def test_render_no_trailing_dash_for_missing_summary() -> None:
     data = _data(recent=[_ep("alpha")], vigente_count=1, total_episodes=1)
     text = render_context(data)
     assert "alpha —" not in text  # no dangling separator
+
+
+# ---------------------------------------------------------------------------
+# Row rendering contract (``_entry`` observed through public output)
+# ---------------------------------------------------------------------------
+
+
+def _ep_raw(
+    subject: str | None,
+    summary: str | None,
+    *,
+    ep_id: str = "ep-1",
+    session_id: str | None = None,
+) -> ContextEpisode:
+    return ContextEpisode(
+        ep_id=ep_id,
+        subject=subject,
+        summary=summary,
+        created_at=T0,
+        session_id=session_id,
+    )
+
+
+def test_none_subject_renders_placeholder() -> None:
+    data = _data(recent=[_ep_raw(None, "s")], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert "- (no subject) — s" in text
+    assert "(no subject)" in text
+
+
+def test_empty_string_subject_renders_placeholder() -> None:
+    """Empty string is falsy like None: `or` semantics pin the placeholder."""
+    data = _data(recent=[_ep_raw("", None)], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert "- (no subject)" in text.splitlines()
+
+
+def test_whitespace_subject_rendered_verbatim() -> None:
+    """No strip/sanitize step: the padded subject is rendered verbatim."""
+    data = _data(recent=[_ep_raw("  padded  ", "s")], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert "-   padded   — s" in text
+
+
+def test_empty_string_summary_omits_dash_like_none() -> None:
+    data = _data(recent=[_ep_raw("alpha", "")], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert "- alpha" in text.splitlines()
+    assert "alpha —" not in text
+
+
+def test_whitespace_summary_keeps_dash_with_trailing_space() -> None:
+    """Whitespace-only summary is truthy: the dash survives, untrimmed."""
+    data = _data(recent=[_ep_raw("alpha", " ")], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert "- alpha —  " in text
+    assert "alpha —" in text
+
+
+def test_summary_rendered_verbatim_no_escaping() -> None:
+    summary = "a — b ## head - item `code` recall"
+    data = _data(recent=[_ep_raw("alpha", summary)], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert summary in text
+
+
+def test_multiline_summary_rendered_verbatim() -> None:
+    """Documents the no-escaping decision: a newline passes straight through."""
+    data = _data(recent=[_ep_raw("alpha", "line one\nline two")], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert "line one\nline two" in text
+
+
+def test_unicode_subject_and_summary_round_trip() -> None:
+    data = _data(
+        recent=[_ep_raw("café ☕", "naïve — ünïcode ✓")], vigente_count=1, total_episodes=1
+    )
+    text = render_context(data)
+    assert "café ☕" in text
+    assert "naïve — ünïcode ✓" in text
+
+
+def test_very_long_summary_never_truncated() -> None:
+    summary = "A" + "x" * 100_000 + "Z"
+    data = _data(recent=[_ep_raw("alpha", summary)], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert "A" + "x" * 100_000 in text
+    assert "x" * 100_000 + "Z" in text
+
+
+def test_duplicate_entries_each_rendered() -> None:
+    """Distinct-but-equal episodes are never collapsed by the renderer."""
+    data = _data(
+        recent=[_ep("dup", summary="same fact"), _ep("dup", summary="same fact")],
+        vigente_count=2,
+        total_episodes=2,
+    )
+    text = render_context(data)
+    assert text.count("- dup — same fact") == 2
+
+
+def test_row_order_is_input_list_order() -> None:
+    """The facade sorts deterministically; the assembler must not re-sort."""
+    data = _data(
+        recent=[_ep("zulu"), _ep("alpha"), _ep("mike")],
+        last_session_id="sess-1",
+        last_session=[_ep("zulu"), _ep("alpha"), _ep("mike")],
+        vigente_count=3,
+        total_episodes=3,
+    )
+    text = render_context(data)
+    assert text.index("zulu") < text.index("alpha") < text.index("mike")
+
+
+@pytest.mark.parametrize(
+    ("subject", "summary", "expected_row"),
+    [
+        ("alpha", None, "- alpha"),
+        (None, "s", "- (no subject) — s"),
+        ("alpha", "fact", "- alpha — fact"),
+    ],
+)
+def test_row_contract_table_driven_through_both_blocks(
+    subject: str | None, summary: str | None, expected_row: str
+) -> None:
+    episode = _ep_raw(subject, summary)
+    recent_text = render_context(_data(recent=[episode], vigente_count=1, total_episodes=1))
+    last_session_text = render_context(
+        _data(last_session_id="sess-1", last_session=[episode], total_episodes=1)
+    )
+    assert expected_row in recent_text.splitlines()
+    assert expected_row in last_session_text.splitlines()
+
+
+# ---------------------------------------------------------------------------
+# Block headers and counts
+# ---------------------------------------------------------------------------
+
+
+def test_recent_header_counts_list_and_state_counts_vigente_count() -> None:
+    """In production vigente_count >= len(recent) whenever the valid set
+    exceeds top_k — the two counts diverge by design."""
+    data = _data(
+        recent=[_ep("alpha"), _ep("beta")],
+        vigente_count=5,
+        total_episodes=5,
+    )
+    text = render_context(data)
+    assert "## Recent episodes (2)" in text
+    assert "## Current state (5 facts)" in text
+    assert "Recent episodes (5)" not in text
+
+
+def test_vigente_count_renders_exact_value_no_singularization() -> None:
+    text_one = render_context(_data(recent=[_ep("alpha")], vigente_count=1, total_episodes=1))
+    assert "## Current state (1 facts)" in text_one  # no singularization
+    text_big = render_context(_data(vigente_count=12345, total_episodes=12345))
+    assert "## Current state (12345 facts)" in text_big  # no thousand separators
+
+
+def test_empty_recent_block_emits_placeholder_line() -> None:
+    text = render_context(_data())
+    assert "(none yet — the context is empty until episodes are indexed)" in text
+
+
+def test_placeholder_line_absent_once_episodes_exist() -> None:
+    text = render_context(_data(recent=[_ep("alpha")], vigente_count=1, total_episodes=1))
+    assert "(none yet — the context is empty until episodes are indexed)" not in text
+
+
+def test_last_session_none_renders_none_variant() -> None:
+    text = render_context(_data())
+    assert "(none)" in text
+    assert "## Last session (" not in text
+    assert "## Last session" in text.splitlines()
+
+
+def test_last_session_id_with_empty_list_renders_id_header_no_rows() -> None:
+    """The id header keys on last_session_id alone; the list is read
+    independently (ContextData is public API)."""
+    text = render_context(_data(last_session_id="sess-9"))
+    assert "## Last session (sess-9)" in text
+    assert "(none)" not in text
+    lines = text.splitlines()
+    header_index = lines.index("## Last session (sess-9)")
+    assert lines[header_index + 1] == ""  # block ends with no row lines
+
+
+def test_empty_string_last_session_id_takes_none_branch() -> None:
+    """Pins truthiness vs `is not None`: '' is treated like None."""
+    text = render_context(_data(last_session_id=""))
+    assert "(none)" in text
+    assert "## Last session ()" not in text
+
+
+def test_stats_counters_render_exact_field_values() -> None:
+    text_zero = render_context(_data())
+    assert "- 0 episodes total" in text_zero.splitlines()
+    text_big = render_context(_data(total_episodes=12345))
+    assert "- 12345 episodes total" in text_big.splitlines()
+
+
+def test_vigente_count_and_total_episodes_render_independently() -> None:
+    text = render_context(_data(vigente_count=3, total_episodes=10))
+    assert "## Current state (3 facts)" in text
+    assert "- 10 episodes total" in text
+    assert "(10 facts)" not in text
+    assert "3 episodes total" not in text
+
+
+def test_current_state_block_always_carries_explanation_line() -> None:
+    explanation = "The recent list above is the current-state set (created_at desc)."
+    assert explanation in render_context(_data())
+    populated = render_context(
+        _data(recent=[_ep("alpha")], vigente_count=1, total_episodes=1)
+    )
+    assert explanation in populated
+
+
+# ---------------------------------------------------------------------------
+# Output structure and determinism
+# ---------------------------------------------------------------------------
+
+
+def test_output_has_no_trailing_newline() -> None:
+    """render_context returns no trailing '\\n'; the CLI layer adds exactly one."""
+    data = _data(recent=[_ep("alpha")], vigente_count=1, total_episodes=1)
+    text = render_context(data)
+    assert not text.endswith("\n")
+    final_line = text.splitlines()[-1]
+    assert final_line.startswith("- ")
+    assert "recall-full" in final_line  # the pointer is the last line
+
+
+def test_exactly_one_blank_line_separates_blocks() -> None:
+    data = _data(
+        recent=[_ep("alpha", summary="first fact")],
+        vigente_count=1,
+        last_session_id="sess-1",
+        last_session=[_ep("alpha", summary="first fact")],
+        total_episodes=1,
+    )
+    text = render_context(data)
+    assert "\n\n\n" not in text
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("## "):
+            assert lines[i - 1] == ""  # every block header follows a blank line
+
+
+def test_header_shaped_subject_cannot_inject_block_heading() -> None:
+    """Injection safety: a subject starting with '## ' stays a row, never a
+    document heading."""
+    data = _data(
+        recent=[_ep_raw("## Stats", "(none yet)", ep_id="ep-inj")],
+        vigente_count=1,
+        total_episodes=1,
+    )
+    text = render_context(data)
+    assert "- ## Stats — (none yet)" in text.splitlines()
+    assert sum(1 for line in text.splitlines() if line.startswith("## ")) == 4
+
+
+def test_golden_full_output_snapshot() -> None:
+    """Full-string equality for one representative input: block order,
+    spacing, row shape and pointer placement are all pinned here."""
+    data = _data(
+        recent=[_ep("alpha", summary="first fact"), _ep("beta")],
+        vigente_count=2,
+        last_session_id="sess-1",
+        last_session=[_ep("alpha", summary="first fact")],
+        total_episodes=2,
+    )
+    expected = (
+        "# Seahorse memory context\n"
+        "\n"
+        "## Recent episodes (2)\n"
+        "- alpha — first fact\n"
+        "- beta\n"
+        "\n"
+        "## Current state (2 facts)\n"
+        "The recent list above is the current-state set (created_at desc).\n"
+        "\n"
+        "## Last session (sess-1)\n"
+        "- alpha — first fact\n"
+        "\n"
+        "## Stats\n"
+        "- 2 episodes total\n"
+        "- Prefer the `seahorse-mcp` MCP tools (`recall`, `recall_full`) when "
+        "available; otherwise `seahorse recall <query>` / `seahorse recall-full <ep_id>`."
+    )
+    assert render_context(data) == expected
+
+
+def test_determinism_across_equal_distinct_instances() -> None:
+    """Data equality, not object equality: equal ContextData renders equal
+    text, and rendering never mutates the input."""
+    data_a = _data(
+        recent=[_ep("alpha", summary="first fact"), _ep("beta")],
+        vigente_count=2,
+        last_session_id="sess-1",
+        last_session=[_ep("alpha", summary="first fact")],
+        total_episodes=2,
+    )
+    data_b = _data(
+        recent=[_ep("alpha", summary="first fact"), _ep("beta")],
+        vigente_count=2,
+        last_session_id="sess-1",
+        last_session=[_ep("alpha", summary="first fact")],
+        total_episodes=2,
+    )
+    text_a = render_context(data_a)
+    text_b = render_context(data_b)
+    assert text_a == text_b
+    # No in-place sort/mutation of the input list by rendering.
+    assert [ep.ep_id for ep in data_a.recent] == ["ep-alpha", "ep-beta"]
+    assert [ep.ep_id for ep in data_a.last_session] == ["ep-alpha"]
