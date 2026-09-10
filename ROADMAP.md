@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v0.14.0):
+What works today (v1.0.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -20,8 +20,8 @@ What works today (v0.14.0):
   (`improve`) and soft-delete (`forget`) are append-only: history is never
   destroyed.
 - **CLI + MCP agent surface** — 7 memory-native primitives (`remember`, `recall`,
-  `recall_timeline`, `recall_full`, `improve`, `forget`, `build_pit`) plus 7
-  procedural/read-only tools, served over stdio MCP (`io.seahorse.memory/v1`) and
+  `recall_timeline`, `recall_full`, `improve`, `forget`, `build_pit`) plus 8
+  procedural/read-only tools (15 total), served over stdio MCP (`io.seahorse.memory/v1`) and
   mirrored on the CLI (the same skill and read-only surfaces on both sides).
 - **Hybrid semantic retrieval** — `recall` ranks by relevance (sqlite-vec kNN +
   FTS5 BM25 fused with Reciprocal Rank Fusion) with point-in-time routing, and
@@ -127,7 +127,7 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   protocolVersion `2025-11-25` + 15 tools + CLI onboarding, `e2e-pypi.sh` 24
   passed), the self-evolving loop (`e2e-loop.sh` 39 passed), and release
   quality (CI green, `e2e-pypi.sh` 24 passed, `e2e-vm.sh` 32 passed on a clean
-  Linux VM with no dev tooling). Pending: the 1.0.0 bump + tag.
+  Linux VM with no dev tooling). Pending: the v1.0.0 tag.
 - **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
   HTTP) as a standard expansion that also serves the local free tier, with the
   web dashboard and managed sync deferred until the adoption gate produces data.
@@ -138,6 +138,47 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   the single DB writer), making capture lossless across observer downtime.
 - **Long term** — a managed cloud offering as a later phase, gated by adoption,
   and wider adoption of the memory standard across agents and harnesses.
+
+## Post-1.0 deferred refactors
+
+Deliberately deferred past the 1.0.0 tag (behavior-preserving, each guarded by
+the listed suites). They are tickets, not commitments — sequence them after the
+Fase 2 decision.
+
+1. **Split `recall()` into composable stages** —
+   `src/seahorse/retrieval/engine.py:99` (233 lines, 8 mixed concerns: PIT
+   validation, stage-1 kNN+BM25, RRF, chain projection, second RRF, recency,
+   decay, rerank + session boost, each with its own degrade path). Extract the
+   gate+try/except wrappers as pure-move stages (`_apply_rerank_stage`,
+   `_apply_decay_stage`, `_apply_recency_stage`, `_maybe_session_boost`) before
+   touching candidate fetches. Protects: `test_recall_e2e`, `test_recency`,
+   `test_decay`, `test_session_boost`, `test_pit_routing`, `test_reproducibility`
+   (bit-comparable fingerprints), `test_degradation`.
+2. **Decompose `run_doctor`** — `src/seahorse/cli/doctor.py:266` (361 lines,
+   ~20 inline check dicts + fix loop + rendering). Extract the two per-harness
+   loops verbatim, then group into `_llm_family_checks` / `_capture_family_checks`
+   / `_agent_surface_checks` / `_environment_checks`, and separate
+   `_apply_repairs` + `_render_doctor`. No check name, status string, or detail
+   text may change (`tests/cli/test_doctor.py` asserts them; `_REPAIRABLE_CHECKS`
+   stays the single source of repairability).
+3. **Extract setup steps out of `run_full_setup`** —
+   `src/seahorse/cli/onboarding.py:54` (233 lines, 9 nested closures) and dedupe
+   with `repair_steps_for` (`:351`, 140 lines that rebuild the same hook/MCP/
+   instructions closures — a command change currently must be made twice).
+   Hoist the duplicated closures to module level, then a `SetupStep` dataclass +
+   `_plan_setup_steps`. Keep every `_OK`/`_WARN`/`_SKIP` status and detail
+   string identical (`tests/cli/test_onboarding.py`, `test_setup.py`,
+   `test_app.py`). The `_db` step runs `vault_ops.run_migrate` — migrations/
+   stay frozen.
+4. **Split `cli/app.py` into per-subapp command modules** — 1334 lines, ~40
+   handlers. The cost is option-declaration bulk (`benchmark_experiment_cmd` is
+   97 lines of options) and import weight: every command import loads benchmark
+   + observe at module time. Move benchmark, observe, and `skill_*` commands to
+   `commands/` submodules first; keep `app.py` as the composition root
+   (`CliContext`, `_callback`, `main()`, `console_main()` — the console-script
+   entry points and the `seahorse.cli.app:app` hook reference must not change).
+   Protects: `tests/cli/test_app.py`, `test_exit_codes.py`,
+   `test_cli_subprocess_smoke.py`, `tests/benchmark/test_cli.py`.
 
 ## Contributing
 

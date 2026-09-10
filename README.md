@@ -190,7 +190,7 @@ Note: `~` is not expanded in `.mcp.json` — use `${HOME}` or an absolute path.
 `~/.claude.json` for user/local scope and in `.mcp.json` for project scope.)
 
 Once connected, the agent sees the 15 memory tools — see
-[The agent surface](#the-agent-surface--7-memory-native-primitives--7-proceduralread-only-tools).
+[The agent surface](#the-agent-surface--7-memory-native-primitives--8-proceduralread-only-tools).
 The observer is a separate piece: it *captures* Claude Code sessions into
 episodes; the MCP server is how the agent *reads and writes* memory. Both work
 together — capture sessions, then recall across them.
@@ -224,7 +224,7 @@ same graph, interactive (zoom, pan, drag, tooltips — self-contained, no
 dependencies). Every note in the folder is a valid F3.1 episode you can open
 in Obsidian; the graph is regenerated with `python3 render_graph.py`.
 
-## The agent surface — 7 memory-native primitives + 7 procedural/read-only tools
+## The agent surface — 7 memory-native primitives + 8 procedural/read-only tools
 
 Exposed over stdio MCP (`io.seahorse.memory/v1`, protocol pinned `2025-11-25`) and
 mirrored on the CLI. These are memory primitives, not generic CRUD: an agent calls
@@ -242,7 +242,7 @@ The 7 primitives (write + retrieve):
 | `forget` | Soft-delete an episode (append-only; history preserved). |
 | `build_pit` | Build a point-in-time projection (all-None → current state). |
 
-Plus 7 procedural / read-only tools (skills + facade introspection):
+Plus 8 procedural / read-only tools (skills + facade introspection):
 
 | Tool | What it does |
 |------|--------------|
@@ -253,6 +253,7 @@ Plus 7 procedural / read-only tools (skills + facade introspection):
 | `freshness_view` | Freshness snapshot of an episode (age, stale, pending_ingest). |
 | `audit_log` | Audit events for an episode (write-path history). |
 | `follow_supersedes_chain` | The supersedes closure for an episode (version history). |
+| `context` | Bootstrap context for a new session (INDEX level, no body): the most recent valid episodes, the count of currently valid episodes, and the last session's episodes grouped by session_id. |
 
 Three retrieval levels give **progressive disclosure**: a cheap listing first
 (INDEX), the chain on demand (TIMELINE), and the full record only when needed
@@ -384,8 +385,8 @@ enterprise tier are planned for the future (see the project's strategy notes).
 
 - Bi-temporal, append-only episode store on stdlib `sqlite3` + sqlite-vec (FTS5
   + vec0). Auto-migrating schema.
-- The 7 memory-native primitives plus 8 procedural / read-only tools, on both
-  the CLI and stdio MCP (15 tools total).
+- The 7 memory-native primitives plus 8 procedural / read-only tools (including
+  `context`), on both the CLI and stdio MCP (15 tools total).
 - Progressive disclosure (INDEX / TIMELINE / FULL) and point-in-time projection.
 - **Hybrid semantic retrieval**: `recall` ranks by relevance — sqlite-vec
   kNN + FTS5 BM25 fused with Reciprocal Rank Fusion, with point-in-time
@@ -491,7 +492,7 @@ mcp-name: io.github.ssanvi-builds/seahorse-memory
 
 ## Current status
 
-**v0.22.0.** The full agentic loop works end to end from a one-command setup:
+**v1.0.0.** The full agentic loop works end to end from a one-command setup:
 sessions are captured automatically, recalled across sessions (hybrid semantic
 retrieval when vectors are populated, honest listing otherwise), the agent
 reads and writes memory over stdio MCP, and batch distillation turns episodes

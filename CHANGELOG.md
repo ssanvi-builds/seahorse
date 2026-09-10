@@ -68,8 +68,35 @@ support for Codex, Cursor, VS Code (Copilot), Antigravity and Gemini CLI.
 - **`docs/related-work.md`** — the agent-memory landscape Seahorse was built
   against (open-source systems, benchmark pitfalls, interchange formats),
   with a primary source for every external claim.
+- **Hard behavioral test suite for the context assembler** — 29 new tests
+  pinning `render_context` public behavior end to end (None/empty/whitespace
+  subjects, verbatim multiline and unicode rendering, heading-injection guard,
+  the exact header-count contract, determinism and no input mutation),
+  extending `tests/context/test_assembler.py` from 8 to 37 tests — 100%
+  statement and branch coverage of `src/seahorse/context/assembler.py`.
 
 ### Changed
+
+- **Release-readiness docs refresh** — README status updated to v1.0.0 and its
+  agent-surface section now counts the full 15-tool surface (7 primitives +
+  8 procedural, including the new `context` row); `pyproject.toml` classifier
+  bumped to `Development Status :: 5 - Production/Stable`;
+  `docs/f3.1-format.md` now describes the `consolidated` extraction_mode as
+  active (written by `seahorse consolidate`); ROADMAP counts corrected and a
+  Post-1.0 deferred-refactors section added (recall pipeline split,
+  run_doctor decomposition, run_full_setup extraction, cli/app.py command
+  modules).
+- **Benchmark dedup (behavior-identical)** — 14 helpers duplicated across the
+  `benchmark/experiments/` modules (`first_sentence`, the `_ingest_episodes`
+  family, `_cosine`, `_recall_rows`, `_normalize_tokens`, `_FALLBACK_G2` +
+  the fallback-regime check, `_rate`, `_subject_of`, `_default_embedder`,
+  `stub_episode`/`BENCH_EPOCH`, `_golden_session_ep_ids`,
+  `ANSWER_FRAGMENT_MIN_NGRAM`) now live in
+  `src/seahorse/benchmark/experiments/_shared.py` and are imported aliased at
+  every call site. Every removed copy was byte-identical; all synthetic
+  experiments reproduce their exact published numbers.
+
+### Fixed
 
 - **Schema version frozen at 1.0.0 (accept-both, no rewrite)** — the on-disk
   format version written by the migrator and new notes is now `1.0.0`
@@ -113,6 +140,13 @@ support for Codex, Cursor, VS Code (Copilot), Antigravity and Gemini CLI.
   same-harness comparisons" sentence now reflects the mid-2026 same-harness
   papers; the dead "research notes" link now points to
   `docs/related-work.md`.
+
+- **The env-gated install smoke test passes again** — its wheel glob
+  (`seahorse-*.whl`) predated the distribution rename to `seahorse-memory`
+  (79c6262), so the test failed before installing; it now globs
+  `seahorse_memory-*.whl` and reads the installed version from
+  `seahorse-memory` metadata. Verified live: wheel build + fresh-venv install
+  + both console scripts resolve.
 
 ## [0.22.1] - 2026-09-07
 
