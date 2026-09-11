@@ -15,12 +15,13 @@ supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: beacon alert routing review
-summary: Beacon routes sev-1 and sev-2 to PagerDuty and sev-3 to Slack, with alert acks synced to the on-call rota.
+summary: "Beacon routes sev-1 and sev-2 to PagerDuty and sev-3 to Slack, with alert\nacks synced to the on-call rota."
 tags: []
 ---
 # beacon alert routing review
 
-Beacon routes sev-1 and sev-2 to PagerDuty and sev-3 to Slack, with alert acks synced to the on-call rota.
+Beacon routes sev-1 and sev-2 to PagerDuty and sev-3 to Slack, with alert
+acks synced to the on-call rota.
 
 ## Context
 

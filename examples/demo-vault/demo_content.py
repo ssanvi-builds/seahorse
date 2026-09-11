@@ -464,7 +464,8 @@ the Ember audit log keeps (180-day retention since 2026-05-26).
         "note_day": D(2026, 4, 21),
         "body": """# beacon alert routing review
 
-Beacon routes sev-1 and sev-2 to PagerDuty and sev-3 to Slack, with alert acks synced to the on-call rota.
+Beacon routes sev-1 and sev-2 to PagerDuty and sev-3 to Slack, with alert
+acks synced to the on-call rota.
 
 ## Context
 
@@ -586,7 +587,8 @@ source of truth for the window boundary.
         "note_day": D(2026, 6, 30),
         "body": """# drift dashboard embedding options
 
-Drift embeds go through a static exporter that rebuilds dashboards every 15 minutes, replacing the Superset-embedded setup.
+Drift embeds go through a static exporter that rebuilds dashboards every 15
+minutes, replacing the Superset-embedded setup.
 
 ## Context
 
@@ -646,7 +648,8 @@ applied at export time — `repos/drift/config/embed.yaml` is the config.
         "note_day": D(2026, 7, 22),
         "body": """# data api versioning discussion
 
-The data API versions through URL paths (`/v1/...`) with a 6-month deprecation window and sunset headers.
+The data API versions through URL paths (`/v1/...`) with a 6-month
+deprecation window and sunset headers.
 
 ## Context
 
@@ -705,7 +708,8 @@ then the gateway drops the route. The OpenAPI spec is generated in CI
         "note_day": D(2026, 7, 30),
         "body": """# incident review: atlas consumer lag
 
-The 2026-07-14 consumer-lag incident was a rebalance storm triggered by a deploy; static group membership and a deploy guard prevent recurrence.
+The 2026-07-14 consumer-lag incident was a rebalance storm triggered by a
+deploy; static group membership and a deploy guard prevent recurrence.
 
 ## Context
 
@@ -775,7 +779,9 @@ plus the deploy guard in the rollback runbook. The config lives in
         "note_day": D(2026, 8, 31),
         "body": """# atlas weekly sync
 
-Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention with a quarterly archive tier, static consumer membership, and the replay tool in production.
+Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention
+with a quarterly archive tier, static consumer membership, and the replay
+tool in production.
 
 ## Context
 

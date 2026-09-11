@@ -15,12 +15,13 @@ supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: 'incident review: atlas consumer lag'
-summary: The 2026-07-14 consumer-lag incident was a rebalance storm triggered by a deploy; static group membership and a deploy guard prevent recurrence.
+summary: "The 2026-07-14 consumer-lag incident was a rebalance storm triggered by a\ndeploy; static group membership and a deploy guard prevent recurrence."
 tags: []
 ---
 # incident review: atlas consumer lag
 
-The 2026-07-14 consumer-lag incident was a rebalance storm triggered by a deploy; static group membership and a deploy guard prevent recurrence.
+The 2026-07-14 consumer-lag incident was a rebalance storm triggered by a
+deploy; static group membership and a deploy guard prevent recurrence.
 
 ## Context
 

@@ -15,12 +15,14 @@ supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: atlas weekly sync
-summary: 'Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention with a quarterly archive tier, static consumer membership, and the replay tool in production.'
+summary: "Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention\nwith a quarterly archive tier, static consumer membership, and the replay\ntool in production."
 tags: []
 ---
 # atlas weekly sync
 
-Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention with a quarterly archive tier, static consumer membership, and the replay tool in production.
+Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention
+with a quarterly archive tier, static consumer membership, and the replay
+tool in production.
 
 ## Context
 

@@ -15,12 +15,13 @@ supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: data api versioning discussion
-summary: The data API versions through URL paths (`/v1/...`) with a 6-month deprecation window and sunset headers.
+summary: "The data API versions through URL paths (`/v1/...`) with a 6-month\ndeprecation window and sunset headers."
 tags: []
 ---
 # data api versioning discussion
 
-The data API versions through URL paths (`/v1/...`) with a 6-month deprecation window and sunset headers.
+The data API versions through URL paths (`/v1/...`) with a 6-month
+deprecation window and sunset headers.
 
 ## Context
 

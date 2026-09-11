@@ -367,7 +367,13 @@ def test_current_state_block_always_carries_explanation_line() -> None:
 
 def test_knowledge_notes_block_renders_rows_with_type() -> None:
     data = _data(
-        knowledge=[_kep("ADR: storage engine", summary="SQLite WAL + sqlite-vec", cognitive_type="project_doc")],
+        knowledge=[
+            _kep(
+                "ADR: storage engine",
+                summary="SQLite WAL + sqlite-vec",
+                cognitive_type="project_doc",
+            )
+        ],
         total_episodes=1,
     )
     text = render_context(data)

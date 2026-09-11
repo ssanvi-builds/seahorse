@@ -82,7 +82,9 @@ the writing — no API key needed.
      evidence (commits, paths, commands); caveats — say plainly what is NOT
      decided or what failed; open questions for the next session.
    - `by` is the provenance OBJECT, never a string:
-     {{"by": {{"agent_id": "claude-code", "session_id": "<current session>", "source_type": "agent"}}}}.
+     {{"by": {{"agent_id": "claude-code",
+     "session_id": "<current session>",
+     "source_type": "agent"}}}}.
    - One session, one topic: two sessions that decided different things are
      two notes.
 3. Never fabricate — if a detail (a hash, a count) is not in front of you,

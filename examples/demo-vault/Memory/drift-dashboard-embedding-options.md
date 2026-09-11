@@ -15,12 +15,13 @@ supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: drift dashboard embedding options
-summary: Drift embeds go through a static exporter that rebuilds dashboards every 15 minutes, replacing the Superset-embedded setup.
+summary: "Drift embeds go through a static exporter that rebuilds dashboards every 15\nminutes, replacing the Superset-embedded setup."
 tags: []
 ---
 # drift dashboard embedding options
 
-Drift embeds go through a static exporter that rebuilds dashboards every 15 minutes, replacing the Superset-embedded setup.
+Drift embeds go through a static exporter that rebuilds dashboards every 15
+minutes, replacing the Superset-embedded setup.
 
 ## Context
 

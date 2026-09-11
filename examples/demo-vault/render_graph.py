@@ -263,7 +263,8 @@ const leg = document.getElementById('legend');
 leg.innerHTML = Object.entries(DATA.colors).map(([k,c]) =>
   `<div><span class="sw" style="background:${c}"></span>${k}</div>`).join('') +
   `<div><span class="sw" style="background:#f85149;border-radius:1px"></span>supersedes</div>` +
-  `<div><span class="sw" style="background:none;border:1.5px solid #e6edf3"></span>Memory/ — consolidated</div>`;
+  `<div><span class="sw" style="background:none;border:1.5px solid #e6edf3"></span>` +
+  `Memory/ — consolidated</div>`;
 // state
 const N = DATA.nodes.length;
 const pos = DATA.nodes.map((n,i)=>({x:Math.cos(i/N*6.28)*300+innerWidth/2,

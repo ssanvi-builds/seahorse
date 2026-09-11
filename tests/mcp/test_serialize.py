@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from seahorse.facade.errors import SeahorseError
+from seahorse.facade.types import ContextData, ContextEpisode
 from seahorse.mcp.serialize import (
     _iso_z,
     success_response,
@@ -206,9 +207,7 @@ class TestContextBootstrapSerialization:
     """The context result travels the wire — knowledge notes (1.1) are
     additive fields, present in every response (shape stable)."""
 
-    def _context_data(self) -> "ContextData":
-        from seahorse.facade.types import ContextData, ContextEpisode
-
+    def _context_data(self) -> ContextData:
         return ContextData(
             recent=[],
             vigente_count=1,

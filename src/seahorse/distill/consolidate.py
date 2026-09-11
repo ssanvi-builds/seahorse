@@ -136,7 +136,10 @@ def _consolidated_body(cluster: Cluster) -> str:
     EVIDENCE_MAX_MEMBERS and excerpts beyond _MEMBER_EXCERPT_MAX_CHARS are
     cut with an in-note pointer (honest degrade, never a silent drop).
     """
-    parts = [f"# {cluster.key}\n\n## Summary\n\n{_body_without_h1(cluster.representative)}\n\n## Evidence"]
+    parts = [
+        f"# {cluster.key}\n\n## Summary\n\n"
+        f"{_body_without_h1(cluster.representative)}\n\n## Evidence"
+    ]
     shown = cluster.episodes[:_EVIDENCE_MAX_MEMBERS]
     for ep in shown:
         parts.append(f"\n\n### {ep.created_at:%Y-%m-%d} — {ep.subject}\n\n{_excerpt(ep)}")

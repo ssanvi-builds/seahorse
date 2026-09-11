@@ -61,16 +61,16 @@ TITLE_MAX_CHARS = 160
 BODY_MAX_CHARS = 8000
 
 # The one-time `seahorse frontmatter migrate` run that imported the hubs.
-MIGRATION_WHEN = dt.datetime(2026, 1, 10, 9, 2, 11, tzinfo=dt.timezone.utc)
+MIGRATION_WHEN = dt.datetime(2026, 1, 10, 9, 2, 11, tzinfo=dt.UTC)
 # The hand-curated showcase pair (bodies locked; frontmatter regenerated).
 SHOWCASE_FILES = {
     "2026-05-10-persona-home-city.md",
     "2026-08-30-persona-home-city.md",
 }
-MADRID_WHEN = dt.datetime(2026, 5, 10, 9, 41, 7, tzinfo=dt.timezone.utc)
-CORRECTION_WHEN = dt.datetime(2026, 8, 30, 16, 22, 5, tzinfo=dt.timezone.utc)
+MADRID_WHEN = dt.datetime(2026, 5, 10, 9, 41, 7, tzinfo=dt.UTC)
+CORRECTION_WHEN = dt.datetime(2026, 8, 30, 16, 22, 5, tzinfo=dt.UTC)
 
-UTC = dt.timezone.utc
+UTC = dt.UTC
 rng = random.Random(SEED)
 
 _used_slugs: set[str] = set()
@@ -443,7 +443,7 @@ for title, day, body in C.DECISIONS:
 
 # Supersede chains: root (agent) -> CLI improve correction. The root file is
 # rewritten afterwards with invalid_at appended (the invalidate-merge shape).
-for root_title, root_day, root_body, succ_title, succ_day, succ_body in C.CHAINS:
+for root_title, root_day, root_body, _succ_title, succ_day, succ_body in C.CHAINS:
     when_root = _clock(root_day)
     root_prov = {
         "agent_id": AGENT_ID,
@@ -508,7 +508,7 @@ HUB_TIMES = ["10:15:30", "14:32:07", "09:20:44", "16:05:12", "11:48:03",
              "13:27:59", "15:10:26", "10:33:41", "12:19:08", "14:02:55",
              "09:56:33", "11:24:17", "15:41:29"]
 migration_session = _uuid7(MIGRATION_WHEN)
-for (name, mtime_day, body), hhmmss in zip(C.HUBS, HUB_TIMES):
+for (name, mtime_day, body), hhmmss in zip(C.HUBS, HUB_TIMES, strict=True):
     h, m, s = (int(x) for x in hhmmss.split(":"))
     mtime = dt.datetime.combine(mtime_day, dt.time(h, m, s), tzinfo=UTC)
     provenance = {  # literal insertion order — direct write, no DB round-trip

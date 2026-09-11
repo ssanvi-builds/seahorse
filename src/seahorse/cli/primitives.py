@@ -410,6 +410,10 @@ def run_consolidate(
             "provider (a pasted API key lives in the 0600 credentials store).\n"
         )
 
+    kwargs: dict[str, Any] = {}
+    if min_cluster_size is not None:
+        kwargs["min_cluster_size"] = min_cluster_size
+
     report = _timed(
         "consolidate",
         lambda: consolidate(
@@ -418,7 +422,7 @@ def run_consolidate(
             llm_client=llm_client,
             supersede=supersede,
             human_edited=_vault_human_edited(vault_path),
-            **({"min_cluster_size": min_cluster_size} if min_cluster_size is not None else {}),
+            **kwargs,
         ),
         verbose=verbose,
     )
