@@ -120,11 +120,11 @@ graph LR
     H[Human in Obsidian] --> V
 ```
 
-An agent talks to `seahorse-mcp` over stdio MCP. The engine stores every
-episode twice: once in a single-file SQLite database (sqlite-vec for vector
-search, FTS5 for full-text), and once as markdown with F3.1 frontmatter in the
-vault — the human edits the same markdown. Format spec:
-[docs/f3.1-format.md](docs/f3.1-format.md).
+An agent talks to `seahorse-mcp` over stdio MCP. The engine records every
+episode in a single-file SQLite database (sqlite-vec for vector search, FTS5
+for full-text) and `seahorse materialize` publishes distilled notes to
+`Memory/` as F3.1 markdown (`--mode all`: every episode) — the human edits
+the same notes. Format spec: [docs/f3.1-format.md](docs/f3.1-format.md).
 
 And this is what the memory graph of a vault looks like — a fictional demo
 vault ([examples/demo-vault/](examples/demo-vault/), 115 F3.1 notes: 92
