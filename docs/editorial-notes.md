@@ -76,7 +76,75 @@ needed in the MVP — the filter is enough.
 
 ---
 
-## 4. Organizing the vault (the human)
+## 4. The note structures
+
+The agent instructions and the packaged skills teach two exact structures.
+They are documented here so the human knows what to expect in the vault —
+and so a new agent (any harness) can be told the same pattern by hand.
+
+### The design-decision note (ADR-style)
+
+Written at design decisions and milestones, via `remember` with
+`cognitive_type="project_doc"`. One topic per note; the first body line is a
+descriptive H1 — it becomes the note's subject and its filename.
+
+```markdown
+# Use SQLite WAL with a single writer
+
+## Context
+Why this decision was needed, in one or two sentences.
+
+## Options considered
+- Option A — what it promised, why it lost.
+- Option B — same.
+
+## Decision
+What was chosen and the reason.
+
+## Consequences
+What follows from the choice — including what is NOT decided.
+
+## Key code or commands
+The snippet, config, or command that embodies the decision, verbatim.
+
+## Open questions
+What the next session should look at.
+```
+
+### The session note
+
+Written at the end of a session (the packaged `session-note` skill). ONE note
+per session via `remember` with `cognitive_type="project_doc"` — a decision
+log entry, not a transcript.
+
+```markdown
+# Session 2026-09-11 — v1.1.0 bootstrap redesign
+
+One paragraph: what was decided.
+
+## Evidence
+Commits, file paths, commands, test counts — the receipts.
+
+## Caveats
+What is NOT decided, what failed, what is deferred.
+
+## Open questions
+For the next session.
+```
+
+Two rules apply to both, and they are the honest core of the pattern: **never
+fabricate** (if a hash or count is not in front of the agent, it is left out)
+and **revise, never duplicate** (`improve` the note; the bi-temporal history
+keeps every version).
+
+Upgrading from 1.0.0: these structures are taught by the instructions block
+and skills installed on disk — an upgraded package keeps the old ones until
+you re-run `seahorse setup` (see [setup.md](setup.md#upgrade)). `seahorse
+doctor` reports the stale install.
+
+---
+
+## 5. Organizing the vault (the human)
 
 The materialized notes land in the `[materialize] dir` (default `Memory/`).
 The human is free to move them:
@@ -92,7 +160,7 @@ rebuild).
 
 ---
 
-## 5. The materialization contract
+## 6. The materialization contract
 
 - **The frontmatter is F3.1** (see `docs/f3.1-format.md`). In Obsidian it
   renders as collapsed properties — the body is the primary content.
@@ -108,7 +176,7 @@ rebuild).
 
 ---
 
-## 6. Known trade-offs (MVP)
+## 7. Known trade-offs (MVP)
 
 - **The engine's `episodes` table is the hot-path store.** A human edit to the
   `.md` is not reconciled back into `episodes` until a rebuild. The rebuild is
@@ -123,7 +191,7 @@ rebuild).
 
 ---
 
-## 7. Enabling materialization
+## 8. Enabling materialization
 
 Materialization is opt-in. `seahorse setup` writes the `[materialize]` section
 with the defaults; `seahorse materialize` backfills notes for the currently-valid

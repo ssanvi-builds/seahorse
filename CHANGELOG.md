@@ -4,6 +4,79 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-11
+
+The documented vault experience is now the default one. Until 1.0, the docs
+promised a vault with narratives, design decisions and distilled notes — but
+nothing in the default flow produced them: nothing taught the agent the
+editorial `project_doc` pattern, consolidate's fallback copied one turn
+instead of merging the cluster, and the bootstrap was recency-only. 1.1
+makes the pipeline that already existed fire by default, with zero breaking
+changes (F3.1 and the MCP profile stay frozen at 1.0 — descriptions and
+additive result fields only).
+
+### Added
+
+- **The editorial pattern is taught, not just supported.** The agent
+  instructions block gains three bullets: recall is layered (INDEX rows carry
+  `cognitive_type`; chain `recall_full` in batches of up to 5 before answering
+  design questions), at design decisions the agent writes an ADR-style
+  `project_doc` (Context / Options considered / Decision / Consequences
+  including what is NOT decided / key code / open questions — one topic per
+  note, H1 as the first body line, revised with `improve`), and at the end of
+  a session it distills one session note. The `remember` and `recall` MCP tool
+  descriptions state the same (description text only — the input schemas and
+  the 15-tool set are untouched).
+- **`session-note` skill** — end-of-session distillation as a packaged skill:
+  ONE `project_doc` per session (decisions → evidence → honest caveats → open
+  questions), written by the agent's own LLM, never fabricated.
+- **Knowledge notes in the session bootstrap.** `context` (hook, CLI and MCP)
+  gains a fifth block `## Knowledge notes`: the 5 most recent consolidated or
+  `project_doc` episodes at INDEX level, most recent first, with an honest
+  `(none yet)` empty state. `ContextEpisode` rows carry an additive
+  `cognitive_type`. The Stats pointer teaches the `recall_full` chain.
+- **`seahorse consolidate --min-cluster-size N`** — additive knob to lower
+  the recurrence threshold (default 3 unchanged) for experimentation.
+- **`docs/editorial-notes.md` §4 "The note structures"** — the exact ADR and
+  session-note templates the instructions and skills teach; and a setup.md
+  upgrade section: re-running `seahorse setup` is the upgrade.
+
+### Changed
+
+- **The consolidate fallback merges instead of copying.** With
+  `synthesis="skip"`, a consolidated note used to copy the most recent turn
+  verbatim, silently dropping the other cluster members. The deterministic
+  body is now a real merge: `# {key}` H1, `## Summary` (the representative,
+  tagged H1 stripped), `## Evidence` with one dated `###` subsection per
+  member, newest first. Size guards keep the 32 KB episode cap honest:
+  per-member excerpts cap at 3000 chars and only the 6 most recent members
+  are inlined — every cut is a pointer (`recall_full {ep_id}`, "(…and N
+  earlier episode(s)"), never a silent drop.
+- **The `consolidate` skill enriches its output** — after the deterministic
+  pass, each thin note is enriched by the agent's own LLM toward
+  what happened → decision → evidence → open questions, quoting key code
+  verbatim, never inventing beyond the source episodes.
+- **`doctor` detects stale installs by content, not markers.** A 1.0 block
+  between the markers or a pre-1.1 skill file used to report OK. Doctor now
+  compares the installed block against `instructions_block_for(harness)` and
+  each skill against its packaged template; a mismatch WARNs with the exact
+  fix (`seahorse setup`), `--fix` repairs in place, check names unchanged.
+
+### Rejected alternatives
+
+- **`synthesis=llm` as the consolidate default** — requires a wired LLM
+  provider; the free path is the deterministic merge plus the agent-side
+  enrichment of the skill. LLM synthesis stays opt-in per run.
+- **Fuzzy clustering / tag-based clusters** — tags are not persisted in this
+  release and there is no evidence fuzzy keys beat exact recurrence; the
+  additive `--min-cluster-size` knob covers the real complaint.
+- **Lowering the default recurrence threshold below 3** — would distill
+  noise; the knob exists for users who want it.
+- **Observer-side editorial capture (writing project_docs from the
+  observer)** — deferred: the observer is privacy-minimal (`drop_tools` on
+  Read/Bash) and body-capped; the agent writing its own notes at decision
+  time is the editorially honest point.
+
 ## [1.0.0] - 2026-09-08
 
 The standard-freeze release: the MCP profile `io.seahorse.memory/v1` and the

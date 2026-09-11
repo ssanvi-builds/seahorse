@@ -52,7 +52,7 @@ seahorse remember "Sergio lives in Madrid" --title home
 seahorse recall "where does Sergio live?"
 ```
 
-Real output of that fresh 1.0.0 install:
+Real output of that fresh install:
 
 ```text
 $ seahorse remember "Sergio lives in Madrid" --title home
@@ -75,8 +75,8 @@ Recall: 'where does Sergio live?' (1 results)
 > **First run**: the embedding model (mE5-small, ~235MB) downloads lazily on the
 > first `remember`/`recall`; `setup --warm-embeddings` pre-downloads it.
 
-The full agentic loop ships in v1.0.0, end to end from that one command. What's
-next: [ROADMAP.md](ROADMAP.md).
+The full agentic loop ships since v1.0.0, end to end from that one command.
+What's next: [ROADMAP.md](ROADMAP.md).
 
 ## Why
 
@@ -142,9 +142,9 @@ is the same graph, interactive (zoom, pan, drag, tooltips — self-contained).
 2. **Recall.** The SessionStart hook injects `seahorse context` into the next
    session, so the agent starts with what it learned before.
 3. **Write back.** The agent reads and writes memory through the MCP tools, not
-   by guessing.
-4. **Distill.** The packaged `consolidate` skill has the agent's own LLM distill
-   recurrent episodes into a note — no API key needed.
+   by guessing; at design decisions it writes ADR-style notes in `Memory/`.
+4. **Distill.** The `consolidate` and `session-note` skills distill recurrent
+   episodes and session takeaways into notes — no API key needed.
 5. **Human in the loop.** Notes are markdown files you edit in Obsidian — if the
    agent is wrong, you correct the note, not a database.
 

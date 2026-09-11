@@ -28,6 +28,26 @@ the portable per-user default `~/seahorse-mem` instead of failing — it never
 hits a cold-start prompt. On a terminal it offers an interactive picker of
 your registered Obsidian vaults.
 
+## Upgrade
+
+Upgrading the package (`uv tool upgrade seahorse-memory`) does NOT upgrade the
+installed surface: the instructions blocks in your harness files and the
+packaged skills on disk are the ones the old version wrote. **Re-run
+`seahorse setup`** — that is the upgrade. It is idempotent and conservative:
+
+- the instructions block is replaced in place (the marked block is swapped;
+  anything you wrote around it is preserved byte-for-byte),
+- a Seahorse skill whose content is stale is updated in place,
+- skills added by the new release are installed (1.1 adds `session-note`),
+- a foreign SKILL.md or a foreign config section is never touched — setup
+  reports it and leaves it to you,
+- `seahorse.toml` keys you customized are preserved.
+
+`seahorse doctor` detects a stale install by content, not markers: an old
+block between the markers reports `instructions stale — run seahorse setup`
+(same for skills), and `--fix` repairs both in place. `--auto-consolidate`
+remains opt-in across upgrades.
+
 ## LLM provider
 
 Setup detects providers in preference order — local Ollama (qwen3 first), then
