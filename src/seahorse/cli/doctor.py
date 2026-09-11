@@ -501,29 +501,38 @@ def run_doctor(
             }
         )
 
-    from seahorse.cli.skill_install import skill_path, skill_state
+    from seahorse.cli.skill_install import SKILL_NAMES, skill_path, skill_state
 
-    state = skill_state("consolidate")
-    if state == "ours":
-        checks.append({"check": "skills_installed", "status": "OK", "detail": "installed"})
-    elif state == "foreign":
+    states = {name: skill_state(name) for name in SKILL_NAMES}
+    if all(state == "ours" for state in states.values()):
         checks.append(
             {
                 "check": "skills_installed",
-                "status": "WARN",
-                "detail": (
-                    f"foreign SKILL.md at {skill_path('consolidate')} — not repaired; "
-                    "remove it or merge the Seahorse skill manually"
-                ),
+                "status": "OK",
+                "detail": f"installed ({', '.join(SKILL_NAMES)})",
             }
         )
     else:
+        parts = []
+        for name in SKILL_NAMES:
+            state = states[name]
+            if state == "ours":
+                parts.append(f"{name}: installed")
+            elif state == "foreign":
+                parts.append(
+                    f"{name}: foreign SKILL.md at {skill_path(name)} — not repaired"
+                )
+            else:
+                parts.append(f"{name}: missing")
+        foreign = [n for n, s in states.items() if s == "foreign"]
+        detail = "; ".join(parts) + "; run `seahorse setup`"
+        if foreign:
+            detail += (
+                ", and remove or merge the foreign SKILL.md(s) manually"
+                " (a foreign file is never overwritten)"
+            )
         checks.append(
-            {
-                "check": "skills_installed",
-                "status": "WARN",
-                "detail": "no agent skills installed; run `seahorse setup`",
-            }
+            {"check": "skills_installed", "status": "WARN", "detail": detail}
         )
 
     from seahorse.cli.credentials import check_permissions

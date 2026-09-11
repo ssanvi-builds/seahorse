@@ -50,6 +50,41 @@ class TestPaths:
             assert skill_template(name).startswith("---\n")
             assert SKILL_MARKER in skill_template(name)
 
+    def test_names_cover_session_note(self) -> None:
+        # The end-of-session distillation skill ships with setup.
+        assert "session-note" in SKILL_NAMES
+        template = skill_template("session-note")
+        assert template.startswith("---\nname: session-note\n")
+        assert 'cognitive_type="project_doc"' in template
+        assert "Never fabricate" in template
+
+
+class TestSessionNoteSkill:
+    def test_install_then_state_ours(self, skills_root: Path) -> None:
+        install_skill("session-note")
+        assert skill_state("session-note") == "ours"
+        assert skill_path("session-note").read_text(encoding="utf-8") == (
+            skill_template("session-note")
+        )
+
+    def test_install_idempotent(self, skills_root: Path) -> None:
+        install_skill("session-note")
+        before = skill_path("session-note").read_text(encoding="utf-8")
+        ok, detail = install_skill("session-note")
+        assert ok and "already" in detail
+        assert skill_path("session-note").read_text(encoding="utf-8") == before
+
+    def test_install_skills_covers_every_name(self, skills_root: Path) -> None:
+        rows = install_skills()
+        assert [name for name, _, _ in rows] == list(SKILL_NAMES)
+        assert all(ok for _, ok, _ in rows)
+
+    def test_remove_cleans_dir(self, skills_root: Path) -> None:
+        install_skill("session-note")
+        ok, detail = remove_skill("session-note")
+        assert ok
+        assert not skill_path("session-note").parent.exists()
+
 
 class TestState:
     def test_absent_when_no_file(self, skills_root: Path) -> None:

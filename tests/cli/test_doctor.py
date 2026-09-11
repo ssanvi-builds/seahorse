@@ -709,12 +709,28 @@ class TestOnboardingChecks:
     def test_skills_installed_ok(self, tmp_path, monkeypatch) -> None:
         config = self._config(tmp_path)
         monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        from seahorse.cli.skill_install import SKILL_NAMES, install_skill
+
+        for name in SKILL_NAMES:
+            install_skill(name)
+        payload = _doctor(config, monkeypatch)
+        skills = next(c for c in payload["checks"] if c["check"] == "skills_installed")
+        assert skills["status"] == "OK"
+        assert all(name in skills["detail"] for name in SKILL_NAMES)
+
+    def test_partial_skills_install_warns(self, tmp_path, monkeypatch) -> None:
+        # One skill ours, one missing: the check must name both states so
+        # `seahorse setup` (the fix) is the obvious next step.
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
         from seahorse.cli.skill_install import install_skill
 
         install_skill("consolidate")
         payload = _doctor(config, monkeypatch)
         skills = next(c for c in payload["checks"] if c["check"] == "skills_installed")
-        assert skills["status"] == "OK"
+        assert skills["status"] == "WARN"
+        assert "consolidate: installed" in skills["detail"]
+        assert "session-note: missing" in skills["detail"]
 
     def test_foreign_skill_warns_and_never_repaired(self, tmp_path, monkeypatch) -> None:
         from pathlib import Path as _P

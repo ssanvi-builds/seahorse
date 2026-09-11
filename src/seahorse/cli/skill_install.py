@@ -2,9 +2,9 @@
 
 ``seahorse setup`` installs Claude Code skills (``~/.claude/skills/<name>/
 SKILL.md``) teaching the agent to drive Seahorse commands directly —
-currently ``consolidate``, so an agent session can run the distillation
-pass (and enrich its output via the seahorse-mcp tools) without any API
-key: the agent's own LLM does the synthesis.
+``consolidate`` (run the distillation pass and enrich its output via the
+seahorse-mcp tools) and ``session-note`` (write the end-of-session
+distillation). No API key is needed: the agent's own LLM does the synthesis.
 
 The same merge discipline as ``agent_instructions`` applies: each skill
 file carries an HTML-comment marker so a Seahorse skill can be found,
@@ -19,7 +19,7 @@ from pathlib import Path
 
 SKILL_MARKER = "<!-- seahorse-memory:skill -->"
 
-SKILL_NAMES: tuple[str, ...] = ("consolidate",)
+SKILL_NAMES: tuple[str, ...] = ("consolidate", "session-note")
 
 _TEMPLATES: dict[str, str] = {
     "consolidate": f"""\
@@ -42,12 +42,52 @@ seahorse-mcp tools. The agent's own LLM does the synthesis — no API key needed
 1. Run `seahorse consolidate` (deterministic clustering). Never pass `--vault`
    unless the user asked for a specific vault — it resolves from the working
    directory.
-2. Read the notes it reports. Enrich thin or contradictory notes via the
-   seahorse-mcp tools: `recall_full` for context, `improve` to correct (the
+2. Read the notes it reports. Enrich each thin or mechanical one into a
+   knowledge note with this structure:
+   - What happened → the decision → the evidence (source episodes, commit
+     hashes, file paths, commands) → open questions.
+   - Quote the key code or config snippets inline, verbatim from the
+     evidence. Never invent facts beyond the source episodes.
+   Enrich via `recall_full` for context and `improve` to update the note (the
    user is the authority over the vault). Use `--supersede` only when the
    user explicitly asks to replace older notes.
 3. Report in 1-2 sentences: how many notes, what they cover, any conflicts
    left for the user to decide.
+""",
+    "session-note": f"""\
+---
+name: session-note
+description: >-
+  Write the end-of-session memory note: one distillation of what was decided,
+  for the human to read in the vault. Use when the user asks to wrap up or
+  end the session, or at a natural milestone.
+---
+
+{SKILL_MARKER}
+# Write the session note
+
+Distill the session into ONE memory note — a decision log entry, not a
+transcript. Write it with the seahorse-mcp `remember` tool; your own LLM does
+the writing — no API key needed.
+
+## Steps
+
+1. Collect what actually matters: the decisions made (with their rationale),
+   the evidence (commit hashes, file paths, commands, test counts), the
+   honest caveats, and the open questions.
+2. Write one note via `remember` with `cognitive_type="project_doc"`:
+   - The body starts with a descriptive H1 — `Session YYYY-MM-DD — <topic>`
+     — it becomes the note's subject and its filename in the vault.
+   - Then, in order: a one-paragraph summary of what was decided; the
+     evidence (commits, paths, commands); caveats — say plainly what is NOT
+     decided or what failed; open questions for the next session.
+   - `by` is the provenance OBJECT, never a string:
+     {{"by": {{"agent_id": "claude-code", "session_id": "<current session>", "source_type": "agent"}}}}.
+   - One session, one topic: two sessions that decided different things are
+     two notes.
+3. Never fabricate — if a detail (a hash, a count) is not in front of you,
+   leave it out.
+4. Report in 1-2 sentences: the note's title and what it records.
 """,
 }
 
