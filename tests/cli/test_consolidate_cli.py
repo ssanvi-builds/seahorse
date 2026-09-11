@@ -265,6 +265,40 @@ def test_consolidate_synthesis_option_accepted(vault) -> None:
     assert err == ""
 
 
+def test_consolidate_min_cluster_size_option_accepted(vault) -> None:
+    """``--min-cluster-size`` is accepted by the Typer parser (no clusters → no-op)."""
+    from tests.cli.conftest import invoke
+
+    code, out, err = invoke(
+        ["--vault", str(vault), "consolidate", "--min-cluster-size", "2"]
+    )
+    assert code == 0
+    assert "no clusters to distill" in out
+    assert err == ""
+
+
+def test_consolidate_min_cluster_size_lowers_threshold(tmp_path) -> None:
+    """Two same-key episodes distill with the knob at 2, not with the default."""
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(2):
+            facade.remember(
+                RememberPayload(
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+                )
+            )
+        default_out = _out()
+        run_consolidate(facade, fmt="human", out=default_out)
+        assert "no clusters to distill" in default_out.getvalue()
+
+        knob_out = _out()
+        run_consolidate(facade, fmt="human", out=knob_out, min_cluster_size=2)
+        assert "consolidated: topic (2 sources)" in knob_out.getvalue()
+    finally:
+        storage.close()
+
+
 def test_consolidate_synthesis_llm_json_reports_mode(tmp_path) -> None:
     facade, storage = build_facade(tmp_path / "seahorse.db")
     try:

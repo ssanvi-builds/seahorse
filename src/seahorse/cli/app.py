@@ -412,6 +412,12 @@ def consolidate(
     supersede: bool = typer.Option(
         False, "--supersede", help="Update existing notes when new episodes arrive (opt-in)."
     ),
+    min_cluster_size: int | None = typer.Option(
+        None,
+        "--min-cluster-size",
+        min=2,
+        help="Override the N>=3 recurrence threshold (experimentation knob).",
+    ),
     auto: bool = typer.Option(
         False,
         "--auto",
@@ -445,6 +451,7 @@ def consolidate(
         llm_client=ctx.obj.llm_client(),
         vault_path=config.vault,
         supersede=supersede,
+        min_cluster_size=min_cluster_size,
     )
 
 

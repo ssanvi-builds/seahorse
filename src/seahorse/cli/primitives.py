@@ -384,6 +384,7 @@ def run_consolidate(
     llm_client: LLMClient | None = None,
     vault_path: Path | None = None,
     supersede: bool = False,
+    min_cluster_size: int | None = None,
 ) -> None:
     """``seahorse consolidate`` — distill recurrent episodes.
 
@@ -395,6 +396,8 @@ def run_consolidate(
     ``supersede=True`` (F7+ supersession, opt-in) UPDATES an existing note when
     the cluster gains new episodes, guarded by the editorial authority
     (``vault_path`` mtime check — a human-edited note is never superseded).
+    ``min_cluster_size`` overrides the N≥3 recurrence threshold (an
+    experimentation knob; None keeps the default).
     """
     from seahorse.distill.consolidate import consolidate
 
@@ -415,6 +418,7 @@ def run_consolidate(
             llm_client=llm_client,
             supersede=supersede,
             human_edited=_vault_human_edited(vault_path),
+            **({"min_cluster_size": min_cluster_size} if min_cluster_size is not None else {}),
         ),
         verbose=verbose,
     )

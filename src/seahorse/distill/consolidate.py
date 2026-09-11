@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from seahorse.contracts.engine import InvalidationConflictError, NotFound
-from seahorse.distill.cluster import Cluster, cluster_episodes
+from seahorse.distill.cluster import MIN_CLUSTER_SIZE, Cluster, cluster_episodes
 from seahorse.distill.synthesis import synthesize_cluster
 from seahorse.engine.errors import E_COLLISION_EXISTS, EngineError
 from seahorse.llm import LLMClient
@@ -98,17 +98,55 @@ def unconsolidated_sources(
     return [e for e in eps if not is_consolidated(e)]
 
 
-def _consolidated_body(cluster: Cluster) -> str:
-    """The consolidated body: stable clustering-key H1 + representative content.
+# Deterministic-merge size guards. The fallback body must carry EVERY member's
+# content (copying only the representative silently dropped the evidence), but
+# turn bodies reach 8 KB and the episode body cap is 32 KB — an uncapped merge
+# would be REJECTED wholesale. Excerpts are capped per member, and only the
+# EVIDENCE_MAX_MEMBERS most recent members are inlined; the note says so and
+# points at recall_full for the rest, instead of failing the whole cluster.
+_MEMBER_EXCERPT_MAX_CHARS = 3_000
+_EVIDENCE_MAX_MEMBERS = 6
 
-    The representative's body starts with the tagged H1 (``[session_tag:n]``);
-    it is replaced by the stable key so the knowledge note is clean.
-    """
-    lines = cluster.representative.body.splitlines()
+
+def _body_without_h1(ep: Any) -> str:
+    """The member body without its leading H1 (the subject heads the excerpt)."""
+    lines = ep.body.splitlines()
     if lines and lines[0].lstrip().startswith("# "):
         lines = lines[1:]
-    content = "\n".join(lines).strip()
-    return f"# {cluster.key}\n\n{content}"
+    return "\n".join(lines).strip()
+
+
+def _excerpt(ep: Any) -> str:
+    content = _body_without_h1(ep)
+    if len(content) <= _MEMBER_EXCERPT_MAX_CHARS:
+        return content
+    cut = content[:_MEMBER_EXCERPT_MAX_CHARS].rsplit("\n", 1)[0]
+    return (
+        f"{cut}\n\n(excerpt truncated at {_MEMBER_EXCERPT_MAX_CHARS} chars — "
+        f"`recall_full {ep.id}` for the full body)"
+    )
+
+
+def _consolidated_body(cluster: Cluster) -> str:
+    """The deterministic consolidated body: stable-key H1 + EVERY member's content.
+
+    Structure: ``# {key}``, ``## Summary`` (the most recent member — the
+    representative — with its tagged H1 stripped), ``## Evidence`` with one
+    dated ``###`` subsection per member, newest first. Members beyond
+    EVIDENCE_MAX_MEMBERS and excerpts beyond _MEMBER_EXCERPT_MAX_CHARS are
+    cut with an in-note pointer (honest degrade, never a silent drop).
+    """
+    parts = [f"# {cluster.key}\n\n## Summary\n\n{_body_without_h1(cluster.representative)}\n\n## Evidence"]
+    shown = cluster.episodes[:_EVIDENCE_MAX_MEMBERS]
+    for ep in shown:
+        parts.append(f"\n\n### {ep.created_at:%Y-%m-%d} — {ep.subject}\n\n{_excerpt(ep)}")
+    hidden = len(cluster.episodes) - len(shown)
+    if hidden > 0:
+        parts.append(
+            f"\n\n(…and {hidden} earlier episode(s) in this cluster — "
+            "`recall_timeline` / `recall_full` for each)"
+        )
+    return "".join(parts)
 
 
 def _synthesize_or_fallback(
@@ -151,6 +189,7 @@ def consolidate(
     llm_client: LLMClient | None = None,
     supersede: bool = False,
     human_edited: Callable[[Any], bool] | None = None,
+    min_cluster_size: int = MIN_CLUSTER_SIZE,
 ) -> ConsolidateReport:
     """Consolidate recurrent currently-valid episodes into semantic knowledge notes.
 
@@ -161,6 +200,8 @@ def consolidate(
     not re-distilled. ``synthesis="llm"`` (with a wired ``llm_client``) adds the
     off-path LLM synthesis: 1 call per cluster, honest degrade to the
     deterministic fallback on failure. Returns a report (deterministic order).
+    ``min_cluster_size`` overrides the recurrence threshold (default 3 —
+    additive CLI knob for experimentation; existing behavior unchanged).
 
     ``supersede=True`` (F7+ supersession, opt-in) UPDATES an existing note when
     the cluster gains NEW valid episodes: the note supersedes the representative
@@ -179,7 +220,7 @@ def consolidate(
     eps = facade.get_vigente()
     sources = unconsolidated_sources(facade, eps=eps)
     existing_notes = {e.subject: e for e in eps if is_consolidated(e)}
-    clusters = cluster_episodes(sources)
+    clusters = cluster_episodes(sources, min_size=min_cluster_size)
     items: list[ConsolidateItem] = []
     for cluster in clusters:
         existing = existing_notes.get(cluster.key)

@@ -620,3 +620,115 @@ def test_unconsolidated_sources_filters_consolidated_notes() -> None:
     # With eps held by the caller: no second round-trip.
     assert unconsolidated_sources(_StubFacade(), eps=[episodic, note]) == [episodic]
     assert _StubFacade.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# The deterministic fallback body: an honest merge, not a copy of one turn
+# ---------------------------------------------------------------------------
+
+
+def _note_body(facade) -> str:
+    notes = [
+        e for e in facade.get_vigente() if e.cognitive_type == "semantic"
+    ]
+    assert len(notes) == 1
+    return notes[0].body
+
+
+def test_fallback_body_carries_every_member(tmp_path) -> None:
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(5):
+            _remember(
+                facade,
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1} unique.",
+                now=T0 + timedelta(minutes=i),
+            )
+        report = consolidate(facade)
+        assert report.items[0].status == "ACTIVE"
+        body = _note_body(facade)
+        # Stable-key H1 + Summary from the most recent member + Evidence with
+        # one dated subsection per member.
+        assert body.startswith("# topic\n\n## Summary\n\nDetail 5 unique.")
+        assert "## Evidence" in body
+        for i in range(5):
+            assert f"Detail {i + 1} unique." in body
+        assert body.count("\n### ") == 5
+    finally:
+        storage.close()
+
+
+def test_fallback_body_is_deterministic(tmp_path) -> None:
+    bodies = []
+    for run in (1, 2):
+        facade, storage = _facade(tmp_path / f"seahorse-{run}.db")
+        try:
+            for i in range(3):
+                _remember(
+                    facade,
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    now=T0 + timedelta(minutes=i),
+                )
+            consolidate(facade)
+            bodies.append(_note_body(facade))
+        finally:
+            storage.close()
+    assert bodies[0] == bodies[1]
+
+
+def test_fallback_evidence_cap_and_excerpt_truncation(tmp_path) -> None:
+    from seahorse.distill.consolidate import (
+        _EVIDENCE_MAX_MEMBERS,
+        _MEMBER_EXCERPT_MAX_CHARS,
+    )
+
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        n = _EVIDENCE_MAX_MEMBERS + 3
+        # The oversized body goes in the SECOND-most-recent member: inside the
+        # Evidence window but not the (uncapped) Summary representative.
+        oversized_at = n - 2
+        for i in range(n):
+            filler = (
+                "x" * (_MEMBER_EXCERPT_MAX_CHARS + 500)
+                if i == oversized_at
+                else f"Detail {i + 1}."
+            )
+            _remember(
+                facade,
+                body=f"# Topic [sess-1:{i + 1}]\n\n{filler}",
+                now=T0 + timedelta(minutes=i),
+            )
+        consolidate(facade)
+        body = _note_body(facade)
+        # Only the most recent members are inlined; the note says so.
+        assert body.count("\n### ") == _EVIDENCE_MAX_MEMBERS
+        assert f"(…and {n - _EVIDENCE_MAX_MEMBERS} earlier episode(s)" in body
+        assert "`recall_timeline` / `recall_full`" in body
+        # An oversized member is excerpted with a recall_full pointer, and the
+        # whole body still fits the episode body cap (never a wholesale reject).
+        assert "excerpt truncated at" in body
+        assert "recall_full" in body
+        assert len(body) <= 32_768
+    finally:
+        storage.close()
+
+
+def test_min_cluster_size_override(tmp_path) -> None:
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(2):
+            _remember(
+                facade,
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                now=T0 + timedelta(minutes=i),
+            )
+        # Default N>=3: no cluster. With the knob at 2: distilled.
+        report_default = consolidate(facade)
+        assert report_default.clusters_found == 0
+        report = consolidate(facade, min_cluster_size=2)
+        assert report.clusters_found == 1
+        assert report.items[0].source_count == 2
+        assert report.items[0].status == "ACTIVE"
+    finally:
+        storage.close()
