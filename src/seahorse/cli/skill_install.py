@@ -126,6 +126,21 @@ def skill_state(name: str, *, path: Path | None = None) -> str:
     return "ours" if SKILL_MARKER in text else "foreign"
 
 
+def skill_up_to_date(name: str, *, path: Path | None = None) -> bool:
+    """True iff the installed skill file matches the packaged template.
+
+    ``skill_state`` is marker-only — it says "ours" for a stale Seahorse skill
+    (an older release wrote it, the user never re-ran setup). Doctor compares
+    content so a stale skill is surfaced, not silently OK'd. Foreign files are
+    never "up to date" by definition (they are not ours to compare).
+    """
+    path = path or skill_path(name)
+    try:
+        return path.read_text(encoding="utf-8") == skill_template(name)
+    except OSError:
+        return False
+
+
 def install_skill(name: str) -> tuple[bool, str]:
     """Idempotently ensure ``name`` matches the packaged template.
 
@@ -190,5 +205,6 @@ __all__ = [
     "skill_path",
     "skill_state",
     "skill_template",
+    "skill_up_to_date",
     "skills_dir",
 ]

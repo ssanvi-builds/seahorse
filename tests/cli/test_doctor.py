@@ -425,6 +425,43 @@ class TestOnboardingChecks:
         ai = next(c for c in payload["checks"] if c["check"] == "agent_instructions")
         assert ai["status"] == "WARN"
 
+    def test_agent_instructions_stale_content_warns(self, tmp_path, monkeypatch) -> None:
+        """A 1.0.0-style install (old block between the markers) is NOT
+        healthy — doctor compares content, not marker presence."""
+        from seahorse.cli.agent_instructions import (
+            BEGIN_MARKER,
+            END_MARKER,
+            claude_md_path,
+        )
+
+        claude_md_path().parent.mkdir(parents=True, exist_ok=True)
+        claude_md_path().write_text(
+            f"{BEGIN_MARKER}\nold instructions\n{END_MARKER}\n", encoding="utf-8"
+        )
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        ai = next(c for c in payload["checks"] if c["check"] == "agent_instructions")
+        assert ai["status"] == "WARN"
+        assert "stale" in ai["detail"]
+        assert "seahorse setup" in ai["detail"]
+
+    def test_agent_instructions_current_content_ok(self, tmp_path, monkeypatch) -> None:
+        from seahorse.cli.agent_instructions import (
+            claude_md_path,
+            install_agent_instructions,
+        )
+
+        claude_md_path().parent.mkdir(parents=True, exist_ok=True)
+        claude_md_path().write_text("# my rules\n", encoding="utf-8")
+        install_agent_instructions()
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        payload = _doctor(config, monkeypatch)
+        ai = next(c for c in payload["checks"] if c["check"] == "agent_instructions")
+        assert ai["status"] == "OK"
+        assert ai["detail"] == "installed"
+
     def test_consolidate_off_is_ok_not_warn(self, tmp_path, monkeypatch) -> None:
         """Auto-consolidation is opt-in: off is a valid, healthy state."""
         config = self._config(tmp_path)
@@ -538,6 +575,21 @@ class TestOnboardingChecks:
     def test_per_harness_instructions_ok_when_block_installed(
         self, tmp_path, monkeypatch
     ) -> None:
+        from seahorse.cli.agent_instructions import instructions_block_for
+
+        gemini_md = tmp_path / "home" / ".gemini" / "GEMINI.md"
+        gemini_md.parent.mkdir(parents=True, exist_ok=True)
+        gemini_md.write_text(f"user rules\n\n{instructions_block_for('gemini')}\n")
+        checks = self._doctor(tmp_path)
+        by_name = {c["check"]: (c["status"], c["detail"]) for c in checks}
+        assert by_name["agent_instructions:gemini"][0] == "OK"
+        assert "installed" in by_name["agent_instructions:gemini"][1]
+
+    def test_per_harness_instructions_stale_content_warns(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Marker presence alone lies on a stale install (an older Seahorse
+        wrote the block) — doctor compares CONTENT and WARNs with the fix."""
         gemini_md = tmp_path / "home" / ".gemini" / "GEMINI.md"
         gemini_md.parent.mkdir(parents=True, exist_ok=True)
         gemini_md.write_text(
@@ -546,8 +598,9 @@ class TestOnboardingChecks:
         )
         checks = self._doctor(tmp_path)
         by_name = {c["check"]: (c["status"], c["detail"]) for c in checks}
-        assert by_name["agent_instructions:gemini"][0] == "OK"
-        assert "installed" in by_name["agent_instructions:gemini"][1]
+        assert by_name["agent_instructions:gemini"][0] == "WARN"
+        assert "stale" in by_name["agent_instructions:gemini"][1]
+        assert "seahorse setup --harness gemini" in by_name["agent_instructions:gemini"][1]
 
     def test_per_harness_instructions_installed_but_missing_block_warns(
         self, tmp_path, monkeypatch
@@ -731,6 +784,50 @@ class TestOnboardingChecks:
         assert skills["status"] == "WARN"
         assert "consolidate: installed" in skills["detail"]
         assert "session-note: missing" in skills["detail"]
+
+    def test_stale_skill_content_warns(self, tmp_path, monkeypatch) -> None:
+        """An 'ours' skill with pre-1.1 template content is NOT healthy —
+        doctor compares content, not the marker."""
+        from pathlib import Path as _P
+
+        from seahorse.cli.skill_install import SKILL_MARKER, SKILL_NAMES, install_skill
+
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        for name in SKILL_NAMES:
+            install_skill(name)
+        # Regress one file to a stale (marker-carrying) template.
+        path = _P(os.environ["SEAHORSE_CLAUDE_SKILLS_DIR"]) / "consolidate" / "SKILL.md"
+        path.write_text(f"{SKILL_MARKER}\n# consolidate (old)\n", encoding="utf-8")
+        payload = _doctor(config, monkeypatch)
+        skills = next(c for c in payload["checks"] if c["check"] == "skills_installed")
+        assert skills["status"] == "WARN"
+        assert "consolidate: stale" in skills["detail"]
+        assert "seahorse setup" in skills["detail"]
+
+    def test_stale_skill_is_repaired_by_fix(self, tmp_path, monkeypatch) -> None:
+        from pathlib import Path as _P
+
+        from seahorse.cli.skill_install import (
+            SKILL_MARKER,
+            SKILL_NAMES,
+            install_skill,
+            skill_template,
+        )
+
+        config = self._config(tmp_path)
+        monkeypatch.setattr("seahorse.cli.doctor._context_probe", lambda _c: (True, "ok"))
+        for name in SKILL_NAMES:
+            install_skill(name)
+        path = _P(os.environ["SEAHORSE_CLAUDE_SKILLS_DIR"]) / "consolidate" / "SKILL.md"
+        path.write_text(f"{SKILL_MARKER}\n# consolidate (old)\n", encoding="utf-8")
+        out = io.StringIO()
+        run_doctor(config, fmt="json", out=out, fix=True)
+        payload = json.loads(out.getvalue())
+        skills = next(c for c in payload["checks"] if c["check"] == "skills_installed")
+        assert skills["status"] == "WARN" and "stale" in skills["detail"]
+        # --fix re-runs the installer: a stale 'ours' skill is updated in place.
+        assert path.read_text(encoding="utf-8") == skill_template("consolidate")
 
     def test_foreign_skill_warns_and_never_repaired(self, tmp_path, monkeypatch) -> None:
         from pathlib import Path as _P

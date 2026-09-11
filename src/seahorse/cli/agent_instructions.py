@@ -352,6 +352,20 @@ def remove_instructions_for(harness_id: str) -> tuple[bool, str]:
     return remove_agent_instructions(path)
 
 
+def installed_current(
+    path: Path | None = None, harness_id: str = "claude-code"
+) -> bool:
+    """True iff the block present in ``path`` IS the current one (content match).
+
+    ``installed()`` is marker-only — it lies on a stale install (an upgrade
+    changed the block, the user never re-ran setup, the old block still sits
+    between the markers). Doctor compares the extracted block against the
+    packaged one so a stale install is surfaced, not silently OK'd.
+    """
+    block = _read_block(path)
+    return block is not None and block == instructions_block_for(harness_id)
+
+
 __all__ = [
     "BEGIN_MARKER",
     "END_MARKER",
@@ -359,6 +373,7 @@ __all__ = [
     "install_agent_instructions",
     "install_instructions_for",
     "installed",
+    "installed_current",
     "instructions_block",
     "instructions_block_for",
     "instructions_path_for",

@@ -353,8 +353,11 @@ def run_doctor(
     )
 
     # The agent surface: MCP registration, agent instructions, auto-consolidate
-    # (opt-in — off is a valid state, never a WARN).
+    # (opt-in — off is a valid state, never a WARN). Instruction/skill checks
+    # compare CONTENT, not markers: a stale install (an older Seahorse wrote
+    # the block/skill, the user never re-ran setup) must WARN, not report OK.
     from seahorse.cli.agent_instructions import installed as _ai_installed
+    from seahorse.cli.agent_instructions import installed_current as _ai_current
     from seahorse.cli.mcp_register import is_mcp_registered
 
     checks.append(
@@ -403,9 +406,21 @@ def run_doctor(
                 }
             )
     if _ai_installed():
-        checks.append(
-            {"check": "agent_instructions", "status": "OK", "detail": "installed"}
-        )
+        if _ai_current():
+            checks.append(
+                {"check": "agent_instructions", "status": "OK", "detail": "installed"}
+            )
+        else:
+            checks.append(
+                {
+                    "check": "agent_instructions",
+                    "status": "WARN",
+                    "detail": (
+                        "instructions stale (an older Seahorse wrote them) — "
+                        "run `seahorse setup`"
+                    ),
+                }
+            )
     else:
         checks.append(
             {
@@ -430,13 +445,25 @@ def run_doctor(
                 }
             )
         elif _ai_installed(instr_path):
-            checks.append(
-                {
-                    "check": f"agent_instructions:{hid}",
-                    "status": "OK",
-                    "detail": f"installed in {instr_path}",
-                }
-            )
+            if _ai_current(instr_path, hid):
+                checks.append(
+                    {
+                        "check": f"agent_instructions:{hid}",
+                        "status": "OK",
+                        "detail": f"installed in {instr_path}",
+                    }
+                )
+            else:
+                checks.append(
+                    {
+                        "check": f"agent_instructions:{hid}",
+                        "status": "WARN",
+                        "detail": (
+                            f"instructions stale in {instr_path} (an older "
+                            f"Seahorse wrote them) — run `seahorse setup --harness {hid}`"
+                        ),
+                    }
+                )
         else:
             checks.append(
                 {
@@ -501,10 +528,20 @@ def run_doctor(
             }
         )
 
-    from seahorse.cli.skill_install import SKILL_NAMES, skill_path, skill_state
+    from seahorse.cli.skill_install import (
+        SKILL_NAMES,
+        skill_path,
+        skill_state,
+        skill_up_to_date,
+    )
 
     states = {name: skill_state(name) for name in SKILL_NAMES}
-    if all(state == "ours" for state in states.values()):
+    stale = [
+        name
+        for name in SKILL_NAMES
+        if states[name] == "ours" and not skill_up_to_date(name)
+    ]
+    if all(state == "ours" for state in states.values()) and not stale:
         checks.append(
             {
                 "check": "skills_installed",
@@ -517,7 +554,13 @@ def run_doctor(
         for name in SKILL_NAMES:
             state = states[name]
             if state == "ours":
-                parts.append(f"{name}: installed")
+                if skill_up_to_date(name):
+                    parts.append(f"{name}: installed")
+                else:
+                    parts.append(
+                        f"{name}: stale (an older Seahorse wrote it) — "
+                        "not repaired"
+                    )
             elif state == "foreign":
                 parts.append(
                     f"{name}: foreign SKILL.md at {skill_path(name)} — not repaired"
