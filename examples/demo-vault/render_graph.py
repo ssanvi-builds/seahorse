@@ -17,6 +17,7 @@ import json
 import math
 import pathlib
 import re
+import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 FM_RE = re.compile(r"^---\n(.*?)\n---\n", re.S)
@@ -32,7 +33,7 @@ COLORS = {
 DEFAULT = "#8b949e"
 
 
-def parse(path: pathlib.Path):
+def parse(path: pathlib.Path, *, memory: bool):
     text = path.read_text(encoding="utf-8")
     m = FM_RE.match(text)
     if not m:
@@ -43,6 +44,10 @@ def parse(path: pathlib.Path):
         r = re.search(rf"^{key}: (.*)$", fm, re.M)
         return r.group(1).strip().strip('"') if r else ""
 
+    def grab_prov(key: str) -> str:
+        r = re.search(rf"^  {key}: (.+)$", fm, re.M)
+        return r.group(1).strip() if r else ""
+
     links = [t.strip() for t in re.findall(r"\[\[([^\]|#]+)", body)]
     return {
         "title": grab("title") or path.stem,
@@ -50,6 +55,9 @@ def parse(path: pathlib.Path):
         "supersedes": grab("supersedes") or None,
         "summary": grab("summary"),
         "links": links,
+        "memory": memory,
+        # the consolidated notes are what `seahorse consolidate` distilled
+        "consolidated": grab_prov("extraction_mode") == "consolidated",
     }
 
 
@@ -58,15 +66,22 @@ def build():
     for p in sorted(HERE.glob("*.md")):
         if p.name == "README.md":
             continue
-        n = parse(p)
+        n = parse(p, memory=False)
         if n:
+            assert p.stem not in notes, f"stem collision: {p.stem}"
+            notes[p.stem] = n
+    for p in sorted((HERE / "Memory").glob("*.md")):
+        n = parse(p, memory=True)
+        if n:
+            assert p.stem not in notes, f"stem collision: {p.stem}"
             notes[p.stem] = n
     return notes
 
 
 def short_label(name: str) -> str:
-    """Label for the static SVG: no date prefix, truncated."""
+    """Label for the static SVG: no date prefix, no [session_tag:n] suffix."""
     s = re.sub(r"^\d{4}-\d{2}-\d{2}-", "", name)
+    s = re.sub(r"-[0-9a-f]{8}-\d+$", "", s)  # observer tag + prompt number
     return s[:26] + "…" if len(s) > 27 else s
 
 
@@ -82,17 +97,27 @@ def main() -> None:
             if t != name and t in notes:
                 a, b = sorted((idx[name], idx[t]))
                 plain.add((a, b))
-    # supersedes resolution needs id->name mapping
+    # supersedes resolution needs id->name mapping across BOTH sets
     text_ids = {}
-    for p in sorted(HERE.glob("*.md")):
+    for p in sorted(HERE.glob("*.md")) + sorted((HERE / "Memory").glob("*.md")):
         if p.name == "README.md":
             continue
         m = re.search(r"^id: (\S+)$", p.read_text(encoding="utf-8"), re.M)
         if m:
+            assert m.group(1) not in text_ids, f"duplicate id: {p}"
             text_ids[m.group(1)] = p.stem
+    unresolved = 0
     for name, n in notes.items():
-        if n["supersedes"] and n["supersedes"] in text_ids:
-            sup.append((idx[text_ids[n["supersedes"]]], idx[name]))
+        if n["supersedes"]:
+            target = text_ids.get(n["supersedes"])
+            if target is None:
+                # a typo in a supersedes id would silently drop a red arc
+                print(f"WARNING: unresolved supersedes {n['supersedes']} "
+                      f"in {name}", file=sys.stderr)
+                unresolved += 1
+            else:
+                sup.append((idx[target], idx[name]))
+    assert unresolved == 0, f"{unresolved} unresolved supersedes ids"
 
     # --- deterministic spring layout (Fruchterman-Reingold-ish, stdlib only) --
     N = len(names)
@@ -143,7 +168,9 @@ def main() -> None:
     for a, b in list(plain) + sup:
         deg[a] += 1
         deg[b] += 1
-    labeled = {i for i in range(N) if deg[i] >= 6}
+    # the consolidated Memory/ notes are the payoff — always label them
+    labeled = {i for i, name in enumerate(names) if notes[name]["consolidated"]}
+    labeled |= {i for i in range(N) if deg[i] >= 6}
 
     # normalize to fill the canvas (keeps relative layout, adds margin)
     pad = 70
@@ -172,6 +199,10 @@ def main() -> None:
         n = notes[name]
         r = 3 + math.sqrt(deg[i]) * 1.6
         c = COLORS.get(n["type"], DEFAULT)
+        if n["consolidated"]:  # light ring marks a consolidated Memory/ note
+            lines.append(f'<circle cx="{xs[i]:.1f}" cy="{ys[i]:.1f}" '
+                         f'r="{r + 3:.1f}" fill="none" stroke="#e6edf3" '
+                         'stroke-opacity="0.85" stroke-width="1.2"/>')
         lines.append(f'<circle cx="{xs[i]:.1f}" cy="{ys[i]:.1f}" r="{r:.1f}" '
                      f'fill="{c}"><title>{html.escape(n["title"])}</title></circle>')
         if i in labeled:
@@ -187,7 +218,8 @@ def main() -> None:
         "nodes": [
             {"i": i, "name": name, "label": short_label(name),
              "title": notes[name]["title"],
-             "type": notes[name]["type"], "deg": deg[i]}
+             "type": notes[name]["type"], "deg": deg[i],
+             "mem": notes[name]["consolidated"]}
             for i, name in enumerate(names)
         ],
         "plain": [list(e) for e in plain],
@@ -196,8 +228,11 @@ def main() -> None:
     }
     page = HTML.replace("/*__DATA__*/", json.dumps(data))
     (HERE / "graph.html").write_text(page, encoding="utf-8")
-    print(f"{N} nodes, {len(plain)} link edges, {len(sup)} supersedes edges "
-          f"-> graph.svg + graph.html")
+    n_cons = sum(1 for n in notes.values() if n["consolidated"])
+    print(f"{N} nodes ({n_cons} consolidated Memory/), {len(plain)} link "
+          f"edges, {len(sup)} supersedes edges -> graph.svg + graph.html")
+    assert N == 115, f"expected 115 nodes, got {N}"
+    assert len(sup) == 13, f"expected 13 supersedes arcs, got {len(sup)}"
 
 
 HTML = r"""<!doctype html>
@@ -227,7 +262,8 @@ resize(); addEventListener('resize',resize);
 const leg = document.getElementById('legend');
 leg.innerHTML = Object.entries(DATA.colors).map(([k,c]) =>
   `<div><span class="sw" style="background:${c}"></span>${k}</div>`).join('') +
-  `<div><span class="sw" style="background:#f85149;border-radius:1px"></span>supersedes</div>`;
+  `<div><span class="sw" style="background:#f85149;border-radius:1px"></span>supersedes</div>` +
+  `<div><span class="sw" style="background:none;border:1.5px solid #e6edf3"></span>Memory/ — consolidated</div>`;
 // state
 const N = DATA.nodes.length;
 const pos = DATA.nodes.map((n,i)=>({x:Math.cos(i/N*6.28)*300+innerWidth/2,
@@ -288,7 +324,8 @@ cv.addEventListener('pointermove',e=>{
     if(hover>=0){const n=DATA.nodes[hover];
       tip.style.display='block';
       tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+14)+'px';
-      tip.innerHTML=`<b>${n.title}</b><br><span style="opacity:.7">${n.type}</span>`;}
+      tip.innerHTML=`<b>${n.title}</b><br><span style="opacity:.7">${n.type}</span>`+
+        (n.mem?`<br><span style="opacity:.7">Memory/ — consolidated</span>`:'');}
     else tip.style.display='none';
     cv.style.cursor=hover>=0?'grab':'default';}
 });
@@ -314,9 +351,11 @@ function draw(){
   }
   DATA.nodes.forEach((n,i)=>{
     const r=3+Math.sqrt(n.deg)*1.6;
+    if(n.mem){ctx.strokeStyle='rgba(230,237,243,.85)';ctx.lineWidth=1.4/view.s;
+      ctx.beginPath();ctx.arc(pos[i].x,pos[i].y,r+3,0,6.28);ctx.stroke();}
     ctx.fillStyle=DATA.colors[n.type]||'#8b949e';
     ctx.beginPath();ctx.arc(pos[i].x,pos[i].y,r,0,6.28);ctx.fill();
-    if(n.deg>=6||i===hover){
+    if(n.mem||n.deg>=6||i===hover){
       ctx.fillStyle='#c9d1d9';ctx.font=`${11/view.s}px system-ui`;
       ctx.textAlign='center';ctx.fillText(n.label,pos[i].x,pos[i].y-r-4);}
   });
