@@ -1,19 +1,16 @@
 ---
-id: 019bb70337e1-873c-7a78-8956-5705f1bea4ed
-created_at: 2026-01-13T08:52:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-7b27-ab4d-a5a1f56ede6e
+created_at: '2025-07-14T15:10:26Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: social
-title: "Lena Fischer — colleague on the data platform team"
-summary: "Lena Fischer — colleague on the data platform team. Fictional demo hub note (stable filename)."
-tags: [person, team]
+valid_at: '2025-07-14T15:10:26Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Lena Fischer
 
-Hub note: every mention of [[Lena Fischer]] across the vault points at this note. Fictional.
+Colleague on the data platform team. Owns [[Drift]] and the row-level security policy.

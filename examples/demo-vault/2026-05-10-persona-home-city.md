@@ -1,21 +1,22 @@
 ---
-id: 0197a8e35c1d-7b2e-7c3d-9e4f-5a6b7c8d9e0f
-created_at: 2026-05-10T09:41:07Z
-schema_version: 0.1.0
+id: 019e1143-0d16-7e2a-90cd-733ebb3d8cc1
+created_at: '2026-05-10T09:41:07.478071Z'
+schema_version: 1.0.0
 provenance:
   agent_id: seahorse/claude-code
-  session_id: sess_01JTM8QK4N2P7R9XZW
-  source_type: agent
+  confidence: 0.92
   extraction_mode: llm
   model_used: claude-sonnet-5
-  confidence: 0.92
-  tool: seahorse-mcp
-valid_at: 2026-02-14T00:00:00Z
-invalid_at: 2026-08-30T16:22:05Z
+  prompt_hash: 2a3f4df4ad3025b7e17032596a9af0d8d2cff39dcbb10e9744edc8dd7a826b51
+  session_id: f687967a-e518-41e6-80a5-1c2ac1d5b066
+  source_type: agent
+valid_at: '2026-02-14T00:00:00Z'
 cognitive_type: social
-title: "Alex Vega lives in Madrid"
-summary: "Alex Vega moved to Madrid in February 2026; invalidated when a later episode recorded the move to Barcelona."
-tags: [person, home, location]
+source_type: agent
+title: Alex Vega lives in Madrid
+summary: Alex Vega moved to Madrid in February 2026; invalidated when a later episode recorded the move to Barcelona.
+tags: []
+invalid_at: '2026-08-30T16:22:05.237212Z'
 ---
 
 # Alex Vega lives in Madrid
@@ -24,6 +25,6 @@ Alex Vega lives in Madrid (moved there in February 2026), works remotely as a
 data engineer.
 
 <!-- Superseded on 2026-08-30 by episode
-     0198f7d291a4-7a3f-7b2e-9d1e-3f4a5b6c9e0f ("Alex Vega lives in Barcelona").
+     01a0537a-64b5-7347-a4c1-b01655d0e22a ("Alex Vega lives in Barcelona").
      invalid_at was set by the superseding correction; the episode is kept,
      never erased. -->

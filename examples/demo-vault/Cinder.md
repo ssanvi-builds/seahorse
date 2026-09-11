@@ -1,19 +1,16 @@
 ---
-id: 019bb70337e5-0b1d-7a1d-8d50-6279b775eb2b
-created_at: 2026-01-13T11:10:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-7707-9863-6f3f766a0ce0
+created_at: '2025-08-20T09:56:33Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: project_doc
-title: "Project Cinder — overview"
-summary: "Project Cinder — overview. Fictional demo hub note (stable filename)."
-tags: [cinder]
+valid_at: '2025-08-20T09:56:33Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Cinder
 
-Hub note: every mention of [[Cinder]] across the vault points at this note. Fictional.
+The nightly ML feature pipeline. Feast + dbt. Owned by [[Priya Nair]].

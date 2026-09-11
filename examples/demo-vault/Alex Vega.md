@@ -1,19 +1,16 @@
 ---
-id: 019bb70337dc-c9fe-78df-81ad-5046a1e34ca6
-created_at: 2026-01-13T20:24:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-7c1a-8007-4a549a3a1550
+created_at: '2025-07-14T14:32:07Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: social
-title: "Alex Vega — the user of this vault"
-summary: "Alex Vega — the user of this vault. Fictional demo hub note (stable filename)."
-tags: [person]
+valid_at: '2025-07-14T14:32:07Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Alex Vega
 
-Hub note: every mention of [[Alex Vega]] across the vault points at this note. Fictional.
+Data engineer, remote. Works on [[Atlas]] ingestion and helps across the platform. This vault is my working memory — the agent writes to it, I correct it.

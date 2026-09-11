@@ -1,19 +1,16 @@
 ---
-id: 019bb70337de-a45e-7763-82d6-d5ca0a1d9f7d
-created_at: 2026-01-13T11:06:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-7316-a4d8-b6718ab11c64
+created_at: '2025-07-14T16:05:12Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: social
-title: "Tomas Rivera — colleague on the data platform team"
-summary: "Tomas Rivera — colleague on the data platform team. Fictional demo hub note (stable filename)."
-tags: [person, team]
+valid_at: '2025-07-14T16:05:12Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Tomas Rivera
 
-Hub note: every mention of [[Tomas Rivera]] across the vault points at this note. Fictional.
+Runs the data platform group at [[Northwind Analytics]]. 1:1s on Thursdays. Owns the storage budget sign-offs.

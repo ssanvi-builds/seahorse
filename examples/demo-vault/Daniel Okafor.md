@@ -1,19 +1,16 @@
 ---
-id: 019bb70337e0-a723-7ecb-8ebb-675005d779a5
-created_at: 2026-01-13T12:12:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-7f18-be1d-840da190c3f9
+created_at: '2025-07-14T13:27:59Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: social
-title: "Daniel Okafor — colleague on the data platform team"
-summary: "Daniel Okafor — colleague on the data platform team. Fictional demo hub note (stable filename)."
-tags: [person, team]
+valid_at: '2025-07-14T13:27:59Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Daniel Okafor
 
-Hub note: every mention of [[Daniel Okafor]] across the vault points at this note. Fictional.
+Colleague on the data platform team. Owns the [[Atlas]] consumer group and the replay tool.

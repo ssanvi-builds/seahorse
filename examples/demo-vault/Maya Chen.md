@@ -1,19 +1,16 @@
 ---
-id: 019bb70337dd-692c-7cc5-80f8-1c5af8111906
-created_at: 2026-01-13T09:08:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-7479-9e85-eeae6699b7c9
+created_at: '2025-07-14T09:20:44Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: social
-title: "Maya Chen — colleague on the data platform team"
-summary: "Maya Chen — colleague on the data platform team. Fictional demo hub note (stable filename)."
-tags: [person, team]
+valid_at: '2025-07-14T09:20:44Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Maya Chen
 
-Hub note: every mention of [[Maya Chen]] across the vault points at this note. Fictional.
+Colleague on the data platform team. Owns [[Beacon]]. Default reviewer for [[Atlas]] PRs; her rule: no merge without a test.

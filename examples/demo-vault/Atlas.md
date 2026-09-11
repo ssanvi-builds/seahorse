@@ -1,19 +1,16 @@
 ---
-id: 019bb70337e3-9bb7-77cf-8e89-c18a90255cf8
-created_at: 2026-01-13T18:45:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-72d2-a043-9bd846ff3c54
+created_at: '2025-08-20T12:19:08Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: project_doc
-title: "Project Atlas — overview"
-summary: "Project Atlas — overview. Fictional demo hub note (stable filename)."
-tags: [atlas]
+valid_at: '2025-08-20T12:19:08Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Atlas
 
-Hub note: every mention of [[Atlas]] across the vault points at this note. Fictional.
+The ingestion platform: Kafka into Iceberg on S3. Owned by the data platform group; consumers by [[Daniel Okafor]].

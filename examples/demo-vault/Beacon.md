@@ -1,19 +1,16 @@
 ---
-id: 019bb70337e4-43f4-72ce-8652-7f3c77e1dc20
-created_at: 2026-01-13T15:49:00Z
-schema_version: 0.1.0
+id: 019ba724-4638-70c6-976e-d5827b77a5ee
+created_at: '2025-08-20T14:02:55Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JGENESIS00000000
+  agent_id: seahorse/migrator
+  session_id: 019ba724-4638-71a1-a08a-d87f66bbdb44
   source_type: human
   extraction_mode: skip
-valid_at: 2026-01-12T00:00:00Z
-cognitive_type: project_doc
-title: "Project Beacon — overview"
-summary: "Project Beacon — overview. Fictional demo hub note (stable filename)."
-tags: [beacon]
+valid_at: '2025-08-20T14:02:55Z'
+cognitive_type: semantic
+tags: []
 ---
-
 # Beacon
 
-Hub note: every mention of [[Beacon]] across the vault points at this note. Fictional.
+The alerting service on Atlas streams. Owned by [[Maya Chen]].

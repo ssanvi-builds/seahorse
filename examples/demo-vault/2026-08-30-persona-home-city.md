@@ -1,22 +1,18 @@
 ---
-id: 0198f7d291a4-7a3f-7b2e-9d1e-3f4a5b6c9e0f
-created_at: 2026-08-30T16:22:05Z
-schema_version: 0.1.0
+id: 01a0537a-64b5-7347-a4c1-b01655d0e22a
+created_at: '2026-08-30T16:22:05.237212Z'
+schema_version: 1.0.0
 provenance:
-  agent_id: seahorse/claude-code
-  session_id: sess_01JTMF2H6B8D3K5LQA
-  source_type: agent
-  extraction_mode: llm
-  model_used: claude-sonnet-5
-  confidence: 0.95
-  tool: seahorse-mcp
-valid_at: 2026-08-30T00:00:00Z
-supersedes: 0197a8e35c1d-7b2e-7c3d-9e4f-5a6b7c8d9e0f
+  confidence: 1.0
+  extraction_mode: skip
+  model_used: null
+  prompt_hash: null
+  source_type: human
+valid_at: '2026-08-30T00:00:00Z'
+supersedes: 019e1143-0d16-7e2a-90cd-733ebb3d8cc1
 supersedes_reason: correction
-cognitive_type: social
-title: "Alex Vega lives in Barcelona"
-summary: "Alex Vega moved from Madrid to Barcelona on 2026-08-30. Supersedes the previous home-city episode; history preserved."
-tags: [person, home, location]
+source_type: human
+tags: []
 ---
 
 # Alex Vega lives in Barcelona
