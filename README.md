@@ -13,21 +13,21 @@ file you can read in Obsidian, diff in git, and edit by hand (abridged):
 
 ```markdown
 ---
-id: 019bb1dcdb81-3bd0-7cac-8eb0-a495059dfec0
-created_at: 2026-01-12T15:22:00Z
-schema_version: 0.1.0
+id: 019bb17c-12cb-7224-8ade-a3d0362d6d75
+created_at: '2026-01-12T09:14:17.163477Z'
+schema_version: 1.0.0
 provenance:
   agent_id: seahorse/claude-code
-  source_type: agent
+  confidence: 0.97
   extraction_mode: llm
   model_used: claude-sonnet-5
-valid_at: 2026-01-12T00:00:00Z
+  source_type: agent
+valid_at: '2026-01-12T00:00:00Z'
 cognitive_type: social
-title: "Alex Vega works as a data engineer"
-summary: "Alex Vega works as a data engineer. Fictional demo episode for the F3.1 format."
-tags: [person, work]
+source_type: agent
+title: Alex Vega works as a data engineer
+tags: []
 ---
-
 # Alex Vega works as a data engineer
 
 Alex Vega is a data engineer at [[Northwind Analytics]], working remotely.
@@ -127,11 +127,11 @@ vault — the human edits the same markdown. Format spec:
 [docs/f3.1-format.md](docs/f3.1-format.md).
 
 And this is what the memory graph of a vault looks like — a fictional demo
-vault ([examples/demo-vault/](examples/demo-vault/), 105 F3.1 episodes:
-projects, people, decisions, sessions — entirely invented, nothing real).
-Red edges are `supersedes` chains: a correction never overwrites, it appends.
-[graph.html](examples/demo-vault/graph.html) is the same graph, interactive
-(zoom, pan, drag, tooltips — self-contained).
+vault ([examples/demo-vault/](examples/demo-vault/), 115 F3.1 notes: 92
+episodes, 8 ringed `consolidate` notes in `Memory/`, 15 human notes —
+invented, nothing real). Red edges are `supersedes` chains: a correction
+never overwrites, it appends. [graph.html](examples/demo-vault/graph.html)
+is the same graph, interactive (zoom, pan, drag, tooltips — self-contained).
 
 ![Memory graph of a fictional demo vault](examples/demo-vault/graph.svg)
 
