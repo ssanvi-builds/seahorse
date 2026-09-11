@@ -68,3 +68,45 @@ def test_context_is_deterministic(tmp_path) -> None:
         assert a.getvalue() == b.getvalue()
     finally:
         storage.close()
+
+
+def test_context_renders_knowledge_notes_block(tmp_path) -> None:
+    """A project_doc note written via remember is bootstrap-visible: the
+    agent starting the next session SEES the distilled surface."""
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        facade.remember(
+            RememberPayload(
+                body="# Use SQLite WAL\n\nSingle-writer, readers never block.",
+                by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+                cognitive_type="project_doc",
+            )
+        )
+        out = _out()
+        run_context(facade, fmt="human", out=out)
+        text = out.getvalue()
+        assert "## Knowledge notes (1)" in text
+        assert "use sqlite wal" in text
+        assert "(project_doc)" in text
+        # The pointer teaches the recall_full chain.
+        assert "Chain `recall_full`" in text
+    finally:
+        storage.close()
+
+
+def test_context_knowledge_block_honest_when_empty(tmp_path) -> None:
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        facade.remember(
+            RememberPayload(
+                body="# Plain fact\n\nDetails.",
+                by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+            )
+        )
+        out = _out()
+        run_context(facade, fmt="human", out=out)
+        text = out.getvalue()
+        assert "## Knowledge notes (0)" in text
+        assert "(none yet" in text
+    finally:
+        storage.close()

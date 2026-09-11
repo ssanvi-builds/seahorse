@@ -79,6 +79,11 @@ _VALID_MODES: frozenset[str] = frozenset(get_args(ExtractionMode)) - frozenset(
     {"consolidated", "llm_partial"}
 )
 
+# How many recent knowledge notes (consolidated / project_doc) the bootstrap
+# surfaces. 5 keeps the compressed bootstrap honest about what exists while
+# leaving the body reads to `recall_full` (progressive disclosure).
+_KNOWLEDGE_MAX_NOTES = 5
+
 
 def _default_clock() -> datetime:
     return datetime.now(UTC)
@@ -668,12 +673,14 @@ class MemoryFacade:
         """Bootstrap context by RECENCY, not semantics.
 
         The shared method behind the SessionStart hook and the CLI ``context``
-        subcommand (single point of change). Four blocks at INDEX level, no
+        subcommand (single point of change). Five blocks at INDEX level, no
         body: (1) recent episodes (created_at desc, ep_id asc — deterministic
         sort); (2) current valid state; (3) last session grouped by
         ``provenance.session_id`` (INDEX list, NOT an abstractive summary —
-        honesty); (4) header + counter + pointer (rendered by the assembler).
-        Deterministic.
+        honesty); (4) knowledge notes — the most recent consolidated or
+        ``project_doc`` episodes (the distilled surface; INDEX rows, the agent
+        chains ``recall_full`` for bodies); (5) header + counter + pointer
+        (rendered by the assembler). Deterministic.
         """
         k = top_k if top_k is not None else self._config.top_k
         eps = self._engine.get_vigente(None, now=self._clock())
@@ -682,6 +689,20 @@ class MemoryFacade:
         eps = sorted(eps, key=lambda e: e.id)
         eps = sorted(eps, key=lambda e: e.created_at, reverse=True)
         recent = eps[:k]
+
+        # Knowledge notes: the distilled surface (consolidated notes written by
+        # `seahorse consolidate`, `project_doc` notes written by the agent).
+        # `is_consolidated` is the same predicate consolidate/management use —
+        # one definition of "this episode is a knowledge note". Lazy import to
+        # mirror `distill()` below (distill is a facade client, but its leaf
+        # imports are engine/llm contracts only — no cycle).
+        from seahorse.distill.consolidate import is_consolidated
+
+        knowledge = [
+            e
+            for e in eps
+            if is_consolidated(e) or e.cognitive_type == "project_doc"
+        ][:_KNOWLEDGE_MAX_NOTES]
 
         by_session: dict[str, list[Episode]] = {}
         for e in recent:
@@ -703,6 +724,7 @@ class MemoryFacade:
             last_session_id=last_session_id,
             last_session=[self._to_context_episode(e) for e in last_session],
             total_episodes=len(eps),
+            knowledge=[self._to_context_episode(e) for e in knowledge],
         )
 
     @staticmethod
@@ -713,6 +735,7 @@ class MemoryFacade:
             summary=e.summary,
             created_at=e.created_at,
             session_id=e.provenance.get("session_id"),
+            cognitive_type=e.cognitive_type or "",
         )
 
     # --------------------------------------------------------- later-release stubs

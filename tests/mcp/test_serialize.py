@@ -201,3 +201,51 @@ class TestTextContentAndResponse:
         # ensure_ascii=False — Spanish characters pass through verbatim
         assert to_json({"city": "Madrid"}) == '{"city": "Madrid"}'
         assert to_json({"name": "Sergio"}) == '{"name": "Sergio"}'
+
+class TestContextBootstrapSerialization:
+    """The context result travels the wire — knowledge notes (1.1) are
+    additive fields, present in every response (shape stable)."""
+
+    def _context_data(self) -> "ContextData":
+        from seahorse.facade.types import ContextData, ContextEpisode
+
+        return ContextData(
+            recent=[],
+            vigente_count=1,
+            last_session_id=None,
+            last_session=[],
+            total_episodes=1,
+            knowledge=[
+                ContextEpisode(
+                    ep_id="ep-1",
+                    subject="ADR: storage engine",
+                    summary="SQLite WAL + sqlite-vec",
+                    created_at=datetime(2026, 9, 11, tzinfo=UTC),
+                    session_id="sess-1",
+                    cognitive_type="project_doc",
+                )
+            ],
+        )
+
+    def test_knowledge_rows_travel_the_wire(self) -> None:
+        out = to_wire(self._context_data())
+        assert out["knowledge"][0]["cognitive_type"] == "project_doc"
+        assert out["knowledge"][0]["ep_id"] == "ep-1"
+        assert out["knowledge"][0]["created_at"] == "2026-09-11T00:00:00Z"
+
+    def test_cognitive_type_on_every_context_row(self) -> None:
+        from seahorse.facade.types import ContextEpisode
+
+        row = ContextEpisode(
+            ep_id="ep-2",
+            subject=None,
+            summary=None,
+            created_at=datetime(2026, 9, 11, tzinfo=UTC),
+            session_id=None,
+        )
+        out = to_wire(row)
+        assert out["cognitive_type"] == ""  # additive field, never absent
+
+    def test_context_result_round_trips_through_tools_call(self) -> None:
+        text = to_json(self._context_data())
+        assert json.loads(text)["knowledge"][0]["subject"] == "ADR: storage engine"

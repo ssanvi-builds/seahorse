@@ -2,11 +2,12 @@
 
 The context bootstrap is by RECENCY, not semantics (claude-mem does not inject
 semantic context — it injects recency + summaries + a fetch pointer; Seahorse
-replicates this behavior). Four blocks at INDEX level, no body:
+replicates this behavior). Five blocks at INDEX level, no body:
 (1) recent episodes (created_at desc, ep_id asc — the listing-regime sort,
 deterministic); (2) the current-state listing; (3) last session grouped by
 provenance.session_id (INDEX list, NOT an abstractive summary — honesty);
-(4) header + counter + pointer. Deterministic.
+(4) knowledge notes — the most recent consolidated / project_doc episodes
+(the distilled surface); (5) header + counter + pointer. Deterministic.
 """
 
 from __future__ import annotations
@@ -148,5 +149,109 @@ def test_context_is_deterministic(tmp_path) -> None:
         b = _ctx(facade)
         assert [e.ep_id for e in a.recent] == [e.ep_id for e in b.recent]
         assert a.last_session_id == b.last_session_id
+    finally:
+        storage.close()
+
+
+# ---------------------------------------------------------------------------
+# knowledge notes — the distilled surface (consolidated / project_doc)
+# ---------------------------------------------------------------------------
+
+
+def _remember_doc(facade, *, subject: str, session_id: str, now: datetime) -> None:
+    facade.remember(
+        RememberPayload(
+            body=f"# {subject}\n\nContext / Options / Decision.",
+            by={"source_type": "agent", "agent_id": "agent-1", "session_id": session_id},
+            cognitive_type="project_doc",
+        ),
+        now=now,
+    )
+
+
+def test_context_empty_db_has_no_knowledge_notes(tmp_path) -> None:
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        data = _ctx(facade)
+        assert data.knowledge == []
+    finally:
+        storage.close()
+
+
+def test_context_surfaces_project_doc_notes_only(tmp_path) -> None:
+    """A project_doc note lands in ``knowledge``; plain episodes never do."""
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        _remember(facade, body="Plain episodic fact", session_id="sess-1", now=T0)
+        _remember_doc(
+            facade, subject="Use SQLite WAL", session_id="sess-1", now=T0 + timedelta(hours=1)
+        )
+        data = _ctx(facade)
+        assert [e.subject for e in data.knowledge] == ["use sqlite wal"]
+        assert data.knowledge[0].cognitive_type == "project_doc"
+        # The plain episode stays OUT of knowledge but its recent row carries
+        # the doc's type once the doc is recent too (the field is additive,
+        # present on every ContextEpisode row).
+        doc_row = next(e for e in data.recent if e.subject == "use sqlite wal")
+        assert doc_row.cognitive_type == "project_doc"
+    finally:
+        storage.close()
+
+
+def test_context_surfaces_consolidated_notes(tmp_path) -> None:
+    """A real consolidated note (via `consolidate`) is bootstrap-visible."""
+    from seahorse.distill.consolidate import consolidate
+
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"Topic [sess-1:{i + 1}]",
+                session_id="sess-1",
+                now=T0 + timedelta(minutes=i),
+            )
+        report = consolidate(facade)
+        assert report.items and report.items[0].status == "ACTIVE"
+        data = _ctx(facade)
+        assert [e.subject for e in data.knowledge] == ["topic"]
+        assert data.knowledge[0].cognitive_type == "semantic"
+    finally:
+        storage.close()
+
+
+def test_context_knowledge_most_recent_first_and_capped_at_five(tmp_path) -> None:
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(7):
+            _remember_doc(
+                facade,
+                subject=f"Doc {i}",
+                session_id="sess-1",
+                now=T0 + timedelta(minutes=i),
+            )
+        data = _ctx(facade)
+        assert len(data.knowledge) == 5
+        assert [e.subject for e in data.knowledge] == [
+            "doc 6",
+            "doc 5",
+            "doc 4",
+            "doc 3",
+            "doc 2",
+        ]
+    finally:
+        storage.close()
+
+
+def test_context_knowledge_is_deterministic(tmp_path) -> None:
+    facade, storage = build_facade(tmp_path / "seahorse.db")
+    try:
+        _remember_doc(facade, subject="Doc one", session_id="sess-1", now=T0)
+        _remember_doc(
+            facade, subject="Doc two", session_id="sess-1", now=T0 + timedelta(minutes=1)
+        )
+        a = _ctx(facade)
+        b = _ctx(facade)
+        assert [e.ep_id for e in a.knowledge] == [e.ep_id for e in b.knowledge]
     finally:
         storage.close()

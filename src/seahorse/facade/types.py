@@ -27,7 +27,7 @@ facade public API stays stable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, TypedDict
 
@@ -142,13 +142,19 @@ class FacadeConfig:
 
 @dataclass(frozen=True)
 class ContextEpisode:
-    """One INDEX-level row of the context bootstrap. No body."""
+    """One INDEX-level row of the context bootstrap. No body.
+
+    ``cognitive_type`` (additive 1.1) carries the row's type so the bootstrap
+    can surface knowledge notes (``semantic`` / ``project_doc``) without a
+    second read. Empty string when the episode has no cognitive type.
+    """
 
     ep_id: str
     subject: str | None
     summary: str | None
     created_at: datetime
     session_id: str | None
+    cognitive_type: str = ""
 
 
 @dataclass(frozen=True)
@@ -159,8 +165,10 @@ class ContextData:
     — deterministic sort). ``vigente_count`` is the full currently valid set
     size. ``last_session`` is the most recent session's episodes grouped by
     ``provenance.session_id`` — an INDEX list, NOT an abstractive summary
-    (honesty: Seahorse has no session summaries yet). The assembler renders this
-    to the bootstrap text.
+    (honesty: Seahorse has no session summaries yet). ``knowledge`` (additive
+    1.1) is the most recent knowledge notes (consolidated or ``project_doc``) —
+    the distilled surface, INDEX rows, most recent first. The assembler renders
+    this to the bootstrap text.
     """
 
     recent: list[ContextEpisode]
@@ -168,6 +176,7 @@ class ContextData:
     last_session_id: str | None
     last_session: list[ContextEpisode]
     total_episodes: int
+    knowledge: list[ContextEpisode] = field(default_factory=list)
 
 
 __all__ = [

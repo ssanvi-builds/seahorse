@@ -374,7 +374,9 @@ TOOL_LIST: list[dict[str, Any]] = [
         "name": "context",
         "description": "Bootstrap context for a new session (INDEX level, no "
         "body): the most recent valid episodes, the count of currently valid "
-        "episodes, and the last session's episodes grouped by session_id. "
+        "episodes, the last session's episodes grouped by session_id, and the "
+        "most recent knowledge notes (consolidated / project_doc). Chain "
+        "`recall_full` on the knowledge notes to read their full bodies. "
         "Same bootstrap the SessionStart hook injects.",
         "inputSchema": schema_for("context"),
     },

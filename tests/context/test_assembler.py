@@ -19,13 +19,32 @@ from seahorse.facade.types import ContextData, ContextEpisode
 T0 = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
 
 
-def _ep(subject: str, *, session_id: str = "sess-1", summary: str | None = None) -> ContextEpisode:
+def _ep(
+    subject: str, *, session_id: str = "sess-1", summary: str | None = None
+) -> ContextEpisode:
     return ContextEpisode(
         ep_id=f"ep-{subject}",
         subject=subject,
         summary=summary,
         created_at=T0,
         session_id=session_id,
+    )
+
+
+def _kep(
+    subject: str,
+    *,
+    summary: str | None = None,
+    cognitive_type: str = "semantic",
+) -> ContextEpisode:
+    """A knowledge-note row (consolidated / project_doc)."""
+    return ContextEpisode(
+        ep_id=f"ep-{subject}",
+        subject=subject,
+        summary=summary,
+        created_at=T0,
+        session_id="sess-1",
+        cognitive_type=cognitive_type,
     )
 
 
@@ -342,6 +361,68 @@ def test_current_state_block_always_carries_explanation_line() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Knowledge notes block (the distilled surface)
+# ---------------------------------------------------------------------------
+
+
+def test_knowledge_notes_block_renders_rows_with_type() -> None:
+    data = _data(
+        knowledge=[_kep("ADR: storage engine", summary="SQLite WAL + sqlite-vec", cognitive_type="project_doc")],
+        total_episodes=1,
+    )
+    text = render_context(data)
+    assert "## Knowledge notes (1)" in text
+    assert (
+        "- ADR: storage engine — SQLite WAL + sqlite-vec (project_doc)"
+        in text.splitlines()
+    )
+
+
+def test_knowledge_notes_rows_render_in_input_order() -> None:
+    data = _data(
+        knowledge=[_kep("newest"), _kep("oldest")],
+        total_episodes=2,
+    )
+    text = render_context(data)
+    assert text.index("newest") < text.index("oldest")
+
+
+def test_knowledge_notes_empty_is_honest() -> None:
+    text = render_context(_data())
+    assert "## Knowledge notes (0)" in text
+    assert "(none yet" in text
+    assert "knowledge notes appear" in text
+
+
+def test_knowledge_notes_block_precedes_stats() -> None:
+    data = _data(knowledge=[_kep("ADR: ui")], total_episodes=1)
+    text = render_context(data)
+    assert text.index("## Knowledge notes") < text.index("## Stats")
+
+
+def test_knowledge_row_without_summary_has_no_dangling_dash() -> None:
+    data = _data(knowledge=[_kep("ADR: no summary")], total_episodes=1)
+    text = render_context(data)
+    assert "- ADR: no summary (semantic)" in text.splitlines()
+    assert "ADR: no summary —" not in text
+
+
+def test_knowledge_row_empty_type_falls_back_to_label() -> None:
+    data = _data(knowledge=[_kep("ADR: untyped", cognitive_type="")], total_episodes=1)
+    text = render_context(data)
+    assert "- ADR: untyped (knowledge)" in text.splitlines()
+
+
+def test_knowledge_header_counts_list_length() -> None:
+    data = _data(
+        knowledge=[_kep("a"), _kep("b"), _kep("c")],
+        total_episodes=3,
+    )
+    text = render_context(data)
+    assert "## Knowledge notes (3)" in text
+
+
+# ---------------------------------------------------------------------------
 # Output structure and determinism
 # ---------------------------------------------------------------------------
 
@@ -382,7 +463,7 @@ def test_header_shaped_subject_cannot_inject_block_heading() -> None:
     )
     text = render_context(data)
     assert "- ## Stats — (none yet)" in text.splitlines()
-    assert sum(1 for line in text.splitlines() if line.startswith("## ")) == 4
+    assert sum(1 for line in text.splitlines() if line.startswith("## ")) == 5
 
 
 def test_golden_full_output_snapshot() -> None:
@@ -408,10 +489,16 @@ def test_golden_full_output_snapshot() -> None:
         "## Last session (sess-1)\n"
         "- alpha — first fact\n"
         "\n"
+        "## Knowledge notes (0)\n"
+        "(none yet — knowledge notes appear as the agent writes project_doc "
+        "notes or `seahorse consolidate` distills)\n"
+        "\n"
         "## Stats\n"
         "- 2 episodes total\n"
         "- Prefer the `seahorse-mcp` MCP tools (`recall`, `recall_full`) when "
-        "available; otherwise `seahorse recall <query>` / `seahorse recall-full <ep_id>`."
+        "available; otherwise `seahorse recall <query>` / `seahorse recall-full "
+        "<ep_id>`. Chain `recall_full` (batches of up to 5) on the top hits to "
+        "read the full bodies before answering design questions."
     )
     assert render_context(data) == expected
 
