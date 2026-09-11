@@ -75,3 +75,7 @@ benchmark-output/
 
 # --- Obsidian local config (any vault example opened locally) ---
 .obsidian/
+
+# --- demo clip render outputs (vhs writes them to the CWD) ---
+/demo.mp4
+/demo.gif
