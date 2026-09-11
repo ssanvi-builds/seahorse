@@ -51,6 +51,37 @@ class TestVariants:
             assert block.startswith(BEGIN_MARKER) and block.endswith(END_MARKER)
 
 
+class TestEditorialContent:
+    """The editorial pattern (project_doc design notes) reaches every harness."""
+
+    @pytest.mark.parametrize(
+        "hid",
+        ["claude-code", "codex", "gemini", "antigravity", "cursor", "vscode"],
+    )
+    def test_every_harness_learns_the_editorial_pattern(self, hid: str) -> None:
+        block = instructions_block_for(hid)
+        assert 'cognitive_type="project_doc"' in block
+        assert "recall_full" in block
+        assert "Memory/" in block
+
+    def test_adr_structure_is_taught(self) -> None:
+        # Whitespace-normalized: line wrapping must not break the contract.
+        flat = " ".join(instructions_block().split())
+        for section in ("Context", "Options considered", "Decision", "Consequences"):
+            assert section in flat
+        assert "what is NOT decided" in flat
+
+    def test_session_end_distillation_is_taught(self) -> None:
+        block = instructions_block()
+        assert "At the end of a session" in block
+        assert "project_doc" in block
+
+    def test_recall_chaining_is_taught(self) -> None:
+        block = instructions_block()
+        assert "Recall is layered" in block
+        assert "batches of up to 5" in block
+
+
 class TestInstall:
     def test_fresh_file_gets_only_the_block(self, md_path: Path) -> None:
         ok, detail = install_agent_instructions()

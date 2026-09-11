@@ -17,7 +17,7 @@ import pytest
 from seahorse.disclosure.types import PITPoint
 from seahorse.facade.errors import PitRecallNotSupportedMVP0, SeahorseError
 from seahorse.facade.types import RememberPayload
-from seahorse.mcp.tools import dispatch, handle_build_pit
+from seahorse.mcp.tools import TOOL_LIST, dispatch, handle_build_pit
 from tests.mcp.conftest import RecordingFacade, make_episode, make_pit
 
 
@@ -518,6 +518,23 @@ class TestDispatch:
         payload = json.loads(resp["result"]["content"][0]["text"])
         assert payload["status"] == "ACTIVE"
         assert payload["collisions_detected"] == []
+
+
+class TestToolListDescriptions:
+    """Descriptions teach the editorial pattern (weak assertions — text evolves)."""
+
+    def _tool(self, name: str) -> dict:
+        return next(t for t in TOOL_LIST if t["name"] == name)
+
+    def test_remember_mentions_project_doc(self) -> None:
+        desc = self._tool("remember")["description"]
+        assert "project_doc" in desc
+        assert "Memory/" in desc
+
+    def test_recall_teaches_the_full_chain(self) -> None:
+        desc = self._tool("recall")["description"]
+        assert "cognitive_type" in desc
+        assert "recall_full" in desc
 
 
 class TestHandlerDirectCall:

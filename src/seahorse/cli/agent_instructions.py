@@ -33,6 +33,11 @@ directory, else the user's default vault.
 - **At the start of a task**: if prior context matters (past decisions,
   debugging history, user preferences), use `recall` with a focused query
   before asking the user or re-discovering from scratch.
+- **Recall is layered**: `recall` returns INDEX rows — subject, a short
+  summary and `cognitive_type`, never the body. Chain `recall_full` on the
+  top hits (batches of up to 5) before answering design questions; a
+  summary is never the whole memory. Filter `cognitive_type="project_doc"`
+  to list the project's design notes.
 - **When you learn something durable** — a decision with its rationale, a
   root cause that took real work to find, a preference, a project fact —
   save it with `remember` (concise body, meaningful `title`). Prefer
@@ -44,8 +49,19 @@ directory, else the user's default vault.
   string:
   `{"by": {"agent_id": "claude-code", "session_id": "<current session>", "source_type": "agent"}}`.
   Tags are not supported in this release — do not send them.
+- **At design decisions and milestones**, write the decision itself down:
+  `remember` with `cognitive_type="project_doc"`, one topic per note, and
+  the first body line a descriptive H1 — it becomes the note's subject and
+  its filename in the vault. Structure the body as Context / Options
+  considered / Decision / Consequences (including what is NOT decided) /
+  key code or commands / open questions. Project notes are what appears in
+  the vault's `Memory/` folder — the durable layer the human reads; revise
+  them with `improve`, never by duplicating `remember`.
 - **Procedural knowledge** (repeatable workflows, "how we do X") goes in via
   `skill_add`; retrieve it with `skill_search`.
+- **At the end of a session**, distill what was decided into one session
+  note (decisions first, then the evidence — commits, paths, commands —
+  then open questions) as a `project_doc`, same editorial pattern as above.
 """
 
 # Claude Code has hooks + an observer: sessions land in the vault without the

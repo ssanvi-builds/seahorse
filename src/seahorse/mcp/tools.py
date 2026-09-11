@@ -286,13 +286,19 @@ TOOL_LIST: list[dict[str, Any]] = [
         "'by' MUST be a provenance OBJECT with the required keys agent_id, "
         "session_id and source_type (a string is rejected): "
         '{"by": {"agent_id": "claude-code", "session_id": "<session>", '
-        '"source_type": "agent"}}. Tags are not supported in this release.',
+        '"source_type": "agent"}}. Tags are not supported in this release. Use '
+        'cognitive_type "project_doc" for durable design-decision notes (Context / '
+        "Options considered / Decision / Consequences, key code or commands): they "
+        "materialize as vault notes in Memory/.",
         "inputSchema": schema_for("remember"),
     },
     {
         "name": "recall",
         "description": "Recall the INDEX level (current-state listing, no body). "
-        "No ranking, no PIT (PIT recall is refused before any read).",
+        "No ranking, no PIT (PIT recall is refused before any read). Rows carry "
+        "cognitive_type; the cognitive_type parameter filters it (e.g. "
+        '"project_doc" for design notes). Chain recall_full on the top hits to '
+        "read the bodies.",
         "inputSchema": schema_for("recall"),
     },
     {
