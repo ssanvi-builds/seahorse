@@ -1,26 +1,26 @@
 ---
-id: 01a05711-831c-79eb-a3ff-9814eef82580
-created_at: '2026-08-31T09:06:00.604585Z'
+id: 01a05714-123f-7e56-ae85-4cf11f0d36a7
+created_at: '2026-08-31T09:08:48.319938Z'
 schema_version: 1.0.0
 provenance:
   agent_id: consolidator
-  confidence: 0.92
+  confidence: 0.93
   extraction_mode: consolidated
   model_used: claude-sonnet-5
   prompt_hash: 90814aa4a9fcf21309802d494ffe99df1b5c5b02854a426f763568ac05b273cf
-  session_id: consolidate-01a05711-831c-7a25-86b7-4fb679c1db3c
+  session_id: consolidate-01a05714-123f-749c-af23-30fd62d67fef
   source_type: system
-supersedes: 01a00f03-6247-794b-8bf4-7e29f165b279
+supersedes: 01a00ef7-a94d-78fa-82b6-c96bbcd1e434
 supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: atlas weekly sync
-summary: "Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention\nwith a quarterly archive tier, static consumer membership, and the replay\ntool in production."
+summary: "Recurring state of [[Atlas]]: 40k msg/s sustained ingest, 21-day hot retention\nwith a quarterly archive tier, static consumer membership, and the replay\ntool in production."
 tags: []
 ---
 # atlas weekly sync
 
-Recurring state of Atlas: 40k msg/s sustained ingest, 21-day hot retention
+Recurring state of [[Atlas]]: 40k msg/s sustained ingest, 21-day hot retention
 with a quarterly archive tier, static consumer membership, and the replay
 tool in production.
 

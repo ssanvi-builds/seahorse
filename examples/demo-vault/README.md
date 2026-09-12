@@ -1,7 +1,8 @@
 # Demo vault (fictional)
 
-A 115-note F3.1 demo vault, **entirely fictional** — the company
-(Northwind Analytics), the people, the projects (Atlas, Beacon, Cinder, Drift, Ember), and
+A 205-note F3.1 demo vault, **entirely fictional** — the company
+(Northwind Analytics), the people, the projects (Atlas, Beacon, Cinder, Drift, Ember,
+Herald), and
 every fact. Nothing here is real user memory. Safe for public screenshots and
 docs.
 
@@ -13,17 +14,19 @@ python3 generate_demo_vault.py
 
 The vault mirrors what Seahorse 1.0.0 actually writes into a real vault:
 
-- `Memory/*.md` — 100 notes: 92 episodes (the
+- `Memory/*.md` — 187 notes: 169 episodes (the
   `seahorse materialize --mode all` view — agent memories, observer-captured
   session turns titled `... [session_tag:n]`, and CLI corrections) plus the
-  8 dense notes `seahorse consolidate` distills from
+  18 dense notes `seahorse consolidate` distills from
   repeated session topics (each carries a `merge` supersession back to its
   most recent source; sources are left valid).
-- Vault root — the human layer: 13 hub notes imported once by
+- Vault root — the human layer: 16 hub notes imported once by
   `seahorse frontmatter migrate` (their `created_at`/`valid_at` is the legacy
   file's mtime) and the hand-curated showcase pair below.
-- Supersede chains: 4 corrections (`improve`) — 30k→40k msg/s, postcode→H3,
-  90→180-day audit retention, hourly→15-minute refresh. The invalidated roots
+- Supersede chains: 7 corrections (`improve`) — 30k→40k msg/s, postcode→H3,
+  90→180-day audit retention, hourly→15-minute refresh, 30→21-day hot
+  retention, 02:00→03:30 UTC training window, Superset→static-exporter embed.
+  The invalidated roots
   keep their bodies and gain `invalid_at` — history is never rewritten.
 
 ## Showcase notes (hand-curated mirror)

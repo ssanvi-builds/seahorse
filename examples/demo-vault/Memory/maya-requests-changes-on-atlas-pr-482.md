@@ -1,14 +1,14 @@
 ---
-id: 019ef8ea-c2d1-7634-8377-cdf59ba5b6c3
-created_at: '2026-06-24T09:16:35.409606Z'
+id: 019ef8e1-e668-7c3a-9a46-90761798e4d1
+created_at: '2026-06-24T09:06:54.696793Z'
 schema_version: 1.0.0
 provenance:
   agent_id: seahorse/claude-code
-  confidence: 0.94
+  confidence: 0.88
   extraction_mode: llm
   model_used: claude-sonnet-5
   prompt_hash: 077d344b37d2c585177efd29dece2fe71c8cec03262ca9930ff719c4b5ec2752
-  session_id: df5a11b6-3f65-4bf5-9a13-2cf4b3a1f21f
+  session_id: 77c71624-12bc-4b5e-bfd8-91bd72d7042b
   source_type: agent
 valid_at: '2026-06-24T00:00:00Z'
 cognitive_type: episodic

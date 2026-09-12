@@ -1,16 +1,16 @@
 ---
-id: 019f891e-de62-7426-acc4-b3f868fd2f30
-created_at: '2026-07-22T09:18:49.442168Z'
+id: 019f8917-2802-7207-924b-a9cf2d7cc20f
+created_at: '2026-07-22T09:10:24.002324Z'
 schema_version: 1.0.0
 provenance:
   agent_id: consolidator
-  confidence: 0.92
+  confidence: 0.91
   extraction_mode: consolidated
   model_used: claude-sonnet-5
   prompt_hash: 67330afcda054288d5cdb702fc980692fbfa82c6d5e352e69f6bcc76d2bf7fcb
-  session_id: consolidate-019f891e-de62-7f67-80e7-49f2a78dcff8
+  session_id: consolidate-019f8917-2802-7a2e-aea0-33d02bcbe5c4
   source_type: system
-supersedes: 019f411f-d155-723b-8b43-f87d8b5856b4
+supersedes: 019f4125-f88a-7ce5-96a1-e8b7752216f2
 supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
@@ -25,7 +25,8 @@ deprecation window and sunset headers.
 
 ## Context
 
-Two client teams broke on the same schema change in one week, and the API
+Two client teams broke on the same schema change in one week (one of them
+[[Noah Bennett]]'s mobile clients), and the API
 was about to leave beta without any versioning rule. The discussion ran
 across three sessions: the break report, the candidate schemes, and the
 gateway draft.

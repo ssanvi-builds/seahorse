@@ -1,31 +1,32 @@
 ---
-id: 019d6c5f-0639-794f-9ffd-1c850aa02b04
-created_at: '2026-04-08T09:14:20.089999Z'
+id: 019d6c83-f275-7c13-a220-228b776fd955
+created_at: '2026-04-08T09:54:39.861844Z'
 schema_version: 1.0.0
 provenance:
   agent_id: consolidator
-  confidence: 0.88
+  confidence: 0.9
   extraction_mode: consolidated
   model_used: claude-sonnet-5
   prompt_hash: 8123b49f46b8e609fe4dc883d2912308e1fae0a88de6014fe370923d4bc45268
-  session_id: consolidate-019d6c5f-0639-714b-93a1-71047a174561
+  session_id: consolidate-019d6c83-f275-7ba2-9630-45fdc094e34f
   source_type: system
-supersedes: 019d1f45-e7a8-7150-8049-cbf568d24545
+supersedes: 019d1f4c-1f6a-71cd-81e1-c7fe18584f8f
 supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: atlas retention policy discussion
-summary: Atlas keeps 21 days of hot Kafka data and moves older partitions to a quarterly archive tier.
+summary: '[[Atlas]] keeps 21 days of hot Kafka data and moves older partitions to a quarterly archive tier.'
 tags: []
 ---
 # atlas retention policy discussion
 
-Atlas keeps 21 days of hot Kafka data and moves older partitions to a quarterly archive tier.
+[[Atlas]] keeps 21 days of hot Kafka data and moves older partitions to a quarterly archive tier.
 
 ## Context
 
 The original 30-day flat retention filled the lakehouse budget two quarters
-running, and the budget review made it clear the next sign-off (Tomas) would
+running, and the budget review made it clear the next sign-off
+([[Tomas Rivera]]) would
 not fund the same shape for Q3. The discussion ran across three sessions:
 the storage review that opened it, the budget decision that cut hot storage
 to 21 days, and the wrap-up that had to answer what happens to the older

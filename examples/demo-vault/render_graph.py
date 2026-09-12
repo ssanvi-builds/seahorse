@@ -231,8 +231,8 @@ def main() -> None:
     n_cons = sum(1 for n in notes.values() if n["consolidated"])
     print(f"{N} nodes ({n_cons} consolidated Memory/), {len(plain)} link "
           f"edges, {len(sup)} supersedes edges -> graph.svg + graph.html")
-    assert N == 115, f"expected 115 nodes, got {N}"
-    assert len(sup) == 13, f"expected 13 supersedes arcs, got {len(sup)}"
+    assert N == 205, f"expected 205 nodes, got {N}"
+    assert len(sup) == 26, f"expected 26 supersedes arcs, got {len(sup)}"
 
 
 HTML = r"""<!doctype html>

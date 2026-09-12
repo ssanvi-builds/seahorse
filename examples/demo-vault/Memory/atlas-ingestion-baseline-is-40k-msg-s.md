@@ -1,6 +1,6 @@
 ---
-id: 019eaba1-4a3f-7127-9cd9-56ddd6cd032b
-created_at: '2026-06-09T09:05:34.783708Z'
+id: 019eaba8-419a-7702-8fa4-4a1237a8da5a
+created_at: '2026-06-09T09:13:11.322134Z'
 schema_version: 1.0.0
 provenance:
   confidence: 1.0
@@ -9,7 +9,7 @@ provenance:
   prompt_hash: null
   source_type: human
 valid_at: '2026-06-09T00:00:00Z'
-supersedes: 019c6ffa-95a4-7cad-bd99-60d1b9462d01
+supersedes: 019c7008-8662-7f75-a470-9501c11ebde1
 supersedes_reason: correction
 source_type: human
 tags: []

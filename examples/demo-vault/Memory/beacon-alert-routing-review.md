@@ -1,6 +1,6 @@
 ---
-id: 019daf51-7409-700d-a769-a1ea05777697
-created_at: '2026-04-21T09:14:04.169086Z'
+id: 019daf6f-a9e2-79bc-9d04-e30d217d6ad6
+created_at: '2026-04-21T09:47:04.034885Z'
 schema_version: 1.0.0
 provenance:
   agent_id: consolidator
@@ -8,9 +8,9 @@ provenance:
   extraction_mode: consolidated
   model_used: claude-sonnet-5
   prompt_hash: eb1844731cfb500dfe35b29303f24611cf32adeac91f6a2ed63474c27eb7dc0c
-  session_id: consolidate-019daf51-7409-7620-8944-5d37c101415a
+  session_id: consolidate-019daf6f-a9e2-72b3-93aa-3ea2ea093de0
   source_type: system
-supersedes: 019d675b-4f62-7543-afa6-9b585c73c80e
+supersedes: 019d6762-4787-78ff-96b6-b940105ffd58
 supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
@@ -25,7 +25,8 @@ acks synced to the on-call rota.
 
 ## Context
 
-Slack-only routing meant every alert landed in the same channel: 812 alerts
+Slack-only routing on [[Beacon]] meant every alert landed in the same
+channel: 812 alerts
 in one week, 41% acknowledged within five minutes, and the sev pages that
 mattered were getting scrolled past. The review ran across three sessions:
 the noise report, the routing proposal, and the tuning pass after the first
@@ -34,7 +35,7 @@ week.
 ## Options considered
 
 - **Everything to PagerDuty.** Rejected: the false-positive rate would have
-  burned the rota within a sprint.
+  burned the rota ([[Iris Kovac]]'s words) within a sprint.
 - **Keep Slack, add keyword filters.** Rejected: filtering is invisible to
   the on-call and drifts; the routing decision belongs in config.
 - **Split by severity, acks sync to the rota.** PagerDuty carries what

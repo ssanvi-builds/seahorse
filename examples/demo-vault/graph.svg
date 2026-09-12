@@ -1,200 +1,420 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="system-ui, sans-serif">
 <rect width="100%" height="100%" fill="#0d1117"/>
-<line x1="912.7" y1="531.0" x2="970.6" y2="489.5" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="970.6" y2="489.5" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="904.7" y2="434.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1069.8" y1="580.7" x2="1104.9" y2="631.1" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="944.5" y2="344.1" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="912.7" y1="531.0" x2="961.3" y2="539.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="868.9" y1="477.2" x2="834.1" y2="566.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="919.1" y1="490.4" x2="912.7" y2="531.0" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="948.7" y1="392.2" x2="990.6" y2="371.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="816.4" y1="353.6" x2="818.1" y2="297.1" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="919.1" y1="490.4" x2="887.3" y2="572.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="912.7" y1="531.0" x2="936.4" y2="577.9" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="944.5" y1="344.1" x2="990.6" y2="371.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="944.5" y1="344.1" x2="957.0" y2="277.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="745.9" y1="451.3" x2="753.9" y2="398.0" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="868.9" y2="477.2" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1069.8" y1="580.7" x2="1070.9" y2="527.0" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="948.7" y1="392.2" x2="919.1" y2="490.4" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="865.9" y1="402.7" x2="816.4" y2="353.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1013.8" y1="537.6" x2="919.1" y2="490.4" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="745.9" y1="451.3" x2="699.3" y2="415.4" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="868.9" y1="477.2" x2="818.8" y2="429.9" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="868.9" y1="477.2" x2="842.4" y2="523.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="919.1" y1="490.4" x2="961.3" y2="539.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="948.7" y1="392.2" x2="991.7" y2="324.5" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="816.4" y1="353.6" x2="863.5" y2="349.3" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="990.6" y2="371.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="868.9" y1="477.2" x2="904.7" y2="434.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="948.7" y1="392.2" x2="1004.3" y2="415.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="944.5" y1="344.1" x2="991.7" y2="324.5" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="812.3" y1="480.0" x2="745.9" y2="451.3" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="816.4" y1="353.6" x2="766.0" y2="334.9" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="865.9" y1="402.7" x2="863.5" y2="349.3" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="944.5" y1="344.1" x2="901.9" y2="299.9" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1013.8" y1="537.6" x2="1070.9" y2="527.0" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1069.8" y1="580.7" x2="1033.2" y2="624.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="919.1" y2="490.4" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="919.1" y1="490.4" x2="936.4" y2="577.9" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="948.7" y1="392.2" x2="944.5" y2="344.1" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="812.3" y1="480.0" x2="759.1" y2="499.2" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="865.9" y1="402.7" x2="919.1" y2="490.4" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1069.8" y1="580.7" x2="1131.7" y2="567.1" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="745.9" y1="451.3" x2="694.9" y2="478.2" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="1052.4" y2="414.4" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1031.7" y1="467.7" x2="963.3" y2="435.1" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1013.8" y1="537.6" x2="1069.8" y2="580.7" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="963.3" y1="435.1" x2="1004.3" y2="415.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="912.7" y1="531.0" x2="842.4" y2="523.6" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="812.3" y1="480.0" x2="919.1" y2="490.4" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="745.9" y1="451.3" x2="759.1" y2="499.2" stroke="#8b949e" stroke-opacity="0.18"/>
-<line x1="1170.5" y1="438.8" x2="1146.8" y2="484.8" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="777.8" y1="760.7" x2="772.0" y2="711.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="829.2" y1="622.5" x2="834.1" y2="566.6" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="780.8" y1="556.8" x2="842.4" y2="523.6" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="655.5" y1="637.4" x2="647.5" y2="589.4" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="578.6" y1="613.7" x2="577.4" y2="663.4" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="463.0" y1="445.8" x2="429.5" y2="406.4" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="505.5" y1="370.4" x2="555.8" y2="370.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="647.8" y1="459.3" x2="694.9" y2="478.2" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="584.9" y1="250.0" x2="613.9" y2="208.5" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="657.8" y1="284.1" x2="680.0" y2="240.6" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="655.4" y1="362.9" x2="698.1" y2="338.8" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<line x1="861.2" y1="235.1" x2="908.4" y2="220.0" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
-<circle cx="1170.5" cy="438.8" r="4.6" fill="#ffa657"><title>Alex Vega lives in Madrid</title></circle>
-<circle cx="1146.8" cy="484.8" r="4.6" fill="#8b949e"><title>2026-08-30-persona-home-city</title></circle>
-<circle cx="1031.7" cy="467.7" r="4.6" fill="#79c0ff"><title>Alex Vega</title></circle>
-<circle cx="963.3" cy="435.1" r="7.8" fill="#79c0ff"><title>Atlas</title></circle>
-<text x="963.3" y="424.3" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Atlas</text>
-<circle cx="948.7" cy="392.2" r="6.6" fill="#79c0ff"><title>Beacon</title></circle>
-<circle cx="865.9" cy="402.7" r="5.8" fill="#79c0ff"><title>Cinder</title></circle>
-<circle cx="868.9" cy="477.2" r="6.6" fill="#79c0ff"><title>Daniel Okafor</title></circle>
-<circle cx="812.3" cy="480.0" r="5.8" fill="#79c0ff"><title>Drift</title></circle>
-<circle cx="1013.8" cy="537.6" r="5.8" fill="#79c0ff"><title>Ember</title></circle>
-<circle cx="745.9" cy="451.3" r="6.6" fill="#79c0ff"><title>Lena Fischer</title></circle>
-<circle cx="944.5" cy="344.1" r="6.9" fill="#79c0ff"><title>Maya Chen</title></circle>
-<text x="944.5" y="334.2" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Maya Chen</text>
-<circle cx="919.1" cy="490.4" r="7.8" fill="#79c0ff"><title>Northwind Analytics</title></circle>
-<text x="919.1" y="479.6" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Northwind Analytics</text>
-<circle cx="816.4" cy="353.6" r="6.2" fill="#79c0ff"><title>Priya Nair</title></circle>
-<circle cx="1069.8" cy="580.7" r="6.6" fill="#79c0ff"><title>Sam Whitaker</title></circle>
-<circle cx="912.7" cy="531.0" r="6.6" fill="#79c0ff"><title>Tomas Rivera</title></circle>
-<circle cx="1063.8" cy="703.5" r="3.0" fill="#79c0ff"><title>Alex Vega drinks too much coffee during incident reviews</title></circle>
-<circle cx="961.3" cy="539.6" r="5.3" fill="#ffa657"><title>Alex Vega joined Northwind Analytics in 2024</title></circle>
-<circle cx="968.5" cy="648.7" r="3.0" fill="#79c0ff"><title>Alex Vega prefers written async updates</title></circle>
-<circle cx="1008.3" cy="770.1" r="3.0" fill="#79c0ff"><title>Alex Vega&#x27;s editor is Neovim</title></circle>
-<circle cx="923.5" cy="802.3" r="3.0" fill="#79c0ff"><title>Alex Vega uses a dark theme everywhere</title></circle>
-<circle cx="887.3" cy="572.6" r="4.6" fill="#ffa657"><title>Alex Vega works as a data engineer</title></circle>
-<circle cx="976.5" cy="711.3" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: detection&#x27;</title></circle>
-<circle cx="898.1" cy="657.5" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: mitigation&#x27;</title></circle>
-<circle cx="908.6" cy="725.3" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: retro&#x27;</title></circle>
-<circle cx="838.8" cy="693.1" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: triage&#x27;</title></circle>
-<circle cx="853.8" cy="767.2" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: verification&#x27;</title></circle>
-<circle cx="817.1" cy="830.0" r="3.0" fill="#79c0ff"><title>Atlas consumers use static group membership</title></circle>
-<circle cx="777.8" cy="760.7" r="4.6" fill="#79c0ff"><title>Atlas ingestion baseline is 30k msg/s</title></circle>
-<circle cx="772.0" cy="711.3" r="4.6" fill="#8b949e"><title>atlas-ingestion-baseline-is-40k-msg-s</title></circle>
-<circle cx="901.9" cy="299.9" r="4.6" fill="#7ee787"><title>Atlas PR 501 adds static group membership</title></circle>
-<circle cx="770.9" cy="644.7" r="3.0" fill="#7ee787"><title>atlas retention policy discussion [3ef65ded:7]</title></circle>
-<circle cx="721.9" cy="817.7" r="3.0" fill="#7ee787"><title>atlas retention policy discussion [991cb057:3]</title></circle>
-<circle cx="829.2" cy="622.5" r="4.6" fill="#7ee787"><title>atlas retention policy discussion [dba17c32:12]</title></circle>
-<circle cx="834.1" cy="566.6" r="8.3" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="834.1" cy="566.6" r="5.3" fill="#79c0ff"><title>atlas retention policy discussion</title></circle>
-<text x="834.1" y="558.4" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">atlas-retention-policy-dis…</text>
-<circle cx="723.7" cy="605.1" r="3.0" fill="#7ee787"><title>&#x27;Atlas status: consumer lag under 2s p99&#x27;</title></circle>
-<circle cx="703.2" cy="547.4" r="3.0" fill="#7ee787"><title>&#x27;Atlas status: orders topic dedup verified end to end&#x27;</title></circle>
-<circle cx="708.5" cy="676.3" r="3.0" fill="#7ee787"><title>&#x27;Atlas status: replay tool shipped&#x27;</title></circle>
-<circle cx="636.1" cy="707.7" r="3.0" fill="#79c0ff"><title>Atlas uses Kafka exactly-once semantics</title></circle>
-<circle cx="698.7" cy="745.4" r="3.0" fill="#7ee787"><title>atlas weekly sync [2b79fdff:7]</title></circle>
-<circle cx="780.8" cy="556.8" r="4.6" fill="#7ee787"><title>atlas weekly sync [44384ca6:3]</title></circle>
-<circle cx="633.1" cy="785.9" r="3.0" fill="#7ee787"><title>atlas weekly sync [a06779cf:4]</title></circle>
-<circle cx="842.4" cy="523.6" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="842.4" cy="523.6" r="5.8" fill="#79c0ff"><title>atlas weekly sync</title></circle>
-<text x="842.4" y="514.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">atlas-weekly-sync</text>
-<circle cx="638.4" cy="526.3" r="3.0" fill="#79c0ff"><title>Beacon alert acks sync to the on-call rota</title></circle>
-<circle cx="559.2" cy="737.6" r="3.0" fill="#7ee787"><title>beacon alert routing review [079067e9:4]</title></circle>
-<circle cx="655.5" cy="637.4" r="4.6" fill="#7ee787"><title>beacon alert routing review [4980bb4e:11]</title></circle>
-<circle cx="608.8" cy="408.0" r="3.0" fill="#7ee787"><title>beacon alert routing review [4aeba3a8:6]</title></circle>
-<circle cx="647.5" cy="589.4" r="7.6" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="647.5" cy="589.4" r="4.6" fill="#79c0ff"><title>beacon alert routing review</title></circle>
-<text x="647.5" y="581.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">beacon-alert-routing-review</text>
-<circle cx="577.4" cy="663.4" r="4.6" fill="#8b949e"><title>beacon-geo-alerts-use-h3-cells</title></circle>
-<circle cx="578.6" cy="613.7" r="4.6" fill="#79c0ff"><title>Beacon geo-alerts use postcode polygons</title></circle>
-<circle cx="516.3" cy="580.2" r="3.0" fill="#7ee787"><title>&#x27;Beacon status: false-positive rate down 40%&#x27;</title></circle>
-<circle cx="434.1" cy="516.8" r="3.0" fill="#7ee787"><title>&#x27;Beacon status: geo-alerts in beta&#x27;</title></circle>
-<circle cx="766.0" cy="334.9" r="4.6" fill="#7ee787"><title>Cinder backfill job PR 267 approved</title></circle>
-<circle cx="500.1" cy="668.1" r="3.0" fill="#79c0ff"><title>Cinder feature store is Feast</title></circle>
-<circle cx="576.1" cy="544.3" r="3.0" fill="#7ee787"><title>&#x27;Cinder status: backfill complete for Q1 features&#x27;</title></circle>
-<circle cx="450.5" cy="597.3" r="3.0" fill="#7ee787"><title>&#x27;Cinder status: nightly trainings green for 30 days&#x27;</title></circle>
-<circle cx="463.0" cy="445.8" r="4.6" fill="#7ee787"><title>cinder training window [78ab3299:7]</title></circle>
-<circle cx="511.7" cy="508.2" r="3.0" fill="#7ee787"><title>cinder training window [8ab0d0fd:3]</title></circle>
-<circle cx="584.8" cy="478.6" r="3.0" fill="#7ee787"><title>cinder training window [dfbb90a9:8]</title></circle>
-<circle cx="429.5" cy="406.4" r="7.6" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="429.5" cy="406.4" r="4.6" fill="#79c0ff"><title>cinder training window</title></circle>
-<text x="429.5" y="398.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">cinder-training-window</text>
-<circle cx="904.7" cy="434.7" r="5.3" fill="#ffa657"><title>Daniel Okafor is on the data platform team</title></circle>
-<circle cx="505.5" cy="370.4" r="4.6" fill="#7ee787"><title>data api versioning discussion [6746896c:6]</title></circle>
-<circle cx="536.4" cy="439.8" r="3.0" fill="#7ee787"><title>data api versioning discussion [d986ce1a:8]</title></circle>
-<circle cx="531.9" cy="297.7" r="3.0" fill="#7ee787"><title>data api versioning discussion [e596bb4e:5]</title></circle>
-<circle cx="555.8" cy="370.3" r="7.6" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="555.8" cy="370.3" r="4.6" fill="#79c0ff"><title>data api versioning discussion</title></circle>
-<text x="555.8" y="362.7" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">data-api-versioning-discus…</text>
-<circle cx="449.0" cy="318.0" r="3.0" fill="#7ee787"><title>drift dashboard embedding options [32b8064c:6]</title></circle>
-<circle cx="602.2" cy="322.1" r="3.0" fill="#7ee787"><title>drift dashboard embedding options [5120bc32:10]</title></circle>
-<circle cx="647.8" cy="459.3" r="4.6" fill="#7ee787"><title>drift dashboard embedding options [a8599520:4]</title></circle>
-<circle cx="694.9" cy="478.2" r="8.3" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="694.9" cy="478.2" r="5.3" fill="#79c0ff"><title>drift dashboard embedding options</title></circle>
-<text x="694.9" y="469.9" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">drift-dashboard-embedding-…</text>
-<circle cx="489.1" cy="240.5" r="3.0" fill="#7ee787"><title>Drift dashboards moved to the static exporter</title></circle>
-<circle cx="613.9" cy="208.5" r="4.6" fill="#8b949e"><title>drift-dashboards-refresh-every-15-minutes</title></circle>
-<circle cx="584.9" cy="250.0" r="4.6" fill="#79c0ff"><title>Drift dashboards refresh hourly</title></circle>
-<circle cx="699.3" cy="415.4" r="4.6" fill="#7ee787"><title>Drift row-level security PR 93 merged</title></circle>
-<circle cx="541.2" cy="178.2" r="3.0" fill="#7ee787"><title>&#x27;Drift status: row-level security live&#x27;</title></circle>
-<circle cx="610.4" cy="127.5" r="3.0" fill="#7ee787"><title>Duplicate events in the orders topic root cause</title></circle>
-<circle cx="680.0" cy="240.6" r="4.6" fill="#8b949e"><title>ember-audit-log-keeps-180-days</title></circle>
-<circle cx="657.8" cy="284.1" r="4.6" fill="#79c0ff"><title>Ember audit log keeps 90 days</title></circle>
-<circle cx="739.0" cy="204.5" r="3.0" fill="#79c0ff"><title>Ember follows OAuth2 with OIDC</title></circle>
-<circle cx="679.0" cy="166.5" r="3.0" fill="#7ee787"><title>&#x27;Ember status: audit log shipped&#x27;</title></circle>
-<circle cx="689.0" cy="93.6" r="3.0" fill="#7ee787"><title>&#x27;Ember status: token TTL migration done&#x27;</title></circle>
-<circle cx="758.5" cy="142.1" r="3.0" fill="#7ee787"><title>ember token lifecycle review [4cc79cc2:5]</title></circle>
-<circle cx="655.4" cy="362.9" r="4.6" fill="#7ee787"><title>ember token lifecycle review [aedb34bc:2]</title></circle>
-<circle cx="737.8" cy="276.8" r="3.0" fill="#7ee787"><title>ember token lifecycle review [c18a9025:9]</title></circle>
-<circle cx="698.1" cy="338.8" r="7.6" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="698.1" cy="338.8" r="4.6" fill="#79c0ff"><title>ember token lifecycle review</title></circle>
-<text x="698.1" y="331.2" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">ember-token-lifecycle-revi…</text>
-<circle cx="793.8" cy="235.7" r="3.0" fill="#7ee787"><title>Feast 0.38 to 0.40 migration completed</title></circle>
-<circle cx="1052.4" cy="414.4" r="4.6" fill="#ffd666"><title>How to deploy Atlas safely</title></circle>
-<circle cx="770.6" cy="70.0" r="3.0" fill="#ffd666"><title>How to replay an Atlas topic into Iceberg</title></circle>
-<circle cx="910.2" cy="83.6" r="3.0" fill="#ffd666"><title>How to roll back an Atlas deployment</title></circle>
-<circle cx="991.7" cy="324.5" r="5.3" fill="#ffd666"><title>How to take the on-call handover</title></circle>
-<circle cx="824.4" cy="173.3" r="3.0" fill="#7ee787"><title>Iceberg partition spec mismatch backfill</title></circle>
-<circle cx="837.0" cy="103.1" r="3.0" fill="#7ee787"><title>&#x27;incident review: atlas consumer lag [007045db:2]&#x27;</title></circle>
-<circle cx="861.2" cy="235.1" r="4.6" fill="#7ee787"><title>&#x27;incident review: atlas consumer lag [349445bf:9]&#x27;</title></circle>
-<circle cx="901.9" cy="154.8" r="3.0" fill="#7ee787"><title>&#x27;incident review: atlas consumer lag [51a6ecaa:5]&#x27;</title></circle>
-<circle cx="908.4" cy="220.0" r="7.6" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
-<circle cx="908.4" cy="220.0" r="4.6" fill="#79c0ff"><title>&#x27;incident review: atlas consumer lag&#x27;</title></circle>
-<text x="908.4" y="212.4" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">incident-review-atlas-cons…</text>
-<circle cx="978.6" cy="201.8" r="3.0" fill="#7ee787"><title>Kafka rebalance storm during a deploy</title></circle>
-<circle cx="759.1" cy="499.2" r="5.3" fill="#ffa657"><title>Lena Fischer is on the data platform team</title></circle>
-<circle cx="1033.2" cy="624.7" r="4.6" fill="#7ee787"><title>Maya approves Ember audit log PR 388</title></circle>
-<circle cx="1004.3" cy="415.6" r="5.3" fill="#ffa657"><title>Maya Chen is on the data platform team</title></circle>
-<circle cx="990.6" cy="371.7" r="5.8" fill="#ffa657"><title>Maya Chen reviews Alex&#x27;s pull requests</title></circle>
-<circle cx="983.2" cy="128.2" r="3.0" fill="#7ee787"><title>Maya requests changes on Atlas PR 482</title></circle>
-<circle cx="1054.8" cy="176.1" r="3.0" fill="#79c0ff"><title>On-call rotation is weekly, starting Mondays</title></circle>
-<circle cx="863.5" cy="349.3" r="5.3" fill="#ffa657"><title>Priya Nair is on the data platform team</title></circle>
-<circle cx="1035.1" cy="252.3" r="3.0" fill="#79c0ff"><title>Production runs on a managed Kubernetes cluster</title></circle>
-<circle cx="818.8" cy="429.9" r="4.6" fill="#d2a8ff"><title>&#x27;Project Atlas: what it is&#x27;</title></circle>
-<circle cx="957.0" cy="277.7" r="4.6" fill="#d2a8ff"><title>&#x27;Project Beacon: what it is&#x27;</title></circle>
-<circle cx="818.1" cy="297.1" r="4.6" fill="#d2a8ff"><title>&#x27;Project Cinder: what it is&#x27;</title></circle>
-<circle cx="753.9" cy="398.0" r="4.6" fill="#d2a8ff"><title>&#x27;Project Drift: what it is&#x27;</title></circle>
-<circle cx="1104.9" cy="631.1" r="4.6" fill="#d2a8ff"><title>&#x27;Project Ember: what it is&#x27;</title></circle>
-<circle cx="1131.7" cy="567.1" r="4.6" fill="#7ee787"><title>Sam reviews Beacon routing table PR 141</title></circle>
-<circle cx="1070.9" cy="527.0" r="5.3" fill="#ffa657"><title>Sam Whitaker is on the data platform team</title></circle>
-<circle cx="1076.7" cy="318.6" r="3.0" fill="#79c0ff"><title>The data API emits OpenAPI specs from the service repo</title></circle>
-<circle cx="1111.3" cy="244.8" r="3.0" fill="#79c0ff"><title>The lakehouse is Iceberg on S3</title></circle>
-<circle cx="1156.3" cy="322.0" r="3.0" fill="#79c0ff"><title>The platform org uses trunk-based development</title></circle>
-<circle cx="1120.3" cy="386.1" r="3.0" fill="#7ee787"><title>Token refresh race in Ember traced</title></circle>
-<circle cx="936.4" cy="577.9" r="5.3" fill="#ffa657"><title>Tomas Rivera is on the data platform team</title></circle>
-<circle cx="970.6" cy="489.5" r="5.3" fill="#ffa657"><title>Tomas Rivera runs the platform group</title></circle>
+<line x1="951.5" y1="435.9" x2="908.5" y2="423.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="810.4" y2="155.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1034.1" y1="463.8" x2="1107.2" y2="476.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="986.2" y2="397.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="813.7" y2="477.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="717.1" y2="381.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="858.3" y2="343.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="894.9" y1="542.3" x2="932.9" y2="539.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="858.3" y1="343.4" x2="907.8" y2="340.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="726.2" y2="416.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="956.6" y2="498.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="735.9" y1="537.7" x2="754.4" y2="574.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="909.8" y1="619.2" x2="959.4" y2="588.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="881.7" y2="240.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="726.2" y2="416.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="909.8" y2="619.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="994.2" y2="357.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="790.3" y2="336.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="909.8" y1="619.2" x2="926.4" y2="587.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="759.7" y2="414.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="890.5" y2="582.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="984.9" y2="478.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="759.7" y2="414.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="858.3" y1="343.4" x2="885.2" y2="309.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.2" y1="451.9" x2="894.9" y2="542.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="864.2" y2="451.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="715.8" y2="457.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="1013.6" y2="497.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1034.1" y1="463.8" x2="1071.4" y2="471.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="871.3" y2="270.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="847.4" y1="248.6" x2="793.0" y2="308.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="864.2" y2="451.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="815.8" y2="238.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="909.8" y1="619.2" x2="941.6" y2="621.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.2" y1="451.9" x2="842.4" y2="506.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="990.8" y2="616.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="807.3" y2="199.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="790.3" y2="336.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="847.4" y1="248.6" x2="810.4" y2="273.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="866.5" y2="416.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="1034.1" y2="463.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="858.3" y1="343.4" x2="790.3" y2="336.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="793.0" y2="308.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="903.8" y2="456.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="932.9" y2="539.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="894.9" y1="542.3" x2="893.7" y2="502.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="926.0" y2="476.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="958.4" y2="360.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="858.3" y2="343.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="830.1" y2="379.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="894.9" y1="542.3" x2="926.4" y2="587.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="739.5" y2="323.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="847.4" y1="248.6" x2="774.7" y2="234.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="864.2" y2="451.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="858.3" y1="343.4" x2="830.1" y2="379.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="1039.1" y2="536.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.2" y1="451.9" x2="823.8" y2="433.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="692.7" y2="325.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="849.4" y2="154.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="856.1" y2="208.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="956.6" y2="498.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="847.4" y1="248.6" x2="807.3" y2="199.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="909.8" y1="619.2" x2="903.7" y2="681.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="741.0" y2="355.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="863.8" y2="533.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="790.0" y2="510.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="885.2" y2="309.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="1046.0" y2="572.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="909.8" y1="619.2" x2="890.5" y2="582.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="894.9" y1="542.3" x2="941.6" y2="621.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="847.4" y1="248.6" x2="917.6" y2="269.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="866.5" y2="416.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="762.1" y2="377.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="684.7" y2="471.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="988.6" y2="438.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1034.1" y1="463.8" x2="1022.5" y2="426.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="739.5" y2="323.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="1013.6" y2="497.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="735.9" y1="537.7" x2="744.2" y2="503.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="847.4" y1="248.6" x2="924.0" y2="235.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="881.7" y2="240.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1034.1" y1="463.8" x2="1066.2" y2="406.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="678.8" y2="363.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="864.7" y2="483.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="815.8" y2="238.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="909.8" y1="619.2" x2="867.2" y2="634.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.2" y1="451.9" x2="893.7" y2="502.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="889.4" y2="191.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="1021.1" y2="385.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1027.0" y1="605.6" x2="968.1" y2="542.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="810.4" y2="273.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="824.5" y2="334.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="782.5" y2="439.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="984.9" y2="478.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="793.0" y2="308.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="926.4" y2="587.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="735.9" y1="537.7" x2="703.1" y2="509.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="744.2" y2="503.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="1034.1" y2="463.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="858.3" y1="343.4" x2="933.4" y2="312.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="925.9" y2="195.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="782.5" y2="439.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="908.5" y2="423.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="1022.5" y2="426.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="871.3" y2="270.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="762.1" y2="377.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="806.4" y2="543.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="793.0" y2="308.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="838.0" y2="555.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="894.9" y1="542.3" x2="890.5" y2="582.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="735.9" y1="537.7" x2="688.6" y2="558.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="948.6" y2="398.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="1001.4" y2="575.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="951.5" y1="435.9" x2="864.2" y2="451.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1034.1" y1="463.8" x2="1093.5" y2="433.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="856.1" y1="208.4" x2="888.5" y2="143.1" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="735.9" y2="537.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="864.2" y2="451.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="847.4" y1="248.6" x2="889.4" y2="191.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="754.9" y1="467.6" x2="703.1" y2="509.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="903.8" y2="456.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="864.7" y1="483.8" x2="926.0" y2="476.4" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="1003.9" y2="535.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="726.2" y2="416.0" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="909.8" y1="619.2" x2="862.1" y2="670.2" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="735.9" y1="537.7" x2="790.0" y2="510.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="790.3" y2="336.7" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="894.9" y1="542.3" x2="842.4" y2="506.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="844.3" y1="302.6" x2="847.4" y2="248.6" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="968.1" y1="542.9" x2="959.4" y2="588.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="794.6" y1="382.6" x2="866.5" y2="416.5" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="894.9" y1="542.3" x2="863.8" y2="533.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1034.1" y1="463.8" x2="984.9" y2="478.9" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="735.9" y1="537.7" x2="719.4" y2="587.3" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="741.0" y1="355.1" x2="759.7" y2="414.8" stroke="#8b949e" stroke-opacity="0.18"/>
+<line x1="1126.1" y1="368.9" x2="1164.0" y2="353.7" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="979.7" y1="668.3" x2="941.6" y2="621.4" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="847.8" y1="727.7" x2="808.6" y2="726.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="893.1" y1="755.6" x2="929.1" y2="738.2" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="838.8" y1="606.2" x2="890.5" y2="582.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="936.5" y1="658.0" x2="926.4" y2="587.8" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="914.4" y1="380.6" x2="908.5" y2="423.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="674.4" y1="728.4" x2="704.8" y2="752.9" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="792.8" y1="592.9" x2="806.4" y2="543.9" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="671.2" y1="594.8" x2="688.6" y2="558.2" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="659.6" y1="519.9" x2="703.1" y2="509.4" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="597.6" y1="641.4" x2="582.2" y2="677.5" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="779.7" y1="125.0" x2="810.4" y2="155.6" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="675.4" y1="417.4" x2="726.2" y2="416.0" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="706.0" y1="281.7" x2="739.5" y2="323.5" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="516.1" y1="503.3" x2="497.1" y2="536.4" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="489.6" y1="391.3" x2="451.2" y2="402.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="538.0" y1="454.1" x2="536.7" y2="416.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="942.1" y1="158.9" x2="889.4" y2="191.0" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="758.7" y1="183.2" x2="807.3" y2="199.3" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="617.3" y1="254.7" x2="598.2" y2="288.6" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="1077.2" y1="519.4" x2="1013.6" y2="497.7" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="819.4" y1="669.8" x2="862.1" y2="670.2" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="872.9" y1="382.1" x2="866.5" y2="416.5" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="914.8" y1="103.9" x2="888.5" y2="143.1" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<line x1="752.9" y1="283.5" x2="790.3" y2="336.7" stroke="#f85149" stroke-opacity="0.9" stroke-width="1.5"/>
+<circle cx="1126.1" cy="368.9" r="4.6" fill="#ffa657"><title>Alex Vega lives in Madrid</title></circle>
+<circle cx="1164.0" cy="353.7" r="4.6" fill="#8b949e"><title>2026-08-30-persona-home-city</title></circle>
+<circle cx="1027.0" cy="605.6" r="4.6" fill="#79c0ff"><title>Alex Vega</title></circle>
+<circle cx="968.1" cy="542.9" r="9.4" fill="#79c0ff"><title>Atlas</title></circle>
+<text x="968.1" y="530.5" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Atlas</text>
+<circle cx="951.5" cy="435.9" r="9.6" fill="#79c0ff"><title>Beacon</title></circle>
+<text x="951.5" y="423.3" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Beacon</text>
+<circle cx="754.9" cy="467.6" r="7.8" fill="#79c0ff"><title>Cinder</title></circle>
+<text x="754.9" y="456.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Cinder</text>
+<circle cx="909.8" cy="619.2" r="7.5" fill="#79c0ff"><title>Daniel Okafor</title></circle>
+<text x="909.8" y="608.7" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Daniel Okafor</text>
+<circle cx="794.6" cy="382.6" r="8.8" fill="#79c0ff"><title>Drift</title></circle>
+<text x="794.6" y="370.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Drift</text>
+<circle cx="844.3" cy="302.6" r="8.5" fill="#79c0ff"><title>Ember</title></circle>
+<text x="844.3" y="291.1" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Ember</text>
+<circle cx="858.3" cy="343.4" r="7.2" fill="#79c0ff"><title>Herald</title></circle>
+<text x="858.3" y="333.2" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Herald</text>
+<circle cx="864.7" cy="483.8" r="8.1" fill="#79c0ff"><title>Iris Kovac</title></circle>
+<text x="864.7" y="472.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Iris Kovac</text>
+<circle cx="741.0" cy="355.1" r="7.8" fill="#79c0ff"><title>Lena Fischer</title></circle>
+<text x="741.0" y="344.3" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Lena Fischer</text>
+<circle cx="1034.1" cy="463.8" r="7.5" fill="#79c0ff"><title>Maya Chen</title></circle>
+<text x="1034.1" y="453.2" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Maya Chen</text>
+<circle cx="856.1" cy="208.4" r="8.1" fill="#79c0ff"><title>Noah Bennett</title></circle>
+<text x="856.1" y="197.3" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Noah Bennett</text>
+<circle cx="864.2" cy="451.9" r="7.8" fill="#79c0ff"><title>Northwind Analytics</title></circle>
+<text x="864.2" y="441.1" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Northwind Analytics</text>
+<circle cx="735.9" cy="537.7" r="7.2" fill="#79c0ff"><title>Priya Nair</title></circle>
+<text x="735.9" y="527.5" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Priya Nair</text>
+<circle cx="847.4" cy="248.6" r="7.5" fill="#79c0ff"><title>Sam Whitaker</title></circle>
+<text x="847.4" y="238.1" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Sam Whitaker</text>
+<circle cx="894.9" cy="542.3" r="7.5" fill="#79c0ff"><title>Tomas Rivera</title></circle>
+<text x="894.9" y="531.7" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">Tomas Rivera</text>
+<circle cx="1170.0" cy="416.9" r="3.0" fill="#79c0ff"><title>Alex Vega drinks too much coffee during incident reviews</title></circle>
+<circle cx="842.4" cy="506.6" r="5.3" fill="#ffa657"><title>Alex Vega joined Northwind Analytics in 2024</title></circle>
+<circle cx="1174.2" cy="473.9" r="3.0" fill="#79c0ff"><title>Alex Vega prefers written async updates</title></circle>
+<circle cx="1169.4" cy="532.9" r="3.0" fill="#79c0ff"><title>Alex Vega&#x27;s editor is Neovim</title></circle>
+<circle cx="1101.3" cy="687.5" r="3.0" fill="#79c0ff"><title>Alex Vega uses a dark theme everywhere</title></circle>
+<circle cx="823.8" cy="433.9" r="4.6" fill="#ffa657"><title>Alex Vega works as a data engineer</title></circle>
+<circle cx="1123.1" cy="565.1" r="3.0" fill="#7ee787"><title>atlas archive tier cost review [3f7ccbc4:7]</title></circle>
+<circle cx="986.8" cy="723.2" r="3.0" fill="#7ee787"><title>atlas archive tier cost review [5998eb36:5]</title></circle>
+<circle cx="979.7" cy="668.3" r="4.6" fill="#7ee787"><title>atlas archive tier cost review [d614e545:6]</title></circle>
+<circle cx="941.6" cy="621.4" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="941.6" cy="621.4" r="5.8" fill="#79c0ff"><title>atlas archive tier cost review</title></circle>
+<text x="941.6" y="612.6" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">atlas-archive-tier-cost-re…</text>
+<circle cx="1021.1" cy="385.2" r="4.6" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: detection&#x27;</title></circle>
+<circle cx="1149.2" cy="616.1" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: mitigation&#x27;</title></circle>
+<circle cx="1045.9" cy="738.2" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: retro&#x27;</title></circle>
+<circle cx="1043.0" cy="678.1" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: triage&#x27;</title></circle>
+<circle cx="986.4" cy="779.1" r="3.0" fill="#7ee787"><title>&#x27;Atlas consumer lag incident: verification&#x27;</title></circle>
+<circle cx="927.9" cy="804.8" r="3.0" fill="#79c0ff"><title>Atlas consumers use static group membership</title></circle>
+<circle cx="808.6" cy="726.3" r="4.6" fill="#8b949e"><title>atlas-hot-retention-is-21-days</title></circle>
+<circle cx="847.8" cy="727.7" r="4.6" fill="#79c0ff"><title>Atlas hot retention is 30 days</title></circle>
+<circle cx="893.1" cy="755.6" r="4.6" fill="#79c0ff"><title>Atlas ingestion baseline is 30k msg/s</title></circle>
+<circle cx="929.1" cy="738.2" r="4.6" fill="#8b949e"><title>atlas-ingestion-baseline-is-40k-msg-s</title></circle>
+<circle cx="1071.4" cy="471.8" r="4.6" fill="#7ee787"><title>Atlas PR 501 adds static group membership</title></circle>
+<circle cx="838.8" cy="606.2" r="4.6" fill="#7ee787"><title>atlas retention policy discussion [05777697:12]</title></circle>
+<circle cx="770.9" cy="682.4" r="3.0" fill="#7ee787"><title>atlas retention policy discussion [5a472481:7]</title></circle>
+<circle cx="755.1" cy="731.0" r="3.0" fill="#7ee787"><title>atlas retention policy discussion [cd55674d:3]</title></circle>
+<circle cx="890.5" cy="582.3" r="9.2" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="890.5" cy="582.3" r="6.2" fill="#79c0ff"><title>atlas retention policy discussion</title></circle>
+<text x="890.5" y="573.1" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">atlas-retention-policy-dis…</text>
+<circle cx="1091.5" cy="629.0" r="3.0" fill="#7ee787"><title>&#x27;Atlas status: consumer lag under 2s p99&#x27;</title></circle>
+<circle cx="721.8" cy="690.8" r="3.0" fill="#7ee787"><title>&#x27;Atlas status: orders topic dedup verified end to end&#x27;</title></circle>
+<circle cx="1003.9" cy="535.5" r="4.6" fill="#7ee787"><title>&#x27;Atlas status: replay tool shipped&#x27;</title></circle>
+<circle cx="865.8" cy="818.0" r="3.0" fill="#79c0ff"><title>Atlas uses Kafka exactly-once semantics</title></circle>
+<circle cx="936.5" cy="658.0" r="4.6" fill="#7ee787"><title>atlas weekly sync [870ccbd8:3]</title></circle>
+<circle cx="765.1" cy="780.0" r="3.0" fill="#7ee787"><title>atlas weekly sync [b276136a:4]</title></circle>
+<circle cx="678.2" cy="670.9" r="3.0" fill="#7ee787"><title>atlas weekly sync [c1d5b066:7]</title></circle>
+<circle cx="926.4" cy="587.8" r="9.2" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="926.4" cy="587.8" r="6.2" fill="#79c0ff"><title>atlas weekly sync</title></circle>
+<text x="926.4" y="578.6" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">atlas-weekly-sync</text>
+<circle cx="948.6" cy="398.0" r="4.6" fill="#79c0ff"><title>Beacon alert acks sync to the on-call rota</title></circle>
+<circle cx="793.1" cy="830.0" r="3.0" fill="#7ee787"><title>beacon alert routing review [1563b5ff:6]</title></circle>
+<circle cx="767.3" cy="636.8" r="3.0" fill="#7ee787"><title>beacon alert routing review [a8cb7963:4]</title></circle>
+<circle cx="914.4" cy="380.6" r="4.6" fill="#7ee787"><title>beacon alert routing review [ce9c8cd2:11]</title></circle>
+<circle cx="908.5" cy="423.3" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="908.5" cy="423.3" r="5.8" fill="#79c0ff"><title>beacon alert routing review</title></circle>
+<text x="908.5" y="414.5" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">beacon-alert-routing-review</text>
+<circle cx="825.6" cy="779.7" r="3.0" fill="#7ee787"><title>Beacon geo-alerts fully migrated to H3</title></circle>
+<circle cx="718.2" cy="814.5" r="3.0" fill="#7ee787"><title>Beacon geo-alerts migrated to H3 cells</title></circle>
+<circle cx="704.8" cy="752.9" r="4.6" fill="#8b949e"><title>beacon-geo-alerts-use-h3-cells</title></circle>
+<circle cx="674.4" cy="728.4" r="4.6" fill="#79c0ff"><title>Beacon geo-alerts use postcode polygons</title></circle>
+<circle cx="1066.2" cy="406.0" r="4.6" fill="#7ee787"><title>Beacon H3 migration PR 177 merged</title></circle>
+<circle cx="716.3" cy="638.3" r="3.0" fill="#7ee787"><title>beacon sev definitions recalibration [4eee129f:8]</title></circle>
+<circle cx="656.9" cy="794.1" r="3.0" fill="#7ee787"><title>beacon sev definitions recalibration [a245084c:5]</title></circle>
+<circle cx="792.8" cy="592.9" r="4.6" fill="#7ee787"><title>beacon sev definitions recalibration [cd553ad2:6]</title></circle>
+<circle cx="806.4" cy="543.9" r="8.3" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="806.4" cy="543.9" r="5.3" fill="#79c0ff"><title>beacon sev definitions recalibration</title></circle>
+<text x="806.4" y="535.6" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">beacon-sev-definitions-rec…</text>
+<circle cx="624.8" cy="588.8" r="3.0" fill="#7ee787"><title>&#x27;Beacon status: false-positive rate down 40%&#x27;</title></circle>
+<circle cx="630.9" cy="698.0" r="3.0" fill="#7ee787"><title>&#x27;Beacon status: geo-alerts in beta&#x27;</title></circle>
+<circle cx="719.4" cy="587.3" r="4.6" fill="#7ee787"><title>Cinder backfill job PR 267 approved</title></circle>
+<circle cx="647.2" cy="637.7" r="3.0" fill="#7ee787"><title>Cinder backfill tooling in production</title></circle>
+<circle cx="671.2" cy="594.8" r="4.6" fill="#7ee787"><title>cinder feature backfill tooling [15fd7e4b:4]</title></circle>
+<circle cx="614.9" cy="755.2" r="3.0" fill="#7ee787"><title>cinder feature backfill tooling [55cfedba:3]</title></circle>
+<circle cx="558.9" cy="544.7" r="3.0" fill="#7ee787"><title>cinder feature backfill tooling [a14961a1:6]</title></circle>
+<circle cx="688.6" cy="558.2" r="8.3" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="688.6" cy="558.2" r="5.3" fill="#79c0ff"><title>cinder feature backfill tooling</title></circle>
+<text x="688.6" y="550.0" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">cinder-feature-backfill-to…</text>
+<circle cx="611.9" cy="544.8" r="3.0" fill="#79c0ff"><title>Cinder feature store is Feast</title></circle>
+<circle cx="615.9" cy="497.2" r="3.0" fill="#7ee787"><title>&#x27;Cinder status: backfill complete for Q1 features&#x27;</title></circle>
+<circle cx="634.6" cy="454.6" r="3.0" fill="#7ee787"><title>&#x27;Cinder status: nightly trainings green for 30 days&#x27;</title></circle>
+<circle cx="563.0" cy="734.1" r="3.0" fill="#7ee787"><title>cinder training window [6746896c:8]</title></circle>
+<circle cx="659.6" cy="519.9" r="4.6" fill="#7ee787"><title>cinder training window [74b9effc:7]</title></circle>
+<circle cx="569.7" cy="496.3" r="3.0" fill="#7ee787"><title>cinder training window [9494189e:3]</title></circle>
+<circle cx="703.1" cy="509.4" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="703.1" cy="509.4" r="5.8" fill="#79c0ff"><title>cinder training window</title></circle>
+<text x="703.1" y="500.6" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">cinder-training-window</text>
+<circle cx="597.6" cy="641.4" r="4.6" fill="#79c0ff"><title>Cinder trains at 02:00 UTC</title></circle>
+<circle cx="582.2" cy="677.5" r="4.6" fill="#8b949e"><title>cinder-trains-at-03-30-utc</title></circle>
+<circle cx="575.3" cy="591.6" r="3.0" fill="#79c0ff"><title>Client SDKs are generated, never hand-written</title></circle>
+<circle cx="588.4" cy="444.3" r="3.0" fill="#7ee787"><title>CSP header broke the Superset embed</title></circle>
+<circle cx="959.4" cy="588.8" r="5.3" fill="#ffa657"><title>Daniel Okafor is on the data platform team</title></circle>
+<circle cx="779.7" cy="125.0" r="4.6" fill="#7ee787"><title>data api versioning discussion [47246d5d:6]</title></circle>
+<circle cx="540.1" cy="635.1" r="3.0" fill="#7ee787"><title>data api versioning discussion [6497398a:5]</title></circle>
+<circle cx="483.1" cy="458.7" r="3.0" fill="#7ee787"><title>data api versioning discussion [6b752fdc:8]</title></circle>
+<circle cx="810.4" cy="155.6" r="8.3" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="810.4" cy="155.6" r="5.3" fill="#79c0ff"><title>data api versioning discussion</title></circle>
+<text x="810.4" y="147.4" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">data-api-versioning-discus…</text>
+<circle cx="518.2" cy="689.9" r="3.0" fill="#7ee787"><title>dbt model naming standards [0ca27095:6]</title></circle>
+<circle cx="480.2" cy="635.2" r="3.0" fill="#7ee787"><title>dbt model naming standards [a0bd53ff:9]</title></circle>
+<circle cx="675.4" cy="417.4" r="4.6" fill="#7ee787"><title>dbt model naming standards [f4cf9b41:7]</title></circle>
+<circle cx="726.2" cy="416.0" r="9.2" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="726.2" cy="416.0" r="6.2" fill="#79c0ff"><title>dbt model naming standards</title></circle>
+<text x="726.2" y="406.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">dbt-model-naming-standards</text>
+<circle cx="782.5" cy="439.1" r="5.3" fill="#79c0ff"><title>dbt models split staging from marts</title></circle>
+<circle cx="759.7" cy="414.8" r="5.8" fill="#7ee787"><title>dbt naming linter PR 195 merged</title></circle>
+<circle cx="518.5" cy="585.5" r="3.0" fill="#7ee787"><title>drift dashboard embedding options [13070188:10]</title></circle>
+<circle cx="453.5" cy="578.0" r="3.0" fill="#7ee787"><title>drift dashboard embedding options [7756ec17:6]</title></circle>
+<circle cx="706.0" cy="281.7" r="4.6" fill="#7ee787"><title>drift dashboard embedding options [ba9fc557:4]</title></circle>
+<circle cx="739.5" cy="323.5" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="739.5" cy="323.5" r="5.8" fill="#79c0ff"><title>drift dashboard embedding options</title></circle>
+<text x="739.5" y="314.7" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">drift-dashboard-embedding-…</text>
+<circle cx="717.1" cy="381.2" r="4.6" fill="#7ee787"><title>Drift dashboards moved to the static exporter</title></circle>
+<circle cx="497.1" cy="536.4" r="4.6" fill="#8b949e"><title>drift-dashboards-refresh-every-15-minutes</title></circle>
+<circle cx="516.1" cy="503.3" r="4.6" fill="#79c0ff"><title>Drift dashboards refresh hourly</title></circle>
+<circle cx="489.6" cy="391.3" r="4.6" fill="#79c0ff"><title>Drift partner portal embeds through Superset</title></circle>
+<circle cx="451.2" cy="402.3" r="4.6" fill="#8b949e"><title>drift-partner-portal-embeds-via-the-static-exporter</title></circle>
+<circle cx="678.8" cy="363.7" r="4.6" fill="#7ee787"><title>Drift row-level security PR 93 merged</title></circle>
+<circle cx="425.8" cy="456.1" r="3.0" fill="#7ee787"><title>&#x27;Drift status: row-level security live&#x27;</title></circle>
+<circle cx="442.2" cy="514.8" r="3.0" fill="#7ee787"><title>Duplicate events in the orders topic root cause</title></circle>
+<circle cx="536.7" cy="416.3" r="4.6" fill="#8b949e"><title>ember-audit-log-keeps-180-days</title></circle>
+<circle cx="538.0" cy="454.1" r="4.6" fill="#79c0ff"><title>Ember audit log keeps 90 days</title></circle>
+<circle cx="499.8" cy="328.2" r="3.0" fill="#79c0ff"><title>Ember follows OAuth2 with OIDC</title></circle>
+<circle cx="442.0" cy="342.9" r="3.0" fill="#7ee787"><title>Ember refresh loop root cause</title></circle>
+<circle cx="538.9" cy="361.0" r="3.0" fill="#7ee787"><title>&#x27;Ember status: audit log shipped&#x27;</title></circle>
+<circle cx="581.7" cy="390.2" r="3.0" fill="#7ee787"><title>&#x27;Ember status: token TTL migration done&#x27;</title></circle>
+<circle cx="583.2" cy="336.6" r="3.0" fill="#7ee787"><title>ember token lifecycle review [1e1421b2:9]</title></circle>
+<circle cx="942.1" cy="158.9" r="4.6" fill="#7ee787"><title>ember token lifecycle review [65f78e9f:2]</title></circle>
+<circle cx="507.8" cy="245.6" r="3.0" fill="#7ee787"><title>ember token lifecycle review [7b2e0db0:5]</title></circle>
+<circle cx="889.4" cy="191.0" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="889.4" cy="191.0" r="5.8" fill="#79c0ff"><title>ember token lifecycle review</title></circle>
+<text x="889.4" y="182.2" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">ember-token-lifecycle-revi…</text>
+<circle cx="758.7" cy="183.2" r="4.6" fill="#7ee787"><title>ember token refresh outage [052682f6:4]</title></circle>
+<circle cx="627.3" cy="353.7" r="3.0" fill="#7ee787"><title>ember token refresh outage [65a95468:3]</title></circle>
+<circle cx="849.4" cy="154.6" r="4.6" fill="#7ee787"><title>&#x27;Ember token refresh outage: detection&#x27;</title></circle>
+<circle cx="466.5" cy="281.2" r="3.0" fill="#7ee787"><title>ember token refresh outage [f02b6827:6]</title></circle>
+<circle cx="626.3" cy="404.0" r="3.0" fill="#7ee787"><title>&#x27;Ember token refresh outage: mitigation&#x27;</title></circle>
+<circle cx="871.3" cy="270.2" r="5.3" fill="#7ee787"><title>&#x27;Ember token refresh outage: retro&#x27;</title></circle>
+<circle cx="581.6" cy="140.3" r="3.0" fill="#7ee787"><title>&#x27;Ember token refresh outage: triage&#x27;</title></circle>
+<circle cx="807.3" cy="199.3" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="807.3" cy="199.3" r="5.8" fill="#79c0ff"><title>ember token refresh outage</title></circle>
+<text x="807.3" y="190.5" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">ember-token-refresh-outage</text>
+<circle cx="684.7" cy="471.8" r="4.6" fill="#7ee787"><title>Feast 0.38 to 0.40 migration completed</title></circle>
+<circle cx="530.6" cy="189.7" r="3.0" fill="#7ee787"><title>Feast registry lock contention in Cinder</title></circle>
+<circle cx="988.6" cy="438.6" r="4.6" fill="#79c0ff"><title>Geo-alerts match at H3 resolution 7</title></circle>
+<circle cx="986.2" cy="397.8" r="4.6" fill="#79c0ff"><title>H3 resolution 7 is the geo-alert default</title></circle>
+<circle cx="543.2" cy="298.1" r="3.0" fill="#7ee787"><title>h3 resolution tuning [0a68fbdf:8]</title></circle>
+<circle cx="592.0" cy="198.1" r="3.0" fill="#7ee787"><title>h3 resolution tuning [737e4001:5]</title></circle>
+<circle cx="617.3" cy="254.7" r="4.6" fill="#7ee787"><title>h3 resolution tuning [b57bcb10:6]</title></circle>
+<circle cx="598.2" cy="288.6" r="7.6" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="598.2" cy="288.6" r="4.6" fill="#79c0ff"><title>h3 resolution tuning</title></circle>
+<text x="598.2" y="281.0" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">h3-resolution-tuning</text>
+<circle cx="715.8" cy="457.0" r="4.6" fill="#ffd666"><title>How to backfill Cinder features</title></circle>
+<circle cx="1001.4" cy="575.3" r="4.6" fill="#ffd666"><title>How to deploy Atlas safely</title></circle>
+<circle cx="645.2" cy="303.9" r="3.0" fill="#ffd666"><title>How to regenerate a client SDK</title></circle>
+<circle cx="637.9" cy="147.9" r="3.0" fill="#ffd666"><title>How to replay an Atlas topic into Iceberg</title></circle>
+<circle cx="668.4" cy="249.1" r="3.0" fill="#ffd666"><title>How to restore an archived Atlas partition</title></circle>
+<circle cx="990.8" cy="616.1" r="4.6" fill="#ffd666"><title>How to roll back an Atlas deployment</title></circle>
+<circle cx="903.8" cy="456.0" r="5.3" fill="#ffd666"><title>How to swap into the on-call rota mid-week</title></circle>
+<circle cx="1022.5" cy="426.9" r="5.3" fill="#ffd666"><title>How to take the on-call handover</title></circle>
+<circle cx="562.4" cy="244.7" r="3.0" fill="#7ee787"><title>Iceberg partition spec mismatch backfill</title></circle>
+<circle cx="1077.2" cy="519.4" r="4.6" fill="#7ee787"><title>&#x27;incident review: atlas consumer lag [137d9eb3:9]&#x27;</title></circle>
+<circle cx="664.6" cy="100.2" r="3.0" fill="#7ee787"><title>&#x27;incident review: atlas consumer lag [7139c3f7:2]&#x27;</title></circle>
+<circle cx="712.4" cy="220.4" r="3.0" fill="#7ee787"><title>&#x27;incident review: atlas consumer lag [d0637b7f:5]&#x27;</title></circle>
+<circle cx="1013.6" cy="497.7" r="8.8" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="1013.6" cy="497.7" r="5.8" fill="#79c0ff"><title>&#x27;incident review: atlas consumer lag&#x27;</title></circle>
+<text x="1013.6" y="488.9" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">incident-review-atlas-cons…</text>
+<circle cx="838.0" cy="555.1" r="4.6" fill="#7ee787"><title>Iris approves the rota ack-sync PR 162</title></circle>
+<circle cx="863.8" cy="533.8" r="5.3" fill="#ffa657"><title>Iris Kovac is on the data platform team</title></circle>
+<circle cx="926.0" cy="476.4" r="5.3" fill="#ffa657"><title>Iris Kovac runs the on-call rota</title></circle>
+<circle cx="644.3" cy="204.5" r="3.0" fill="#7ee787"><title>Kafka broker upgrade complete</title></circle>
+<circle cx="819.4" cy="669.8" r="4.6" fill="#7ee787"><title>kafka broker upgrade plan [6a1f7cd7:8]</title></circle>
+<circle cx="726.9" cy="81.0" r="3.0" fill="#7ee787"><title>kafka broker upgrade plan [ba3312d5:4]</title></circle>
+<circle cx="718.5" cy="137.4" r="3.0" fill="#7ee787"><title>kafka broker upgrade plan [e7c3a576:6]</title></circle>
+<circle cx="862.1" cy="670.2" r="8.3" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="862.1" cy="670.2" r="5.3" fill="#79c0ff"><title>kafka broker upgrade plan</title></circle>
+<text x="862.1" y="661.9" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">kafka-broker-upgrade-plan</text>
+<circle cx="687.8" cy="176.2" r="3.0" fill="#7ee787"><title>Kafka brokers upgraded to 3.8</title></circle>
+<circle cx="794.0" cy="70.0" r="3.0" fill="#7ee787"><title>Kafka rebalance storm during a deploy</title></circle>
+<circle cx="867.2" cy="634.4" r="4.6" fill="#7ee787"><title>Kafka upgrade runbook PR 210 merged</title></circle>
+<circle cx="762.1" cy="377.4" r="5.3" fill="#ffa657"><title>Lena Fischer is on the data platform team</title></circle>
+<circle cx="774.7" cy="234.5" r="4.6" fill="#7ee787"><title>Maya approves Ember audit log PR 388</title></circle>
+<circle cx="956.6" cy="498.0" r="5.3" fill="#ffa657"><title>Maya Chen is on the data platform team</title></circle>
+<circle cx="984.9" cy="478.9" r="5.8" fill="#ffa657"><title>Maya Chen reviews Alex&#x27;s pull requests</title></circle>
+<circle cx="857.0" cy="76.1" r="3.0" fill="#7ee787"><title>Maya requests changes on Atlas PR 482</title></circle>
+<circle cx="815.8" cy="238.7" r="5.3" fill="#ffa657"><title>Noah Bennett is on the data platform team</title></circle>
+<circle cx="881.7" cy="240.7" r="5.3" fill="#ffa657"><title>Noah Bennett owns the mobile clients</title></circle>
+<circle cx="925.9" cy="195.9" r="4.6" fill="#7ee787"><title>Noah requests changes on the Ember refresh PR 402</title></circle>
+<circle cx="790.0" cy="510.7" r="5.3" fill="#79c0ff"><title>On-call escalations page the rota before Priya</title></circle>
+<circle cx="958.4" cy="360.7" r="4.6" fill="#79c0ff"><title>On-call rotation is weekly, starting Mondays</title></circle>
+<circle cx="991.1" cy="119.2" r="3.0" fill="#7ee787"><title>on-call rotation overhaul [5907336c:9]</title></circle>
+<circle cx="1024.4" cy="166.8" r="3.0" fill="#7ee787"><title>on-call rotation overhaul [be054ad7:5]</title></circle>
+<circle cx="872.9" cy="382.1" r="4.6" fill="#7ee787"><title>on-call rotation overhaul [e69a75c0:7]</title></circle>
+<circle cx="866.5" cy="416.5" r="9.2" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="866.5" cy="416.5" r="6.2" fill="#79c0ff"><title>on-call rotation overhaul</title></circle>
+<text x="866.5" y="407.3" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">on-call-rotation-overhaul</text>
+<circle cx="813.7" cy="477.4" r="4.6" fill="#7ee787"><title>On-call rotation v2 is live</title></circle>
+<circle cx="914.8" cy="103.9" r="4.6" fill="#7ee787"><title>openapi client sdk rollout [3dc7d5f9:5]</title></circle>
+<circle cx="995.6" cy="214.4" r="3.0" fill="#7ee787"><title>openapi client sdk rollout [bfa445d3:7]</title></circle>
+<circle cx="992.9" cy="271.2" r="3.0" fill="#7ee787"><title>openapi client sdk rollout [c9d09eb6:4]</title></circle>
+<circle cx="888.5" cy="143.1" r="8.3" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="888.5" cy="143.1" r="5.3" fill="#79c0ff"><title>openapi client sdk rollout</title></circle>
+<text x="888.5" y="134.8" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">openapi-client-sdk-rollout</text>
+<circle cx="1043.6" cy="242.8" r="3.0" fill="#7ee787"><title>OpenAPI SDKs shipped to client teams</title></circle>
+<circle cx="885.2" cy="309.9" r="5.3" fill="#7ee787"><title>Partner portal checklist PR 228 merged</title></circle>
+<circle cx="752.9" cy="283.5" r="4.6" fill="#7ee787"><title>partner portal launch checklist [1d455cbc:9]</title></circle>
+<circle cx="1075.1" cy="192.0" r="3.0" fill="#7ee787"><title>partner portal launch checklist [b50eec3e:5]</title></circle>
+<circle cx="1031.3" cy="305.6" r="3.0" fill="#7ee787"><title>partner portal launch checklist [cc4ff17b:7]</title></circle>
+<circle cx="790.3" cy="336.7" r="9.6" fill="none" stroke="#e6edf3" stroke-opacity="0.85" stroke-width="1.2"/>
+<circle cx="790.3" cy="336.7" r="6.6" fill="#79c0ff"><title>partner portal launch checklist</title></circle>
+<text x="790.3" y="327.1" text-anchor="middle" font-size="10" fill="#c9d1d9" stroke="#0d1117" stroke-width="3" paint-order="stroke">partner-portal-launch-chec…</text>
+<circle cx="933.4" cy="312.1" r="4.6" fill="#7ee787"><title>Partner portal launched on the exporter</title></circle>
+<circle cx="830.1" cy="379.0" r="5.3" fill="#79c0ff"><title>Partner portal traffic serves from the exporter CDN</title></circle>
+<circle cx="744.2" cy="503.9" r="5.3" fill="#ffa657"><title>Priya Nair is on the data platform team</title></circle>
+<circle cx="1081.6" cy="283.9" r="3.0" fill="#79c0ff"><title>Production runs on a managed Kubernetes cluster</title></circle>
+<circle cx="903.7" cy="681.9" r="4.6" fill="#d2a8ff"><title>&#x27;Project Atlas: what it is&#x27;</title></circle>
+<circle cx="1107.2" cy="476.8" r="4.6" fill="#d2a8ff"><title>&#x27;Project Beacon: what it is&#x27;</title></circle>
+<circle cx="754.4" cy="574.3" r="4.6" fill="#d2a8ff"><title>&#x27;Project Cinder: what it is&#x27;</title></circle>
+<circle cx="692.7" cy="325.9" r="4.6" fill="#d2a8ff"><title>&#x27;Project Drift: what it is&#x27;</title></circle>
+<circle cx="917.6" cy="269.5" r="4.6" fill="#d2a8ff"><title>&#x27;Project Ember: what it is&#x27;</title></circle>
+<circle cx="793.0" cy="308.2" r="6.2" fill="#d2a8ff"><title>&#x27;Project Herald: what it is&#x27;</title></circle>
+<circle cx="924.0" cy="235.3" r="4.6" fill="#7ee787"><title>Sam reviews Beacon routing table PR 141</title></circle>
+<circle cx="810.4" cy="273.7" r="5.3" fill="#ffa657"><title>Sam Whitaker is on the data platform team</title></circle>
+<circle cx="994.2" cy="357.4" r="4.6" fill="#79c0ff"><title>sev-2 means a 15-minute response</title></circle>
+<circle cx="1116.0" cy="237.9" r="3.0" fill="#7ee787"><title>Static exporter served a stale manifest</title></circle>
+<circle cx="1079.4" cy="337.9" r="3.0" fill="#79c0ff"><title>The archive tier is read-through</title></circle>
+<circle cx="1039.1" cy="536.1" r="4.6" fill="#79c0ff"><title>The archive tier uses quarterly Glacier vaults</title></circle>
+<circle cx="1140.6" cy="296.8" r="3.0" fill="#79c0ff"><title>The data API emits OpenAPI specs from the service repo</title></circle>
+<circle cx="1046.0" cy="572.5" r="4.6" fill="#79c0ff"><title>The lakehouse is Iceberg on S3</title></circle>
+<circle cx="907.8" cy="340.3" r="4.6" fill="#79c0ff"><title>The partner portal is read-only</title></circle>
+<circle cx="1093.5" cy="433.4" r="4.6" fill="#79c0ff"><title>The platform org uses trunk-based development</title></circle>
+<circle cx="824.5" cy="334.0" r="4.6" fill="#7ee787"><title>Token refresh race in Ember traced</title></circle>
+<circle cx="893.7" cy="502.6" r="5.3" fill="#ffa657"><title>Tomas Rivera is on the data platform team</title></circle>
+<circle cx="932.9" cy="539.9" r="5.3" fill="#ffa657"><title>Tomas Rivera runs the platform group</title></circle>
 </svg>

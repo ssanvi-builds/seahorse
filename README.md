@@ -127,8 +127,8 @@ for full-text) and `seahorse materialize` publishes distilled notes to
 the same notes. Format spec: [docs/f3.1-format.md](docs/f3.1-format.md).
 
 And this is what the memory graph of a vault looks like — a fictional demo
-vault ([examples/demo-vault/](examples/demo-vault/), 115 F3.1 notes: 92
-episodes, 8 ringed `consolidate` notes in `Memory/`, 15 human notes —
+vault ([examples/demo-vault/](examples/demo-vault/), 205 F3.1 notes: 169
+episodes, 18 ringed `consolidate` notes in `Memory/`, 18 human notes —
 invented, nothing real). Red edges are `supersedes` chains: a correction
 never overwrites, it appends. [graph.html](examples/demo-vault/graph.html)
 is the same graph, interactive (zoom, pan, drag, tooltips — self-contained).

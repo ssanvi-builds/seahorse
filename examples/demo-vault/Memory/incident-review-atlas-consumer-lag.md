@@ -1,6 +1,6 @@
 ---
-id: 019fb248-1184-76c3-8a2c-e6acd9c65cc4
-created_at: '2026-07-30T09:08:15.364947Z'
+id: 019fb249-0c50-7f18-be1d-840da190c3f9
+created_at: '2026-07-30T09:09:19.568082Z'
 schema_version: 1.0.0
 provenance:
   agent_id: consolidator
@@ -8,9 +8,9 @@ provenance:
   extraction_mode: consolidated
   model_used: claude-sonnet-5
   prompt_hash: 485a451f08f4ffd6a8971ee080af2cfc8f7eec5c43e9a7122041fd9b5562250e
-  session_id: consolidate-019fb248-1184-7424-93a1-7d10314ecb50
+  session_id: consolidate-019fb249-0c50-7ddf-8867-caa0728a89d7
   source_type: system
-supersedes: 019f6a64-5c44-7314-a0b4-a23870cd674e
+supersedes: 019f6a5b-02c2-7e85-beea-e5403161da0b
 supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
@@ -28,7 +28,7 @@ deploy; static group membership and a deploy guard prevent recurrence.
 During the 2026-07-14 deploy, the orders consumer group rebalanced 47 times
 in an hour and p99 lag climbed past 40 seconds on the orders topic. The
 incident ran three sessions: detection and triage on the 14th, mitigation on
-the 15th, retro on the 16th. Beacon's lag alert fired first (06:12 UTC).
+the 15th, retro on the 16th. [[Beacon]]'s lag alert fired first (06:12 UTC).
 
 ## Timeline
 
@@ -52,7 +52,8 @@ the 15th, retro on the 16th. Beacon's lag alert fired first (06:12 UTC).
 
 ## Decision
 
-Static group membership for Atlas consumers (decision recorded 2026-07-21)
+Static group membership for [[Atlas]] consumers (decision recorded
+2026-07-21)
 plus the deploy guard in the rollback runbook. The config lives in
 `repos/atlas/config/consumers.yaml`.
 

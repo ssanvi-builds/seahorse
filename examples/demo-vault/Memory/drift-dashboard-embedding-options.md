@@ -1,26 +1,26 @@
 ---
-id: 019f17f1-db91-7a13-a4b9-736ba2fca98c
-created_at: '2026-06-30T09:52:34.193618Z'
+id: 019f17f1-fc30-7ea8-a209-0c0e03721a55
+created_at: '2026-06-30T09:52:42.544510Z'
 schema_version: 1.0.0
 provenance:
   agent_id: consolidator
-  confidence: 0.89
+  confidence: 0.92
   extraction_mode: consolidated
   model_used: claude-sonnet-5
   prompt_hash: 5129c6440b27b22b73e19546ce10568d1aee95df26ab99e7e939a526afb3e997
-  session_id: consolidate-019f17f1-db91-79ac-9dac-3434d4ce9346
+  session_id: consolidate-019f17f1-fc30-7d2b-a4b8-f2c80e6e8e4c
   source_type: system
-supersedes: 019ecfb5-6180-701f-a945-1584309e9b1d
+supersedes: 019ecfe0-6895-73a9-ae5a-92f201ae4c81
 supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
 title: drift dashboard embedding options
-summary: "Drift embeds go through a static exporter that rebuilds dashboards every 15\nminutes, replacing the Superset-embedded setup."
+summary: "[[Drift]] embeds go through a static exporter that rebuilds dashboards every 15\nminutes, replacing the Superset-embedded setup."
 tags: []
 ---
 # drift dashboard embedding options
 
-Drift embeds go through a static exporter that rebuilds dashboards every 15
+[[Drift]] embeds go through a static exporter that rebuilds dashboards every 15
 minutes, replacing the Superset-embedded setup.
 
 ## Context

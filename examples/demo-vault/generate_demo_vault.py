@@ -9,11 +9,11 @@ Usage:  python3 generate_demo_vault.py
 
 Layout (mirrors what a real Seahorse 1.0.0 vault looks like):
 
-- ``Memory/*.md`` — everything the engine writes. 92 episodes (the
+- ``Memory/*.md`` — everything the engine writes. The episodes (the
   ``seahorse materialize --mode all`` view: agent memories, observer
-  turns, CLI corrections) plus the 8 dense notes ``seahorse consolidate``
+  turns, CLI corrections) plus the dense notes ``seahorse consolidate``
   distills from repeated session topics.
-- vault root — the human layer only: 13 hub notes imported by
+- vault root — the human layer only: the hub notes imported by
   ``seahorse frontmatter migrate`` (``created_at`` = the legacy file's
   mtime) and the hand-curated Madrid→Barcelona showcase pair.
 
@@ -506,7 +506,8 @@ for title, day, body in C.MIGRATIONS:
 # Legacy mtimes: pinned-looking times (no microseconds), one per hub.
 HUB_TIMES = ["10:15:30", "14:32:07", "09:20:44", "16:05:12", "11:48:03",
              "13:27:59", "15:10:26", "10:33:41", "12:19:08", "14:02:55",
-             "09:56:33", "11:24:17", "15:41:29"]
+             "09:56:33", "11:24:17", "15:41:29", "11:37:52", "16:22:48",
+             "10:04:19"]
 migration_session = _uuid7(MIGRATION_WHEN)
 for (name, mtime_day, body), hhmmss in zip(C.HUBS, HUB_TIMES, strict=True):
     h, m, s = (int(x) for x in hhmmss.split(":"))
@@ -584,7 +585,8 @@ grand_total = memory_total + counts["hubs"] + counts["showcase"]
 readme = f"""# Demo vault (fictional)
 
 A {grand_total}-note F3.1 demo vault, **entirely fictional** — the company
-({C.ORG}), the people, the projects (Atlas, Beacon, Cinder, Drift, Ember), and
+({C.ORG}), the people, the projects (Atlas, Beacon, Cinder, Drift, Ember,
+Herald), and
 every fact. Nothing here is real user memory. Safe for public screenshots and
 docs.
 
@@ -605,8 +607,10 @@ The vault mirrors what Seahorse 1.0.0 actually writes into a real vault:
 - Vault root — the human layer: {counts['hubs']} hub notes imported once by
   `seahorse frontmatter migrate` (their `created_at`/`valid_at` is the legacy
   file's mtime) and the hand-curated showcase pair below.
-- Supersede chains: 4 corrections (`improve`) — 30k→40k msg/s, postcode→H3,
-  90→180-day audit retention, hourly→15-minute refresh. The invalidated roots
+- Supersede chains: 7 corrections (`improve`) — 30k→40k msg/s, postcode→H3,
+  90→180-day audit retention, hourly→15-minute refresh, 30→21-day hot
+  retention, 02:00→03:30 UTC training window, Superset→static-exporter embed.
+  The invalidated roots
   keep their bodies and gain `invalid_at` — history is never rewritten.
 
 ## Showcase notes (hand-curated mirror)
@@ -638,9 +642,9 @@ browser — self-contained, no dependencies.
 
 # ------------------------------------------------------------- self-check --
 
-assert episodes_total == 92, f"expected 92 episodes, got {episodes_total}"
-assert counts["consolidated"] == 8, counts["consolidated"]
-assert grand_total == 115, grand_total
+assert episodes_total == 169, f"expected 169 episodes, got {episodes_total}"
+assert counts["consolidated"] == 18, counts["consolidated"]
+assert grand_total == 205, grand_total
 n_memory = len(list(MEMORY.glob("*.md")))
 assert n_memory == memory_total, (n_memory, memory_total)
 print(f"wrote {episodes_total} episodes + {counts['consolidated']} consolidated"

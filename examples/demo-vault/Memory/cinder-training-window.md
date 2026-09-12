@@ -1,16 +1,16 @@
 ---
-id: 019e879a-0092-749d-9325-b2a9c64b6e5c
-created_at: '2026-06-02T09:11:17.394824Z'
+id: 019e879f-ce22-727f-961b-6dcce74543a3
+created_at: '2026-06-02T09:17:37.698160Z'
 schema_version: 1.0.0
 provenance:
   agent_id: consolidator
-  confidence: 0.89
+  confidence: 0.9
   extraction_mode: consolidated
   model_used: claude-sonnet-5
   prompt_hash: b0cf3415146fccb8f6f57da89523534dc8150140ef0579bdc9bbc482eab80117
-  session_id: consolidate-019e879a-0092-7f1d-b104-8584963c6c96
+  session_id: consolidate-019e879f-ce22-7a69-a6c1-5f21546fbd10
   source_type: system
-supersedes: 019e3f80-d05d-71e1-9387-646b311085cf
+supersedes: 019e3fa8-4fb6-78c5-aa99-9db46e33aca2
 supersedes_reason: merge
 cognitive_type: semantic
 source_type: system
@@ -26,7 +26,7 @@ Cinder trains nightly at 03:30 UTC, clear of the EU batch window it used to coll
 
 The original 02:00 UTC training window collided with the EU batch window
 (02:00–03:10 UTC), and the contention degraded feature freshness for the
-EU-morning dashboards — the exact consumers Cinder exists to serve. The
+EU-morning dashboards — the exact consumers [[Cinder]] exists to serve. The
 review ran across three sessions: the collision report, the candidate
 windows, and the pick.
 
@@ -42,7 +42,8 @@ windows, and the pick.
 
 ## Decision
 
-Training runs at 03:30 UTC nightly. The schedule lives in
+Training runs at 03:30 UTC nightly ([[Priya Nair]] owns the window). The
+schedule lives in
 `repos/cinder/config/schedule.yaml`, and the batch planner output is the
 source of truth for the window boundary.
 
