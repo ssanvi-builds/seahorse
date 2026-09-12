@@ -135,6 +135,13 @@ is the same graph, interactive (zoom, pan, drag, tooltips — self-contained).
 
 ![Memory graph of a fictional demo vault](examples/demo-vault/graph.svg)
 
+And the loop on screen — a 30-second scripted demo with real CLI output
+against a disposable vault (the script is
+[examples/demo-clip/demo.tape](examples/demo-clip/demo.tape), re-renderable
+with `scripts/render-demo.sh`):
+
+![Seahorse demo clip: the agent remembers, the note lands in the vault, a correction appends, and the next session cites a design note](examples/demo-clip/demo.gif)
+
 ## The loop
 
 1. **Capture.** Hooks record every Claude Code session as episodes — skip-first,
