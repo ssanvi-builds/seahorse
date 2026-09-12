@@ -164,6 +164,19 @@ registers it in the other MCP agents (per-harness details in
 session capture as Claude Code). The vault resolves dynamically at each call —
 the vault containing the working directory, else the per-user default.
 
+| Agent | Memory tools (MCP) | Automatic session capture | Instructions installed |
+|---|---|---|---|
+| Claude Code | ✓ | ✓ hooks | ✓ |
+| Codex | ✓ | ✓ (approve hooks once) | ✓ |
+| Cursor | ✓ | — | user rule, by hand |
+| VS Code (Copilot) | ✓ | — | workspace instructions file |
+| Antigravity | ✓ | — | ✓ |
+| Gemini CLI | ✓ | — | ✓ |
+
+Every MCP-speaking agent works with a two-line config (`.mcp.json`, below) —
+the memory tools never need hooks. Capture is the piece that needs them, so it
+ships only where hooks exist.
+
 Manual alternatives, when you need them (`claude mcp add seahorse-mcp --
 seahorse-mcp` for Claude's CLI):
 
