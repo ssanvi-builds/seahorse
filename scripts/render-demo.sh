@@ -60,13 +60,13 @@ echo "Rendering tape against vault: $VAULT"
 (cd "$REPO_DIR" && vhs examples/demo-clip/demo.tape)
 
 # vhs resolves the tape's relative Output paths against the invocation CWD
-# (the repo root here).
+# (the repo root here). Always move the fresh render over $BUILD — a stale
+# artifact from a previous run must never survive a re-render (nor be what
+# the ffprobe report below measures).
 for f in demo.mp4 demo.gif; do
-  if [[ ! -f "$BUILD/$f" ]]; then
-    for src in "$REPO_DIR/$f" "$REPO_DIR/examples/demo-clip/$f"; do
-      [[ -f "$src" ]] && mv "$src" "$BUILD/$f" && break
-    done
-  fi
+  for src in "$REPO_DIR/$f" "$REPO_DIR/examples/demo-clip/$f"; do
+    [[ -f "$src" ]] && mv -f "$src" "$BUILD/$f" && break
+  done
 done
 [[ -f "$BUILD/demo.mp4" && -f "$BUILD/demo.gif" ]] || {
   echo "render failed: demo.mp4/demo.gif not found under $BUILD" >&2; exit 1; }
