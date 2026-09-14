@@ -232,7 +232,9 @@ def main(
     builds the real facade with the vault's ``seahorse.toml`` honored
     (``default_extraction_mode`` + ``top_k`` — mirroring ``cli/app.py``'s
     ``CliContext.facade()`` so the console script and the ``seahorse mcp``
-    subcommand are truly equivalent), and runs ``serve`` over stdio.
+    subcommand are truly equivalent, INCLUDING the ``vault_root`` +
+    ``materialize`` slots so MCP writes materialize F3.1 notes), and runs
+    ``serve`` over stdio.
 
     Errors are translated through the shared ``seahorse.cli.exit_codes.translate``
     module, so a missing vault exits 82 (not a traceback). Argparse usage errors
@@ -277,6 +279,12 @@ def main(
         facade, storage = build_facade(
             cfg.db_path,
             config=FacadeConfig(default_extraction_mode=mode, top_k=cfg.top_k),
+            # Wire the materializer exactly like the CLI does (CliContext.
+            # facade): without vault_root + materialize the factory builds no
+            # Materializer and MCP writes stayed DB-only while the tool
+            # description promises Memory/ notes (regression 2026-09-14).
+            vault_root=cfg.vault,
+            materialize=cfg.materialize,
         )
     except Exception as exc:  # noqa: BLE001 — translate is the fail-loud boundary (cli-owned)
         code, info = translate(exc)

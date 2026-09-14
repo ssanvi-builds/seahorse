@@ -102,6 +102,39 @@ def test_main_creates_db_and_runs_remember_recall(tmp_path) -> None:
     assert wr["ep_id"] in [r["ep_id"] for r in rows]
 
 
+def test_main_remember_materializes_note_into_memory(tmp_path) -> None:
+    """Regression (2026-09-14): the MCP composition root must wire vault_root +
+    materialize exactly like the CLI's CliContext.facade() — the remember tool
+    description promises ``Memory/`` notes, and without the wiring MCP writes
+    stayed DB-only while the vault stayed empty (live repro: this vault's own
+    Memory/ was empty until a manual backfill)."""
+    from seahorse.cli.config import MaterializeConfig, write_materialize_config
+    from seahorse.mcp.profile import main
+
+    vault = tmp_path / "vault"
+    write_default_config(vault)
+    write_materialize_config(vault, MaterializeConfig())
+
+    remember_args = {
+        "body": "# Token rotation\n\nTokens rotate every 30 days.",
+        "by": {"agent_id": "a", "session_id": "s", "source_type": "agent"},
+        "cognitive_type": "project_doc",
+    }
+    stdin = io.StringIO(
+        _line({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+               "params": {"name": "remember", "arguments": remember_args}})
+    )
+    stdout = io.StringIO()
+    code = main(["--vault", str(vault)], stdin=stdin, stdout=stdout)
+
+    assert code == 0
+    resps = _responses(stdout)
+    wr = json.loads(resps[0]["result"]["content"][0]["text"])
+    assert wr["status"] == "ACTIVE"
+    notes = list((vault / "Memory").glob("*.md"))
+    assert notes, "expected a materialized F3.1 note in Memory/"
+
+
 # ---------------------------------------------------------------------------
 # vault/db resolution reuses the CLI extension point
 # ---------------------------------------------------------------------------
