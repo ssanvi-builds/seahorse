@@ -558,7 +558,10 @@ def test_not_found_exit_88(vault):
 
 def test_no_vault_resolved_exit_82(monkeypatch, tmp_path):
     monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
-    # No global pointer either (resolve_vault falls back to it).
+    # No global pointer either (resolve_vault falls back to it). HOME too:
+    # on macOS global_config_dir() uses ~/Library/Application Support and
+    # ignores XDG_CONFIG_HOME, so a machine-level pointer leaks in otherwise.
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.chdir(tmp_path)
     code, out, err = invoke(["recall", "x"])
