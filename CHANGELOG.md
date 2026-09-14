@@ -4,6 +4,22 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-09-14
+
+### Fixed
+
+- **The MCP server materializes F3.1 notes.** The MCP composition root
+  (`seahorse.mcp.profile:main`) built its facade without the `vault_root` +
+  `materialize` slots, so writes through the MCP tools stayed DB-only and the
+  vault's `Memory/` stayed empty until a manual `seahorse materialize`
+  backfill — while the remember tool description promises "materialize as
+  vault notes in Memory/" and the CLI wired both slots all along. Regression
+  test: a remember over `main` must land an F3.1 note in `Memory/`.
+- Test isolation: the no-vault-resolution test now isolates `HOME` too — on
+  macOS the global config dir is `~/Library/Application Support` (XDG is
+  ignored), so a machine-level vault pointer leaked in and failed the suite
+  locally.
+
 ## [1.1.0] - 2026-09-11
 
 The documented vault experience is now the default one. Until 1.0, the docs
