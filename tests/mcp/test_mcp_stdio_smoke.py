@@ -230,6 +230,80 @@ def test_stdio_full_session(vault: Path) -> None:
     assert proc.returncode == 0, f"server exited {proc.returncode}:\n{proc.stderr.read()}"
 
 
+def test_stdio_recall_pit_serves_pit_listing(vault: Path) -> None:
+    # v1.3.0: recall with the loose pit_kind+pit_t pair resolves the PIT and the
+    # PIT-capable listing serves it (success, not the old -32007 refusal).
+    proc = _spawn(vault)
+    try:
+        _send(proc, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        _recv(proc)
+        _send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "remember",
+                    "arguments": {
+                        "body": "PIT listing smoke",
+                        "by": {"agent_id": "a", "session_id": "s", "source_type": "agent"},
+                    },
+                },
+            },
+        )
+        ep_id = _content(_recv(proc))["ep_id"]
+
+        # known_at BEFORE the write → the row is not known yet (empty listing).
+        _send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "recall",
+                    "arguments": {
+                        "query": "anything",
+                        "pit_kind": "known_at",
+                        "pit_t": "2000-01-01T00:00:00Z",
+                    },
+                },
+            },
+        )
+        assert _content(_recv(proc)) == []
+
+        # known_at now (a far-future t includes everything ever created).
+        _send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "recall",
+                    "arguments": {
+                        "query": "anything",
+                        "pit_kind": "known_at",
+                        "pit_t": "2099-01-01T00:00:00Z",
+                    },
+                },
+            },
+        )
+        rows = _content(_recv(proc))
+        assert ep_id in [r["ep_id"] for r in rows]
+        proc.stdin.close()
+    finally:
+        with contextlib.suppress(Exception):
+            proc.stdin.close()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    assert proc.returncode == 0, f"server exited {proc.returncode}:\n{proc.stderr.read()}"
+
+
 def test_stdio_missing_vault_exits_82(tmp_path: Path) -> None:
     proc = _spawn(tmp_path / "does-not-exist")
     proc.wait(timeout=15)
