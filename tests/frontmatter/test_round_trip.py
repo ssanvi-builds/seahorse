@@ -208,6 +208,79 @@ class TestParseRejection:
             parse_file(p, mvp="0")
 
 
+class TestUnquotedZTimestampRoundTrip:
+    """A third-party writer emits timestamps as UNQUOTED YAML timestamps with a
+    ``Z`` suffix (VESTIGIA round-trip report, 2026-09-14). The reader parses them
+    into aware ``TimeStamp`` objects and passes its own ``_reject_naive`` guard —
+    but the writer re-emitted the baseline objects naively, so the OUTPUT failed
+    Seahorse's own read guard. Contract: the writer's output ALWAYS round-trips
+    through the reader (aware-UTC ``Z`` on every timestamp), and the body +
+    ``x-*`` fields survive unchanged."""
+
+    VESTIGIA_NOTE = (
+        "---\n"
+        "id: 01234567-89ab-7def-8123-456789abcdef\n"
+        "created_at: 2026-09-03T09:14:22Z\n"
+        "valid_at: 2026-09-01T00:00:00Z\n"
+        "schema_version: 0.1.0\n"
+        "provenance: {agent_id: vestigia, session_id: v1, source_type: agent,"
+        " extraction_mode: skip}\n"
+        "x-vestigia-source: policy-rotation\n"
+        "x-vestigia-reviewer: denis\n"
+        "---\n"
+        "# Rotation policy\n\n"
+        "Token rotation ran at 09:14:22 UTC on the 3rd.\n"
+    )
+
+    @staticmethod
+    def _write_note(vault: Path) -> Path:
+        p = vault / "vestigia-note.md"
+        p.write_text(TestUnquotedZTimestampRoundTrip.VESTIGIA_NOTE)
+        return p
+
+    def test_write_unchanged_reparses_preserving_body_and_x_keys(
+        self, vault: Path
+    ) -> None:
+        p = self._write_note(vault)
+        cm, body, ep = parse_file(p)
+        assert ep.created_at.tzinfo is not None  # parse side is aware
+        assert ep.valid_at.tzinfo is not None
+
+        write_file(p, ep, body, exclude_none=True, baseline_cm=cm)
+        out = p.read_text()
+        # both timestamps are re-emitted with the Z suffix (aware-UTC canon)
+        assert "created_at: 2026-09-03T09:14:22Z" in out
+        assert "valid_at: 2026-09-01T00:00:00Z" in out
+        # x-* fields and the body survive byte-a-byte
+        assert "x-vestigia-source: policy-rotation" in out
+        assert "x-vestigia-reviewer: denis" in out
+
+        # the writer's output passes Seahorse's own read guard
+        cm2, body2, ep2 = parse_file(p)
+        assert ep2.created_at == ep.created_at
+        assert ep2.valid_at == ep.valid_at
+        assert body2 == body
+
+    def test_write_parse_write_is_byte_identical(self, vault: Path) -> None:
+        p = self._write_note(vault)
+        cm, body, ep = parse_file(p)
+        write_file(p, ep, body, exclude_none=True, baseline_cm=cm)
+        first = p.read_text()
+        cm2, body2, ep2 = parse_file(p)
+        write_file(p, ep2, body2, exclude_none=True, baseline_cm=cm2)
+        assert p.read_text() == first
+
+    def test_reparse_baseline_path_also_preserves_z(self, vault: Path) -> None:
+        # the write_file default path (baseline_cm=None → internal re-parse)
+        # must hit the same fix: the caller often has no baseline in hand.
+        p = self._write_note(vault)
+        _cm, body, ep = parse_file(p)
+        write_file(p, ep, body, exclude_none=True)
+        _cm2, _body2, ep2 = parse_file(p)  # must not raise FrontmatterInvalid
+        assert "created_at: 2026-09-03T09:14:22Z" in p.read_text()
+        assert ep2.created_at == ep.created_at
+
+
 class TestConsolidatedExtractionModeRoundTrip:
     def test_consolidated_round_trips_in_provenance(self, vault: Path) -> None:
         # A batch-distilled "stable knowledge note" carries

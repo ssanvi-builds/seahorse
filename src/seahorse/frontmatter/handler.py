@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import io
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 from frontmatter.default_handlers import BaseHandler
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.timestamp import TimeStamp
 
 
 def _make_yaml() -> YAML:
@@ -43,6 +45,8 @@ def _make_yaml() -> YAML:
     yaml.width = 4096
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.Representer.add_representer(type(None), _represent_none_explicit)
+    yaml.Representer.add_representer(TimeStamp, _represent_datetime_utc_z)
+    yaml.Representer.add_representer(datetime, _represent_datetime_utc_z)
     return yaml
 
 
@@ -50,6 +54,26 @@ def _represent_none_explicit(representer: object, data: object) -> object:
     """Emit ``None`` as the explicit scalar ``null`` (ruamel round-trip)."""
     return representer.represent_scalar(  # type: ignore[attr-defined]
         "tag:yaml.org,2002:null", "null"
+    )
+
+
+def _represent_datetime_utc_z(representer: object, data: datetime) -> object:
+    """Emit datetimes as the canonical aware-UTC ``Z`` scalar (ISO-8601).
+
+    ruamel's round-trip dumper re-emits a parsed ``TimeStamp`` from its in-memory
+    object and DROPS the offset: an input ``created_at: 2026-09-03T09:14:22Z``
+    (unquoted, third-party writer) came back naive, so the output failed
+    Seahorse's own ``_reject_naive`` read guard — the writer violated the
+    contract that its output always round-trips through its reader. Canonize to
+    UTC and emit the ``Z`` suffix (the same policy as the Episode ``_z``
+    serializer and the adapter's ``_canonical``: a naive value is treated as
+    UTC). Reparsing the scalar yields an aware ``TimeStamp`` again, so writes
+    stay idempotent.
+    """
+    aware = data if data.tzinfo is not None else data.replace(tzinfo=UTC)
+    text = aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return representer.represent_scalar(  # type: ignore[attr-defined]
+        "tag:yaml.org,2002:timestamp", text
     )
 
 
