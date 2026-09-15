@@ -481,14 +481,15 @@ def test_empty_query_exit_67(vault):
     assert "component: #12" in err
 
 
-def test_pit_on_recall_index_exit_70(vault):
+def test_pit_on_recall_index_serves_pit_listing(vault):
+    # v1.3.0: the listing regime is PIT-capable (the factory wires the repo
+    # slice) — the old E_PIT_RECALL_MVP_0 refusal (exit 70) is gone.
     code, out, err = invoke(
         ["--vault", str(vault), "recall", "x", "--pit-kind", "state_at",
          "--pit-t", "2026-01-01T00:00:00Z"]
     )
-    assert code == 70, err
-    assert "E_PIT_RECALL_MVP_0" in err
-    assert "component: #12" in err
+    assert code == 0, err
+    assert "0 results" in out
 
 
 def test_pit_requires_t_exit_69(vault):

@@ -199,14 +199,16 @@ def test_recall_empty_query_exits_67(vault: Path) -> None:
     assert _j(r.stderr)["error"]["seahorse_code"] == "E_EMPTY_QUERY"
 
 
-def test_recall_pit_exits_70(vault: Path) -> None:
+def test_recall_pit_serves_pit_listing(vault: Path) -> None:
+    # v1.3.0: the listing regime is PIT-capable (the factory wires the repo
+    # slice) — the old E_PIT_RECALL_MVP_0 refusal (exit 70) is gone.
     r = _run(
         ["recall", "q", "--pit-kind", "state_at", "--pit-t", "2026-07-01T00:00:00"],
         vault=vault,
         json_out=True,
     )
-    assert r.returncode == 70
-    assert _j(r.stderr)["error"]["seahorse_code"] == "E_PIT_RECALL_MVP_0"
+    assert r.returncode == 0, r.stderr
+    assert _j(r.stdout) == []  # the bare INDEX rows list, empty vault
 
 
 def test_improve_not_found_exits_88(vault: Path) -> None:
