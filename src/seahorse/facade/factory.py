@@ -72,11 +72,17 @@ def build_facade(
     (``HybridRetriever`` over ``seahorse.retrieval.recall`` + the write-path
     indexer) is wired when ``retrieval_available`` resolves True: an injected
     ``embedder``, or the ``embeddings`` extra importable. Otherwise the honest
-    listing regime (``VigenteListingRetriever``, no ranking/PIT, and the
-    vector/FTS repos are NEVER touched) is the default — ``uv sync --extra dev``
-    stays offline. ``retrieval_available`` overrides the auto-resolution (False
+    listing regime (``VigenteListingRetriever``, no ranking, and the vector/FTS
+    repos are NEVER touched) is the default — ``uv sync --extra dev`` stays
+    offline. ``retrieval_available`` overrides the auto-resolution (False
     forces the listing; True forces the hybrid wiring, used by tests). The same
     ``clock`` drives the engine, retriever, and facade.
+
+    PIT (v1.3.0): the listing retriever is constructed with
+    ``pit_source=own_storage.episodes`` at BOTH points (the listing regime and
+    the hybrid's fallback), so ``recall(pit=...)`` resolves bi-temporal sets
+    from the repository slice (``query_state_at`` / ``query_known_at``) — still
+    with zero vector/FTS/embedder access.
 
     The ``embedder`` slot defaults to ``StubQueryEmbedder`` in the listing
     regime (inert, ``E_NOT_IN_MVP_0`` on invocation); in the hybrid regime it is
@@ -146,7 +152,9 @@ def build_facade(
 
         vector = own_storage.vector  # lazy import: vec0 repo (sqlite-vec)
         fts = own_storage.fts  # lazy import: FTS repo
-        fallback = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
+        fallback = VigenteListingRetriever(
+            engine=engine, clock=clk, config=cfg, pit_source=own_storage.episodes
+        )
         retriever = HybridRetriever(
             embedder=query_embedder,
             vector_repo=vector,
@@ -171,7 +179,9 @@ def build_facade(
         write_path = StubWritePath(engine=engine, indexer=indexer, llm_client=llm_client)
         facade_embedder: QueryEmbedder | None = query_embedder
     else:
-        retriever = VigenteListingRetriever(engine=engine, clock=clk, config=cfg)
+        retriever = VigenteListingRetriever(
+            engine=engine, clock=clk, config=cfg, pit_source=own_storage.episodes
+        )
         write_path = StubWritePath(engine=engine, llm_client=llm_client)
         facade_embedder = embedder
     # The hybrid composition root indexes the successors of writes that bypass
