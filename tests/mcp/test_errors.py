@@ -76,6 +76,13 @@ class TestCatAEngine:
         assert resp["error"]["data"]["seahorse_code"] == "E_COLLISION_EXISTS"
         assert resp["error"]["data"]["component"] == "#2"
 
+    def test_collision_exists_message_mirrors_guidance(self) -> None:
+        # The error path (e.g. improve-into-third-episode) must carry the same
+        # fix guidance the additive COLLISION hint carries on the success path:
+        # the active same-subject episode is the target of seahorse improve.
+        resp = _err(EngineError("E_COLLISION_EXISTS", subject="s"))
+        assert 'use "seahorse improve"' in resp["error"]["message"]
+
     def test_pending_cannot_invalidate(self) -> None:
         resp = _err(EngineError("E_PENDING_CANNOT_INVALIDATE"))
         assert resp["error"]["data"]["seahorse_code"] == "E_PENDING_CANNOT_INVALIDATE"

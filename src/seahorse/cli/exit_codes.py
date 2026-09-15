@@ -194,7 +194,10 @@ _MESSAGE_BY_CODE = {
     "E_PIT_REQUIRES_T": "PIT requires t",
     "E_PIT_RECALL_MVP_0": "PIT recall not supported in the current release",
     "E_NOT_IN_MVP_0_1": "Primitive not available in the current release",
-    "E_COLLISION_EXISTS": "Collision exists",
+    "E_COLLISION_EXISTS": (
+        'Collision exists — use "seahorse improve" on the active same-subject '
+        "episode to correct it"
+    ),
     "E_PENDING_CANNOT_INVALIDATE": "PENDING cannot invalidate",
     "E_DANGLING_SUPERSEDES": "Dangling supersedes",
     "E_SKIP_CONTRACT_VIOLATED": "Skip contract violated",

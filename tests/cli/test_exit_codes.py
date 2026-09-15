@@ -235,7 +235,13 @@ def test_success_constant():
 
 def test_message_for_cat_a():
     assert message_for(SeahorseError(code="E_EMPTY_BODY", detail="x")) == "Empty body"
-    assert message_for(SeahorseError(code="E_COLLISION_EXISTS", detail="x")) == "Collision exists"
+    assert message_for(SeahorseError(code="E_EMPTY_BODY", detail="x")) == "Empty body"
+    # guidance mirror: the error path names the fix (same as the MCP message map
+    # and the COLLISION hint on the success path).
+    assert message_for(SeahorseError(code="E_COLLISION_EXISTS", detail="x")) == (
+        'Collision exists — use "seahorse improve" on the active same-subject '
+        "episode to correct it"
+    )
 
 
 def test_message_for_cat_b():

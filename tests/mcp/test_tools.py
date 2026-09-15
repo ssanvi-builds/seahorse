@@ -10,10 +10,12 @@ tests cannot provide (the structural-review lesson).
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import pytest
 
+from seahorse.contracts.engine import WriteResult
 from seahorse.disclosure.types import PITPoint
 from seahorse.facade.errors import PitRecallNotSupportedMVP0, SeahorseError
 from seahorse.facade.types import RememberPayload
@@ -136,6 +138,77 @@ class TestRememberHandler:
         )
         assert resp["error"]["code"] == -32602
         assert len(facade.remember_calls) == 0
+
+
+class TestRememberCollisionHint:
+    """Additive hint on a COLLISION remember result (1.1.0 additive-field policy).
+
+    A colliding remember is a SUCCESS on the wire (status=COLLISION, no error
+    raised), so the CLI human render's guidance cannot ride an error message —
+    it travels as an additive result field. Clean writes stay byte-identical."""
+
+    @staticmethod
+    def _colliding_facade() -> RecordingFacade:
+        facade = RecordingFacade()
+
+        @dataclass(frozen=True)
+        class _Collision:
+            kind: str
+            existing_id: str
+            fact_id: str
+
+        facade.remember_result = WriteResult(
+            ep_id=None,
+            fact_id=None,
+            status="COLLISION",
+            collisions_detected=[_Collision("concurrent", "ep-old", "fact-1")],
+        )
+        return facade
+
+    def test_collision_result_carries_hint(self) -> None:
+        facade = self._colliding_facade()
+        resp = dispatch("remember", {"body": "hi", "by": _by()}, facade, 1)
+        text = resp["result"]["content"][0]["text"]
+        obj = json.loads(text)
+        assert obj["status"] == "COLLISION"
+        assert obj["hint"] == (
+            "same-subject episode is active (ep_id ep-old); "
+            'use "seahorse improve ep-old" to correct it'
+        )
+
+    def test_collision_hint_joins_multiple_collisions(self) -> None:
+        facade = RecordingFacade()
+
+        @dataclass(frozen=True)
+        class _Collision:
+            kind: str
+            existing_id: str
+            fact_id: str
+
+        facade.remember_result = WriteResult(
+            ep_id=None,
+            fact_id=None,
+            status="COLLISION",
+            collisions_detected=[
+                _Collision("concurrent", "ep-a", "fact-1"),
+                _Collision("concurrent", "ep-b", "fact-2"),
+            ],
+        )
+        resp = dispatch("remember", {"body": "hi", "by": _by()}, facade, 1)
+        hint = json.loads(resp["result"]["content"][0]["text"])["hint"]
+        assert "ep_id ep-a" in hint
+        assert "ep_id ep-b" in hint
+
+    def test_clean_write_wire_byte_identical_no_hint(self) -> None:
+        facade = RecordingFacade()
+        resp = dispatch("remember", {"body": "hi", "by": _by()}, facade, 1)
+        obj = json.loads(resp["result"]["content"][0]["text"])
+        assert obj == {
+            "ep_id": "ep-1",
+            "fact_id": "fact-1",
+            "status": "ACTIVE",
+            "collisions_detected": [],
+        }
 
 
 # ---------------------------------------------------------------------------

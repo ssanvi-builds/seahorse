@@ -31,11 +31,36 @@ from seahorse.mcp.deserialize import (
     parse_dt,
 )
 from seahorse.mcp.errors import translate
-from seahorse.mcp.serialize import success_response
+from seahorse.mcp.serialize import success_response, to_wire
 from seahorse.mcp.validate import validate
 from seahorse.mcp.wire_schema import schema_for
 
 _RequestId = Any
+
+
+def _with_collision_hint(result: Any) -> Any:
+    """Additive ``hint`` on a COLLISION remember result (1.1.0 additive policy).
+
+    A colliding remember is a SUCCESS on the wire (``status == "COLLISION"``,
+    no error raised), so the fix guidance the CLI human render carries cannot
+    ride an error message — it travels as an additive result field, one line
+    per collision. ``existing_id`` is read via ``getattr``: ``Collision`` is
+    engine-internal and does not cross the contracts frontier (no import).
+    Non-collision results pass through untouched — the clean write's wire
+    shape is byte-identical to before.
+    """
+    if getattr(result, "status", None) != "COLLISION":
+        return result
+    lines = [
+        f"same-subject episode is active (ep_id {existing_id}); "
+        f'use "seahorse improve {existing_id}" to correct it'
+        for c in getattr(result, "collisions_detected", []) or []
+        if (existing_id := getattr(c, "existing_id", None))
+    ]
+    wire = to_wire(result)
+    if lines:
+        wire["hint"] = "\n".join(lines)
+    return wire
 
 
 def _resolve_pit(facade: MemoryFacade, args: dict[str, Any], *, t_field: str) -> Any:
@@ -63,7 +88,7 @@ def handle_remember(facade: MemoryFacade, args: dict[str, Any], request_id: _Req
         skip_extraction=args.get("skip_extraction"),
         extraction_mode=args.get("extraction_mode"),
     )
-    return success_response(request_id, result)
+    return success_response(request_id, _with_collision_hint(result))
 
 
 def handle_recall(facade: MemoryFacade, args: dict[str, Any], request_id: _RequestId) -> dict:
