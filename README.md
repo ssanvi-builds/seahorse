@@ -214,7 +214,7 @@ and mirrored on the CLI — memory primitives, not generic CRUD: the agent calls
 | Primitive | What it does |
 |-----------|--------------|
 | `remember` | Record an episode (body, source, optional title/subject). |
-| `recall` | INDEX level — the current-state listing, clamped to `top_k`. |
+| `recall` | INDEX level — the current-state listing, clamped to `top_k`. Accepts `--pit-kind state_at\|known_at --pit-t <t>` for a point-in-time listing (no ranking). |
 | `recall_timeline` | TIMELINE level — the supersedes chain around an anchor episode. |
 | `recall_full` | FULL level — the hydrated episode with all provenance. |
 | `improve` | Supersede an episode with a corrected one (append-only). |
@@ -238,6 +238,7 @@ seahorse remember "deployed the API behind auth" --title deploy
 seahorse improve <ep_id> "deployed the API behind oauth" --reason correction
 seahorse forget <ep_id> --reason done
 seahorse recall "what did we decide about the API design?"
+seahorse recall "deploy" --pit-kind state_at --pit-t 2026-09-03   # what was in force that day
 seahorse observe status              # capture worker state
 seahorse consolidate                 # batch-distill episodes into a note
 seahorse materialize                 # backfill distilled notes into Memory/
