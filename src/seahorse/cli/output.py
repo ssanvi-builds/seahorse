@@ -107,7 +107,15 @@ def _truncate(text: str, limit: int = 48) -> str:
 
 
 def render_write_result(result: WriteResult, fmt: OutputFormat, out: TextIO) -> None:
-    """``remember`` output: ``WriteResult`` (no Episode in the current release)."""
+    """``remember`` output: ``WriteResult`` (no Episode in the current release).
+
+    Human format: a COLLISION was NOT appended, so it renders with ✗ (never ✓)
+    plus one actionable line per collision — situation, the existing episode's
+    id, and the fix (house message style: observe/endpoint.py). ``existing_id``
+    is read via ``getattr`` because ``Collision`` is engine-internal and does
+    not cross the contracts frontier (no import, duck-typed member access).
+    JSON/JSONL are frozen (1.1.0 additive policy): the hint is human-only.
+    """
     if fmt == "json":
         out.write(to_json(result) + "\n")
         return
@@ -115,6 +123,20 @@ def render_write_result(result: WriteResult, fmt: OutputFormat, out: TextIO) -> 
         out.write(to_json(result) + "\n")
         return
     # human
+    if result.status == "COLLISION":
+        out.write("✗ Collision — the write was NOT appended\n")
+        for c in result.collisions_detected:
+            existing_id = getattr(c, "existing_id", None)
+            if existing_id:
+                out.write(
+                    f"  same-subject episode is active (ep_id {existing_id}); "
+                    f'use "seahorse improve {existing_id}" to correct it\n'
+                )
+        out.write(f"  fact_id:    {result.fact_id or '-'}\n")
+        out.write(f"  ep_id:      {result.ep_id or '-'}\n")
+        out.write(f"  status:     {result.status}\n")
+        out.write(f"  collisions: {len(result.collisions_detected)}\n")
+        return
     out.write("✓ Remembered\n")
     out.write(f"  fact_id:    {result.fact_id or '-'}\n")
     out.write(f"  ep_id:      {result.ep_id or '-'}\n")

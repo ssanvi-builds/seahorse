@@ -8,8 +8,10 @@ Owned by the CLI (sister-projection independence): it does NOT import
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from seahorse.cli.output import (
     render_audit_log,
@@ -135,6 +137,79 @@ def test_render_write_result_json():
     obj = json.loads("".join(out))
     assert obj["ep_id"] == "ep-1"
     assert obj["status"] == "ACTIVE"
+
+
+def test_render_write_result_human_collision_no_checkmark():
+    """A COLLISION write was NOT appended — success styling (✓) would lie."""
+    collision = SimpleNamespace(kind="concurrent", existing_id="ep-old", fact_id="fact-1")
+    out = []
+    render_write_result(
+        WriteResult(None, None, "COLLISION", [collision]), "human", _Sink(out)
+    )
+    text = "".join(out)
+    assert "✓" not in text
+    assert "COLLISION" in text
+
+
+def test_render_write_result_human_collision_hint_names_existing_and_fix():
+    """House message style (observe/endpoint.py): situation + real value + fix."""
+    collision = SimpleNamespace(kind="concurrent", existing_id="ep-old", fact_id="fact-1")
+    out = []
+    render_write_result(
+        WriteResult(None, None, "COLLISION", [collision]), "human", _Sink(out)
+    )
+    text = "".join(out)
+    assert "same-subject episode is active (ep_id ep-old)" in text
+    assert 'use "seahorse improve ep-old"' in text
+
+
+def test_render_write_result_human_collision_one_hint_per_collision():
+    collisions = [
+        SimpleNamespace(kind="concurrent", existing_id="ep-a", fact_id="fact-1"),
+        SimpleNamespace(kind="concurrent", existing_id="ep-b", fact_id="fact-2"),
+    ]
+    out = []
+    render_write_result(WriteResult(None, None, "COLLISION", collisions), "human", _Sink(out))
+    text = "".join(out)
+    assert "ep_id ep-a" in text
+    assert "ep_id ep-b" in text
+
+
+def test_render_write_result_human_collision_hint_tolerates_untyped_member():
+    # Duck-typed getattr: a collisions_detected entry without existing_id
+    # renders the status without a hint line instead of crashing.
+    out = []
+    render_write_result(
+        WriteResult(None, None, "COLLISION", [{"kind": "concurrent"}]),
+        "human",
+        _Sink(out),
+    )
+    text = "".join(out)
+    assert "COLLISION" in text
+    assert "seahorse improve" not in text
+
+
+def test_render_write_result_json_collision_frozen_shape():
+    # JSON/JSONL are frozen (1.1.0 policy): the hint is human-only. The member
+    # is a dataclass with Collision's shape (engine-internal type, not imported).
+    @dataclass(frozen=True)
+    class _Collision:
+        kind: str
+        existing_id: str
+        fact_id: str
+
+    out = []
+    render_write_result(
+        WriteResult(None, None, "COLLISION", [_Collision("concurrent", "ep-old", "fact-1")]),
+        "json",
+        _Sink(out),
+    )
+    obj = json.loads("".join(out))
+    assert obj["status"] == "COLLISION"
+    assert obj["collisions_detected"] == [
+        {"kind": "concurrent", "existing_id": "ep-old", "fact_id": "fact-1"}
+    ]
+    assert "hint" not in obj
 
 
 # ---------------------------------------------------------------------------
