@@ -126,6 +126,21 @@ for full-text) and `seahorse materialize` publishes distilled notes to
 `Memory/` as F3.1 markdown (`--mode all`: every episode) — the human edits
 the same notes. Format spec: [docs/f3.1-format.md](docs/f3.1-format.md).
 
+### Materialization modes
+
+`mode` selects which episodes are published as notes:
+
+| `mode` | What it materializes |
+|--------|----------------------|
+| `consolidated` (default) | Consolidated knowledge notes (the `consolidate` distillations) and project notes (`project_doc`) — the distilled knowledge, not the session noise. |
+| `all` | Every currently-valid episode. |
+| `off` | Nothing; the vault stays a pure read surface. |
+
+Configure it in the vault's `seahorse.toml` (`[materialize] mode = ...`) or
+override a single run with `seahorse materialize --mode all`. Skipped notes
+report why, with the fix inline (e.g. `mode_filter — run with --mode all to
+include it`). Format spec: [docs/f3.1-format.md](docs/f3.1-format.md).
+
 And this is what the memory graph of a vault looks like — a fictional demo
 vault ([examples/demo-vault/](examples/demo-vault/), 205 F3.1 notes: 169
 episodes, 18 ringed `consolidate` notes in `Memory/`, 18 human notes —

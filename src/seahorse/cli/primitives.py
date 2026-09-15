@@ -475,6 +475,36 @@ def run_consolidate(
 # materialize
 # ---------------------------------------------------------------------------
 
+# Materialize skip/collision reason token → human explanation. The raw token
+# stays in the output (greppable) and the JSON payload is untouched (frozen
+# wire, 1.1.0 policy): this map only decorates the human render. The
+# materializer is not involved — tests/frontmatter/test_materialize.py pins
+# the tokens at the source.
+_MATERIALIZE_REASON_HINTS: dict[str, str] = {
+    "mode_off": (
+        "materialization is off — run with --mode consolidated or --mode all to enable"
+    ),
+    "mode_filter": (
+        "the current mode (consolidated) keeps only distillable types — "
+        "run with --mode all to include it"
+    ),
+    "no_subject": "the episode has no derived subject (no title or H1), so it cannot be named",
+    "already_materialized": "the note is already current for this episode (idempotent re-run)",
+    "slug_and_id8_taken": "a different episode already owns the target note (frontmatter-id guard)",
+}
+
+
+def _materialize_reason(reason: str | None) -> str:
+    """Human form of a materialize reason: the raw token plus the actionable
+    explanation when the token is a policy skip; unknown tokens (error
+    reasons are exception strings) pass through verbatim."""
+    if reason is None:
+        return "-"
+    hint = _MATERIALIZE_REASON_HINTS.get(reason)
+    if hint is None:
+        return reason
+    return f"{reason} — {hint}"
+
 
 def run_materialize(
     config: SeahorseConfig,
@@ -527,14 +557,15 @@ def run_materialize(
     if fmt == "human":
         if report.items:
             for item in report.items:
+                reason = _materialize_reason(item.reason)
                 if item.status == "written":
                     out.write(f"materialized: {item.ep_id} -> {item.path}\n")
                 elif item.status == "skipped":
-                    out.write(f"skipped: {item.ep_id} ({item.reason})\n")
+                    out.write(f"skipped: {item.ep_id} ({reason})\n")
                 elif item.status == "collision":
-                    out.write(f"collision: {item.ep_id} ({item.reason})\n")
+                    out.write(f"collision: {item.ep_id} ({reason})\n")
                 else:
-                    out.write(f"error: {item.ep_id} ({item.reason})\n")
+                    out.write(f"error: {item.ep_id} ({reason})\n")
         else:
             out.write("materialize: no currently-valid episodes to materialize\n")
     else:

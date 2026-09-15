@@ -148,6 +148,38 @@ def test_materialize_no_episodes(tmp_path) -> None:
     assert "no currently-valid episodes" in out.getvalue()
 
 
+def test_materialize_human_skip_explains_mode_filter(tmp_path) -> None:
+    """A consolidated-mode skip is readable: the greppable token stays and the
+    line names the actionable override (--mode all)."""
+    v = tmp_path / "vault"
+    cfg = _config(v)
+    _seed_episodes(v)
+    out = _out()
+    run_materialize(cfg, fmt="human", out=out)
+    text = out.getvalue()
+    assert "skipped:" in text
+    assert "mode_filter" in text  # the token survives (greppable)
+    assert "--mode all" in text  # the explanation names the fix
+
+
+def test_materialize_json_keeps_raw_reason_tokens(tmp_path) -> None:
+    """The JSON payload is frozen (1.1.0 policy): raw reason tokens only."""
+    v = tmp_path / "vault"
+    cfg = _config(v)
+    _seed_episodes(v)
+    out = _out()
+    run_materialize(cfg, fmt="json", out=out)
+    import json
+
+    payload = json.loads(out.getvalue())
+    reasons = {i["reason"] for i in payload["items"]}
+    assert "mode_filter" in reasons
+    for reason in reasons:
+        if reason is None:  # written items carry no reason
+            continue
+        assert " " not in reason and "—" not in reason  # raw tokens, no prose
+
+
 def test_materialize_json_output(tmp_path) -> None:
     """``--format json`` emits a structured payload."""
     v = tmp_path / "vault"
