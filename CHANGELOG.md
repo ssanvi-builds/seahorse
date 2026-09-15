@@ -4,6 +4,52 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-15
+
+The first-external-user feedback sprint: a third-party writer round-trip bug,
+and three friction points from real use, each shipped as its own commit.
+F3.1 and the MCP profile stay frozen at 1.0 (descriptions and additive result
+fields only).
+
+### Fixed
+
+- **F3.1 timestamp round-trip (external report, VESTIGIA 2026-09-14).** A
+  third-party writer emitting timestamps as unquoted YAML timestamps with a
+  `Z` suffix round-tripped through `parse_file` → `write_file` as a NAIVE
+  timestamp — the output failed Seahorse's own `_reject_naive` read guard,
+  breaking the contract that the writer's output always round-trips through
+  its reader. The round-trip representer now canonizes to aware-UTC `Z` on
+  every emitted timestamp (same policy as the Episode `_z` serializer); writes
+  stay byte-identical after the first canonicalization, body and `x-*` fields
+  untouched. This unblocks third-party canonical promotion.
+
+### Added
+
+- **COLLISION tells you the fix.** The human `remember` render prints one line
+  per collision naming the active same-subject episode and the `seahorse
+  improve` command (house message style: situation + real value + fix). The
+  MCP `remember` gains an additive `hint` result field on COLLISION results
+  (colliding remembers are successes on the wire, not errors — the guidance
+  cannot ride an error message); clean writes are byte-identical. The
+  `E_COLLISION_EXISTS` error path (improve-into-third-episode) mirrors the
+  same guidance in both the MCP and CLI message maps. `Collision` stays
+  engine-internal (read via `getattr`, never imported across the contracts
+  frontier). JSON/JSONL frozen.
+- **`setup --no-observer`** — hooks consent: skip the capture hook merge, the
+  `[observe]` config and starting the observer (SKIP row, like `--no-mcp`);
+  `[materialize]` + the global pointer still install, `--auto-consolidate` is
+  its own explicit consent, the codex hooks skip too (same consent category),
+  and uninstall stays symmetric. The default-path summary is loud about what
+  it wrote: "wrote 4 hooks to <path> — opt out with --no-observer".
+
+### Changed
+
+- **Materialize skips are readable.** The human render decorates bare reason
+  tokens (`mode_filter`, `mode_off`, …) with the actionable explanation while
+  keeping the token greppable; the JSON payload stays frozen (raw tokens
+  only) and the materializer is untouched. README gains a "Materialization
+  modes" subsection.
+
 ## [1.1.1] - 2026-09-14
 
 ### Fixed
