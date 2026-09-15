@@ -15,6 +15,7 @@ from pathlib import Path
 
 from seahorse.cli.config import load_config, write_default_config
 from seahorse.cli.setup import (
+    CONSOLIDATE_HOOK_MARKER,
     HOOK_MARKER,
     discover_obsidian_vaults,
     ensure_vault,
@@ -317,6 +318,94 @@ def test_run_setup_registers_global_pointer(tmp_path, monkeypatch) -> None:
     pointer = tmp_path / "xdg" / "seahorse" / "vault"
     assert pointer.is_file()
     assert Path(pointer.read_text().strip()) == vault.resolve()
+
+
+# ---------------------------------------------------------------------------
+# --no-observer — hook consent (skip hooks + [observe], keep the rest)
+# ---------------------------------------------------------------------------
+
+
+def test_run_setup_human_output_is_loud_about_hooks(tmp_path, monkeypatch) -> None:
+    """The default path merges hooks into the user's settings — the summary
+    says exactly what was written and how to opt out (informed consent)."""
+    vault = _cfg(tmp_path)
+    settings = _settings_path(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    _isolate_global_config(monkeypatch, tmp_path)
+    import io
+
+    out = io.StringIO()
+    run_setup(vault, settings_path=settings, fmt="human", out=out)
+    text = out.getvalue()
+    assert "wrote 4 hooks" in text  # len(_OBSERVER_HOOKS) events
+    assert "--no-observer" in text
+
+
+def test_run_setup_no_observer_skips_hooks_and_observe_config(
+    tmp_path, monkeypatch
+) -> None:
+    """--no-observer: no hook merge, no [observe] section, no observer start —
+    but [materialize] + the global pointer still install (the rest of setup)."""
+    vault = _cfg(tmp_path)
+    settings = _settings_path(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    _isolate_global_config(monkeypatch, tmp_path)
+    import io
+
+    out = io.StringIO()
+    run_setup(vault, settings_path=settings, fmt="human", out=out, no_observer=True)
+    cfg = load_config(vault)
+    assert cfg.observe is None  # [observe] NOT written
+    assert cfg.materialize is not None  # [materialize] still installs
+    assert not Path(settings).exists()  # hooks NOT merged
+    pointer = tmp_path / "xdg" / "seahorse" / "vault"  # pointer still registers
+    assert pointer.is_file()
+    text = out.getvalue()
+    assert "--no-observer" in text  # the opt-out is named back
+    assert "wrote 4 hooks" not in text
+
+
+def test_run_setup_no_observer_consolidate_hook_still_opted_in(
+    tmp_path, monkeypatch
+) -> None:
+    """--auto-consolidate is its own explicit consent: its Stop hook merges
+    even under --no-observer, while the observer hooks stay skipped."""
+    vault = _cfg(tmp_path)
+    settings = _settings_path(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    _isolate_global_config(monkeypatch, tmp_path)
+    import io
+
+    run_setup(
+        vault,
+        settings_path=settings,
+        fmt="human",
+        out=io.StringIO(),
+        no_observer=True,
+        auto_consolidate=True,
+    )
+    with open(settings, encoding="utf-8") as fh:
+        data = json.load(fh)
+    stop_commands = [
+        c for h in data["hooks"]["Stop"] for c in _commands(h)
+    ]
+    assert any(CONSOLIDATE_HOOK_MARKER in c for c in stop_commands)
+    assert not any(HOOK_MARKER in c for c in stop_commands)  # observer hooks absent
+    cfg = load_config(vault)
+    assert cfg.observe is None
+
+
+def test_uninstall_after_no_observer_setup_is_safe_noop(tmp_path, monkeypatch) -> None:
+    """Uninstall is symmetric by construction: with no hooks ever merged it is
+    a no-op per surface, not a crash."""
+    import io
+
+    vault = _cfg(tmp_path)
+    settings = _settings_path(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    _isolate_global_config(monkeypatch, tmp_path)
+    run_setup(vault, settings_path=settings, fmt="human", out=io.StringIO(), no_observer=True)
+    run_setup_uninstall(vault, settings_path=settings, fmt="human", out=io.StringIO())
 
 
 # ---------------------------------------------------------------------------

@@ -302,6 +302,7 @@ def run_setup(
     fmt: OutputFormat = "human",
     out: TextIO,
     auto_consolidate: bool = False,
+    no_observer: bool = False,
 ) -> None:
     """Install the observer + materialization: config sections + Claude Code hooks.
 
@@ -311,7 +312,10 @@ def run_setup(
     settings. Both config writes are idempotent appends: a present section is
     preserved (the user's config wins). ``auto_consolidate`` additionally
     writes the ``[consolidate]`` section and merges the consolidate-on-stop
-    hook.
+    hook. ``no_observer`` is the hooks-consent path: no hook merge and no
+    ``[observe]`` section — ``[materialize]`` and the global pointer still
+    install (they only affect the vault's own layout). The consolidate hook
+    is its own explicit consent (``--auto-consolidate``) and still merges.
     """
     from seahorse.cli.config import (
         ConsolidateConfig,
@@ -320,24 +324,33 @@ def run_setup(
         write_materialize_config,
     )
 
-    write_observe_config(vault)
+    if not no_observer:
+        write_observe_config(vault)
     write_materialize_config(vault, MaterializeConfig())
     if auto_consolidate:
         write_consolidate_config(vault, ConsolidateConfig(auto_on_stop=True))
     write_global_pointer(vault)
     settings = Path(settings_path) if settings_path is not None else _default_settings_path()
-    hook_command = f"{sys.executable} -m seahorse.cli.app observe event"
-    merge_hooks(settings, hook_command=hook_command)
+    if not no_observer:
+        hook_command = f"{sys.executable} -m seahorse.cli.app observe event"
+        merge_hooks(settings, hook_command=hook_command)
     if auto_consolidate:
         consolidate_command = (
             f"{sys.executable} -m seahorse.cli.app consolidate --auto"
         )
         merge_consolidate_hook(settings, hook_command=consolidate_command)
     if fmt == "human":
-        out.write(
-            "seahorse setup: observer installed "
-            f"(hooks merged into {settings}, [observe] + [materialize] config written)\n"
-        )
+        if no_observer:
+            out.write(
+                "seahorse setup: hooks skipped (--no-observer) — "
+                "[materialize] config written, global pointer registered\n"
+            )
+        else:
+            out.write(
+                f"seahorse setup: observer installed — wrote "
+                f"{len(_OBSERVER_HOOKS)} hooks to {settings}, [observe] + "
+                "[materialize] config written — opt out with --no-observer\n"
+            )
 
 
 def run_setup_uninstall(

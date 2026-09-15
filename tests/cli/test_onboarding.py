@@ -166,6 +166,36 @@ class TestRunFullSetup:
         assert not paths["claude_json"].exists()
         assert not paths["claude_md"].exists()
 
+    def test_no_observer_flag_skips_hooks_and_observer_start(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        """--no-observer: hooks consent — no hook merge, no [observe] config,
+        no observer start (SKIP row, like --no-mcp); the rest of setup proceeds."""
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths, no_observer=True)
+        by_name = {c["check"]: c["status"] for c in checks}
+        assert by_name["observer"] == "SKIP"
+        assert by_name["capture"] == "OK"  # [materialize] + pointer still install
+        assert by_name["mcp:claude-code"] == "OK"
+        assert by_name["agent_instructions"] == "OK"
+        cfg = load_config(vault)
+        assert cfg.observe is None
+        assert cfg.materialize is not None
+        assert not paths["settings"].exists()  # no hooks merged
+        assert len(no_observer) == 0  # the observer was never started
+
+    def test_no_observer_flag_skips_codex_hooks_too(
+        self, tmp_path, monkeypatch, no_observer, llm_skipped
+    ) -> None:
+        """Codex hooks install the SAME capture command — the same consent
+        category, so --no-observer skips them too (SKIP row, not silent)."""
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths, no_observer=True, harnesses=("codex",))
+        by_name = {c["check"]: c["status"] for c in checks}
+        assert by_name["codex_hooks"] == "SKIP"
+
     def test_smoke_test_row_guides_per_harness(
         self, tmp_path, monkeypatch, no_observer, llm_skipped
     ) -> None:

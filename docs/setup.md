@@ -16,6 +16,7 @@ nothing duplicates.
 | `--vault <path>` | Use (and bootstrap) this vault instead of resolution. |
 | `--harness <ids>` | Comma-separated MCP destinations (default `claude-code`). See [connect.md](connect.md). |
 | `--no-mcp` | Skip the user-scope MCP registration. |
+| `--no-observer` | Hooks consent: skip the capture hook merge, the `[observe]` config and starting the observer (the rest of setup proceeds). |
 | `--no-agent-instructions` | Skip the instructions blocks (per harness). |
 | `--no-skills` | Skip installing the packaged agent skills. |
 | `--skip-llm` | Skip provider detection + live self-test. |

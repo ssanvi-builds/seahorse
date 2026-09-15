@@ -957,6 +957,14 @@ def setup(
     no_mcp: bool = typer.Option(
         False, "--no-mcp", help="Skip the user-scope MCP registration."
     ),
+    no_observer: bool = typer.Option(
+        False,
+        "--no-observer",
+        help=(
+            "Hooks consent: skip the capture hook merge, the [observe] config "
+            "and starting the observer (the rest of setup proceeds)."
+        ),
+    ),
     no_agent_instructions: bool = typer.Option(
         False,
         "--no-agent-instructions",
@@ -1020,6 +1028,7 @@ def setup(
         fmt=ctx.obj.fmt,
         out=_out(ctx),
         no_mcp=no_mcp,
+        no_observer=no_observer,
         no_agent_instructions=no_agent_instructions,
         no_skills=no_skills,
         skip_llm=skip_llm,

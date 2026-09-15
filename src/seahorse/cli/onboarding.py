@@ -6,12 +6,13 @@ The contract (ADR: one command, everything configured, exit 0 always):
    dir when nothing resolves without a TTY).
 2. DB created eagerly (migrations applied — no cold-start surprise on the
    first capture).
-3. ``[observe]`` + ``[materialize]`` config written (idempotent).
+3. ``[observe]`` + ``[materialize]`` config written (idempotent); the
+   ``[observe]`` write is skipped by ``--no-observer``.
 4. ``[consolidate]`` config written when ``--auto-consolidate``.
 5. Observer hooks merged into Claude Code settings (+ consolidate-on-stop
-   hook when opted in).
+   hook when opted in) — skipped by ``--no-observer`` (hooks consent).
 6. Global pointer written.
-7. Observer started (already running = fine).
+7. Observer started (already running = fine) — skipped by ``--no-observer``.
 8. MCP server registered user-scope (``--no-mcp`` to skip).
 9. Agent instructions block installed per harness (each harness's global
    instruction file — CLAUDE.md / AGENTS.md / GEMINI.md; SKIP for harnesses
@@ -58,6 +59,7 @@ def run_full_setup(
     fmt: OutputFormat = "human",
     out: TextIO,
     no_mcp: bool = False,
+    no_observer: bool = False,
     no_agent_instructions: bool = False,
     no_skills: bool = False,
     skip_llm: bool = False,
@@ -117,7 +119,10 @@ def run_full_setup(
             fmt="human",
             out=buf,
             auto_consolidate=auto_consolidate,
+            no_observer=no_observer,
         )
+        if no_observer:
+            return "[materialize] config installed (hooks skipped — --no-observer)"
         return "hooks + [observe] + [materialize] config installed"
 
     def _observer() -> str:
@@ -176,7 +181,10 @@ def run_full_setup(
     step("vault", lambda: str(vault))
     step("db", _db)
     step("capture", _config_and_hooks)
-    step("observer", _observer)
+    if no_observer:
+        checks.append({"check": "observer", "status": _SKIP, "detail": "--no-observer"})
+    else:
+        step("observer", _observer)
     if auto_consolidate:
         step("consolidate", _consolidate)
     if not no_mcp:
@@ -222,19 +230,25 @@ def run_full_setup(
     # ~/.codex/hooks.json — automatic capture + SessionStart bootstrap for
     # codex (independent of --no-agent-instructions: it is capture, not text).
     if "codex" in harnesses:
+        if no_observer:
+            # The codex hooks install the SAME capture command — the same
+            # consent category as the Claude Code hooks, so --no-observer
+            # skips them too (a SKIP row, never silent).
+            checks.append({"check": "codex_hooks", "status": _SKIP, "detail": "--no-observer"})
+        else:
 
-        def _codex_hooks_step() -> str:
-            ok, detail = merge_codex_hooks(
-                codex_hooks_path(),
-                hook_command=(
-                    f"{sys.executable} -m seahorse.cli.app observe event --agent-id codex"
-                ),
-            )
-            if not ok:
-                raise RuntimeError(detail)
-            return detail
+            def _codex_hooks_step() -> str:
+                ok, detail = merge_codex_hooks(
+                    codex_hooks_path(),
+                    hook_command=(
+                        f"{sys.executable} -m seahorse.cli.app observe event --agent-id codex"
+                    ),
+                )
+                if not ok:
+                    raise RuntimeError(detail)
+                return detail
 
-        step("codex_hooks", _codex_hooks_step)
+            step("codex_hooks", _codex_hooks_step)
     if not no_skills and claude_selected:
         step("skills", _skills)
     elif not claude_selected:

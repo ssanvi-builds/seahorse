@@ -130,6 +130,20 @@ def test_setup_passes_no_skills_flag(tmp_path, monkeypatch) -> None:
     assert captured["harnesses"] == ("claude-code",)
 
 
+def test_setup_passes_no_observer_flag(tmp_path, monkeypatch) -> None:
+    """``setup --no-observer`` reaches run_full_setup (option wiring, not TUI)."""
+    captured: dict = {}
+
+    def fake_run_full_setup(vault, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("seahorse.cli.onboarding.run_full_setup", fake_run_full_setup)
+    code, _, err = invoke(["setup", "--vault", str(tmp_path / "v"), "--no-observer"])
+    assert code == 0, err
+    assert captured["no_observer"] is True
+
+
 def test_setup_harness_flag_parses_multi_and_validates(
     tmp_path, monkeypatch
 ) -> None:
