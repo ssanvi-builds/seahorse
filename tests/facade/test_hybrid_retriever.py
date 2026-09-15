@@ -161,3 +161,70 @@ def test_hybrid_degrades_to_g2_on_embedder_runtime_failure(monkeypatch) -> None:
     result = hybrid.recall("madrid", pit=None, k=5)
     assert fallback.calls == [("madrid", 5)]
     assert result == []
+
+
+class _PitCapableFallback:
+    """A listing fallback wired with the repo slice (the v1.3.0 factory shape)."""
+
+    supports_pit = True
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def recall(self, query, *, pit=None, k=10, cognitive_type=None, subject_filter=None):
+        self.calls.append(
+            {"pit": pit, "k": k, "cognitive_type": cognitive_type, "subject_filter": subject_filter}
+        )
+        return []
+
+
+class TestPitDegrade:
+    """The degrade serves PIT when the fallback is PIT-capable (v1.3.0).
+
+    A hybrid install with an empty index used to REFUSE a caller pit from the
+    degrade path (E_PIT_RECALL_MVP0) even though the listing fallback could
+    serve it — the same pain the listing regime had, one level up. Now _g2
+    delegates the pit verbatim to a PIT-capable fallback; the raise remains
+    only for a genuinely PIT-less fallback.
+    """
+
+    def test_degrade_with_pit_capable_fallback_serves_pit(self) -> None:
+        from seahorse.disclosure.types import PITPoint
+
+        pit = PITPoint(
+            kind="state_at", t=datetime(2026, 5, 1, tzinfo=UTC)
+        )
+        fallback = _PitCapableFallback()
+        hybrid = _make(vec_count=0, fts_count=0, fallback=fallback)
+        hybrid.recall("madrid", pit=pit, k=5, cognitive_type="semantic", subject_filter="S")
+        assert fallback.calls == [
+            {"pit": pit, "k": 5, "cognitive_type": "semantic", "subject_filter": "S"}
+        ]
+
+    def test_degrade_runtime_failure_with_pit_capable_fallback_serves_pit(
+        self, monkeypatch
+    ) -> None:
+        from seahorse.disclosure.types import PITPoint
+
+        def boom(query: str, **kwargs):
+            raise RuntimeError("onnx session unavailable")
+
+        import seahorse.retrieval.engine as re_mod
+
+        monkeypatch.setattr(re_mod, "recall", boom)
+        pit = PITPoint(kind="known_at", t=datetime(2026, 5, 1, tzinfo=UTC))
+        fallback = _PitCapableFallback()
+        hybrid = _make(fallback=fallback)
+        hybrid.recall("madrid", pit=pit, k=5)
+        assert fallback.calls[0]["pit"] is pit  # verbatim, never synthesized
+
+    def test_degrade_with_pit_less_fallback_still_refuses_pit(self) -> None:
+        import pytest
+
+        from seahorse.disclosure.types import PITPoint
+        from seahorse.facade.errors import PitRecallNotSupportedMVP0
+
+        pit = PITPoint(kind="state_at", t=datetime(2026, 5, 1, tzinfo=UTC))
+        hybrid = _make(vec_count=0, fts_count=0, fallback=_Fallback())
+        with pytest.raises(PitRecallNotSupportedMVP0):
+            hybrid.recall("madrid", pit=pit, k=5)

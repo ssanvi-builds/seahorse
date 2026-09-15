@@ -387,12 +387,13 @@ class MemoryFacade:
 
         Boundary validation only: ``query`` non-empty; PIT is refused before
         any read UNLESS the injected retriever declares ``supports_pit`` (the
-        later-release ``HybridRetriever`` — PIT routing is hybrid retrieval's
-        job; the PIT axes are never mixed). The ranking/listing policy is
-        delegated to the injected ``Retriever`` (extension point); the retriever
-        produces ``FusedCandidate`` and the facade forwards the (possibly PIT)
-        candidates to ``materialize_index``. The facade NEVER constructs
-        ``IndexRow``. ``session_boost`` (default-OFF) is the two-stage seam's
+        pit is forwarded verbatim; the PIT axes are never mixed). Since v1.3.0
+        the listing regime is PIT-capable too (the factory wires the repository
+        slice). The ranking/listing policy is delegated to the injected
+        ``Retriever`` (extension point); the retriever produces
+        ``FusedCandidate`` and the facade forwards the (possibly PIT) candidates
+        to ``materialize_index``. The facade NEVER constructs ``IndexRow``.
+        ``session_boost`` (default-OFF) is the two-stage seam's
         session-restricted re-rank — DISABLED by default (the authoritative
         LMEB-S run proved it net-harmful: 0.424 vs 0.533 pure RRF); the
         benchmark passes False explicitly to measure the pure-RRF baseline.

@@ -5,8 +5,11 @@ with the real hybrid engine. It serves the hybrid path when there is something
 to serve (vec0/FTS data + a real embedder) and honestly degrades to the
 injected listing ``VigenteListingRetriever`` otherwise (the motor keeps working
 without ranking). ``supports_pit`` is True — PIT routing is hybrid retrieval's
-job; if the degrade path receives a pit it refuses (the listing regime has no
-PIT axis).
+job. Since v1.3.0 the degrade serves a caller pit too: the factory wires the
+repository slice into the fallback, so ``_g2`` delegates the pit verbatim to a
+PIT-capable fallback (a hybrid install with an empty index keeps serving
+bi-temporal listings); the ``E_PIT_RECALL_MVP_0`` refusal remains only for a
+genuinely PIT-less fallback.
 """
 
 from __future__ import annotations
@@ -151,10 +154,15 @@ class HybridRetriever:
         cognitive_type: str | None,
         subject_filter: str | None,
     ) -> Sequence[FusedCandidate]:
-        if pit is not None:
-            raise PitRecallNotSupportedMVP0()  # the listing regime has no PIT axis
+        # v1.3.0: the factory wires the repository slice into the fallback, so a
+        # degrade with a caller pit serves the PIT listing instead of refusing
+        # it (the same pain the listing regime had, one level up — a hybrid
+        # install with an empty index). The raise remains only for a genuinely
+        # PIT-less fallback (E_PIT_RECALL_MVP_0 keeps its fail-loud contract).
+        if pit is not None and not getattr(self._fallback, "supports_pit", False):
+            raise PitRecallNotSupportedMVP0()
         return self._fallback.recall(
-            query, pit=None, k=k, cognitive_type=cognitive_type, subject_filter=subject_filter
+            query, pit=pit, k=k, cognitive_type=cognitive_type, subject_filter=subject_filter
         )
 
 

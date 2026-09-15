@@ -208,7 +208,9 @@ class SeahorseSUT:
         in temporal mode, so the state as-of-the-question is what gets ranked
         (the old version, pre-update). Honest degrade: a regime without a PIT
         axis raises ``PitRecallNotSupportedMVP0`` from the facade → fall back to
-        active-now, never crash the run.
+        active-now, never crash the run. Since v1.3.0 the listing regime serves
+        PIT (the factory wires the repository slice), so the catch below is a
+        dead path kept as belt-and-braces for a genuinely PIT-less fallback.
 
         ``pit_queries=False`` (recency variant): the recency boost's gate is
         ``pit is None`` — the recency experiment queries the active-now regime
