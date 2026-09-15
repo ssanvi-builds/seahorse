@@ -4,6 +4,37 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-15
+
+PIT (point-in-time) listing: the honest listing regime now serves bi-temporal
+recall. No ranking was added — the PIT-resolved set flows through the same
+listing contract (deterministic order, `top_k` clamp, synthetic zero scores).
+Signatures intact: the 7 CLI primitives and 15 MCP tools keep their shapes
+(`recall` already carried `pit_kind`/`pit_t`); no new error codes
+(`E_PIT_RECALL_MVP_0` remains for genuinely PIT-less retrievers).
+
+### Added
+
+- **`recall` with a PIT in the listing regime.** `VigenteListingRetriever`
+  gains an optional `pit_source` (the repository `query_state_at` /
+  `query_known_at` slice); with one wired, `supports_pit` is an instance
+  attribute and `recall(pit=...)` routes by axis — `state_at` (valid_at/-
+  invalid_at, including `valid_at IS NULL` "from forever"; future-dated rows
+  excluded via `valid_at <= t`) and `known_at` (created_at/expired_at) — with
+  the pit `t` forwarded verbatim, the bi-temporal predicate owned by the
+  repository and never synthesized. An unknown pit kind fails loud
+  (`InvalidPITKind`) before any read; `session_boost` stays inert. The
+  composition root wires `pit_source=own_storage.episodes` into both the
+  listing regime and the hybrid's fallback, so `seahorse recall --pit-kind
+  state_at --pit-t <t>` works on a zero-infra install (it exited 70 before).
+- **The hybrid degrade serves PIT too.** A hybrid install with an empty index
+  (or a broken embedder) used to refuse a caller pit even though the listing
+  fallback could serve it; the degrade now delegates the pit verbatim to a
+  PIT-capable fallback. `E_PIT_RECALL_MVP_0` remains for genuinely PIT-less
+  fallbacks. The benchmark SUT's catch becomes a defensive dead path — zero
+  fingerprint change (the PIT listing never touches `retrieval/engine.py`,
+  the recency/decay/rerank slots, vector/FTS, or the embedder).
+
 ## [1.2.0] - 2026-09-15
 
 The first-external-user feedback sprint: a third-party writer round-trip bug,
