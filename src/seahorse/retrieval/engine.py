@@ -210,125 +210,224 @@ def recall(
         k=k_fuse,
         rrf_k=rrf_k,
     )
-    # Recency (default-OFF): boost ONLY in the "now" regime (pit is None); PIT
-    # queries reproduce state as-of-t with pure RRF. The boost is folded into
-    # FusedCandidate.score (never an external reorder) so the disclosure layer's
-    # IndexRow.score passthrough stays truthful. Requires index_repo to batch-
-    # read created_at; without it the boost is skipped (honest, never invented).
-    # When rerank is enabled, the boost keeps k_rerank candidates (k=k_fuse) so
-    # the cross-encoder still has the full over-fetch set to reorder.
-    if recency is not None and pit is None:
-        if index_repo is None:
-            # Honest skip: recency requested but no index_repo to batch-read
-            # created_at — the boost is never invented. Log for observability.
+    # The optional stages fold their effect into FusedCandidate.score (never
+    # an external reorder) so the disclosure layer's IndexRow.score passthrough
+    # stays truthful. Each stage is default-OFF and lives in its own wrapper
+    # (pure moves — the pipeline now reads as the four stages it is): PIT
+    # queries reproduce state as-of-t with pure RRF and are NEVER boosted,
+    # decayed, reranked, or session-boosted; every optional signal degrades
+    # honestly (skip + warning, never invented scores). Order matters and is
+    # frozen: recency folds first, then decay (multiplicative compound,
+    # deterministic), then the cross-encoder replaces the score, then the
+    # session-restricted two-stage re-rank appends.
+    fused = _apply_recency_stage(
+        fused, recency=recency, pit=pit, index_repo=index_repo, now=now, k=k_fuse
+    )
+    fused = _apply_decay_stage(
+        fused, decay=decay, pit=pit, index_repo=index_repo, now=now, k=k_fuse
+    )
+    fused = _apply_rerank_stage(
+        fused,
+        reranker=reranker,
+        query=query,
+        episode_repo=episode_repo,
+        index_repo=index_repo,
+        rerank_text=rerank_text,
+        k=k,
+    )
+    return _maybe_session_boost(
+        fused,
+        session_boost=session_boost,
+        pit=pit,
+        index_repo=index_repo,
+        query=query,
+        query_vec=query_vec,
+        episode_repo=episode_repo,
+        embedder=embedder,
+        k=k,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Optional stages (pure moves of the four post-fusion blocks)
+# ---------------------------------------------------------------------------
+
+
+def _apply_recency_stage(
+    fused: list[FusedCandidate],
+    *,
+    recency: RecencyConfig | None,
+    pit: PITPoint | None,
+    index_repo: EpisodeIndexRepository | None,
+    now: datetime,
+    k: int,
+) -> list[FusedCandidate]:
+    """The recency boost, isolated (default-OFF): fold it ONLY in the "now"
+    regime (``pit is None``); PIT queries reproduce state as-of-t with pure
+    RRF. The boost is folded into ``FusedCandidate.score`` (never an external
+    reorder) so the disclosure layer's ``IndexRow.score`` passthrough stays
+    truthful. Requires ``index_repo`` to batch-read ``created_at``; without it
+    the boost is skipped (honest, never invented). When rerank is enabled the
+    boost keeps ``k`` candidates (the over-fetch set) so the cross-encoder
+    still has them all to reorder.
+    """
+    if recency is None or pit is not None:
+        return fused
+    if index_repo is None:
+        # Honest skip: recency requested but no index_repo to batch-read
+        # created_at — the boost is never invented. Log for observability.
+        _logger.warning(
+            "recency requested but index_repo is None; boost skipped (pure RRF)"
+        )
+        return fused
+    try:
+        created_at = _read_created_at_batch(index_repo, [c.ep_id for c in fused])
+        return apply_recency_boost(fused, created_at, now, recency, k=k)
+    except Exception:  # noqa: BLE001 — a failure in the OPTIONAL recency
+        # signal must not kill the whole ranking (which would degrade the
+        # hybrid path to the listing regime). Keep the pure-RRF result.
+        _logger.warning("recency boost failed; keeping pure RRF", exc_info=True)
+        return fused
+
+
+def _apply_decay_stage(
+    fused: list[FusedCandidate],
+    *,
+    decay: DecayConfig | None,
+    pit: PITPoint | None,
+    index_repo: EpisodeIndexRepository | None,
+    now: datetime,
+    k: int,
+) -> list[FusedCandidate]:
+    """The decay downweight, isolated (Sprint D, default-OFF): the Ebbinghaus
+    forgetting-curve folds into ``FusedCandidate.score`` ONLY in the "now"
+    regime (``pit is None``); PIT queries reproduce state as-of-t with pure
+    RRF. Reads ``created_at`` + ``cognitive_type`` in batch via
+    ``index_repo.get_rows`` (one ``IN`` query, no N+1). No writes (R2):
+    ``expired_at`` stays NULL. When recency is also set, recency folded
+    first, then decay (multiplicative compound, deterministic).
+    """
+    if decay is None or pit is not None:
+        return fused
+    if index_repo is None:
+        # Honest skip: decay requested but no index_repo to batch-read
+        # created_at/cognitive_type — the bias is never invented.
+        _logger.warning(
+            "decay requested but index_repo is None; bias skipped (pure RRF)"
+        )
+        return fused
+    try:
+        created_at, cognitive_type_by_ep_id = _read_decay_batch(
+            index_repo, [c.ep_id for c in fused]
+        )
+        return apply_decay_bias(
+            fused,
+            created_at,
+            cognitive_type_by_ep_id,
+            now,
+            decay,
+            k=k,
+        )
+    except Exception:  # noqa: BLE001 — a failure in the OPTIONAL decay
+        # signal must not kill the whole ranking (which would degrade the
+        # hybrid path to the listing regime). Keep the current result.
+        _logger.warning("decay bias failed; keeping current ranking", exc_info=True)
+        return fused
+
+
+def _apply_rerank_stage(
+    fused: list[FusedCandidate],
+    *,
+    reranker: QueryReranker | None,
+    query: str,
+    episode_repo: EpisodeRepository,
+    index_repo: EpisodeIndexRepository | None,
+    rerank_text: str,
+    k: int,
+) -> list[FusedCandidate]:
+    """The cross-encoder re-rank, isolated (default-OFF): reorder the fused
+    candidates by relevance to the query, replacing the RRF score (the
+    manifest records ``score_source="rrf_rerank"``). Text = summary/subject
+    via ``index_repo.get_rows`` (NOT ``body_md``). Honest degrade: no
+    ``index_repo`` or a reranker failure keeps the RRF order truncated to k.
+    """
+    if reranker is None:
+        return fused
+    try:
+        if rerank_text == "body":
+            # A6 re-test: score the FULL body (the answer often sits mid-turn,
+            # not in the ~200-char summary/subject). Per-episode ``get`` is
+            # N+1 — acceptable for the synthetic measurement; a production
+            # body-rerank would batch-read via a dedicated method.
+            text_by_ep = {}
+            for c in fused:
+                ep = episode_repo.get(c.ep_id)
+                if ep is not None:
+                    text_by_ep[c.ep_id] = ep.body or ""
+        elif index_repo is None:
             _logger.warning(
-                "recency requested but index_repo is None; boost skipped (pure RRF)"
+                "rerank requested but index_repo is None; keeping RRF order (k)"
             )
+            # The pre-split code returned from recall() outright here, which
+            # also skipped the remaining stage — behaviorally identical to
+            # falling through: the only stage after rerank (session boost)
+            # requires index_repo too, so it no-ops on the same condition.
+            return fused[:k]
         else:
-            try:
-                created_at = _read_created_at_batch(index_repo, [c.ep_id for c in fused])
-                fused = apply_recency_boost(fused, created_at, now, recency, k=k_fuse)
-            except Exception:  # noqa: BLE001 — a failure in the OPTIONAL recency
-                # signal must not kill the whole ranking (which would degrade the
-                # hybrid path to the listing regime). Keep the pure-RRF result.
-                _logger.warning(
-                    "recency boost failed; keeping pure RRF", exc_info=True
-                )
-    # Decay (Sprint D, default-OFF): the Ebbinghaus forgetting-curve downweight
-    # folds into FusedCandidate.score ONLY in the "now" regime (pit is None);
-    # PIT queries reproduce state as-of-t with pure RRF. Reads created_at +
-    # cognitive_type in batch via index_repo.get_rows (one IN query, no N+1).
-    # No writes (R2): expired_at stays NULL. When recency is also set, recency
-    # folds first, then decay (multiplicative compound, deterministic).
-    if decay is not None and pit is None:
-        if index_repo is None:
-            # Honest skip: decay requested but no index_repo to batch-read
-            # created_at/cognitive_type — the bias is never invented.
-            _logger.warning(
-                "decay requested but index_repo is None; bias skipped (pure RRF)"
-            )
-        else:
-            try:
-                created_at, cognitive_type_by_ep_id = _read_decay_batch(
-                    index_repo, [c.ep_id for c in fused]
-                )
-                fused = apply_decay_bias(
-                    fused,
-                    created_at,
-                    cognitive_type_by_ep_id,
-                    now,
-                    decay,
-                    k=k_fuse,
-                )
-            except Exception:  # noqa: BLE001 — a failure in the OPTIONAL decay
-                # signal must not kill the whole ranking (which would degrade the
-                # hybrid path to the listing regime). Keep the current result.
-                _logger.warning(
-                    "decay bias failed; keeping current ranking", exc_info=True
-                )
-    # Rerank (default-OFF): the cross-encoder reorders the fused candidates by
-    # relevance to the query, replacing the RRF score (the manifest records
-    # score_source="rrf_rerank"). Text = summary/subject via index_repo.get_rows
-    # (NOT body_md). Honest degrade: no index_repo or a reranker failure keeps
-    # the RRF order truncated to k.
-    if reranker is not None:
-        try:
-            if rerank_text == "body":
-                # A6 re-test: score the FULL body (the answer often sits mid-turn,
-                # not in the ~200-char summary/subject). Per-episode ``get`` is
-                # N+1 — acceptable for the synthetic measurement; a production
-                # body-rerank would batch-read via a dedicated method.
-                text_by_ep = {}
-                for c in fused:
-                    ep = episode_repo.get(c.ep_id)
-                    if ep is not None:
-                        text_by_ep[c.ep_id] = ep.body or ""
-            elif index_repo is None:
-                _logger.warning(
-                    "rerank requested but index_repo is None; keeping RRF order (k)"
-                )
-                fused = fused[:k]
-                return fused
-            else:
-                rows = index_repo.get_rows([c.ep_id for c in fused])
-                text_by_ep = {r.ep_id: _rerank_text(r) for r in rows}
-            docs = [text_by_ep.get(c.ep_id, "") for c in fused]
-            scores = reranker.rerank(query, docs)
-            fused = apply_rerank(fused, scores, k=k)
-        except Exception:  # noqa: BLE001 — a failure in the OPTIONAL rerank
-            # must not kill the whole ranking (which would degrade the hybrid
-            # path to the listing regime). Keep the RRF order truncated to k.
-            _logger.warning(
-                "rerank failed; keeping RRF order", exc_info=True
-            )
-            fused = fused[:k]
-    # Session-restricted two-stage re-rank (the two-stage fix, default-ON): the
-    # engine has no session-restricted recall; this stage identifies the top
-    # session as the session owning the MAJORITY of the fused candidates,
-    # fetches ALL of its episodes (SQL WHERE session_id = ?), re-ranks them by
-    # hybrid (vector + BM25 over the bodies), and appends the session's FRESH
-    # episodes by score — fused candidates are never re-scored, so the baseline
-    # is preserved verbatim. PIT queries reproduce state as-of-t with pure RRF
-    # (never boosted). Honest degrade: no index_repo (no session_ids to resolve)
-    # or a failure keeps the current ranking (never invented).
-    if session_boost and index_repo is not None and pit is None:
-        try:
-            fused = _apply_session_boost(
-                fused,
-                query,
-                query_vec,
-                index_repo,
-                episode_repo,
-                embedder,
-                k=k,
-            )
-        except Exception:  # noqa: BLE001 — a failure in the OPTIONAL session
-            # boost must not kill the whole ranking (which would degrade the
-            # hybrid path to the listing regime). Keep the current result.
-            _logger.warning(
-                "session boost failed; keeping current ranking", exc_info=True
-            )
-    return fused
+            rows = index_repo.get_rows([c.ep_id for c in fused])
+            text_by_ep = {r.ep_id: _rerank_text(r) for r in rows}
+        docs = [text_by_ep.get(c.ep_id, "") for c in fused]
+        scores = reranker.rerank(query, docs)
+        return apply_rerank(fused, scores, k=k)
+    except Exception:  # noqa: BLE001 — a failure in the OPTIONAL rerank
+        # must not kill the whole ranking (which would degrade the hybrid
+        # path to the listing regime). Keep the RRF order truncated to k.
+        _logger.warning("rerank failed; keeping RRF order", exc_info=True)
+        return fused[:k]
+
+
+def _maybe_session_boost(
+    fused: list[FusedCandidate],
+    *,
+    session_boost: bool,
+    pit: PITPoint | None,
+    index_repo: EpisodeIndexRepository | None,
+    query: str,
+    query_vec: list[float],
+    episode_repo: EpisodeRepository,
+    embedder: QueryEmbedder,
+    k: int,
+) -> list[FusedCandidate]:
+    """The session-restricted two-stage re-rank, isolated (the two-stage fix,
+    default-ON): the engine has no session-restricted recall; this stage
+    identifies the top session as the session owning the MAJORITY of the
+    fused candidates, fetches ALL of its episodes (SQL WHERE session_id = ?),
+    re-ranks them by hybrid (vector + BM25 over the bodies), and appends the
+    session's FRESH episodes by score — fused candidates are never re-scored,
+    so the baseline is preserved verbatim. PIT queries reproduce state
+    as-of-t with pure RRF (never boosted). Honest degrade: no ``index_repo``
+    (no session_ids to resolve) or a failure keeps the current ranking
+    (never invented).
+    """
+    if not session_boost or index_repo is None or pit is not None:
+        return fused
+    try:
+        return _apply_session_boost(
+            fused,
+            query,
+            query_vec,
+            index_repo,
+            episode_repo,
+            embedder,
+            k=k,
+        )
+    except Exception:  # noqa: BLE001 — a failure in the OPTIONAL session
+        # boost must not kill the whole ranking (which would degrade the
+        # hybrid path to the listing regime). Keep the current result.
+        _logger.warning(
+            "session boost failed; keeping current ranking", exc_info=True
+        )
+        return fused
 
 
 # ---------------------------------------------------------------------------
