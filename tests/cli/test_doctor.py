@@ -902,3 +902,49 @@ class TestOnboardingChecks:
         keys = next(c for c in payload["checks"] if c["check"] == "api_keys")
         assert keys["status"] == "OK"
         assert os.environ.get("GEMINI_API_KEY") == "stored-key"
+
+
+class TestMaterializeConfigured:
+    """P3: the "MCP writes but Memory/ stays empty" trap is observable.
+
+    The MCP surface writes to SQLite; the ``.md`` notes in ``Memory/`` are a
+    projection driven by the opt-in ``[materialize]`` section. A vault
+    without it (the fresh-setup default) materializes NOTHING — the doctor
+    must name that state, never let it look like a bug or silence.
+    """
+
+    def test_unconfigured_warns_with_the_fix(self, tmp_path, monkeypatch) -> None:
+        _write(tmp_path, '[seahorse]\ndb_path = "x.db"\n')
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        check = next(
+            c for c in payload["checks"] if c["check"] == "materialize_configured"
+        )
+        assert check["status"] == "WARN"
+        assert "[materialize]" in check["detail"]
+        assert "SQLite" in check["detail"]
+
+    def test_off_is_a_deliberate_ok_never_a_warn(self, tmp_path, monkeypatch) -> None:
+        _write(
+            tmp_path,
+            '[seahorse]\ndb_path = "x.db"\n\n[materialize]\nmode = "off"\n',
+        )
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        check = next(
+            c for c in payload["checks"] if c["check"] == "materialize_configured"
+        )
+        assert check["status"] == "OK"
+        assert "off" in check["detail"]
+
+    def test_consolidated_ok_reports_mode_and_dir(self, tmp_path, monkeypatch) -> None:
+        _write(
+            tmp_path,
+            '[seahorse]\ndb_path = "x.db"\n\n[materialize]\n'
+            'mode = "consolidated"\ndir = "Memory"\n',
+        )
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        check = next(
+            c for c in payload["checks"] if c["check"] == "materialize_configured"
+        )
+        assert check["status"] == "OK"
+        assert "consolidated" in check["detail"]
+        assert "Memory" in check["detail"]

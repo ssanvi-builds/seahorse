@@ -600,6 +600,39 @@ def run_doctor(
             }
         )
 
+    # Materialization policy — the "MCP writes but Memory/ stays empty" trap
+    # made observable (P3, v1.4.0): the MCP surface writes to SQLite; the
+    # .md notes are a projection driven by the opt-in [materialize] section.
+    # Unconfigured (the fresh-setup default) nothing is materialized — that
+    # state must be named here, never left to look like a bug or silence.
+    # mode="off" is a deliberate user choice: reported OK, never a WARN.
+    materialize = config.materialize
+    if materialize is None:
+        checks.append(
+            {
+                "check": "materialize_configured",
+                "status": "WARN",
+                "detail": (
+                    "not configured (no [materialize] section in "
+                    ".seahorse/seahorse.toml) — episodes stay in SQLite "
+                    "only, Memory/ gets no notes; add [materialize] or "
+                    "run `seahorse setup`"
+                ),
+            }
+        )
+    elif materialize.mode == "off":
+        checks.append(
+            {"check": "materialize_configured", "status": "OK", "detail": "off"}
+        )
+    else:
+        checks.append(
+            {
+                "check": "materialize_configured",
+                "status": "OK",
+                "detail": f"{materialize.mode} → {materialize.dir}",
+            }
+        )
+
     checks.append(
         {
             "check": "python",
