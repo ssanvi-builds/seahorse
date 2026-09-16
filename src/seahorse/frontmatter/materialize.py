@@ -101,13 +101,36 @@ def _effective_episode(ep: Episode) -> Episode:
 
     ``schema_version`` is the episode-contract semver in the DB ('1.1'); the
     on-disk frontmatter carries its own format version
-    (``SCHEMA_VERSION_MVP0``). Stamping the
-    payload's value made every engine-written note disagree with the migrator's
-    on-disk marker (L7). """
+    (``SCHEMA_VERSION_MVP0``). Stamping the payload's value made every
+    engine-written note disagree with the migrator's on-disk marker (L7)."""
     updated = {"schema_version": SCHEMA_VERSION_MVP0}
     if ep.provenance.get("extraction_mode") == "consolidated" and ep.subject:
         updated["title"] = ep.subject
     return ep.model_copy(update=updated)
+
+
+def _x_fields(ep: Episode) -> dict[str, list[dict[str, str]]] | None:
+    """The engine-owned ``x-*`` keys this note must carry on first write.
+
+    A consolidated episode whose provenance carries ``derived_from`` edges
+    (F3.2 — the structured cluster membership ``distill_episodes`` records)
+    emits ``x-seahorse-derived-from``: the portable source-membership bridge.
+    An importer never re-implements the clusterer to know the complete
+    evidence set. Legacy consolidated episodes (pre-1.4.0, no field) emit
+    nothing — membership is never invented. Non-consolidated episodes never
+    carry it: an evidence list behind an episodic note is a category error.
+
+    The field travels through the caller's emission channel
+    (``write_file``'s ``x_fields``), not the dump — ``x-*`` keys live in the
+    baseline, so an extras-carrying episode alone would not reach a fresh
+    note.
+    """
+    if ep.provenance.get("extraction_mode") != "consolidated" or not ep.subject:
+        return None
+    derived_from = ep.provenance.get("derived_from")
+    if not derived_from:
+        return None
+    return {"x-seahorse-derived-from": derived_from}
 
 
 @dataclass(frozen=True)
@@ -198,26 +221,18 @@ class Materializer:
                     # Our own earlier materialization of this very episode
                     # (the consolidate hook writes the id8 name) — idempotent
                     # skip, never a duplicate at a longer width.
-                    return MaterializeResult(
-                        ep.id, "skipped", reason="already_materialized"
-                    )
+                    return MaterializeResult(ep.id, "skipped", reason="already_materialized")
                 if owned is None:
                     break
             else:
-                return MaterializeResult(
-                    ep.id, "collision", reason="slug_and_id8_taken"
-                )
+                return MaterializeResult(ep.id, "collision", reason="slug_and_id8_taken")
         try:
             self._write(target, ep)
         except OSError as exc:
-            _logger.warning(
-                "materialize.failed ep_id=%s path=%s error=%s", ep.id, target, exc
-            )
+            _logger.warning("materialize.failed ep_id=%s path=%s error=%s", ep.id, target, exc)
             return MaterializeResult(ep.id, "error", reason=str(exc))
         self._register(target, ep.id)
-        return MaterializeResult(
-            ep.id, "written", path=self._rel(target)
-        )
+        return MaterializeResult(ep.id, "written", path=self._rel(target))
 
     def materialize_episodes(self, eps: Iterable[Episode]) -> MaterializeReport:
         """Batch materialization (backfill). Deterministic order."""
@@ -257,6 +272,7 @@ class Materializer:
                 body,
                 exclude_none=True,
                 baseline_cm=baseline_cm,
+                x_fields=_x_fields(ep),
             )
         except OSError as exc:
             _logger.warning(
@@ -302,7 +318,7 @@ class Materializer:
 
     def _write(self, target: Path, ep: Episode) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
-        serialize(_effective_episode(ep), target, exclude_none=True)
+        serialize(_effective_episode(ep), target, exclude_none=True, x_fields=_x_fields(ep))
 
     def _register(self, target: Path, ep_id: str) -> None:
         stat = target.stat()

@@ -55,9 +55,7 @@ _yaml = _make_yaml()
 # ---------------------------------------------------------------------------
 
 
-def parse_file(
-    path: Path, *, mvp: str = "0"
-) -> tuple[CommentedMap, str, Episode]:
+def parse_file(path: Path, *, mvp: str = "0") -> tuple[CommentedMap, str, Episode]:
     """Dual-pass parse of the on-disk format. Returns ``(commented_map, body, ep)``.
 
     The body is byte-a-byte from the file: ``RuamelRTHandler.split`` keys on the
@@ -108,7 +106,14 @@ def hydrate(path: Path, *, mvp: str = "0") -> Episode:
 # ---------------------------------------------------------------------------
 
 
-def serialize(ep: Episode, path: Path, *, exclude_none: bool, mvp: str = "0") -> None:
+def serialize(
+    ep: Episode,
+    path: Path,
+    *,
+    exclude_none: bool,
+    mvp: str = "0",
+    x_fields: dict[str, Any] | None = None,
+) -> None:
     """Write ``ep`` to ``path``. Body is ``ep.body or ""``.
 
     ``mvp`` threads the validation phase to the baseline re-parse inside
@@ -117,9 +122,12 @@ def serialize(ep: Episode, path: Path, *, exclude_none: bool, mvp: str = "0") ->
     ``expired_at`` does not trip the first-release read-path guard
     (``_expired_null_mvp0``) on the re-parse. Default ``"0"`` keeps existing
     callers and tests unchanged.
+
+    ``x_fields`` is the emission channel for engine-owned ``x-*`` keys on a
+    fresh note (F3.2) — passed through to ``write_file``.
     """
     body = ep.body or ""
-    write_file(path, ep, body, exclude_none=exclude_none, mvp=mvp)
+    write_file(path, ep, body, exclude_none=exclude_none, mvp=mvp, x_fields=x_fields)
 
 
 def write_file(
@@ -130,6 +138,7 @@ def write_file(
     exclude_none: bool,
     baseline_cm: CommentedMap | None = None,
     mvp: str = "0",
+    x_fields: dict[str, Any] | None = None,
 ) -> None:
     """Merge ``ep`` onto the baseline commented map and write atomically.
 
@@ -142,16 +151,21 @@ def write_file(
     before merge so the caller-owned map is not mutated in place (immutability).
     ``exclude`` drops the model's ``__pydantic_extra__`` (``x-*`` keys the
     Episode carries) from the dump — they live in the baseline, not the dump.
+
+    ``x_fields`` is the emission channel for engine-owned ``x-*`` keys a note
+    must carry on first write (F3.2: ``x-seahorse-derived-from``, computed from
+    provenance): model extras still never leak, but a caller that explicitly
+    emits one merges it canonically — appended after the schema fields on a
+    fresh note (no baseline), skipped when the baseline holds the same value
+    (byte-stable), and preserved when a later dump omits it.
     """
     if baseline_cm is None and path.exists():
         baseline_cm, _, _ = parse_file(path, mvp=mvp)
-    cm = (
-        copy.deepcopy(baseline_cm)
-        if baseline_cm is not None
-        else CommentedMap()
-    )
+    cm = copy.deepcopy(baseline_cm) if baseline_cm is not None else CommentedMap()
     x_keys = set((ep.model_extra or {}).keys())
     dump = ep.model_dump(mode="json", exclude_none=exclude_none, exclude=x_keys)
+    if x_fields:
+        dump.update(x_fields)
     _merge_known(cm, dump)
     fm_text = _dump_yaml(cm)
     _atomic_write(path, f"---\n{fm_text}\n---\n{body}")
@@ -175,9 +189,7 @@ def _merge_known(cm: CommentedMap, dump: dict[str, Any]) -> None:
     Recurses into nested mappings (``provenance``). Never touches ``x-*`` or
     non-schema keys (they are not in the dump).
     """
-    ordered = sorted(
-        dump.items(), key=lambda kv: _field_index(kv[0], len(dump))
-    )
+    ordered = sorted(dump.items(), key=lambda kv: _field_index(kv[0], len(dump)))
     for key, value in ordered:
         if key not in cm:
             cm[key] = _to_ruamel(value)

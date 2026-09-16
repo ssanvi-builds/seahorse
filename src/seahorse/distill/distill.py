@@ -23,6 +23,44 @@ from seahorse.write_path.extract import derive_summary
 
 SUPERSEDES_REASON_MERGE = "merge"
 
+_EDGE_EVIDENCE = "evidence"
+_EDGE_SUPERSEDES = "supersedes"
+
+
+def _derived_from(
+    engine: Any,
+    source_ep_ids: list[str],
+    supersede_ep_id: str | None,
+) -> list[dict[str, str]]:
+    """The structured cluster membership (F3.2): one ``{id, edge_kind}`` edge
+    per source episode, emitted into the consolidated episode's provenance and
+    materialized as ``x-seahorse-derived-from`` — an importer never has to
+    re-implement the clusterer to know the complete evidence set.
+
+    On a fresh distill every source episode is an ``evidence`` edge, in source
+    order. On supersession (the note is UPDATED via ``engine.improve``) the
+    new note INHERITS the superseded note's edges (the membership that does
+    not change), adds the new cluster's episodes as ``evidence``, and closes
+    the lineage with the superseded note itself as a ``supersedes`` edge.
+    Dedupe is by id — an episode that is both inherited evidence and a new
+    cluster member lands once, as ``evidence``. The enumeration is frozen at
+    format promotion; unknown ``edge_kind`` values are preserved, never
+    rejected (the same policy as every ``x-*`` field).
+    """
+    edges: list[dict[str, str]] = [
+        {"id": ep_id, "edge_kind": _EDGE_EVIDENCE} for ep_id in source_ep_ids
+    ]
+    if supersede_ep_id is None:
+        return edges
+    old = engine.get(supersede_ep_id)
+    if old is not None:
+        known = {edge["id"] for edge in edges}
+        for edge in old.provenance.get("derived_from") or []:
+            if edge.get("id") not in known and edge["id"] != supersede_ep_id:
+                edges.append(edge)
+    edges.append({"id": supersede_ep_id, "edge_kind": _EDGE_SUPERSEDES})
+    return edges
+
 
 def distill_episodes(
     engine: Any,
@@ -68,6 +106,10 @@ def distill_episodes(
     }
     if not effective_by.get("session_id"):
         effective_by["session_id"] = f"consolidate-{new_uuid7()}"
+    # F3.2: the structured membership travels in provenance (the persisted
+    # JSON column) so the materializer can emit ``x-seahorse-derived-from``
+    # on the consolidated note.
+    effective_by["derived_from"] = _derived_from(engine, source_ep_ids, supersede_ep_id)
     if supersede_ep_id is not None:
         new_ep = engine.improve(
             supersede_ep_id,
