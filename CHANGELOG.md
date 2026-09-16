@@ -4,6 +4,55 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-16
+
+The human-edit honesty sprint: the materialized index mirror now tells the
+truth about who wrote what. `seahorse index rebuild` detects notes a human
+edited after materialization and proposes (never applies) the follow-up
+`seahorse improve`; consolidated notes carry structured source membership so
+consumers reconstruct a cluster's episodes without re-implementing the format;
+`seahorse doctor` observes the "MCP writes but Memory/ stays empty" trap; and
+the benchmark harness measures the cost of lazy recall separately. Two of the
+four deferred post-1.0 refactors landed behavior-preserving.
+
+### Added
+
+- **Human-edit divergence in `seahorse index rebuild`.** Each materialized
+  note's canonical body hash (`engine.canonical_body_hash` — NFC + per-line
+  rstrip + blank-run reflow, so trailing-whitespace and blank-run edits are
+  not false edits) is compared against the live episode body; a mismatch is a
+  `RebuildDivergence` in the report (`divergences` in the JSON payload) and a
+  per-note proposal line with the exact `seahorse improve <ep_id> … --reason
+  correction` command. Proposal-only, exit 0: the rebuild never auto-edits a
+  human's text; invalidated episodes are never proposed. The comparison basis
+  is DI (`live_body` callable) so `frontmatter` stays `ruamel`-free.
+- **`x-seahorse-derived-from` on consolidated notes.** Distilled knowledge
+  notes emit structured source membership (the `ep_id`s the cluster was
+  distilled from), so an importer or consumer reconstructs provenance without
+  re-implementing the extraction format.
+- **`materialize_configured` doctor check.** WARN when `[materialize]` is
+  unconfigured (the fresh-setup state where the MCP writes episodes but
+  `Memory/` gets no notes — the fix hint names the section and `seahorse
+  setup`); `mode = "off"` is a deliberate OK; otherwise OK `"{mode} → {dir}"`.
+  No existing check name, status, or detail string changed.
+- **Lazy-recall metric in the benchmark harness.** The harness now separates
+  index-cache recall from live vault parse in its accounting, so the measured
+  recall laziness is visible per run instead of folded into parse time.
+
+### Changed
+
+- **`recall()` decomposed into composable stages** (the deferred refactor #1):
+  the recall body is four pure-move stage wrappers (`_apply_recency_stage` →
+  `_apply_decay_stage` → `_apply_rerank_stage` → `_maybe_session_boost`) with
+  the guards inside each wrapper; PIT queries are never boosted/decayed/
+  reranked. Protected suites (including `test_reproducibility`'s
+  bit-comparable fingerprints) pass unchanged.
+- **`cli/app.py` split into per-subapp command modules** (the deferred
+  refactor #4): the `benchmark`, `observe`, and `skill` groups register on the
+  handed Typer instance from `seahorse/cli/commands/`; `app.py` goes
+  1334 → 1028 lines and stays the composition root (entry points and the
+  `seahorse.cli.app:app` hook reference untouched; `--help` order unchanged).
+
 ## [1.3.0] - 2026-09-15
 
 PIT (point-in-time) listing: the honest listing regime now serves bi-temporal
