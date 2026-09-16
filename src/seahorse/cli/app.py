@@ -38,6 +38,7 @@ import typer
 # base covers UsageError / NoSuchOption / BadParameter / MissingParameter.
 from typer._click.exceptions import ClickException
 
+from seahorse.cli.commands import benchmark, observe, skills
 from seahorse.cli.config import (
     SeahorseConfig,
     load_config,
@@ -64,12 +65,6 @@ from seahorse.cli.primitives import (
     run_remember,
     validate_improve_inputs,
     validate_remember_inputs,
-)
-from seahorse.cli.skills import (
-    run_skill_add,
-    run_skill_list,
-    run_skill_search,
-    run_skill_show,
 )
 from seahorse.cli.vault_ops import (
     run_frontmatter_migrate,
@@ -664,256 +659,16 @@ def import_cmd(
     )
 
 
-# ``observe`` group: ``observe start|stop|status|run`` (the observer).
-observe_app = typer.Typer(help="Observer capture layer.")
-app.add_typer(observe_app, name="observe")
+# ``observe`` group: ``observe start|stop|status|run`` (the observer) —
+# extracted to ``cli.commands.observe`` (P2b); registered here in the position
+# its block occupied so the ``--help`` listing is unchanged.
+observe.register(app, out=_out)
 
 
-@observe_app.command("start")
-def observe_start_cmd(ctx: typer.Context) -> None:
-    """Start the observer as a background process (single-writer)."""
-    from seahorse.observe.cli import run_observe_start
-
-    run_observe_start(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
-
-
-@observe_app.command("stop")
-def observe_stop_cmd(ctx: typer.Context) -> None:
-    """Stop the observer (SIGTERM)."""
-    from seahorse.observe.cli import run_observe_stop
-
-    run_observe_stop(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
-
-
-@observe_app.command("status")
-def observe_status_cmd(ctx: typer.Context) -> None:
-    """Report whether the observer is running."""
-    from seahorse.observe.cli import run_observe_status
-
-    run_observe_status(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
-
-
-@observe_app.command("run")
-def observe_run_cmd(ctx: typer.Context) -> None:
-    """Run the observer in the foreground (endpoint + worker loop)."""
-    from seahorse.observe.cli import run_observe_run
-
-    run_observe_run(ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx))
-
-
-@observe_app.command("event")
-def observe_event_cmd(
-    ctx: typer.Context,
-    agent_id: str = typer.Option(
-        "",
-        "--agent-id",
-        help="Attribute the event to this agent when the hook payload has none.",
-    ),
-) -> None:
-    """POST a hook event to the observer socket (called by the hooks)."""
-    from seahorse.observe.cli import run_observe_event
-
-    run_observe_event(
-        ctx.obj.resolved_config(), fmt=ctx.obj.fmt, out=_out(ctx), agent_id=agent_id
-    )
-
-
-# ``benchmark`` group: ``benchmark run`` / ``benchmark list`` / ``benchmark adapters``.
-benchmark_app = typer.Typer(help="LMEB benchmark harness.")
-app.add_typer(benchmark_app, name="benchmark")
-
-
-@benchmark_app.command("run")
-def benchmark_run_cmd(
-    ctx: typer.Context,
-    adapter: str = typer.Option("lmeb", "--adapter", help="Dataset adapter (e.g. lmeb)."),
-    dataset_config: str = typer.Option("s", "--config", help="Dataset config (e.g. s)."),
-    reader_model: str = typer.Option(
-        "ollama/qwen3:1.7b", "--reader-model", help="Reader LLM (t=0, seed=42)."
-    ),
-    judge_model: str = typer.Option(
-        "ollama/qwen2.5:7b", "--judge-model", help="Judge LLM (family-disjoint from reader)."
-    ),
-    temporal: bool = typer.Option(False, "--temporal", help="Temporal mode (source_type=human)."),
-    output_dir: str = typer.Option("benchmark-output", "--output-dir"),
-    top_k: int = typer.Option(10, "--top-k", "-k"),
-    score_source: str = typer.Option(
-        "mvp1_rrf",
-        "--score-source",
-        help="mvp1_rrf | mvp1_rrf_recency | mvp1_decay | rrf_rerank.",
-    ),
-    recency_gamma: float | None = typer.Option(
-        None,
-        "--recency-gamma",
-        help="Recency max boost at age 0 (pairs with --recency-half-life).",
-    ),
-    recency_half_life: float | None = typer.Option(
-        None,
-        "--recency-half-life",
-        help="Recency half-life in days (pairs with --recency-gamma).",
-    ),
-    decay_half_life: float | None = typer.Option(
-        None,
-        "--decay-half-life",
-        help="Decay half-life in days for all cognitive types (default-OFF when unset).",
-    ),
-    embed_mode: str = typer.Option(
-        "body+summary",
-        "--embed-mode",
-        help="Passage text to embed: body+summary (default) | body (baseline).",
-    ),
-    rerank_enable: bool = typer.Option(
-        False,
-        "--rerank-enable",
-        help="Cross-encoder rerank (opt-in, score_source=rrf_rerank).",
-    ),
-    context_mode: str = typer.Option(
-        "summary",
-        "--context-mode",
-        help=(
-            "Reader context representation: summary (default) | body | body_bounded "
-            "(the reader-context A/B axis)."
-        ),
-    ),
-) -> None:
-    """Run the LMEB benchmark harness (exit 0=Pass / 10=Fail / 3=Tampered)."""
-    from seahorse.benchmark.cli import run_benchmark
-
-    code = run_benchmark(
-        adapter=adapter,
-        dataset_config=dataset_config,
-        reader_model=reader_model,
-        judge_model=judge_model,
-        temporal=temporal,
-        output_dir=output_dir,
-        top_k=top_k,
-        score_source=score_source,
-        recency_gamma=recency_gamma,
-        recency_half_life=recency_half_life,
-        decay_half_life=decay_half_life,
-        embed_mode=embed_mode,
-        rerank_enable=rerank_enable,
-        context_mode=context_mode,
-    )
-    raise typer.Exit(code=code)
-
-
-@benchmark_app.command("experiment")
-def benchmark_experiment_cmd(
-    ctx: typer.Context,
-    experiment: str = typer.Argument(
-        ...,
-        help=(
-            "recency | rerank | embed | decay_rrf | batch | entity_centric | "
-            "multi_hop | decay | skills | rrf_k | rerank_body | end_to_end | "
-            "reader_context | episode_granularity | reader_quality | "
-            "context_assembly | two_stage_retrieval (which experiment to run)."
-        ),
-    ),
-    corpus: str = typer.Option(
-        "synthetic",
-        "--corpus",
-        help=(
-            "synthetic (CI mechanical verification) | lmeb-s (authoritative) | "
-            "claude-mem (real batch corpus)."
-        ),
-    ),
-    output_dir: str = typer.Option("benchmark-output", "--output-dir"),
-    reader_model: str = typer.Option(
-        "ollama/qwen3:1.7b", "--reader-model", help="Reader LLM (t=0, seed=42)."
-    ),
-    strong_reader_model: str = typer.Option(
-        "ollama/deepseek-v4-flash:0731-cloud",
-        "--strong-reader-model",
-        help=(
-            "Strong reader LLM for the reader_quality A/B (the weak baseline is "
-            "--reader-model; the strong candidate is this model)."
-        ),
-    ),
-    judge_model: str = typer.Option(
-        "ollama/qwen2.5:7b", "--judge-model", help="Judge LLM (family-disjoint from reader)."
-    ),
-    top_k: int = typer.Option(10, "--top-k", "-k"),
-    temporal: bool = typer.Option(
-        True, "--temporal/--no-temporal", help="Temporal ingestion (source_type=human)."
-    ),
-    pit_queries: bool = typer.Option(
-        True,
-        "--pit-queries/--no-pit-queries",
-        help=(
-            "Query active-now (pit=None) instead of state-at-question-date. "
-            "Forced OFF for decay_rrf/recency: the recency/decay seams are gated "
-            "by `pit is None` (ADR-03), so a PIT query would measure a forced null."
-        ),
-    ),
-    retrieval_only: bool = typer.Option(
-        False,
-        "--retrieval-only",
-        help=(
-            "Retrieval-only pass: deterministic stub reader (no Ollama). The "
-            "decision metrics (recall@10/ndcg@10) never consume the reader's answer "
-            "— identical decision numbers, zero LLM cost."
-        ),
-    ),
-    subsample: bool = typer.Option(
-        True,
-        "--subsample/--no-subsample",
-        help=(
-            "Apply the reproducible balanced 100-question subsample to the "
-            "LMEB-S corpus (the documented compromise; the full-corpus ingest "
-            "hangs on FTS5 and runs overnight). Default ON."
-        ),
-    ),
-    context_mode: str = typer.Option(
-        "summary",
-        "--context-mode",
-        help=(
-            "Reader context representation: summary (default) | body | body_bounded "
-            "(the reader-context A/B axis; the reader_context experiment runs all "
-            "three and ignores this flag)."
-        ),
-    ),
-) -> None:
-    """Run an experiment and print the sweep table + decision."""
-    from seahorse.benchmark.experiments.runner import (
-        render_experiment_report,
-        run_experiment,
-    )
-    from seahorse.benchmark.harness.reader_llm import StubReaderLLM
-
-    report = run_experiment(
-        experiment=experiment,
-        corpus=corpus,
-        output_dir=output_dir,
-        reader_model=reader_model,
-        strong_reader_model=strong_reader_model,
-        judge_model=judge_model,
-        top_k=top_k,
-        temporal=temporal,
-        pit_queries=pit_queries,
-        reader_llm=StubReaderLLM() if retrieval_only else None,
-        subsample=subsample,
-        context_mode=context_mode,
-    )
-    typer.echo(render_experiment_report(report))
-
-
-@benchmark_app.command("list")
-def benchmark_list_cmd(ctx: typer.Context) -> None:
-    """List available dataset adapters."""
-    from seahorse.benchmark.cli import list_benchmarks
-
-    for name in list_benchmarks():
-        typer.echo(name)
-
-
-@benchmark_app.command("adapters")
-def benchmark_adapters_cmd(ctx: typer.Context) -> None:
-    """List available SUT adapters."""
-    from seahorse.benchmark.cli import list_adapters
-
-    for name in list_adapters():
-        typer.echo(name)
+# ``benchmark`` group: ``benchmark run|experiment|list|adapters`` —
+# extracted to ``cli.commands.benchmark`` (P2b); registered here in the
+# position its block occupied so the ``--help`` listing is unchanged.
+benchmark.register(app)
 
 
 @app.command()
@@ -1179,87 +934,10 @@ def frontmatter_migrate_cmd(
     )
 
 
-# ``skill`` group: procedural skills — add / list / search / show.
-skill_app = typer.Typer(help="Procedural skills (deterministic, skip-first).")
-app.add_typer(skill_app, name="skill")
-
-
-@skill_app.command(name="add")
-def skill_add_cmd(
-    ctx: typer.Context,
-    body: str = typer.Argument(..., help="Canonical SKILL.md body (## Trigger/Steps/...)."),
-    title: str | None = typer.Option(None, "--title"),
-    trigger: str | None = typer.Option(None, "--trigger", help="x-seahorse-skill-trigger."),
-    scope: str | None = typer.Option(None, "--scope", help="x-seahorse-skill-scope."),
-    version: str | None = typer.Option(None, "--version", help="x-seahorse-skill-version."),
-    source_type: str = typer.Option("agent", "--source-type"),
-    agent_id: str | None = typer.Option(None, "--agent-id"),
-    session_id: str | None = typer.Option(None, "--session-id"),
-) -> None:
-    """Add a procedural skill (deterministic, cost ≈ 0)."""
-    run_skill_add(
-        ctx.obj.facade(),
-        body=body,
-        title=title,
-        trigger=trigger,
-        scope=scope,
-        version=version,
-        source_type=source_type,
-        agent_id=agent_id,
-        session_id=session_id,
-        fmt=ctx.obj.fmt,
-        out=_out(ctx),
-        verbose=ctx.obj.verbose,
-    )
-
-
-@skill_app.command(name="list")
-def skill_list_cmd(
-    ctx: typer.Context,
-    top_k: int = typer.Option(10, "--top-k"),
-) -> None:
-    """List procedural skills (Discovery level)."""
-    run_skill_list(
-        ctx.obj.facade(), top_k=top_k, fmt=ctx.obj.fmt, out=_out(ctx), verbose=ctx.obj.verbose
-    )
-
-
-@skill_app.command(name="search")
-def skill_search_cmd(
-    ctx: typer.Context,
-    query: str = typer.Argument(..., help="Search query."),
-    top_k: int = typer.Option(10, "--top-k"),
-) -> None:
-    """Search procedural skills (hybrid recall, procedural filter)."""
-    run_skill_search(
-        ctx.obj.facade(),
-        query=query,
-        top_k=top_k,
-        fmt=ctx.obj.fmt,
-        out=_out(ctx),
-        verbose=ctx.obj.verbose,
-    )
-
-
-@skill_app.command(name="show")
-def skill_show_cmd(
-    ctx: typer.Context,
-    ep_id: str = typer.Argument(..., help="Skill episode id."),
-    min_trust: str | None = typer.Option(
-        None, "--min-trust", help="low | medium | high (default: [procedural] config)."
-    ),
-) -> None:
-    """Show a skill's gated body (Execution level, trust gate)."""
-    cfg = ctx.obj.resolved_config()
-    default_trust = cfg.procedural.min_trust if cfg.procedural is not None else "medium"
-    run_skill_show(
-        ctx.obj.facade(),
-        ep_id=ep_id,
-        min_trust=min_trust or default_trust,
-        fmt=ctx.obj.fmt,
-        out=_out(ctx),
-        verbose=ctx.obj.verbose,
-    )
+# ``skill`` group: procedural skills — add / list / search / show — extracted
+# to ``cli.commands.skills`` (P2b); registered here in the position its block
+# occupied so the ``--help`` listing is unchanged.
+skills.register(app, out=_out)
 
 
 @app.command()
