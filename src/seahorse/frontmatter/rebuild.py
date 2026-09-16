@@ -26,12 +26,30 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
-from seahorse.contracts.persistence import ParsedNote, RebuildReport, SidecarIndexRepository
+from seahorse.contracts.persistence import (
+    ParsedNote,
+    RebuildDivergence,
+    RebuildReport,
+    SidecarIndexRepository,
+)
 from seahorse.frontmatter.adapter import parse_file
 from seahorse.frontmatter.discovery import discover_notes
 from seahorse.frontmatter.subject import fact_id_of, normalize_subject, raw_subject
+
+
+def _body_hash(body: str) -> str:
+    # Lazy: ``engine.canonical`` is the hash's home (the importer idempotency
+    # contract consumes it) — but ``seahorse.engine.__init__`` imports
+    # ``engine.engine``, which itself imports ``frontmatter.schema``/``subject``.
+    # A top-level import here would couple the codec to the engine package
+    # init; the function-local import keeps the orchestrator's transitive
+    # surface ruamel + frontmatter only (the confinement story above).
+    from seahorse.engine.canonical import canonical_body_hash
+
+    return canonical_body_hash(body)
 
 
 def _parsed_note(vault_root: Path, path: Path) -> ParsedNote:
@@ -65,6 +83,7 @@ def _parsed_note(vault_root: Path, path: Path) -> ParsedNote:
         file_path=path.relative_to(vault_root).as_posix(),
         mtime_ms=stat.st_mtime_ns // 1_000_000,
         size=stat.st_size,
+        body_hash=_body_hash(body),
     )
 
 
@@ -85,6 +104,7 @@ def rebuild_from_vault(
     sidecar: SidecarIndexRepository,
     *,
     secondary_index_wipes: Sequence[Callable[[sqlite3.Connection], None]] = (),
+    live_body: Callable[[str], str | None] | None = None,
 ) -> RebuildReport:
     """Rebuild the sidecar index from the vault's ``.md`` files.
 
@@ -96,10 +116,38 @@ def rebuild_from_vault(
     ``secondary_index_wipes`` is forwarded verbatim so the CLI can clear vec0/FTS
     in the same atomic as the episode_index clear — the orchestrator stays a thin
     passthrough.
+
+    ``live_body`` (P1b) maps an episode id to its LIVE body in the knowledge
+    base (``None`` when there is nothing to compare — absent, invalidated, or
+    body-less episode). Notes whose canonical body hash differs from the live
+    body are human edits: they accumulate into ``RebuildReport.divergences``
+    as proposals, never applied (the vault is the source of truth; a human
+    correction enters the knowledge base through ``improve`` with human
+    provenance). ``None`` (the default) means no comparison — the report
+    simply carries no divergences.
     """
-    return sidecar.rebuild_all(
-        iter_parsed_notes(vault_root), secondary_index_wipes=secondary_index_wipes
+    if live_body is None:
+        return sidecar.rebuild_all(
+            iter_parsed_notes(vault_root), secondary_index_wipes=secondary_index_wipes
+        )
+    divergences: list[RebuildDivergence] = []
+
+    def tracked_notes() -> Iterable[ParsedNote]:
+        # Wrap the streaming iterator: each parsed note is compared against
+        # its live episode's body AS IT STREAMS (no second parse pass), then
+        # yielded onward to the sidecar untouched.
+        for note in iter_parsed_notes(vault_root):
+            live = live_body(note.episode.id)
+            if live is not None and note.body_hash != _body_hash(live):
+                divergences.append(
+                    RebuildDivergence(ep_id=note.episode.id, file_path=note.file_path)
+                )
+            yield note
+
+    report = sidecar.rebuild_all(
+        tracked_notes(), secondary_index_wipes=secondary_index_wipes
     )
+    return replace(report, divergences=divergences)
 
 
 __all__ = ["iter_parsed_notes", "rebuild_from_vault"]

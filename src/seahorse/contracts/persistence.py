@@ -200,12 +200,34 @@ class ParsedNote:
     ``episode.provenance["extraction_mode"] == "skip"``, matching the disclosure
     shaper — so a migrated note (migrator default ``extraction_mode=skip``)
     lands with ``skip_extraction=1`` (excluded from the FTS5 + embedding queue).
+
+    ``body_hash`` is the note body's canonical hash (``engine.canonical``,
+    body-only) computed by the orchestrator at parse time — the anchor the
+    rebuild compares against a live episode's body to detect human edits
+    (``RebuildDivergence``). Additive and optional: builders that do not know
+    the hash (or callers that never compare) leave ``None``.
     """
 
     episode: Episode
     file_path: str
     mtime_ms: int
     size: int
+    body_hash: str | None = None
+
+
+@dataclass(frozen=True)
+class RebuildDivergence:
+    """A materialized note whose canonical body hash differs from the live
+    episode's body — a human edit the index cache cannot see.
+
+    Proposal-only: the rebuild REPORTS the suggested ``seahorse improve``
+    per note and never applies it. The vault is the source of truth, and a
+    human correction enters the knowledge base through the write path (human
+    provenance, a new superseding episode) — never an automatic overwrite.
+    """
+
+    ep_id: str
+    file_path: str
 
 
 @dataclass(frozen=True)
@@ -239,10 +261,16 @@ class RebuildReport:
     ``indexed`` counts the notes that landed in the index; ``skipped`` lists
     the conflict group members left out. A non-empty ``skipped`` is a signal to
     the operator, never a silent no-op.
+
+    ``divergences`` (P1b) lists materialized notes whose canonical body hash
+    differs from the live episode's body — human edits awaiting promotion,
+    proposed per note, never applied (see ``RebuildDivergence``). Empty unless
+    the caller handed the orchestrator a ``live_body`` lookup.
     """
 
     indexed: int
     skipped: list[RebuildConflict] = field(default_factory=list)
+    divergences: list[RebuildDivergence] = field(default_factory=list)
 
 
 @runtime_checkable

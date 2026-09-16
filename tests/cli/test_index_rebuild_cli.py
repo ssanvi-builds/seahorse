@@ -193,3 +193,98 @@ def test_index_rebuild_backfill_embeds_with_embedder(monkeypatch, tmp_path, vaul
         assert s.fts.count() == 2
     finally:
         s.close()
+
+
+# --- P1b: human-edit divergence proposals -------------------------------------
+
+
+def _seed_live_episode(vault: Path, ep_id: str, *, invalid_at=None) -> None:
+    """Seed the live episode row the engine would have written pre-edit."""
+    from seahorse.cli.config import load_config
+    from seahorse.persistence.storage import Storage
+
+    cfg = load_config(vault)
+    ep = Episode(
+        id=ep_id,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        schema_version="3.1",
+        provenance={
+            "agent_id": "seahorse/test",
+            "session_id": "sess-test",
+            "source_type": "agent",
+        },
+        body="# madrid\nbody.\n",
+        valid_at=datetime(2026, 1, 1, tzinfo=UTC),
+        invalid_at=invalid_at,
+        cognitive_type="fact",
+        source_type="agent",
+        title="madrid",
+        summary="summary madrid",
+    )
+    s = Storage(cfg.db_path)
+    try:
+        s.episodes.append(ep)
+    finally:
+        s.close()
+
+
+def _human_edit_note(vault: Path, name: str) -> None:
+    """Simulate the human correcting the note body in the vault (Obsidian)."""
+    note = vault / f"{name}.md"
+    note.write_text(
+        note.read_text(encoding="utf-8") + "human corrected.\n",
+        encoding="utf-8",
+    )
+
+
+def test_index_rebuild_reports_divergence_proposals(tmp_path, vault):
+    # The note body was human-edited after the episode was remembered: the
+    # report lists the divergence with the suggested improve — exit stays 0
+    # (proposal-only: the rebuild NEVER auto-improves).
+    _write_note(vault, "madrid", ep_id=_uuid7("01"))
+    _seed_live_episode(vault, _uuid7("01"))
+    _human_edit_note(vault, "madrid")
+    code, out, err = invoke(["--vault", str(vault), "--json", "index", "rebuild"])
+    assert code == 0, err
+    obj = json.loads(out)
+    assert obj["divergences"] == [
+        {"ep_id": _uuid7("01"), "file_path": "madrid.md"}
+    ]
+
+
+def test_index_rebuild_divergence_human_render_suggests_improve(
+    tmp_path, vault
+):
+    _write_note(vault, "madrid", ep_id=_uuid7("01"))
+    _seed_live_episode(vault, _uuid7("01"))
+    _human_edit_note(vault, "madrid")
+    code, out, err = invoke(["--vault", str(vault), "index", "rebuild"])
+    assert code == 0, err
+    assert "madrid.md" in out
+    assert f"seahorse improve {_uuid7('01')}" in out
+    assert "--reason correction" in out
+
+
+def test_index_rebuild_no_divergence_for_invalidated_episode(tmp_path, vault):
+    # An invalidated episode is EXPECTED to be superseded — its live body may
+    # differ from the note. Proposals only fire for active episodes.
+    _write_note(vault, "madrid", ep_id=_uuid7("01"))
+    _seed_live_episode(
+        vault, _uuid7("01"), invalid_at=datetime(2026, 1, 5, tzinfo=UTC)
+    )
+    _human_edit_note(vault, "madrid")
+    code, out, err = invoke(["--vault", str(vault), "--json", "index", "rebuild"])
+    assert code == 0, err
+    obj = json.loads(out)
+    assert obj["divergences"] == []
+
+
+def test_index_rebuild_no_divergence_when_bodies_still_equal(tmp_path, vault):
+    # No human edit: the note body and the live episode agree — no proposals
+    # (the comparison is on the canonical hash, not raw bytes).
+    _write_note(vault, "madrid", ep_id=_uuid7("01"))
+    _seed_live_episode(vault, _uuid7("01"))
+    code, out, err = invoke(["--vault", str(vault), "--json", "index", "rebuild"])
+    assert code == 0, err
+    obj = json.loads(out)
+    assert obj["divergences"] == []

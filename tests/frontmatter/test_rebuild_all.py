@@ -253,3 +253,102 @@ def test_iter_parsed_notes_is_lazy_stream(tmp_path: Path) -> None:
     assert notes[0].file_path == "solo.md"
     assert notes[0].size == p.stat().st_size
     assert notes[0].mtime_ms == p.stat().st_mtime_ns // 1_000_000
+
+
+# --- P1b: human-edit divergence (proposal-only) --------------------------------
+
+
+def test_parsed_note_carries_the_note_body_hash(tmp_path: Path, sidecar) -> None:
+    # The orchestrator hashes the note body it parsed with the engine's
+    # canonical hash (the same normalization the importer idempotency
+    # contract consumes) so a human edit is detectable later.
+    from seahorse.engine.canonical import canonical_body_hash
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    notes = list(iter_parsed_notes(vault))
+    assert notes[0].body_hash == canonical_body_hash("# a\nbody of a.\n")
+
+
+def test_parsed_note_body_hash_defaults_to_none() -> None:
+    # Additive field: existing builders (migrator, engine, tests) construct
+    # ParsedNote without the hash and stay valid.
+    from seahorse.contracts.persistence import ParsedNote
+
+    ep = Episode(
+        id=_uuid7("09"),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        schema_version="3.1",
+        provenance={"agent_id": "seahorse/test"},
+        source_type="agent",
+    )
+    note = ParsedNote(episode=ep, file_path="a.md", mtime_ms=0, size=0)
+    assert note.body_hash is None
+
+
+def test_rebuild_reports_divergence_when_note_was_human_edited(
+    tmp_path: Path, sidecar
+) -> None:
+    from seahorse.contracts.persistence import RebuildDivergence
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    edited = "# a\nbody of a.\nhuman corrected this line.\n"
+    report = rebuild_from_vault(
+        vault,
+        sidecar,
+        live_body=lambda ep_id: edited if ep_id == _uuid7("01") else None,
+    )
+    assert report.indexed == 1
+    assert report.divergences == [
+        RebuildDivergence(ep_id=_uuid7("01"), file_path="a.md")
+    ]
+
+
+def test_rebuild_no_divergence_when_bodies_hash_equal(tmp_path: Path, sidecar) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    report = rebuild_from_vault(
+        vault, sidecar, live_body=lambda _ep_id: "# a\nbody of a.\n"
+    )
+    assert report.divergences == []
+
+
+def test_rebuild_divergence_compares_canonical_bodies(
+    tmp_path: Path, sidecar
+) -> None:
+    # A human reflow (trailing whitespace, extra trailing newlines) is NOT an
+    # edit — the canonical hash normalizes it away, so no proposal.
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    reflowed = "# a  \nbody of a.  \n\n\n\n\n"
+    report = rebuild_from_vault(vault, sidecar, live_body=lambda _ep_id: reflowed)
+    assert report.divergences == []
+
+
+def test_rebuild_no_divergence_when_live_episode_missing(
+    tmp_path: Path, sidecar
+) -> None:
+    # ``live_body`` returns None (episode absent, invalidated, or body-less) —
+    # no proposal is invented for a note with nothing to compare against.
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    report = rebuild_from_vault(vault, sidecar, live_body=lambda _ep_id: None)
+    assert report.divergences == []
+
+
+def test_rebuild_without_live_body_never_reports_divergence(
+    tmp_path: Path, sidecar
+) -> None:
+    # Default (live_body=None): the orchestrator cannot compare, so the
+    # report carries no divergences — existing callers see zero change.
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    report = rebuild_from_vault(vault, sidecar)
+    assert report.divergences == []

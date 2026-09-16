@@ -218,6 +218,12 @@ def run_index_rebuild(
     auto-pick. A parse failure surfaces as ``FrontmatterInvalid`` (Cat A exit
     90) — NO silent skip.
 
+    Human-edit divergence (P1b): notes whose canonical body hash differs from
+    the live episode's body land in ``report.divergences`` with the suggested
+    ``seahorse improve`` per note. Proposal-only — exit stays 0, the rebuild
+    NEVER auto-improves; the human correction enters the knowledge base
+    through the write path with human provenance.
+
     ``embed_mode`` drives the vec0/FTS backfill — the flip makes
     ``body+summary`` the default. The ``episode_index`` rebuild itself is
     embed-mode-independent.
@@ -235,35 +241,62 @@ def run_index_rebuild(
 
     storage = Storage(config.db_path)
     backfill: str | None = None
+
+    def _live_body(ep_id: str) -> str | None:
+        # The live body of an ACTIVE episode (current-state predicate:
+        # invalid_at AND expired_at both null). An invalidated episode is
+        # expected to be superseded — its live body may differ from the
+        # note without implying a lost human edit; a missing episode has
+        # no row to compare against. None = no proposal for that note.
+        ep = storage.episodes.get(ep_id)
+        if ep is None or ep.invalid_at is not None or ep.expired_at is not None:
+            return None
+        return ep.body
+
     try:
         report = rebuild_from_vault(
             config.vault,
             storage.sidecar,
             secondary_index_wipes=(vec_wipe, fts_wipe),
+            live_body=_live_body,
         )
         # Best-effort vec0/FTS backfill over the rebuilt index.
         backfill = _run_backfill(config.vault, storage, embed_mode=embed_mode)
     finally:
         storage.close()
     conflicts = [asdict(c) for c in report.skipped]
+    divergences = [asdict(d) for d in report.divergences]
     payload = {
         "command": "index rebuild",
         "db_path": str(config.db_path),
         "indexed": report.indexed,
         "skipped": len(conflicts),
         "conflicts": conflicts,
+        "divergences": divergences,
         "backfill": backfill,
     }
     human_lines = [
         f"Index rebuild: {config.db_path}",
-        f"  indexed:   {report.indexed}",
-        f"  skipped:   {len(conflicts)}",
-        f"  backfill:  {backfill}",
+        f"  indexed:     {report.indexed}",
+        f"  skipped:     {len(conflicts)}",
+        f"  divergences: {len(divergences)}",
+        f"  backfill:    {backfill}",
     ]
     if conflicts:
         human_lines.append("  conflicts (no auto-pick, human resolution required):")
         for c in conflicts:
             human_lines.append(f"    - {c['file_path']} ({c['reason']})")
+    if divergences:
+        human_lines.append(
+            "  divergences (proposal-only — the .md body differs from the live"
+            " episode; never auto-improve, review then run the suggested"
+            " improve):"
+        )
+        for d in divergences:
+            human_lines.append(
+                f"    - {d['file_path']} (suggest: seahorse improve"
+                f" {d['ep_id']} <corrected body> --reason correction)"
+            )
     human = "\n".join(human_lines) + "\n"
     render_message(payload, fmt=fmt, out=out, human_text=human)
     if report.skipped:
