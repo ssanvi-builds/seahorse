@@ -22,8 +22,8 @@ Three categories, consistent with the MCP server:
 - **Cat C — CLI-owned exit codes** (prefixed ``CLI_``, NOT from the facade
   catalog): bootstrap/config/reserved-feature errors of the CLI surface itself.
 
-The real catalog the facade and engine raise is 17 Cat A codes (8 facade + 9
-engine), mirrored from the MCP server's ``CAT_A``. ``E_INVALID_SOURCE_TYPE``
+The real catalog the facade and engine raise is 18 Cat A codes (8 facade +
+10 engine), mirrored from the MCP server's ``CAT_A``. ``E_INVALID_SOURCE_TYPE``
 → ``E_MISSING_SOURCE_TYPE`` (the real code). ``E_INVALID_COGNITIVE_TYPE`` is
 NOT raised in the current release (the facade does not validate
 ``cognitive_type`` — the engine is authoritative) so it is not mapped.
@@ -44,10 +44,11 @@ future surface routes here.
 Exit-code layout (64–99, ``sysexits.h`` application band):
 
 - ``0``  success, ``1`` general/unhandled, ``2`` usage/argparse.
-- Cat A (21): 64–74, 76–81 (75 skipped — Cat C anchor), 90–93 (frontmatter).
-  The 4 frontmatter codes live in the previously-reserved 90–93 band because
-  they are a distinct component origin (the frontmatter migrator, not the
-  facade/engine) and the 64–81 band was already full.
+- Cat A (22): 64–74, 76–81 (75 skipped — Cat C anchor), 90–93 (frontmatter),
+  95 (engine — every lower slot is taken). The 4 frontmatter codes live in
+  the previously-reserved 90–93 band because they are a distinct component
+  origin (the frontmatter migrator, not the facade/engine) and the 64–81
+  band was already full.
 - Cat C (5):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty),
   82 ``CLI_VAULT_NOT_FOUND``, 83 ``CLI_CONFIG_INVALID``,
   94 ``CLI_REBUILD_CONFLICTS`` (index-rebuild conflict honesty),
@@ -76,7 +77,7 @@ EXIT_USAGE = 2  # argparse/Typer usage error
 
 # ---------------------------------------------------------------------------
 # Cat A — stable SeahorseError.code / EngineError.code → exit code.
-# Mirrors seahorse.mcp.errors.CAT_A (-32001..-32017) in the same order so the
+# Mirrors seahorse.mcp.errors.CAT_A (-32001..-32022) in the same order so the
 # two tables stay parallel (single point of change).
 # ---------------------------------------------------------------------------
 _CAT_A_FACADE = {
@@ -104,6 +105,9 @@ _CAT_A_ENGINE = {
     "E_EXPIRED_AT_NON_NULL": 79,
     "E_CREATED_AT_ENGINE_OWNED": 80,
     "E_MONOTONICITY_VIOLATED": 81,
+    # The 64–81 engine band is full (75 is the Cat C anchor) and 82–94 are
+    # taken (Cat C 82–83/94, Cat B 84–89), so 95 is the next free exit.
+    "E_IMPROVE_VALID_AT_FUTURE": 95,
 }
 
 # Frontmatter codes (4) — owned by the frontmatter migrator, distinct
@@ -206,6 +210,10 @@ _MESSAGE_BY_CODE = {
     "E_EXPIRED_AT_NON_NULL": "expired_at non-null",
     "E_CREATED_AT_ENGINE_OWNED": "created_at engine-owned",
     "E_MONOTONICITY_VIOLATED": "Monotonicity violated",
+    "E_IMPROVE_VALID_AT_FUTURE": (
+        "improve valid_at is in the future — a correction takes effect when "
+        "made; use remember for a future-dated fact (PENDING_INGEST)"
+    ),
     # frontmatter (the frontmatter migrator)
     "E_FRONTMATTER_INVALID": "Frontmatter invalid",
     "E_MIGRATION_ABORTED": "Migration aborted",

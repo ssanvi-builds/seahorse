@@ -62,7 +62,8 @@ from seahorse.frontmatter.errors import (
 
 
 # ---------------------------------------------------------------------------
-# Domain errors — every code in the catalog maps to a unique exit in 64–81.
+# Domain errors — every code in the catalog maps to a unique exit in 64–81
+# (plus E_IMPROVE_VALID_AT_FUTURE at 95 — the lower bands are full).
 # ---------------------------------------------------------------------------
 
 
@@ -86,6 +87,7 @@ from seahorse.frontmatter.errors import (
         ("E_EXPIRED_AT_NON_NULL", EngineError),
         ("E_CREATED_AT_ENGINE_OWNED", EngineError),
         ("E_MONOTONICITY_VIOLATED", EngineError),
+        ("E_IMPROVE_VALID_AT_FUTURE", EngineError),
     ],
 )
 def test_cat_a_code_maps_to_exit(code, exc_cls):
@@ -126,13 +128,15 @@ def test_cat_a_frontmatter_codes_map_to_exit():
         assert info["exit_code"] == exit_code
 
 
-def test_cat_a_table_is_21_codes_no_collision_with_75():
-    """21 domain-error codes (17 domain + 4 frontmatter), unique, none using 75."""
-    assert len(CAT_A) == 21
+def test_cat_a_table_is_22_codes_no_collision_with_75():
+    """22 domain-error codes (18 domain + 4 frontmatter), unique, none using 75."""
+    assert len(CAT_A) == 22
     exits = list(CAT_A.values())
-    assert len(set(exits)) == 21  # unique
-    # 17 domain codes in 64–81, 4 frontmatter codes in 90–93 (the future band).
-    assert all(64 <= e <= 93 for e in exits)
+    assert len(set(exits)) == 22  # unique
+    # 18 domain codes in 64–81 plus 95, 4 frontmatter codes in 90–93 (the
+    # future band). 95 is the engine code whose lower bands are all taken;
+    # nothing lands on Cat C (75, 82, 83, 94, 97) or Cat B (84–89).
+    assert all(64 <= e <= 81 or 90 <= e <= 93 or e == 95 for e in exits)
     assert 75 not in exits
     assert {90, 91, 92, 93} <= set(exits)
 

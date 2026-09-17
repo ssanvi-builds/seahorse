@@ -68,6 +68,24 @@ Two of the four deferred post-1.0 refactors landed behavior-preserving.
   1334 → 1028 lines and stays the composition root (entry points and the
   `seahorse.cli.app:app` hook reference untouched; `--help` order unchanged).
 
+### Fixed
+
+- **`improve --valid-at` now honors the state axis** (external report,
+  VESTIGIA). `improve` respected the successor's retroactive `valid_at` but
+  closed the old interval at the wall clock, so a retroactive correction left
+  BOTH records in force on `state_at` for the retroactive window. The old
+  interval now closes at the successor's `valid_at` — the state axis tiles:
+  exactly one in-force record per fact at any state time. `known_at` is
+  untouched (a correction is only known from its own `created_at`).
+  Two fail-loud guards on the same seam: a `valid_at` before the target's own
+  `valid_at` is rejected (`E_MONOTONICITY_VIOLATED` — "the replacement was
+  true before the thing it replaced" breaks `valid_at <= invalid_at`), and a
+  `valid_at` in the future is rejected with the new `E_IMPROVE_VALID_AT_FUTURE`
+  (a future-dated fact is `remember`'s PENDING_INGEST regime, not a correction;
+  it would also close the old interval at a future date the current-state
+  listing cannot represent). New code mirrored in both projections: CLI exit
+  95, MCP `-32022`.
+
 ## [1.3.0] - 2026-09-15
 
 PIT (point-in-time) listing: the honest listing regime now serves bi-temporal

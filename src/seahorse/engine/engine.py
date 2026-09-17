@@ -342,13 +342,46 @@ class BiTemporalEngine:
             if old is None:
                 raise NotFound(ep_id)
             self._guards.validate(old, repo=self._repo, op="forget", now=now)
+            # F3.1: invalid_at is real-world time, and a retroactive valid_at
+            # asserts WHEN the fact changed — so the old interval closes at
+            # the successor's valid_at, not at the wall clock of the correction.
+            # Closing at ``now`` leaves both records in force on the state axis
+            # for the retroactive window (the VESTIGIA finding, 2026-09-17).
+            # A valid_at BEFORE the target's own valid_at is incoherent ("the
+            # replacement was true before the thing it replaced") and would
+            # break valid_at <= invalid_at on the target row: rejected loud,
+            # store untouched.
+            if (
+                valid_at is not None
+                and old.valid_at is not None
+                and valid_at < old.valid_at
+            ):
+                raise errors.EngineError(
+                    errors.E_MONOTONICITY_VIOLATED,
+                    pair="valid_at<target_valid_at",
+                    valid_at=valid_at.isoformat(),
+                    target_valid_at=old.valid_at.isoformat(),
+                )
+            # A valid_at AFTER the wall clock is not a correction either —
+            # "this fact starts being true on X" is remember's PENDING_INGEST
+            # regime. It would also close the old interval at a future date:
+            # a state the current-state listing cannot represent (partial
+            # index ``invalid_at IS NULL``) while the state predicate says
+            # in-force. Rejected loud, store untouched.
+            if valid_at is not None and valid_at > now:
+                raise errors.EngineError(
+                    errors.E_IMPROVE_VALID_AT_FUTURE,
+                    valid_at=valid_at.isoformat(),
+                    now=now.isoformat(),
+                )
+            effective_valid_at = valid_at or now
             new_ep = Episode(
                 id=new_uuid7(),
                 created_at=now,
                 schema_version=old.schema_version,
                 provenance=by,
                 body=new_body,
-                valid_at=valid_at or now,
+                valid_at=effective_valid_at,
                 invalid_at=None,
                 expired_at=None,
                 supersedes=ep_id,
@@ -377,7 +410,10 @@ class BiTemporalEngine:
                 fact_id = fact_id_of(old.subject)
             new_ep = new_ep.model_copy(update={"subject": subject, "fact_id": fact_id})
             with self._repo.atomic():  # atomic: full rollback if the 2nd write fails
-                self._repo.set_invalid_at(ep_id, now)  # invalidate-then-append order
+                # Close the old interval where the successor starts (state
+                # axis); wall clock only when the correction is not
+                # retroactive (valid_at defaults to now).
+                self._repo.set_invalid_at(ep_id, effective_valid_at)  # invalidate-then-append order
                 self._guards.validate(new_ep, repo=self._repo, op="improve", now=now)
                 collisions = self._collision.detect(new_ep, self._repo, op="improve")
                 if collisions:

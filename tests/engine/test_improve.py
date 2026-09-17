@@ -227,3 +227,105 @@ def test_improve_collision_rollback_emits_no_audit(engine):
         eng.improve("e1", "# Python\nedited\n", by={"source_type": "human"}, now=LATER)
     assert all(e.primitive != "improve" for e in audit.query(target_id="e1"))
     assert all(e.primitive != "improve" for e in audit.query(target_id="e3"))
+
+# --- retroactive valid_at (VESTIGIA finding, 2026-09-17) ---------------------
+#
+# F3.1 defines invalid_at as "real-world time until which the fact was true".
+# A retroactive valid_at on the successor asserts the fact changed on that
+# date, so the old interval must close THERE, not on the correction clock:
+# closing at wall clock leaves both records in force on the state axis for the
+# retroactive window (state_at hands back two rows for the same fact).
+
+
+MAR_1 = datetime(2026, 3, 1, 0, 0, 0, tzinfo=UTC)
+SEP_1 = datetime(2026, 9, 1, 0, 0, 0, tzinfo=UTC)
+SEP_10 = datetime(2026, 9, 10, 0, 0, 0, tzinfo=UTC)
+SEP_17 = datetime(2026, 9, 17, 5, 26, 33, tzinfo=UTC)
+
+
+def test_improve_retroactive_valid_at_closes_old_at_successor_valid_at(engine):
+    # The exact VESTIGIA repro: fact in force since March, corrected on the
+    # 17th with "the correction held since the 1st".
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\noriginal\n", valid_at=MAR_1)
+    new_ep = eng.improve(
+        "e1", "# Madrid\ncorrected\n", by={"source_type": "human"}, valid_at=SEP_1, now=SEP_17
+    )
+    # The old interval closes at the successor's valid_at, NOT at the wall
+    # clock of the correction.
+    assert repo.get("e1").invalid_at == SEP_1
+    assert new_ep.valid_at == SEP_1
+    # The state axis tiles: exactly one in-force record at any state time.
+    assert [e.id for e in repo.query_state_at(SEP_10)] == [new_ep.id]
+    before = repo.query_state_at(MAR_1 + timedelta(days=1))
+    assert [e.id for e in before] == ["e1"]
+    after = repo.query_state_at(SEP_17 + timedelta(days=1))
+    assert [e.id for e in after] == [new_ep.id]
+    # known_at is untouched: the correction is only known from its own
+    # created_at on — the successor cannot leak into the past.
+    known_before = [e.id for e in repo.query_known_at(SEP_10)]
+    assert known_before == ["e1"]
+    known_after = [e.id for e in repo.query_known_at(SEP_17 + timedelta(seconds=1))]
+    assert set(known_after) == {"e1", new_ep.id}
+
+
+def test_improve_retroactive_valid_at_keeps_wall_clock_as_created_at(engine):
+    # The retroactive window lives on the STATE axis only; created_at stays
+    # engine-owned at the correction clock.
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\noriginal\n", valid_at=MAR_1)
+    new_ep = eng.improve(
+        "e1", "# Madrid\ncorrected\n", by={"source_type": "human"}, valid_at=SEP_1, now=SEP_17
+    )
+    assert new_ep.created_at == SEP_17
+
+
+def test_improve_future_valid_at_rejected_loud(engine):
+    # "This fact starts being true on X" is NOT a correction — it is a
+    # future-dated fact, which belongs to remember (the PENDING_INGEST
+    # regime). Accepting it on improve would also close the old interval at
+    # a future date: a state the current-state listing cannot represent (its
+    # partial index is ``invalid_at IS NULL``) while the state predicate
+    # says in-force — the two would silently disagree. Reject loud, store
+    # untouched.
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\nv1\n")
+    with pytest.raises(errors.EngineError) as exc:
+        eng.improve(
+            "e1", "# Madrid\nv2\n", by={"source_type": "human"}, valid_at=FUTURE, now=LATER
+        )
+    assert exc.value.code == errors.E_IMPROVE_VALID_AT_FUTURE
+    # Nothing happened: target valid, no successor, no audit row.
+    assert repo.get("e1").invalid_at is None
+    assert {e.id for e in repo.query_vigent()} == {"e1"}
+    assert all(e.primitive != "improve" for e in audit.query(target_id="e1"))
+
+
+def test_improve_valid_at_before_target_valid_at_rejected_loud(engine):
+    # "The replacement was true before the thing it replaced" breaks the
+    # valid_at <= invalid_at invariant on the target row: reject loud, leave
+    # the store untouched.
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\noriginal\n", valid_at=MAR_1)
+    before = datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
+    with pytest.raises(errors.EngineError) as exc:
+        eng.improve(
+            "e1", "# Madrid\ncorrected\n", by={"source_type": "human"}, valid_at=before, now=SEP_17
+        )
+    assert exc.value.code == errors.E_MONOTONICITY_VIOLATED
+    # Nothing happened: target valid, no successor, no audit row.
+    assert repo.get("e1").invalid_at is None
+    assert {e.id for e in repo.query_vigent()} == {"e1"}
+    assert all(e.primitive != "improve" for e in audit.query(target_id="e1"))
+
+
+def test_improve_valid_at_equal_to_target_valid_at_allowed(engine):
+    # Equal is coherent ("the record was wrong from the start"): the old
+    # interval is empty, the successor takes over from the target's own start.
+    eng, repo, audit = engine
+    _apply(eng, "e1", "# Madrid\noriginal\n", valid_at=MAR_1)
+    new_ep = eng.improve(
+        "e1", "# Madrid\ncorrected\n", by={"source_type": "human"}, valid_at=MAR_1, now=SEP_17
+    )
+    assert repo.get("e1").invalid_at == MAR_1
+    assert [e.id for e in repo.query_state_at(MAR_1 + timedelta(days=1))] == [new_ep.id]

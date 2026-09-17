@@ -36,3 +36,9 @@ E_EXPIRED_AT_NON_NULL = "E_EXPIRED_AT_NON_NULL"
 # the monotonic ordering.
 E_CREATED_AT_ENGINE_OWNED = "E_CREATED_AT_ENGINE_OWNED"
 E_MONOTONICITY_VIOLATED = "E_MONOTONICITY_VIOLATED"
+# improve is a correction of a fact that IS true — a valid_at in the future is
+# a future-dated fact, which belongs to remember (the PENDING_INGEST regime),
+# not to the correction path. It would also close the old interval at a future
+# date, a state the current-state listing cannot represent (partial index
+# ``invalid_at IS NULL``) while the state predicate says in-force.
+E_IMPROVE_VALID_AT_FUTURE = "E_IMPROVE_VALID_AT_FUTURE"

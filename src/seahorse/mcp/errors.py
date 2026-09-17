@@ -78,6 +78,9 @@ _CAT_A_ENGINE = {
     "E_EXPIRED_AT_NON_NULL": -32015,
     "E_CREATED_AT_ENGINE_OWNED": -32016,
     "E_MONOTONICITY_VIOLATED": -32017,
+    # -32018..-32021 hold the frontmatter codes; -32022 is the next free
+    # server-defined code.
+    "E_IMPROVE_VALID_AT_FUTURE": -32022,
 }
 
 # Frontmatter codes (4) — owned by the frontmatter migrator, mirrored in the
@@ -250,6 +253,10 @@ _MESSAGE_BY_CODE = {
     "E_EXPIRED_AT_NON_NULL": "expired_at non-null",
     "E_CREATED_AT_ENGINE_OWNED": "created_at engine-owned",
     "E_MONOTONICITY_VIOLATED": "Monotonicity violated",
+    "E_IMPROVE_VALID_AT_FUTURE": (
+        "improve valid_at is in the future — a correction takes effect when "
+        "made; use remember for a future-dated fact (PENDING_INGEST)"
+    ),
     # frontmatter (the migrator)
     "E_FRONTMATTER_INVALID": "Frontmatter invalid",
     "E_MIGRATION_ABORTED": "Migration aborted",
