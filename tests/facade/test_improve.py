@@ -30,6 +30,10 @@ def _by() -> dict:
     return {"source_type": "human", "agent_id": "a1"}
 
 
+def _edge(ep_id: str) -> dict:
+    return {"id": ep_id, "edge_kind": "evidence"}
+
+
 class TestImproveDelegation:
     def test_calls_engine_improve_once(self, facade, engine) -> None:
         engine.improve_result = make_episode("e2", supersedes="e1")
@@ -283,3 +287,75 @@ class TestImproveForwardsNow:
         engine.improve_result = make_episode("e2")
         facade.improve("e1", "new body", by=_by())
         assert engine.improve_calls[0]["now"] == datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+
+
+class TestImproveInheritsMembership:
+    """F3.2 design decision (f3-2-derived-from-field-shape.md): when a
+    consolidated note is corrected with ``improve``, the successor INHERITS
+    the membership that does not change and closes the lineage with the
+    superseded note as a ``supersedes`` edge — the consumer never has to
+    reconstruct the cluster by walking the supersedes chain."""
+
+    @staticmethod
+    def _consolidated(engine, *, derived_from: list | None) -> None:
+        engine.get_result = make_episode(
+            "e1",
+            cognitive_type="semantic",
+            provenance={
+                "source_type": "agent",
+                "extraction_mode": "consolidated",
+                **({"derived_from": derived_from} if derived_from is not None else {}),
+            },
+        )
+        engine.improve_result = make_episode("e2", supersedes="e1")
+
+    def test_inherits_membership_and_closes_lineage(self, facade, engine) -> None:
+        self._consolidated(engine, derived_from=[_edge("ep-a"), _edge("ep-b")])
+        facade.improve("e1", "corrected body", by=_by())
+        by = engine.improve_calls[0]["by"]
+        assert by["extraction_mode"] == "consolidated"
+        assert by["derived_from"] == [
+            _edge("ep-a"),
+            _edge("ep-b"),
+            {"id": "e1", "edge_kind": "supersedes"},
+        ]
+
+    def test_caller_provided_membership_wins(self, facade, engine) -> None:
+        own = [_edge("ep-z")]
+        self._consolidated(engine, derived_from=[_edge("ep-a")])
+        facade.improve("e1", "corrected body", by={**_by(), "derived_from": own})
+        assert engine.improve_calls[0]["by"]["derived_from"] == own
+
+    def test_consolidated_without_membership_adds_no_key(self, facade, engine) -> None:
+        self._consolidated(engine, derived_from=None)
+        facade.improve("e1", "corrected body", by=_by())
+        assert "derived_from" not in engine.improve_calls[0]["by"]
+
+    def test_non_consolidated_improve_adds_no_membership(self, facade, engine) -> None:
+        engine.get_result = make_episode("e1", cognitive_type="episodic")
+        engine.improve_result = make_episode("e2", supersedes="e1")
+        facade.improve("e1", "new body", by=_by())
+        assert "derived_from" not in engine.improve_calls[0]["by"]
+
+    def test_unknown_edge_kind_preserved(self, facade, engine) -> None:
+        self._consolidated(engine, derived_from=[{"id": "ep-a", "edge_kind": "custom"}])
+        facade.improve("e1", "corrected body", by=_by())
+        edges = engine.improve_calls[0]["by"]["derived_from"]
+        assert edges[0] == {"id": "ep-a", "edge_kind": "custom"}
+        assert edges[-1] == {"id": "e1", "edge_kind": "supersedes"}
+
+    def test_malformed_membership_tolerated(self, facade, engine) -> None:
+        # A third-party provenance block may carry the minimal string shape
+        # (a real design alternative) and unusable entries: tolerated, never
+        # a crash — the string is promoted to ``evidence``, the unusable are
+        # skipped, a self-referencing edge is never re-listed.
+        self._consolidated(
+            engine,
+            derived_from=["ep-x", {"edge_kind": "evidence"}, {"id": 42}, 7, _edge("e1")],
+        )
+        facade.improve("e1", "corrected body", by=_by())
+        by = engine.improve_calls[0]["by"]
+        assert by["derived_from"] == [
+            {"id": "ep-x", "edge_kind": "evidence"},
+            {"id": "e1", "edge_kind": "supersedes"},
+        ]

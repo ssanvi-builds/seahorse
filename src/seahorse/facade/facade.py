@@ -488,6 +488,17 @@ class MemoryFacade:
         stopped matching, the next ``consolidate`` created a duplicate note,
         and the successor stopped materializing/embedding. The other skip keys
         (``model_used``/``prompt_hash``/``confidence``) are still forced.
+
+        Membership inheritance (F3.2 design decision): when the OLD episode is
+        a consolidated note, the successor also inherits its
+        ``derived_from`` membership — the cluster membership that does not
+        change — and closes the lineage with the superseded note itself as a
+        ``supersedes`` edge, so the consumer of the emitted
+        ``x-seahorse-derived-from`` field never has to reconstruct the cluster
+        by walking the supersedes chain. The parse is tolerant (the same
+        normalize as the distill path); a caller-supplied ``by.derived_from``
+        wins. The inheritance fires only when the old note actually carries
+        membership.
         """
         self._validate_improve_input(ep_id, new_body, by)
         old = self._engine.get(ep_id)
@@ -503,6 +514,10 @@ class MemoryFacade:
             "prompt_hash": None,
             "confidence": 1.0,
         }
+        if inherits_consolidated and old is not None:
+            inherited = self._inherited_membership(old, ep_id)
+            if inherited and "derived_from" not in effective_by:
+                effective_by["derived_from"] = inherited
         result = self._engine.improve(
             ep_id, new_body, by=effective_by, valid_at=valid_at, reason=reason, now=self._now(now)
         )
@@ -520,6 +535,24 @@ class MemoryFacade:
             self._invalidate_episode(old)
         self._log("improve", "updated")
         return result
+
+    def _inherited_membership(self, old: Any, ep_id: str) -> list[dict[str, str]]:
+        """The superseded note's membership the successor keeps, with the
+        lineage closed by the superseded note itself (F3.2 improve decision).
+        Lazy import: ``distill`` pulls the engine; the facade must not import
+        it at module load. Self-referencing edges are dropped — the closing
+        ``supersedes`` edge replaces them (an episode never cites itself as
+        its own evidence)."""
+        from seahorse.distill.distill import normalize_derived_from
+
+        edges = [
+            edge
+            for edge in normalize_derived_from(old.provenance.get("derived_from"))
+            if edge["id"] != ep_id
+        ]
+        if edges:
+            edges.append({"id": ep_id, "edge_kind": "supersedes"})
+        return edges
 
     def _validate_improve_input(self, ep_id: str, new_body: str, by: Provenance) -> None:
         if not ep_id:
