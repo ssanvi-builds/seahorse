@@ -190,3 +190,49 @@ def test_unknown_edge_kinds_are_carried_not_rejected(engine, edge, expected_kind
         repo, wr.ep_id, {**_episode(eng, wr.ep_id).provenance, "derived_from": edges}
     )
     assert [e["edge_kind"] for e in eng.get(wr.ep_id).provenance["derived_from"]] == [expected_kind]
+
+
+def test_supersession_tolerates_malformed_inherited_membership(engine) -> None:
+    """A third-party provenance block may carry the minimal string shape (a
+    real design option) and unusable entries — tolerated, never a crash: the
+    string is promoted to ``evidence``, the unusable are skipped, valid edges
+    pass through, the lineage still closes with the ``supersedes`` edge."""
+    eng, repo, _audit = engine
+    first_ids = _cluster(eng, "fix the flaky recall test", NOW)
+    rep1 = _episode(eng, first_ids[-1])
+    wr1 = distill_episodes(eng, first_ids, rep1, "# fix\n\nv1.", {})
+    _rewrite_provenance(
+        repo,
+        wr1.ep_id,
+        {
+            **_episode(eng, wr1.ep_id).provenance,
+            "derived_from": [
+                "ep-x",
+                {"edge_kind": "evidence"},
+                {"id": 42},
+                7,
+                {"id": "ep-ok", "edge_kind": "custom"},
+            ],
+        },
+    )
+
+    new_id = _remember(
+        eng, body="# fix the flaky recall test [s:9]\n\nNew.", now=NOW + timedelta(minutes=5)
+    )
+    wr2 = distill_episodes(
+        eng,
+        [new_id],
+        _episode(eng, new_id),
+        "# fix\n\nBody v2.",
+        {},
+        supersede_ep_id=wr1.ep_id,
+    )
+
+    edges = _episode(eng, wr2.ep_id).provenance["derived_from"]
+    by_id = {e["id"]: e["edge_kind"] for e in edges}
+    # the string edge is promoted, the valid edge passes through, the unusable
+    # entries are gone, and the lineage closes with the superseded note
+    assert by_id["ep-x"] == "evidence"
+    assert by_id["ep-ok"] == "custom"
+    assert 42 not in by_id and "7" not in by_id
+    assert edges[-1] == {"id": wr1.ep_id, "edge_kind": "supersedes"}

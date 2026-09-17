@@ -14,6 +14,7 @@ not single-episode ingestion — it writes via ``engine.remember`` directly
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from seahorse.contracts.engine import WriteResult
@@ -25,6 +26,37 @@ SUPERSEDES_REASON_MERGE = "merge"
 
 _EDGE_EVIDENCE = "evidence"
 _EDGE_SUPERSEDES = "supersedes"
+
+logger = logging.getLogger(__name__)
+
+
+def normalize_derived_from(raw: Any) -> list[dict[str, str]]:
+    """Parse an ``x-seahorse-derived-from`` / ``derived_from`` membership into
+    the canonical ``{id, edge_kind}`` shape (F3.2).
+
+    Tolerant by policy (the same policy as every ``x-*`` field — preserve,
+    never reject): dicts with a string ``id`` pass through verbatim, unknown
+    ``edge_kind`` values are preserved, and a plain string entry — the minimal
+    shape a third-party producer may emit — is promoted to ``evidence``.
+    Unusable entries (no id, non-string id, non-string non-dict) are skipped
+    with a warning: membership parse must never crash a write. NO dedupe here
+    — callers own dedupe by id (they have the known-set, the parser does not).
+    """
+    if not isinstance(raw, list):
+        return []
+    edges: list[dict[str, str]] = []
+    for entry in raw:
+        if isinstance(entry, dict):
+            edge_id = entry.get("id")
+            if isinstance(edge_id, str):
+                edges.append(entry)
+            else:
+                logger.warning("derived_from entry without a string id skipped: %r", entry)
+        elif isinstance(entry, str):
+            edges.append({"id": entry, "edge_kind": _EDGE_EVIDENCE})
+        else:
+            logger.warning("derived_from entry of unusable type skipped: %r", entry)
+    return edges
 
 
 def _derived_from(
@@ -55,8 +87,8 @@ def _derived_from(
     old = engine.get(supersede_ep_id)
     if old is not None:
         known = {edge["id"] for edge in edges}
-        for edge in old.provenance.get("derived_from") or []:
-            if edge.get("id") not in known and edge["id"] != supersede_ep_id:
+        for edge in normalize_derived_from(old.provenance.get("derived_from")):
+            if edge["id"] not in known and edge["id"] != supersede_ep_id:
                 edges.append(edge)
     edges.append({"id": supersede_ep_id, "edge_kind": _EDGE_SUPERSEDES})
     return edges
