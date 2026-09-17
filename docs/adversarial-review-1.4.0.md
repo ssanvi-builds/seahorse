@@ -4,23 +4,71 @@ Adversarial review of the v1.4.0 sprint (`git diff 36dde35..HEAD`: 26 files,
 +1940/−515, 7 commits `21bdec8..28890d7`) before publishing. Five critics ran
 in parallel over the diff + tree — never over commit messages — each with its
 own attack list (the `recall()` refactor, the F3.2 interop field, claims
-honesty, divergence/doctor robustness, packaging/release). Every claim was
-re-verified against the code before it counted; refuted ones are not listed.
+honesty, divergence/doctor robustness, packaging/release), plus a sixth
+angle: a confirmed external bug report (C1) fixed before publishing. Every
+claim was re-verified against the code before it counted; refuted ones are
+not listed.
 
 Each finding carries a verdict: **resolved** (fixed in this review cycle, TDD)
-or **accepted** (documented trade-off). Severity as filed: 0 CRITICAL,
-2 HIGH, 4 MEDIUM, 5 LOW — 9 resolved, 2 accepted.
+or **accepted** (documented trade-off). Severity as filed: 1 CRITICAL,
+2 HIGH, 4 MEDIUM, 5 LOW — 10 resolved, 2 accepted.
 
 ## Gates re-run on the fixed tree
 
-- Full suite: 3055 passed / 9 skipped (exit 0), coverage gate ≥80% green.
+- Full suite: 3070 passed / 9 skipped (exit 0), coverage gate ≥80% green —
+  final re-run including the improve fix (C1).
 - `ruff check .`: clean. `mypy src`: clean (208 files).
 - Fingerprint A/B (corpus fijo, `benchmark experiment recency --retrieval-only`,
   HashEmbedder + StubReaderLLM): zero ranking diffs `36dde35` vs HEAD across
   10 manifests — the `recall()` stage refactor moved no ranking. Diffs limited
   to the known-nondeterministic fields (`started_at`, `run_id`, `config_hash`
   — output-dir-path-dependent — and `latency_p95_ms`), excluded by comparator.
-- e2e: harnesses 47/47 checks, fresh-user 62/62 checks.
+  The improve fix is write-path only (no retrieval surface); the bit-comparable
+  fingerprint suites (`test_reproducibility`) stay green.
+- e2e: harnesses 47/47 checks, fresh-user 62/62 checks — re-run on the final
+  tree after the improve fix.
+
+## Critical
+
+### C1 — `improve --valid-at` closed the old interval at the wall clock (external report, VESTIGIA)
+
+Confirmed bug, reported by the first external user (2026-09-17): `improve`
+honored the successor's retroactive `valid_at` (`valid_at or now`) but closed
+the old interval with `set_invalid_at(ep_id, now)` — the wall clock of the
+correction. His exact repro: a fact in force since `valid_at=2026-03-01`,
+corrected on 2026-09-17 with `--valid-at 2026-09-01` → the old record keeps
+`invalid_at=2026-09-17T05:26:33` while the successor starts `2026-09-01`: for
+sixteen days BOTH records are in force, and `state_at` anywhere in that window
+returns two rows for the same fact. This contradicts the project's own spec
+(`docs/f3.1-format.md`: `invalid_at` is "real-world time until which the fact
+was true", the only timestamp that may change). The only prior covering test
+passed both clocks with the same value, so neither semantics was pinned —
+the bug was invisible to the suite. `known_at` was already correct (nothing
+leaks before `created_at`).
+
+**Verdict: resolved.** The old interval now closes at the successor's
+`valid_at` (`set_invalid_at(ep_id, effective_valid_at)`): the state axis
+tiles — exactly one in-force record per fact at any state time — and
+`created_at` stays engine-owned at the correction clock. Two fail-loud
+guards on the same seam, each leaving the store untouched with no audit row:
+
+- a `valid_at` before the target's own `valid_at` ("the replacement was true
+  before the thing it replaced") is rejected with `E_MONOTONICITY_VIOLATED`
+  (it would break `valid_at <= invalid_at` on the target row);
+- a `valid_at` in the future is rejected with the new `E_IMPROVE_VALID_AT_FUTURE`
+  (exit 95 / MCP `-32022`, mirrored in both projections): a future-dated fact
+  is `remember`'s PENDING_INGEST regime, not a correction — and it would
+  close the old interval at a future date the current-state listing cannot
+  represent (partial index `invalid_at IS NULL`) while the state predicate
+  says in-force. The divergence was caught by the property invariant
+  `vigente_and_is_valid_at_agree` the moment the widened state space became
+  reachable.
+
+TDD: the exact external repro is the regression test
+(`test_improve_retroactive_valid_at_closes_old_at_successor_valid_at`),
+plus wall-clock-stays-`created_at`, both guard rejections
+(store-untouched, no audit), and the equal-boundary case
+(`valid_at == target.valid_at`: "the record was wrong from the start").
 
 ## High
 
