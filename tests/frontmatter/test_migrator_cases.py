@@ -330,3 +330,14 @@ class TestRun:
         migrator = VaultMigrator(tmp_path, SESSION, now=NOW)
         manifest = migrator.run()
         assert manifest.stats.total_notes == 1  # only note.md, sidecar excluded
+
+    def test_run_excludes_claude_local_state_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "note.md").write_text("# N\nbody\n", encoding="utf-8")
+        claude = tmp_path / ".claude"
+        claude.mkdir()
+        (claude / "plans" / "nested").mkdir(parents=True)
+        (claude / "plans" / "nested" / "plan.md").write_text("# plan\n", encoding="utf-8")
+        (claude / "session-note.md").write_text("# session\n", encoding="utf-8")
+        migrator = VaultMigrator(tmp_path, SESSION, now=NOW)
+        manifest = migrator.run()
+        assert manifest.stats.total_notes == 1  # agent plumbing is not a note source

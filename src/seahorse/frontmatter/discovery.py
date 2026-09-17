@@ -9,6 +9,9 @@ directories that are not user notes:
 - ``.trash`` — Obsidian's soft-delete bin.
 - ``.git`` and other VCS metadata.
 - ``.seahorse`` — the sidecar SQLite/index directory (engine-owned, not a note).
+- ``.claude`` — Claude Code's local project state (plans, agents) — agent
+  plumbing, not a note source; a vault CLAUDE.md is still picked up (a file,
+  not this directory).
 
 Yields paths in sorted order within each directory for deterministic migration
 runs (the manifest's pre/post hashes must be reproducible).
@@ -23,7 +26,7 @@ from pathlib import Path
 # Directory basenames that are never note sources. Compared case-insensitively
 # because macOS HFS+/APFS is case-insensitive by default.
 _EXCLUDED_DIRS: frozenset[str] = frozenset(
-    {".obsidian", ".trash", ".git", ".seahorse", ".svn", ".hg", "_darcs"}
+    {".obsidian", ".trash", ".git", ".seahorse", ".claude", ".svn", ".hg", "_darcs"}
 )
 
 
