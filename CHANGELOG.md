@@ -12,8 +12,8 @@ edited after materialization and proposes (never applies) the follow-up
 `seahorse improve`; consolidated notes carry structured source membership so
 consumers reconstruct a cluster's episodes without re-implementing the format;
 `seahorse doctor` observes the "MCP writes but Memory/ stays empty" trap; and
-the benchmark harness measures the cost of lazy recall separately. Two of the
-four deferred post-1.0 refactors landed behavior-preserving.
+the benchmark harness measures the recall call/skip rate over observer traces.
+Two of the four deferred post-1.0 refactors landed behavior-preserving.
 
 ### Added
 
@@ -25,28 +25,43 @@ four deferred post-1.0 refactors landed behavior-preserving.
   per-note proposal line with the exact `seahorse improve <ep_id> … --reason
   correction` command. Proposal-only, exit 0: the rebuild never auto-edits a
   human's text; invalidated episodes are never proposed. The comparison basis
-  is DI (`live_body` callable) so `frontmatter` stays `ruamel`-free.
+  is DI (`live_body` callable) so `frontmatter` stays `ruamel`-free. A note
+  whose body hash is not on record (older builders leave `body_hash` unset)
+  is never a divergence; note discovery excludes the `.claude/` agent
+  directory (agent plumbing is not a note source).
 - **`x-seahorse-derived-from` on consolidated notes.** Distilled knowledge
   notes emit structured source membership (the `ep_id`s the cluster was
   distilled from), so an importer or consumer reconstructs provenance without
-  re-implementing the extraction format.
+  re-implementing the extraction format. The membership survives an `improve`
+  correction: the successor inherits the unchanged membership and closes the
+  lineage with the superseded note as a `supersedes` edge (the consumer never
+  walks the supersedes chain). The parse is tolerant — a plain-string entry
+  promotes to `evidence`, unusable entries are skipped with a warning, unknown
+  edge kinds are preserved.
 - **`materialize_configured` doctor check.** WARN when `[materialize]` is
   unconfigured (the fresh-setup state where the MCP writes episodes but
   `Memory/` gets no notes — the fix hint names the section and `seahorse
   setup`); `mode = "off"` is a deliberate OK; otherwise OK `"{mode} → {dir}"`.
   No existing check name, status, or detail string changed.
-- **Lazy-recall metric in the benchmark harness.** The harness now separates
-  index-cache recall from live vault parse in its accounting, so the measured
-  recall laziness is visible per run instead of folded into parse time.
+- **Lazy-recall metric over observer traces.** A new experiment
+  (`benchmark/experiments/lazy_recall.py`) measures whether recall pays for
+  its read: over captured observer envelopes it counts, per task
+  (`session_id`, `prompt_number`), the share of tasks with ≥1 recall call
+  (the call/skip rate — the entry criterion for a task-scoped read gate) and
+  the share where the call returned at least one row into context. The
+  call/row rates are floors: a hook that serializes the result in another
+  shape, or redaction acting on the envelope, can only lower them, never
+  inflate them.
 
 ### Changed
 
 - **`recall()` decomposed into composable stages** (the deferred refactor #1):
   the recall body is four pure-move stage wrappers (`_apply_recency_stage` →
   `_apply_decay_stage` → `_apply_rerank_stage` → `_maybe_session_boost`) with
-  the guards inside each wrapper; PIT queries are never boosted/decayed/
-  reranked. Protected suites (including `test_reproducibility`'s
-  bit-comparable fingerprints) pass unchanged.
+  the guards inside each wrapper; PIT queries are never boosted or decayed
+  (the anachronistic time-dependent signals — ADR-03). Protected suites
+  (including `test_reproducibility`'s bit-comparable fingerprints) pass
+  unchanged.
 - **`cli/app.py` split into per-subapp command modules** (the deferred
   refactor #4): the `benchmark`, `observe`, and `skill` groups register on the
   handed Typer instance from `seahorse/cli/commands/`; `app.py` goes

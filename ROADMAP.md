@@ -157,7 +157,7 @@ Fase 2 decision. Two of the four landed in v1.4.0 (#1 and #4).
    The `recall()` body in `src/seahorse/retrieval/engine.py` is now four
    pure-move stages (`_apply_recency_stage` → `_apply_decay_stage` →
    `_apply_rerank_stage` → `_maybe_session_boost`), guards inside each wrapper,
-   PIT queries never boosted/decayed/reranked. The protected suites
+   PIT queries never boosted/decayed. The protected suites
    (`test_recall_e2e`, `test_recency`, `test_decay`, `test_session_boost`,
    `test_pit_routing`, `test_reproducibility` with bit-comparable fingerprints,
    `test_degradation`) pass unchanged.
@@ -169,7 +169,7 @@ Fase 2 decision. Two of the four landed in v1.4.0 (#1 and #4).
    text may change (`tests/cli/test_doctor.py` asserts them; `_REPAIRABLE_CHECKS`
    stays the single source of repairability).
 3. **Extract setup steps out of `run_full_setup`** —
-   `src/seahorse/cli/onboarding.py:54` (506 lines, 9 nested closures) and dedupe
+   `src/seahorse/cli/onboarding.py:55` (506 lines, 9 nested closures) and dedupe
    with `repair_steps_for` (`:365`, ~140 lines that rebuild the same hook/MCP/
    instructions closures — a command change currently must be made twice).
    Hoist the duplicated closures to module level, then a `SetupStep` dataclass +

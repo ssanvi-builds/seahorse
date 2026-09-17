@@ -215,11 +215,11 @@ def recall(
     # stays truthful. Each stage is default-OFF and lives in its own wrapper
     # (pure moves — the pipeline now reads as the four stages it is): PIT
     # queries reproduce state as-of-t with pure RRF and are NEVER boosted,
-    # decayed, reranked, or session-boosted; every optional signal degrades
-    # honestly (skip + warning, never invented scores). Order matters and is
-    # frozen: recency folds first, then decay (multiplicative compound,
-    # deterministic), then the cross-encoder replaces the score, then the
-    # session-restricted two-stage re-rank appends.
+    # decayed, or session-boosted (the anachronistic time-dependent signals —
+    # ADR-03); every optional signal degrades honestly (skip + warning, never
+    # invented scores). Order matters and is frozen: recency folds first, then
+    # decay (multiplicative compound, deterministic), then the cross-encoder
+    # replaces the score, then the session-restricted two-stage re-rank appends.
     fused = _apply_recency_stage(
         fused, recency=recency, pit=pit, index_repo=index_repo, now=now, k=k_fuse
     )

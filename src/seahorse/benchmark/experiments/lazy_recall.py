@@ -21,6 +21,11 @@ detected across both surfaces: the MCP tool returns the row list
 verbatim (empty list = nothing served), the CLI text carries
 ``(N results)``. An unparseable response is an honest no-rows: the call
 still happened and still cost its read.
+
+Both rates are FLOORS, never ceilings: a hook that serializes the
+response in a shape the detectors do not recognize, or redaction acting
+on the envelope, can only lower a rate (a real call/row missed by the
+detector), never inflate one.
 """
 
 from __future__ import annotations
