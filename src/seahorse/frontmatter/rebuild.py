@@ -138,7 +138,14 @@ def rebuild_from_vault(
         # yielded onward to the sidecar untouched.
         for note in iter_parsed_notes(vault_root):
             live = live_body(note.episode.id)
-            if live is not None and note.body_hash != _body_hash(live):
+            # ``body_hash`` is additive (older builders leave it None): a note
+            # with no hash on record has nothing to compare — no divergence is
+            # invented from an absent value.
+            if (
+                live is not None
+                and note.body_hash is not None
+                and note.body_hash != _body_hash(live)
+            ):
                 divergences.append(
                     RebuildDivergence(ep_id=note.episode.id, file_path=note.file_path)
                 )

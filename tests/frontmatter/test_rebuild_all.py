@@ -317,6 +317,33 @@ def test_rebuild_no_divergence_when_bodies_hash_equal(tmp_path: Path, sidecar) -
     assert report.divergences == []
 
 
+def test_rebuild_no_divergence_when_note_has_no_body_hash(
+    tmp_path: Path, sidecar, monkeypatch
+) -> None:
+    # ``body_hash`` is additive: a ParsedNote built without it (older builders)
+    # has nothing to compare against the live body — no divergence is invented
+    # from the absent value.
+    from dataclasses import replace
+
+    import seahorse.frontmatter.rebuild as rebuild_mod
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_note(vault, "a", ep_id=_uuid7("01"))
+    real = rebuild_mod.iter_parsed_notes
+
+    def hashless(vault_root: Path):
+        for note in real(vault_root):
+            yield replace(note, body_hash=None)
+
+    monkeypatch.setattr(rebuild_mod, "iter_parsed_notes", hashless)
+    report = rebuild_from_vault(
+        vault, sidecar, live_body=lambda _ep_id: "some other body"
+    )
+    assert report.indexed == 1
+    assert report.divergences == []
+
+
 def test_rebuild_divergence_compares_canonical_bodies(
     tmp_path: Path, sidecar
 ) -> None:
