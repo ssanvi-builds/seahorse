@@ -898,6 +898,29 @@ def test_session_start_emits_hook_specific_output_json(tmp_path, monkeypatch) ->
     assert "Seahorse memory context" in payload["hookSpecificOutput"]["additionalContext"]
 
 
+@pytest.mark.parametrize("source", ["clear", "compact"])
+def test_session_start_clear_and_compact_inject_bootstrap(
+    tmp_path, monkeypatch, source
+) -> None:
+    """/clear and auto-compaction re-inject: a SessionStart with source
+    ``clear``/``compact`` produces the bootstrap additionalContext."""
+    hook_input = {
+        "session_id": "sess-resume",
+        "hook_event_name": "SessionStart",
+        "source": source,
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(hook_input)))
+    _capture_post(monkeypatch, [])
+    monkeypatch.setattr(
+        "seahorse.observe.cli.subprocess.run",
+        lambda *a, **k: _FakeCompleted(returncode=0, stdout=b"Seahorse memory context\n"),
+    )
+    out = _out()
+    run_observe_event(_cfg_observe(tmp_path), fmt="human", out=out)
+    payload = json.loads(out.getvalue())
+    assert "Seahorse memory context" in payload["hookSpecificOutput"]["additionalContext"]
+
+
 def test_session_start_no_injection_on_nonzero_exit(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("CLAUDE_HOOK_EVENT_NAME", "SessionStart")
     monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-fail")

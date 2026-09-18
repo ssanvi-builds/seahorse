@@ -41,9 +41,12 @@ from seahorse.cli.output import OutputFormat
 # the hook command ``{python} -m seahorse.cli.app observe event``.
 HOOK_MARKER = "observe event"
 
-# Hook event → matcher.
+# Hook event → matcher. SessionStart covers ``startup|clear|compact`` so the
+# bootstrap re-injects on ``/clear`` and on auto-compaction — the moments the
+# agent loses the context pointer (the handler treats every SessionStart the
+# same; the matcher only widens which sub-events fire the hook).
 _OBSERVER_HOOKS: dict[str, str] = {
-    "SessionStart": "startup",
+    "SessionStart": "startup|clear|compact",
     "UserPromptSubmit": "*",
     "PostToolUse": "*",
     "Stop": "*",

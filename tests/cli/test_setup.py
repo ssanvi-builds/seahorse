@@ -137,6 +137,17 @@ def test_merge_hooks_adds_observer_hooks(tmp_path) -> None:
             assert HOOK_MARKER in entry["hooks"][0]["command"]
 
 
+def test_merge_hooks_session_start_matches_clear_and_compact(tmp_path) -> None:
+    """The SessionStart matcher re-injects the bootstrap on ``/clear`` and on
+    auto-compaction — the moments the agent loses the context pointer."""
+    path = _settings_path(tmp_path)
+    _write_settings(path, {})
+    merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    assert data["hooks"]["SessionStart"][0]["matcher"] == "startup|clear|compact"
+
+
 def test_merge_hooks_shape_is_claude_code_valid(tmp_path) -> None:
     """The written entry must validate against Claude Code's schema:
     `matcher` (string) + `hooks` (array of {type, command}). A flat
