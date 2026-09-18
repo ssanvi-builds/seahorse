@@ -137,6 +137,58 @@ def test_supersession_dedupes_shared_members(engine) -> None:
     assert edges[-1] == {"id": wr1.ep_id, "edge_kind": "supersedes"}
 
 
+def test_supersession_keeps_distinct_relations_to_the_same_member(engine) -> None:
+    """An episode that is BOTH direct evidence of the new note AND the
+    ``supersedes`` target of its inherited lineage keeps BOTH edges: the list
+    is a provenance multigraph — dedupe is by ``(id, edge_kind)``, so
+    distinct relations to the same member never collapse."""
+    eng, _repo, _audit = engine
+    first_ids = _cluster(eng, "fix the flaky recall test", NOW)
+    rep1 = _episode(eng, first_ids[-1])
+    wr1 = distill_episodes(eng, first_ids, rep1, "# fix\n\nv1.", {})
+
+    # v2 supersedes v1: its membership closes the lineage with (wr1, supersedes).
+    # Unique [s:] suffixes — the subject (H1) is the fact identity: reusing the
+    # first round's suffixes collides with the in-force episodes and the
+    # engine writes nothing (ep_id None).
+    second_ids = [
+        _remember(
+            eng,
+            body=f"# fix the flaky recall test [s:{10 + i}]\n\nSecond pass {i}.",
+            now=NOW + timedelta(minutes=10, seconds=i),
+        )
+        for i in range(3)
+    ]
+    wr2 = distill_episodes(
+        eng,
+        second_ids,
+        _episode(eng, second_ids[-1]),
+        "# fix\n\nv2.",
+        {},
+        supersede_ep_id=wr1.ep_id,
+    )
+
+    # v3 re-absorbs wr1 itself as direct evidence while superseding wr2:
+    # (wr1, evidence) is a new relation and the inherited (wr1, supersedes)
+    # records the lineage — both are true in the graph, both must survive.
+    wr3 = distill_episodes(
+        eng,
+        [wr1.ep_id],
+        _episode(eng, wr1.ep_id),
+        "# fix\n\nv3.",
+        {},
+        supersede_ep_id=wr2.ep_id,
+    )
+
+    edges = _episode(eng, wr3.ep_id).provenance["derived_from"]
+    assert [e for e in edges if e["id"] == wr1.ep_id] == [
+        {"id": wr1.ep_id, "edge_kind": "evidence"},
+        {"id": wr1.ep_id, "edge_kind": "supersedes"},
+    ]
+    # The lineage still closes on the immediately superseded note.
+    assert edges[-1] == {"id": wr2.ep_id, "edge_kind": "supersedes"}
+
+
 def _rewrite_provenance(repo, ep_id: str, provenance: dict) -> None:
     """Persist a modified provenance dict in place (a legacy-row simulation:
     the ``episodes`` table predates the field, so no API path can un-write

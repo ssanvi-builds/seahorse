@@ -40,7 +40,8 @@ def normalize_derived_from(raw: Any) -> list[dict[str, str]]:
     shape a third-party producer may emit — is promoted to ``evidence``.
     Unusable entries (no id, non-string id, non-string non-dict) are skipped
     with a warning: membership parse must never crash a write. NO dedupe here
-    — callers own dedupe by id (they have the known-set, the parser does not).
+    — callers own dedupe, by ``(id, edge_kind)`` pair (they have the
+    known-set, the parser does not).
     """
     if not isinstance(raw, list):
         return []
@@ -74,10 +75,13 @@ def _derived_from(
     new note INHERITS the superseded note's edges (the membership that does
     not change), adds the new cluster's episodes as ``evidence``, and closes
     the lineage with the superseded note itself as a ``supersedes`` edge.
-    Dedupe is by id — an episode that is both inherited evidence and a new
-    cluster member lands once, as ``evidence``. The enumeration is frozen at
-    format promotion; unknown ``edge_kind`` values are preserved, never
-    rejected (the same policy as every ``x-*`` field).
+    Dedupe is by ``(id, edge_kind)`` pair — the list is a provenance
+    multigraph: exact duplicate edges collapse, but DISTINCT relations to
+    the same member survive (an episode can be both direct ``evidence`` of
+    the new note and a ``supersedes`` target of its inherited lineage —
+    both are true in the graph). The enumeration is frozen at format
+    promotion; unknown ``edge_kind`` values are preserved, never rejected
+    (the same policy as every ``x-*`` field).
     """
     edges: list[dict[str, str]] = [
         {"id": ep_id, "edge_kind": _EDGE_EVIDENCE} for ep_id in source_ep_ids
@@ -86,10 +90,12 @@ def _derived_from(
         return edges
     old = engine.get(supersede_ep_id)
     if old is not None:
-        known = {edge["id"] for edge in edges}
+        known = {(edge["id"], edge.get("edge_kind")) for edge in edges}
         for edge in normalize_derived_from(old.provenance.get("derived_from")):
-            if edge["id"] not in known and edge["id"] != supersede_ep_id:
+            pair = (edge["id"], edge.get("edge_kind"))
+            if pair not in known and edge["id"] != supersede_ep_id:
                 edges.append(edge)
+                known.add(pair)
     edges.append({"id": supersede_ep_id, "edge_kind": _EDGE_SUPERSEDES})
     return edges
 
