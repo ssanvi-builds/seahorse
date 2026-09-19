@@ -148,6 +148,84 @@ def test_merge_hooks_session_start_matches_clear_and_compact(tmp_path) -> None:
     assert data["hooks"]["SessionStart"][0]["matcher"] == "startup|clear|compact"
 
 
+def test_merge_hooks_refreshes_stale_matcher_on_existing_install(tmp_path) -> None:
+    """Upgrade path: an install made with the old 'startup' matcher gets the
+    widened matcher on re-run. The entry is Seahorse-owned (identified by the
+    marker), so setup refreshes it instead of leaving the feature inert."""
+    path = _settings_path(tmp_path)
+    _write_settings(
+        path,
+        {
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "matcher": "startup",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python -m seahorse.cli.app observe event",
+                            }
+                        ],
+                    }
+                ]
+            }
+        },
+    )
+    merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    entries = data["hooks"]["SessionStart"]
+    assert len(entries) == 1  # refreshed in place, not duplicated
+    assert entries[0]["matcher"] == "startup|clear|compact"
+
+
+def test_merge_hooks_never_touches_foreign_matchers(tmp_path) -> None:
+    """The refresh is keyed on the marker: a foreign hook with its own matcher
+    is preserved verbatim."""
+    path = _settings_path(tmp_path)
+    foreign = {
+        "matcher": "custom",
+        "hooks": [{"type": "command", "command": "other-tool"}],
+    }
+    _write_settings(path, {"hooks": {"SessionStart": [foreign]}})
+    merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    entries = data["hooks"]["SessionStart"]
+    assert len(entries) == 2  # foreign preserved + observer added
+    assert foreign in entries  # untouched, matcher included
+
+
+def test_merge_hooks_upgrades_legacy_flat_entry_to_nested_shape(tmp_path) -> None:
+    """≤0.16.0 wrote the command flat at the entry level — a shape Claude
+    Code ignores, so those installs never fire. Re-running setup restructures
+    the Seahorse-owned entry in place (the marker proves ownership)."""
+    path = _settings_path(tmp_path)
+    _write_settings(
+        path,
+        {
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "matcher": "startup",
+                        "command": "python -m seahorse.cli.app observe event",
+                    }
+                ]
+            }
+        },
+    )
+    merge_hooks(path, hook_command="python -m seahorse.cli.app observe event")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    entry = data["hooks"]["SessionStart"][0]
+    assert len(data["hooks"]["SessionStart"]) == 1  # repaired, not duplicated
+    assert entry["matcher"] == "startup|clear|compact"
+    assert "command" not in entry  # the flat command moved into nested hooks
+    assert entry["hooks"] == [
+        {"type": "command", "command": "python -m seahorse.cli.app observe event"}
+    ]
+
+
 def test_merge_hooks_shape_is_claude_code_valid(tmp_path) -> None:
     """The written entry must validate against Claude Code's schema:
     `matcher` (string) + `hooks` (array of {type, command}). A flat

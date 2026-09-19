@@ -34,6 +34,7 @@ from seahorse.cli.provider_bootstrap import (  # noqa: F401 — re-exported
 from seahorse.cli.provider_bootstrap import (
     provider_self_test as _provider_self_test,
 )
+from seahorse.cli.setup import _OBSERVER_HOOKS  # the matcher contract setup installs
 from seahorse.llm import LLMError, resolve_provider
 
 # The observer hook events + marker (shared with setup, which installs them).
@@ -141,6 +142,22 @@ def _hooks_check() -> tuple[str, str]:
     if not all(installed.values()):
         missing = ", ".join(e for e, ok in installed.items() if not ok)
         return "WARN", f"hooks missing for: {missing}; run `seahorse setup`"
+    # Hooks present is not hooks current: a Seahorse-owned entry with a
+    # pre-1.5.0 matcher (e.g. bare `startup`) silently skips re-injection on
+    # /clear and compaction. Only marker-keyed entries are judged — a foreign
+    # hook's matcher is never ours to review.
+    stale = [
+        event
+        for event, expected in _OBSERVER_HOOKS.items()
+        for entry in data.get("hooks", {}).get(event, [])
+        if any(_HOOK_MARKER in c for c in _entry_commands(entry))
+        and entry.get("matcher") != expected
+    ]
+    if stale:
+        return (
+            "WARN",
+            f"stale matcher for: {', '.join(sorted(set(stale)))}; re-run `seahorse setup`",
+        )
     return "OK", f"installed ({len(_OBSERVER_EVENTS)} events)"
 
 

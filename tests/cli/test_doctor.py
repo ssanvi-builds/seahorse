@@ -185,11 +185,24 @@ class TestProviderSelfTest:
 
 
 def _settings(tmp_path: Path, events: list[str]) -> Path:
-    """A settings.json whose observer hooks cover only ``events``."""
+    """A settings.json whose observer hooks cover only ``events``, with the
+    matchers ``seahorse setup`` actually installs."""
+    matchers = {
+        "SessionStart": "startup|clear|compact",
+        "UserPromptSubmit": "*",
+        "PostToolUse": "*",
+        "Stop": "*",
+    }
     path = tmp_path / "settings.json"
     hooks = {
-        event: [{"matcher": "*", "hooks": [{"type": "command",
-                                            "command": "py -m seahorse.cli.app observe event"}]}]
+        event: [
+            {
+                "matcher": matchers[event],
+                "hooks": [
+                    {"type": "command", "command": "py -m seahorse.cli.app observe event"}
+                ],
+            }
+        ]
         for event in events
     }
     path.write_text(json.dumps({"hooks": hooks}), encoding="utf-8")
@@ -227,6 +240,41 @@ class TestCaptureChecks:
         hooks = next(c for c in payload["checks"] if c["check"] == "claude_hooks")
         assert hooks["status"] == "WARN"
         assert "UserPromptSubmit" in hooks["detail"]
+
+    def test_hooks_stale_matcher_warns_to_rerun_setup(self, tmp_path, monkeypatch) -> None:
+        """All four events installed, but the SessionStart entry still carries
+        a pre-1.5.0 matcher — hooks present is NOT hooks current, and OK here
+        would hide a capture feature silently not firing."""
+        path = _settings(
+            tmp_path, ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"]
+        )
+        settings = json.loads(path.read_text(encoding="utf-8"))
+        settings["hooks"]["SessionStart"][0]["matcher"] = "startup"
+        path.write_text(json.dumps(settings), encoding="utf-8")
+        monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", str(path))
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        hooks = next(c for c in payload["checks"] if c["check"] == "claude_hooks")
+        assert hooks["status"] == "WARN"
+        assert "SessionStart" in hooks["detail"]
+        assert "setup" in hooks["detail"]
+
+    def test_hooks_foreign_stale_matcher_is_ok(self, tmp_path, monkeypatch) -> None:
+        """Matcher staleness is only judged on Seahorse-owned (marker) entries —
+        a foreign hook with any matcher is none of the doctor's business."""
+        path = _settings(
+            tmp_path, ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"]
+        )
+        settings = json.loads(path.read_text(encoding="utf-8"))
+        settings["hooks"]["SessionStart"].append(
+            {"matcher": "startup", "hooks": [{"type": "command", "command": "my-own-hook"}]}
+        )
+        path.write_text(json.dumps(settings), encoding="utf-8")
+        monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", str(path))
+        write_default_config(tmp_path)
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        hooks = next(c for c in payload["checks"] if c["check"] == "claude_hooks")
+        assert hooks["status"] == "OK"
 
     def test_observer_socket_present_ok(self, tmp_path, monkeypatch) -> None:
         write_default_config(tmp_path)

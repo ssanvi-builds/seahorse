@@ -24,21 +24,31 @@ truth.
   `source`), so the matcher is the whole change; `clear`/`compact`
   injection is pinned by parametrized handler tests. Uninstall is
   unaffected (removal keys on the hook command marker, never the
-  matcher). Mechanism-level inspiration from the claude-mem v9.1.1
-  competitive analysis; no code shared (AGPL-3.0 — one-way, mechanism
-  level only).
+  matcher). Existing installs are not left behind: `merge_hooks` is
+  idempotent by marker but now also refreshes the matcher of
+  Seahorse-owned entries, so re-running `seahorse setup` upgrades an
+  old `startup` entry in place (foreign hooks are never rewritten);
+  legacy flat entries (≤0.16.0, a shape Claude Code ignores) are
+  restructured to the nested shape in the same pass. `seahorse doctor`
+  detects the state instead of hiding it: a Seahorse-owned entry with a
+  stale matcher warns with the re-run guidance — hooks present is not
+  hooks current. Mechanism-level inspiration from the claude-mem v9.1.1
+  competitive
+  analysis; no code shared (AGPL-3.0 — one-way, mechanism level only).
 
 - **Token economics in the bootstrap.** The Recent episodes and Knowledge
   notes rows now carry their own estimated read cost (`~N tok`, chars/4
   of the rendered row, minimum 1), and the Stats block gains a one-line
-  footer with the estimated cost of the bootstrap itself. Everything is
-  computed inside the pure renderer from the rendered text — identical
-  `ContextData` still renders identical text; no `ContextData` field
-  changes. The estimates are labeled as estimates (they are never
-  measured counts), and the footer states qualitatively that
-  `recall_full` bodies cost more rather than inventing a body-size
-  number the INDEX level does not carry. Last-session rows stay bare;
-  the golden snapshot is re-pinned to the new shape.
+  footer with the estimated cost of the bootstrap itself — computed over
+  the whole render except the footer line's own digits, so the number
+  covers what it claims. Everything is computed inside the pure renderer
+  from the rendered text — identical `ContextData` still renders
+  identical text; no `ContextData` field changes. The estimates are
+  labeled as estimates (they are never measured counts), and the footer
+  states qualitatively that `recall_full` bodies cost more rather than
+  inventing a body-size number the INDEX level does not carry.
+  Last-session rows stay bare; the golden snapshot is re-pinned to the
+  new shape.
 
 ### Fixed
 

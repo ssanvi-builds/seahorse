@@ -209,7 +209,11 @@ def merge_hooks(settings_path: Path | str, *, hook_command: str) -> None:
     """Merge the observer hooks into settings.json (coexisting with others).
 
     Idempotent: an entry whose command already contains the marker is not
-    duplicated. Other hooks (e.g. claude-mem) are preserved.
+    duplicated — and its ``matcher`` is refreshed to the current value, so an
+    existing install picks up a widened matcher on re-run (e.g. ``startup`` ->
+    ``startup|clear|compact``) instead of keeping the old one forever. The
+    refresh keys on the marker (Seahorse-owned entries only); hooks without
+    the marker are preserved untouched.
     """
     path = Path(settings_path)
     data: dict = {}
@@ -218,9 +222,21 @@ def merge_hooks(settings_path: Path | str, *, hook_command: str) -> None:
     hooks = data.setdefault("hooks", {})
     for event, matcher in _OBSERVER_HOOKS.items():
         entries = hooks.setdefault(event, [])
-        already_installed = any(
-            HOOK_MARKER in c for h in entries for c in _hook_commands(h)
-        )
+        already_installed = False
+        for entry in entries:
+            if not any(HOOK_MARKER in c for c in _hook_commands(entry)):
+                continue
+            already_installed = True
+            if entry.get("matcher") != matcher:
+                entry["matcher"] = matcher
+            # ≤0.16.0 wrote the command flat at the entry level — a shape
+            # Claude Code ignores, so those installs never fire. Restructure
+            # in place (the marker proves the entry is ours to repair).
+            flat_command = entry.pop("command", None)
+            if flat_command is not None:
+                entry.setdefault("hooks", []).insert(
+                    0, {"type": "command", "command": flat_command}
+                )
         if not already_installed:
             entries.append(
                 {
