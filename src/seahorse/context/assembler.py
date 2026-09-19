@@ -91,16 +91,26 @@ def render_context(data: ContextData) -> str:
     lines.append("")
 
     # Block 5: header + counter + economics + pointer. The bootstrap estimate
-    # covers the blocks above (not the Stats block itself); still a pure
-    # function of ContextData — identical data renders identical text.
-    bootstrap_estimate = _estimate_tokens("\n".join(lines))
-    lines.append("## Stats")
-    lines.append(f"- {data.total_episodes} episodes total")
-    lines.append(
-        f"- ~{bootstrap_estimate} tokens to read this bootstrap "
-        "(estimate, chars/4); recall_full bodies cost more — drill down selectively"
+    # covers the whole render except this economics line itself (the number
+    # cannot count its own digits); still a pure function of ContextData —
+    # identical data renders identical text.
+    stats_head = "## Stats"
+    total_line = f"- {data.total_episodes} episodes total"
+    pointer_line = f"- {_POINTER}"
+    bootstrap_estimate = _estimate_tokens(
+        "\n".join([*lines, stats_head, total_line, pointer_line])
     )
-    lines.append(f"- {_POINTER}")
+    lines.extend(
+        [
+            stats_head,
+            total_line,
+            (
+                f"- ~{bootstrap_estimate} tokens to read this bootstrap "
+                "(estimate, chars/4); recall_full bodies cost more — drill down selectively"
+            ),
+            pointer_line,
+        ]
+    )
     return "\n".join(lines)
 
 

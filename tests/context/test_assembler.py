@@ -506,7 +506,7 @@ def test_golden_full_output_snapshot() -> None:
         "\n"
         "## Stats\n"
         "- 2 episodes total\n"
-        "- ~92 tokens to read this bootstrap (estimate, chars/4); recall_full "
+        "- ~166 tokens to read this bootstrap (estimate, chars/4); recall_full "
         "bodies cost more — drill down selectively\n"
         "- Prefer the `seahorse-mcp` MCP tools (`recall`, `recall_full`) when "
         "available; otherwise `seahorse recall <query>` / `seahorse recall-full "
@@ -626,3 +626,26 @@ def test_row_estimate_is_pure_function_of_row_text() -> None:
     row_a = next(line for line in lines if line.startswith("- alpha"))
     row_b = next(line for line in lines if line.startswith("- beta"))
     assert row_a.split("(~")[1] == row_b.split("(~")[1] == "3 tok)"
+
+
+def test_footer_estimate_covers_whole_bootstrap_except_economics_line() -> None:
+    """The footer claims the cost of 'this bootstrap' — so the number must be
+    computed over the whole render minus the economics line itself (a number
+    cannot count its own digits), not just the blocks above the Stats block."""
+    data = _data(
+        recent=[_ep("alpha", summary="first fact"), _ep("beta")],
+        vigente_count=2,
+        last_session_id="sess-1",
+        last_session=[_ep("alpha", summary="first fact")],
+        total_episodes=2,
+    )
+    lines = render_context(data).splitlines()
+    footer_idx = next(
+        i for i, line in enumerate(lines) if "tokens to read this bootstrap" in line
+    )
+    without_footer = "\n".join(
+        line for i, line in enumerate(lines) if i != footer_idx
+    )
+    match = re.search(r"^- ~(\d+) tokens", lines[footer_idx])
+    assert match is not None
+    assert int(match.group(1)) == max(1, len(without_footer) // 4)
