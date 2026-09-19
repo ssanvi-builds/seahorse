@@ -22,6 +22,13 @@ _KNOWLEDGE_EMPTY = (
     "(none yet — knowledge notes appear as the agent writes project_doc "
     "notes or `seahorse consolidate` distills)"
 )
+_TOKENS_PER_CHAR = 4  # the chars-per-token estimate convention (never measured)
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimated tokens in ``text``: chars/4, minimum 1. Always an estimate —
+    labeled as such at render time, never presented as a measured count."""
+    return max(1, len(text) // _TOKENS_PER_CHAR)
 
 
 def _entry(e: ContextEpisode) -> str:
@@ -32,19 +39,29 @@ def _entry(e: ContextEpisode) -> str:
     return f"- {subject}"
 
 
+def _entry_with_estimate(e: ContextEpisode) -> str:
+    """The INDEX row plus its own estimated read cost (chars/4 of the row)."""
+    row = _entry(e)
+    return f"{row} (~{_estimate_tokens(row)} tok)"
+
+
 def _knowledge_entry(e: ContextEpisode) -> str:
-    """One knowledge row: the INDEX row plus the cognitive type label."""
-    return f"{_entry(e)} ({e.cognitive_type or 'knowledge'})"
+    """One knowledge row: the INDEX row plus the cognitive type label and its
+    own estimated read cost (the estimate covers the whole rendered row)."""
+    row = f"{_entry(e)} ({e.cognitive_type or 'knowledge'})"
+    return f"{row} (~{_estimate_tokens(row)} tok)"
 
 
 def render_context(data: ContextData) -> str:
     """Render the five bootstrap blocks to text. Pure + deterministic."""
     lines: list[str] = [_HEADER, ""]
 
-    # Block 1: recent episodes (created_at desc, ep_id asc).
+    # Block 1: recent episodes (created_at desc, ep_id asc), each with its own
+    # estimated read cost (chars/4 of the row — index-first drill-down by
+    # persuasion: the bootstrap is the cheap surface, recall_full is not).
     lines.append(f"## Recent episodes ({len(data.recent)})")
     if data.recent:
-        lines.extend(_entry(e) for e in data.recent)
+        lines.extend(_entry_with_estimate(e) for e in data.recent)
     else:
         lines.append("(none yet — the context is empty until episodes are indexed)")
     lines.append("")
@@ -73,9 +90,16 @@ def render_context(data: ContextData) -> str:
         lines.append(_KNOWLEDGE_EMPTY)
     lines.append("")
 
-    # Block 5: header + counter + pointer.
+    # Block 5: header + counter + economics + pointer. The bootstrap estimate
+    # covers the blocks above (not the Stats block itself); still a pure
+    # function of ContextData — identical data renders identical text.
+    bootstrap_estimate = _estimate_tokens("\n".join(lines))
     lines.append("## Stats")
     lines.append(f"- {data.total_episodes} episodes total")
+    lines.append(
+        f"- ~{bootstrap_estimate} tokens to read this bootstrap "
+        "(estimate, chars/4); recall_full bodies cost more — drill down selectively"
+    )
     lines.append(f"- {_POINTER}")
     return "\n".join(lines)
 

@@ -9,6 +9,7 @@ NOT an abstractive summary (honesty).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -172,10 +173,11 @@ def test_none_subject_renders_placeholder() -> None:
 
 
 def test_empty_string_subject_renders_placeholder() -> None:
-    """Empty string is falsy like None: `or` semantics pin the placeholder."""
+    """Empty string is falsy like None: `or` semantics pin the placeholder.
+    '- (no subject)' is 14 chars → (~3 tok)."""
     data = _data(recent=[_ep_raw("", None)], vigente_count=1, total_episodes=1)
     text = render_context(data)
-    assert "- (no subject)" in text.splitlines()
+    assert "- (no subject) (~3 tok)" in text.splitlines()
 
 
 def test_whitespace_subject_rendered_verbatim() -> None:
@@ -188,7 +190,7 @@ def test_whitespace_subject_rendered_verbatim() -> None:
 def test_empty_string_summary_omits_dash_like_none() -> None:
     data = _data(recent=[_ep_raw("alpha", "")], vigente_count=1, total_episodes=1)
     text = render_context(data)
-    assert "- alpha" in text.splitlines()
+    assert "- alpha (~1 tok)" in text.splitlines()
     assert "alpha —" not in text
 
 
@@ -266,13 +268,16 @@ def test_row_order_is_input_list_order() -> None:
 def test_row_contract_table_driven_through_both_blocks(
     subject: str | None, summary: str | None, expected_row: str
 ) -> None:
+    """Row contract: the last-session block renders the bare INDEX row; the
+    recent block appends the per-row token estimate (chars/4, minimum 1)."""
     episode = _ep_raw(subject, summary)
     recent_text = render_context(_data(recent=[episode], vigente_count=1, total_episodes=1))
     last_session_text = render_context(
         _data(last_session_id="sess-1", last_session=[episode], total_episodes=1)
     )
-    assert expected_row in recent_text.splitlines()
     assert expected_row in last_session_text.splitlines()
+    expected_recent = f"{expected_row} (~{max(1, len(expected_row) // 4)} tok)"
+    assert expected_recent in recent_text.splitlines()
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +384,7 @@ def test_knowledge_notes_block_renders_rows_with_type() -> None:
     text = render_context(data)
     assert "## Knowledge notes (1)" in text
     assert (
-        "- ADR: storage engine — SQLite WAL + sqlite-vec (project_doc)"
+        "- ADR: storage engine — SQLite WAL + sqlite-vec (project_doc) (~15 tok)"
         in text.splitlines()
     )
 
@@ -409,14 +414,14 @@ def test_knowledge_notes_block_precedes_stats() -> None:
 def test_knowledge_row_without_summary_has_no_dangling_dash() -> None:
     data = _data(knowledge=[_kep("ADR: no summary")], total_episodes=1)
     text = render_context(data)
-    assert "- ADR: no summary (semantic)" in text.splitlines()
+    assert "- ADR: no summary (semantic) (~7 tok)" in text.splitlines()
     assert "ADR: no summary —" not in text
 
 
 def test_knowledge_row_empty_type_falls_back_to_label() -> None:
     data = _data(knowledge=[_kep("ADR: untyped", cognitive_type="")], total_episodes=1)
     text = render_context(data)
-    assert "- ADR: untyped (knowledge)" in text.splitlines()
+    assert "- ADR: untyped (knowledge) (~6 tok)" in text.splitlines()
 
 
 def test_knowledge_header_counts_list_length() -> None:
@@ -468,7 +473,7 @@ def test_header_shaped_subject_cannot_inject_block_heading() -> None:
         total_episodes=1,
     )
     text = render_context(data)
-    assert "- ## Stats — (none yet)" in text.splitlines()
+    assert "- ## Stats — (none yet) (~5 tok)" in text.splitlines()
     assert sum(1 for line in text.splitlines() if line.startswith("## ")) == 5
 
 
@@ -486,8 +491,8 @@ def test_golden_full_output_snapshot() -> None:
         "# Seahorse memory context\n"
         "\n"
         "## Recent episodes (2)\n"
-        "- alpha — first fact\n"
-        "- beta\n"
+        "- alpha — first fact (~5 tok)\n"
+        "- beta (~1 tok)\n"
         "\n"
         "## Current state (2 facts)\n"
         "The recent list above is the current-state set (created_at desc).\n"
@@ -501,6 +506,8 @@ def test_golden_full_output_snapshot() -> None:
         "\n"
         "## Stats\n"
         "- 2 episodes total\n"
+        "- ~92 tokens to read this bootstrap (estimate, chars/4); recall_full "
+        "bodies cost more — drill down selectively\n"
         "- Prefer the `seahorse-mcp` MCP tools (`recall`, `recall_full`) when "
         "available; otherwise `seahorse recall <query>` / `seahorse recall-full "
         "<ep_id>`. Chain `recall_full` (batches of up to 5) on the top hits to "
@@ -532,3 +539,90 @@ def test_determinism_across_equal_distinct_instances() -> None:
     # No in-place sort/mutation of the input list by rendering.
     assert [ep.ep_id for ep in data_a.recent] == ["ep-alpha", "ep-beta"]
     assert [ep.ep_id for ep in data_a.last_session] == ["ep-alpha"]
+
+
+# ---------------------------------------------------------------------------
+# Token economics (per-row estimates + stats footer)
+# ---------------------------------------------------------------------------
+
+
+def test_recent_row_carries_token_estimate() -> None:
+    """Per-row ~tok = the row's own estimated cost (chars/4, minimum 1).
+    '- alpha — fact' is 14 chars → 14//4 = 3."""
+    data = _data(recent=[_ep("alpha", summary="fact")], vigente_count=1, total_episodes=1)
+    lines = render_context(data).splitlines()
+    assert "- alpha — fact (~3 tok)" in lines
+
+
+def test_short_row_estimate_floors_at_one() -> None:
+    """'- beta' is 6 chars → 6//4 = 1; a row never renders ~0 tok."""
+    data = _data(recent=[_ep("beta")], vigente_count=1, total_episodes=1)
+    lines = render_context(data).splitlines()
+    assert "- beta (~1 tok)" in lines
+
+
+def test_knowledge_row_carries_token_estimate() -> None:
+    """The estimate covers the whole rendered knowledge row (type label
+    included). '- a — b (project_doc)' is 21 chars → 21//4 = 5."""
+    data = _data(
+        knowledge=[_kep("a", summary="b", cognitive_type="project_doc")],
+        total_episodes=1,
+    )
+    lines = render_context(data).splitlines()
+    assert "- a — b (project_doc) (~5 tok)" in lines
+
+
+def test_last_session_row_has_no_token_estimate() -> None:
+    """Scope: economics live in the recent + knowledge blocks; the
+    last-session INDEX list stays bare."""
+    data = _data(
+        last_session_id="sess-1",
+        last_session=[_ep("alpha", summary="fact")],
+        total_episodes=1,
+    )
+    lines = render_context(data).splitlines()
+    assert "- alpha — fact" in lines
+
+
+def test_stats_footer_estimates_bootstrap_tokens() -> None:
+    """The Stats block carries a one-line economics footer: the estimated
+    cost of the bootstrap itself, labeled as an estimate."""
+    text = render_context(
+        _data(recent=[_ep("alpha", summary="fact")], vigente_count=1, total_episodes=1)
+    )
+    assert re.search(r"^- ~\d+ tokens to read this bootstrap \(estimate", text, re.MULTILINE)
+
+
+def test_footer_estimate_is_at_least_one_on_empty_bootstrap() -> None:
+    assert re.search(r"^- ~\d+ tokens", render_context(_data()), re.MULTILINE)
+
+
+def test_footer_estimate_grows_with_rendered_content() -> None:
+    small = render_context(_data(recent=[_ep("a")], vigente_count=1, total_episodes=1))
+    big = render_context(
+        _data(
+            recent=[_ep("a"), _ep("b" * 10), _ep("c" * 13)],
+            vigente_count=3,
+            total_episodes=3,
+        )
+    )
+
+    def footer(text: str) -> int:
+        match = re.search(r"^- ~(\d+) tokens", text, re.MULTILINE)
+        assert match is not None
+        return int(match.group(1))
+
+    assert footer(big) > footer(small)
+
+
+def test_row_estimate_is_pure_function_of_row_text() -> None:
+    """Equal rendered rows carry equal estimates, regardless of position."""
+    data = _data(
+        recent=[_ep("alpha", summary="fact"), _ep("beta", summary="fact")],
+        vigente_count=2,
+        total_episodes=2,
+    )
+    lines = render_context(data).splitlines()
+    row_a = next(line for line in lines if line.startswith("- alpha"))
+    row_b = next(line for line in lines if line.startswith("- beta"))
+    assert row_a.split("(~")[1] == row_b.split("(~")[1] == "3 tok)"
