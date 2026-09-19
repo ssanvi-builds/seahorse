@@ -609,6 +609,13 @@ class TestToolListDescriptions:
         assert "cognitive_type" in desc
         assert "recall_full" in desc
 
+    def test_recall_description_matches_pit_capability(self) -> None:
+        """Regression: the description claimed 'No PIT' after the listing
+        retriever became PIT-capable (v1.3.0). It must state the truth."""
+        desc = self._tool("recall")["description"]
+        assert "PIT" in desc
+        assert "no PIT" not in desc
+
 
 class TestHandlerDirectCall:
     """Handlers are callable directly (not just via dispatch)."""

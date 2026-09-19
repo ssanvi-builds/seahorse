@@ -320,7 +320,8 @@ TOOL_LIST: list[dict[str, Any]] = [
     {
         "name": "recall",
         "description": "Recall the INDEX level (current-state listing, no body). "
-        "No ranking, no PIT (PIT recall is refused before any read). Rows carry "
+        "Ranking-free; PIT is accepted (pit/pit_kind/pit_t, resolved before the "
+        "read — PIT is refused only in recall_full). Rows carry "
         "cognitive_type; the cognitive_type parameter filters it (e.g. "
         '"project_doc" for design notes). Chain recall_full on the top hits to '
         "read the bodies.",
