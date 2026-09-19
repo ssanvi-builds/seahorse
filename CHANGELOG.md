@@ -4,6 +4,61 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-19
+
+The context-persistence sprint: the bootstrap now survives `/clear` and
+auto-compaction (the moments the agent loses its memory pointer), carries
+honest token economics per row (persuasion for index-first drill-down
+instead of a gate — the measured call rate never justified one), and the
+`derived_from` membership no longer silently drops a second relation to the
+same member episode. Plus a stale MCP tool description brought back to the
+truth.
+
+### Added
+
+- **Re-injection on `/clear` and compaction.** The Claude Code
+  SessionStart hook matcher widens from `startup` to
+  `startup|clear|compact`, so the memory bootstrap re-injects exactly
+  when the agent loses its context pointer. The observe handler already
+  treats every SessionStart event identically (it never inspects the
+  `source`), so the matcher is the whole change; `clear`/`compact`
+  injection is pinned by parametrized handler tests. Uninstall is
+  unaffected (removal keys on the hook command marker, never the
+  matcher). Mechanism-level inspiration from the claude-mem v9.1.1
+  competitive analysis; no code shared (AGPL-3.0 — one-way, mechanism
+  level only).
+
+- **Token economics in the bootstrap.** The Recent episodes and Knowledge
+  notes rows now carry their own estimated read cost (`~N tok`, chars/4
+  of the rendered row, minimum 1), and the Stats block gains a one-line
+  footer with the estimated cost of the bootstrap itself. Everything is
+  computed inside the pure renderer from the rendered text — identical
+  `ContextData` still renders identical text; no `ContextData` field
+  changes. The estimates are labeled as estimates (they are never
+  measured counts), and the footer states qualitatively that
+  `recall_full` bodies cost more rather than inventing a body-size
+  number the INDEX level does not carry. Last-session rows stay bare;
+  the golden snapshot is re-pinned to the new shape.
+
+### Fixed
+
+- **`derived_from` dedupe is by `(id, edge_kind)` pair, not by id.**
+  Supersession previously collapsed two provenance relations to the same
+  member episode — an inherited `supersedes` edge was dropped when a
+  `evidence` edge to the same episode already existed — losing lineage in
+  consolidated notes. The list is a provenance multigraph: distinct
+  relations to the same member are all preserved. Found by VESTIGIA's
+  importer review (Denis, round 2); covered by a three-consolidation
+  test asserting both `(wr1, evidence)` and inherited
+  `(wr1, supersedes)` edges survive.
+
+- **The `recall` MCP description matches the PIT capability.** It still
+  said "No ranking, no PIT" while the listing retriever (and
+  `RECALL_SCHEMA` via `_PIT_INPUT_PROPS`) has been PIT-capable since
+  v1.3.0. Reworded to the truth: ranking-free INDEX listing; PIT accepted
+  and resolved before the read; PIT refused only in `recall_full`.
+  Pinned by a regression test on the description.
+
 ## [1.4.0] - 2026-09-16
 
 The human-edit honesty sprint: the materialized index mirror now tells the
