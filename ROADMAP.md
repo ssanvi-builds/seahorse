@@ -151,7 +151,8 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
 
 Deliberately deferred past the 1.0.0 tag (behavior-preserving, each guarded by
 the listed suites). They are tickets, not commitments — sequence them after the
-Fase 2 decision. Two of the four landed in v1.4.0 (#1 and #4).
+Fase 2 decision. All four have landed (#1 and #4 in v1.4.0; #2 and #3 in
+v1.5.1).
 
 1. **Split `recall()` into composable stages** — **done in v1.4.0** (`b615522`).
    The `recall()` body in `src/seahorse/retrieval/engine.py` is now four
@@ -161,22 +162,26 @@ Fase 2 decision. Two of the four landed in v1.4.0 (#1 and #4).
    (`test_recall_e2e`, `test_recency`, `test_decay`, `test_session_boost`,
    `test_pit_routing`, `test_reproducibility` with bit-comparable fingerprints,
    `test_degradation`) pass unchanged.
-2. **Decompose `run_doctor`** — `src/seahorse/cli/doctor.py:283` (731 lines,
-   ~20 inline check dicts + fix loop + rendering). Extract the two per-harness
-   loops verbatim, then group into `_llm_family_checks` / `_capture_family_checks`
-   / `_agent_surface_checks` / `_environment_checks`, and separate
-   `_apply_repairs` + `_render_doctor`. No check name, status string, or detail
-   text may change (`tests/cli/test_doctor.py` asserts them; `_REPAIRABLE_CHECKS`
-   stays the single source of repairability).
-3. **Extract setup steps out of `run_full_setup`** —
-   `src/seahorse/cli/onboarding.py:55` (506 lines, 9 nested closures) and dedupe
-   with `repair_steps_for` (`:365`, ~140 lines that rebuild the same hook/MCP/
-   instructions closures — a command change currently must be made twice).
-   Hoist the duplicated closures to module level, then a `SetupStep` dataclass +
-   `_plan_setup_steps`. Keep every `_OK`/`_WARN`/`_SKIP` status and detail
-   string identical (`tests/cli/test_onboarding.py`, `test_setup.py`,
-   `test_app.py`). The `_db` step runs `vault_ops.run_migrate` — migrations/
-   stay frozen.
+2. **Decompose `run_doctor`** — **done in v1.5.1** (`1e43667`, `ab00ff8`,
+   `a7498a6`). The per-harness loops moved verbatim into
+   `_per_harness_mcp_checks` / `_per_harness_instruction_checks`, the inline
+   check dicts into `_llm_family_checks` / `_capture_family_checks` /
+   `_agent_surface_checks` / `_environment_checks`, and the fix loop + rendering
+   into `_apply_repairs` / `_render_doctor` — `run_doctor` is a ~20-line
+   composition. No check name, status, or detail changed:
+   `tests/cli/test_doctor.py` passes unchanged and the `doctor --format json`
+   payload is byte-identical before/after; `_REPAIRABLE_CHECKS` remains the
+   single source of repairability.
+3. **Extract setup steps out of `run_full_setup`** — **done in v1.5.1**
+   (`649fe9e`, `aa99202`, `b8b5a99`). The duplicated hook/MCP/instructions
+   actions are module-level hoists with explicit parameters
+   (`_apply_migrations`, `_register_mcp_for`, `_install_skills`,
+   `_install_codex_hooks`, …) consumed by both sides; `run_full_setup` plans
+   through `_plan_setup_steps` + a frozen `SetupStep` dataclass, and
+   `repair_steps_for` maps over the same hoists (a command change is now made
+   once). Every `_OK`/`_WARN`/`_SKIP` status and detail string is identical
+   (`tests/cli/test_onboarding.py`, `test_setup.py`, `test_app.py` pass
+   unchanged); migrations/ stayed frozen.
 4. **Split `cli/app.py` into per-subapp command modules** — **done in v1.4.0**
    (`6fd933f`): the `benchmark`, `observe`, and `skill` groups moved to
    `seahorse/cli/commands/` submodules registering on the handed Typer
