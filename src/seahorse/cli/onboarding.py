@@ -486,14 +486,11 @@ def repair_steps_for(
     """Map doctor check names to their repair actions (in a stable order).
 
     Unknown names are ignored — ``--fix`` only repairs checks Seahorse owns.
+    The actions are the module-level install hoists setup also uses; the
+    repair-only rows (hooks, credentials, pointer) stay local.
     """
-    from seahorse.cli.agent_instructions import install_agent_instructions, install_instructions_for
-    from seahorse.cli.config import (
-        write_consolidate_config,
-        write_global_pointer,
-    )
-    from seahorse.cli.mcp_register import register_mcp
-    from seahorse.cli.setup import merge_consolidate_hook, merge_hooks, write_observe_config
+    from seahorse.cli.config import write_global_pointer
+    from seahorse.cli.setup import merge_hooks, write_observe_config
 
     steps: list[RepairStep] = []
     settings = (
@@ -506,51 +503,11 @@ def repair_steps_for(
         return f"observer hooks merged into {settings}"
 
     def _consolidate() -> str:
-        write_consolidate_config(vault, ConsolidateConfig(auto_on_stop=True))
-        merge_consolidate_hook(
-            settings,
-            hook_command=f"{sys.executable} -m seahorse.cli.app consolidate --auto",
-        )
+        _install_consolidate_hook(vault=vault, settings=settings)
         return "consolidate-on-stop hook installed"
 
-    def _mcp() -> str:
-        ok, detail = register_mcp()
-        if not ok:
-            raise RuntimeError(detail)
-        return detail
-
-    def _mcp_for(harness_id: str) -> Callable[[], str]:
-        def run() -> str:
-            from seahorse.cli.harness_targets import resolve_target
-
-            target = resolve_target(harness_id)
-            ok, detail = target.register(target.config_path())
-            if not ok:
-                raise RuntimeError(detail)
-            return detail
-
-        return run
-
-    def _instructions() -> str:
-        ok, detail = install_agent_instructions()
-        if not ok:
-            raise RuntimeError(detail)
-        return detail
-
-    def _skills() -> str:
-        from seahorse.cli.skill_install import install_skills
-
-        rows = install_skills()
-        failed = [f"{name}: {detail}" for name, ok, detail in rows if not ok]
-        if failed:
-            raise RuntimeError("; ".join(failed))
-        return "; ".join(detail for _, _, detail in rows)
-
     def _db() -> str:
-        from seahorse.cli.vault_ops import run_migrate
-
-        run_migrate(load_config(vault), up_to=None, fmt="json", out=io.StringIO())
-        return "schema applied"
+        return _apply_migrations(load_config(vault))
 
     def _credentials() -> str:
         from seahorse.cli.credentials import credentials_path
@@ -565,26 +522,19 @@ def repair_steps_for(
         write_global_pointer(vault)
         return f"pointer -> {vault}"
 
-    def _codex_hooks() -> str:
-        from seahorse.cli.codex_hooks import codex_hooks_path, merge_codex_hooks
-
-        ok, detail = merge_codex_hooks(
-            codex_hooks_path(),
-            hook_command=(
-                f"{sys.executable} -m seahorse.cli.app observe event --agent-id codex"
-            ),
-        )
-        if not ok:
-            raise RuntimeError(detail)
-        return detail
-
     mapping: dict[str, tuple[str, Callable[[], str]]] = {
         "claude_hooks": ("observer hooks merged", _hooks),
-        "codex_hooks": ("codex capture hooks installed", _codex_hooks),
+        "codex_hooks": ("codex capture hooks installed", _install_codex_hooks),
         "consolidate": ("consolidate-on-stop installed", _consolidate),
-        "mcp_registered": ("MCP server registered", _mcp),
-        "agent_instructions": ("agent instructions installed", _instructions),
-        "skills_installed": ("agent skills installed", _skills),
+        "mcp_registered": (
+            "MCP server registered",
+            partial(_register_mcp_for, "claude-code"),
+        ),
+        "agent_instructions": (
+            "agent instructions installed",
+            _install_agent_instructions,
+        ),
+        "skills_installed": ("agent skills installed", _install_skills),
         "credentials": ("credentials store permissions fixed", _credentials),
         "db": ("schema applied", _db),
         "global_pointer": ("global pointer written", _pointer),
@@ -592,25 +542,16 @@ def repair_steps_for(
     from seahorse.cli.agent_instructions import instructions_path_for
     from seahorse.cli.harness_targets import harness_ids
 
-    def _instructions_for(harness_id: str) -> Callable[[], str]:
-        def run() -> str:
-            ok, detail = install_instructions_for(harness_id)
-            if not ok:
-                raise RuntimeError(detail)
-            return detail
-
-        return run
-
     for hid in harness_ids():
         if hid != "claude-code":
             mapping[f"mcp_registered:{hid}"] = (
                 f"MCP server registered ({hid})",
-                _mcp_for(hid),
+                partial(_register_mcp_for, hid),
             )
             if instructions_path_for(hid) is not None:
                 mapping[f"agent_instructions:{hid}"] = (
                     f"agent instructions installed ({hid})",
-                    _instructions_for(hid),
+                    partial(_install_instructions_for, hid),
                 )
     for name in check_names:
         if name in mapping:
