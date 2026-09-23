@@ -35,6 +35,7 @@ import io
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TextIO
 
@@ -74,171 +75,37 @@ def run_full_setup(
     (a partially-configured machine with an actionable message beats a
     crashed half-setup).
     """
-    from seahorse.cli.agent_instructions import (
-        _NO_GLOBAL_INSTRUCTIONS_DETAIL,
-        instructions_path_for,
-    )
-    from seahorse.cli.errors import CliObserverRunning
-    from seahorse.cli.provider_bootstrap import bootstrap_llm_provider
-    from seahorse.cli.setup import run_setup
-    from seahorse.observe.cli import run_observe_start
-
     vault = vault.expanduser().resolve()
     if not is_initialized(vault):
         from seahorse.cli.setup import _bootstrap_vault
 
         _bootstrap_vault(vault)
-    cfg = load_config(vault)
 
-    checks: list[dict[str, str]] = []
-
-    def step(name: str, run: Callable[[], str]) -> None:
-        try:
-            detail = run()
-            checks.append({"check": name, "status": _OK, "detail": detail})
-        except Exception as exc:  # noqa: BLE001 — a step failure is a WARN, never a crash
-            checks.append({"check": name, "status": _WARN, "detail": f"error: {exc}"})
-
-    def _config_and_hooks() -> str:
-        buf = io.StringIO()
-        run_setup(
-            vault,
-            settings_path=settings_path,
-            fmt="human",
-            out=buf,
-            auto_consolidate=auto_consolidate,
-            no_observer=no_observer,
-        )
-        if no_observer:
-            return "[materialize] config installed (hooks skipped — --no-observer)"
-        return "hooks + [observe] + [materialize] config installed"
-
-    def _observer() -> str:
-        try:
-            run_observe_start(load_config(vault), fmt="json", out=io.StringIO())
-            return "started"
-        except CliObserverRunning as exc:
-            return f"already running (pid {exc.pid})"
-        except Exception as exc:  # noqa: BLE001 — hook path must never raise
-            return f"not started ({exc}) — auto-starts on the next session"
-
-    def _llm() -> str:
-        decision = bootstrap_llm_provider(vault, out=out)
-        if decision.primary is None:
-            return decision.detail
-        return f"[llm] written — primary {decision.primary} ({decision.detail})"
-
-    def _consolidate() -> str:
-        settings = Path(settings_path) if settings_path else _default_settings_path()
-        _install_consolidate_hook(vault=vault, settings=settings)
-        return "consolidate --auto on Stop ([consolidate] auto_on_stop = true)"
-
-    step("vault", lambda: str(vault))
-    step("db", lambda: _apply_migrations(cfg))
-    step("capture", _config_and_hooks)
-    if no_observer:
-        checks.append({"check": "observer", "status": _SKIP, "detail": "--no-observer"})
-    else:
-        step("observer", _observer)
-    if auto_consolidate:
-        step("consolidate", _consolidate)
-    if not no_mcp:
-        for harness_id in harnesses:
-
-            def _mcp_step(hid: str = harness_id) -> str:
-                return _register_mcp_for(hid)
-
-            step(f"mcp:{harness_id}", _mcp_step)
-    else:
-        checks.append({"check": "mcp", "status": _SKIP, "detail": "--no-mcp"})
-    # Agent instructions are per-harness (each harness reads its own global
-    # file); skills are a Claude-Code artifact (~/.claude/skills) — installing
-    # them for a Codex-only user would litter a foreign home dir.
-    claude_selected = "claude-code" in harnesses
-    if not no_agent_instructions:
-        for harness_id in harnesses:
-            if instructions_path_for(harness_id) is None:
-                checks.append(
-                    {
-                        "check": f"agent_instructions:{harness_id}",
-                        "status": _SKIP,
-                        "detail": _NO_GLOBAL_INSTRUCTIONS_DETAIL,
-                    }
-                )
-            elif harness_id == "claude-code":
-                step("agent_instructions", _install_agent_instructions)
-            else:
-                check_name = f"agent_instructions:{harness_id}"
-
-                def _instr_step(hid: str = harness_id) -> str:
-                    return _install_instructions_for(hid)
-
-                step(check_name, _instr_step)
-    else:
-        checks.append(
-            {"check": "agent_instructions", "status": _SKIP, "detail": "--no-agent-instructions"}
-        )
-    # Codex GA hooks: the SAME capture command as Claude Code, installed in
-    # ~/.codex/hooks.json — automatic capture + SessionStart bootstrap for
-    # codex (independent of --no-agent-instructions: it is capture, not text).
-    if "codex" in harnesses:
-        if no_observer:
-            # The codex hooks install the SAME capture command — the same
-            # consent category as the Claude Code hooks, so --no-observer
-            # skips them too (a SKIP row, never silent).
-            checks.append({"check": "codex_hooks", "status": _SKIP, "detail": "--no-observer"})
-        else:
-
-            def _codex_hooks_step() -> str:
-                return _install_codex_hooks()
-
-            step("codex_hooks", _codex_hooks_step)
-    if not no_skills and claude_selected:
-        step("skills", _install_skills)
-    elif not claude_selected:
-        checks.append(
-            {
-                "check": "skills",
-                "status": _SKIP,
-                "detail": "claude-code not in --harness (Claude-specific artifact)",
-            }
-        )
-    else:
-        checks.append({"check": "skills", "status": _SKIP, "detail": "--no-skills"})
-    if not skip_llm:
-        step("llm", _llm)
-    else:
-        checks.append({"check": "llm", "status": _SKIP, "detail": "--skip-llm"})
-    if warm_embeddings:
-        step("embeddings", lambda: _warm_embeddings())
-    else:
-        checks.append(
-            {
-                "check": "embeddings",
-                "status": _SKIP,
-                "detail": "pass --warm-embeddings to pre-download the model (~235MB)",
-            }
-        )
-
-    # Smoke-test guidance (always OK — a hint to observe capture working on
-    # the real machine, not a check; there is nothing here to repair).
-    _SMOKE_HINTS = {
-        "claude-code": (
-            "open a new Claude Code session — context is injected on start; "
-            "say 'remember X', then verify with `seahorse context`"
-        ),
-        "codex": (
-            "open codex, say 'remember X', verify with `seahorse context`; "
-            "approve the hooks via /hooks when codex asks"
-        ),
-    }
-    hints = "; ".join(
-        _SMOKE_HINTS.get(
-            h, f"say 'remember X' in {h}, then verify with `seahorse context`"
-        )
-        for h in harnesses
+    plan = _plan_setup_steps(
+        vault,
+        settings_path=settings_path,
+        out=out,
+        no_mcp=no_mcp,
+        no_observer=no_observer,
+        no_agent_instructions=no_agent_instructions,
+        no_skills=no_skills,
+        skip_llm=skip_llm,
+        warm_embeddings=warm_embeddings,
+        auto_consolidate=auto_consolidate,
+        harnesses=harnesses,
     )
-    checks.append({"check": "smoke_test", "status": _OK, "detail": hints})
+    checks: list[dict[str, str]] = []
+    for entry in plan:
+        if not isinstance(entry, SetupStep):
+            checks.append(entry)
+            continue
+        try:
+            detail = entry.run()
+            checks.append({"check": entry.check, "status": _OK, "detail": detail})
+        except Exception as exc:  # noqa: BLE001 — a step failure is a WARN, never a crash
+            checks.append(
+                {"check": entry.check, "status": _WARN, "detail": f"error: {exc}"}
+            )
 
     _render_summary(checks, fmt=fmt, out=out)
     return checks
@@ -336,6 +203,223 @@ def _install_consolidate_hook(*, vault: Path, settings: Path) -> None:
         settings,
         hook_command=f"{sys.executable} -m seahorse.cli.app consolidate --auto",
     )
+
+
+@dataclass(frozen=True)
+class SetupStep:
+    """One executable setup action: check name + the callable that runs it."""
+
+    check: str
+    run: Callable[[], str]
+
+
+def _install_capture_stack(
+    vault: Path,
+    *,
+    settings_path: Path | str | None,
+    auto_consolidate: bool,
+    no_observer: bool,
+) -> str:
+    """Run the per-piece config write + hooks merge (the capture contract)."""
+    from seahorse.cli.setup import run_setup
+
+    buf = io.StringIO()
+    run_setup(
+        vault,
+        settings_path=settings_path,
+        fmt="human",
+        out=buf,
+        auto_consolidate=auto_consolidate,
+        no_observer=no_observer,
+    )
+    if no_observer:
+        return "[materialize] config installed (hooks skipped — --no-observer)"
+    return "hooks + [observe] + [materialize] config installed"
+
+
+def _start_observer(vault: Path) -> str:
+    """Start the observer worker; already-running and failure are details."""
+    from seahorse.cli.errors import CliObserverRunning
+    from seahorse.observe.cli import run_observe_start
+
+    try:
+        run_observe_start(load_config(vault), fmt="json", out=io.StringIO())
+        return "started"
+    except CliObserverRunning as exc:
+        return f"already running (pid {exc.pid})"
+    except Exception as exc:  # noqa: BLE001 — hook path must never raise
+        return f"not started ({exc}) — auto-starts on the next session"
+
+
+def _install_consolidate(*, vault: Path, settings_path: Path | str | None) -> str:
+    """Setup-side wrapper: shared action, setup's detail string."""
+    settings = Path(settings_path) if settings_path else _default_settings_path()
+    _install_consolidate_hook(vault=vault, settings=settings)
+    return "consolidate --auto on Stop ([consolidate] auto_on_stop = true)"
+
+
+def _bootstrap_llm(vault: Path, *, out: TextIO) -> str:
+    """Detect + self-test the LLM provider, writing [llm] when one is found."""
+    from seahorse.cli.provider_bootstrap import bootstrap_llm_provider
+
+    decision = bootstrap_llm_provider(vault, out=out)
+    if decision.primary is None:
+        return decision.detail
+    return f"[llm] written — primary {decision.primary} ({decision.detail})"
+
+
+def _plan_setup_steps(
+    vault: Path,
+    *,
+    settings_path: Path | str | None,
+    out: TextIO,
+    no_mcp: bool,
+    no_observer: bool,
+    no_agent_instructions: bool,
+    no_skills: bool,
+    skip_llm: bool,
+    warm_embeddings: bool,
+    auto_consolidate: bool,
+    harnesses: tuple[str, ...],
+) -> list[SetupStep | dict[str, str]]:
+    """The ordered setup plan: executable SetupSteps + static SKIP/OK rows.
+
+    Executable bindings are materialized against this function's explicit
+    parameters — no step depends on ``run_full_setup``'s scope.
+    """
+    from seahorse.cli.agent_instructions import (
+        _NO_GLOBAL_INSTRUCTIONS_DETAIL,
+        instructions_path_for,
+    )
+
+    plan: list[SetupStep | dict[str, str]] = [
+        {"check": "vault", "status": _OK, "detail": str(vault)},
+        SetupStep(check="db", run=lambda: _apply_migrations(load_config(vault))),
+        SetupStep(
+            check="capture",
+            run=lambda: _install_capture_stack(
+                vault,
+                settings_path=settings_path,
+                auto_consolidate=auto_consolidate,
+                no_observer=no_observer,
+            ),
+        ),
+    ]
+    if no_observer:
+        plan.append({"check": "observer", "status": _SKIP, "detail": "--no-observer"})
+    else:
+        plan.append(SetupStep(check="observer", run=lambda: _start_observer(vault)))
+    if auto_consolidate:
+        plan.append(
+            SetupStep(
+                check="consolidate",
+                run=lambda: _install_consolidate(
+                    vault=vault, settings_path=settings_path
+                ),
+            )
+        )
+    if not no_mcp:
+        plan.extend(
+            SetupStep(
+                check=f"mcp:{harness_id}",
+                run=partial(_register_mcp_for, harness_id),
+            )
+            for harness_id in harnesses
+        )
+    else:
+        plan.append({"check": "mcp", "status": _SKIP, "detail": "--no-mcp"})
+    # Agent instructions are per-harness (each harness reads its own global
+    # file); skills are a Claude-Code artifact (~/.claude/skills) — installing
+    # them for a Codex-only user would litter a foreign home dir.
+    claude_selected = "claude-code" in harnesses
+    if not no_agent_instructions:
+        for harness_id in harnesses:
+            if instructions_path_for(harness_id) is None:
+                plan.append(
+                    {
+                        "check": f"agent_instructions:{harness_id}",
+                        "status": _SKIP,
+                        "detail": _NO_GLOBAL_INSTRUCTIONS_DETAIL,
+                    }
+                )
+            elif harness_id == "claude-code":
+                plan.append(
+                    SetupStep(
+                        check="agent_instructions",
+                        run=_install_agent_instructions,
+                    )
+                )
+            else:
+                plan.append(
+                    SetupStep(
+                        check=f"agent_instructions:{harness_id}",
+                        run=partial(_install_instructions_for, harness_id),
+                    )
+                )
+    else:
+        plan.append(
+            {"check": "agent_instructions", "status": _SKIP, "detail": "--no-agent-instructions"}
+        )
+    # Codex GA hooks: the SAME capture command as Claude Code, installed in
+    # ~/.codex/hooks.json — automatic capture + SessionStart bootstrap for
+    # codex (independent of --no-agent-instructions: it is capture, not text).
+    if "codex" in harnesses:
+        if no_observer:
+            # The codex hooks install the SAME capture command — the same
+            # consent category as the Claude Code hooks, so --no-observer
+            # skips them too (a SKIP row, never silent).
+            plan.append(
+                {"check": "codex_hooks", "status": _SKIP, "detail": "--no-observer"}
+            )
+        else:
+            plan.append(SetupStep(check="codex_hooks", run=_install_codex_hooks))
+    if not no_skills and claude_selected:
+        plan.append(SetupStep(check="skills", run=_install_skills))
+    elif not claude_selected:
+        plan.append(
+            {
+                "check": "skills",
+                "status": _SKIP,
+                "detail": "claude-code not in --harness (Claude-specific artifact)",
+            }
+        )
+    else:
+        plan.append({"check": "skills", "status": _SKIP, "detail": "--no-skills"})
+    if not skip_llm:
+        plan.append(SetupStep(check="llm", run=lambda: _bootstrap_llm(vault, out=out)))
+    else:
+        plan.append({"check": "llm", "status": _SKIP, "detail": "--skip-llm"})
+    if warm_embeddings:
+        plan.append(SetupStep(check="embeddings", run=_warm_embeddings))
+    else:
+        plan.append(
+            {
+                "check": "embeddings",
+                "status": _SKIP,
+                "detail": "pass --warm-embeddings to pre-download the model (~235MB)",
+            }
+        )
+
+    # Smoke-test guidance (always OK — a hint to observe capture working on
+    # the real machine, not a check; there is nothing here to repair).
+    _SMOKE_HINTS = {
+        "claude-code": (
+            "open a new Claude Code session — context is injected on start; "
+            "say 'remember X', then verify with `seahorse context`"
+        ),
+        "codex": (
+            "open codex, say 'remember X', verify with `seahorse context`; "
+            "approve the hooks via /hooks when codex asks"
+        ),
+    }
+    hints = "; ".join(
+        _SMOKE_HINTS.get(
+            h, f"say 'remember X' in {h}, then verify with `seahorse context`"
+        )
+        for h in harnesses
+    )
+    plan.append({"check": "smoke_test", "status": _OK, "detail": hints})
+    return plan
 
 
 def _default_settings_path() -> Path:
