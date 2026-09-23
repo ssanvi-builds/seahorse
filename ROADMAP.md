@@ -161,7 +161,7 @@ Fase 2 decision. Two of the four landed in v1.4.0 (#1 and #4).
    (`test_recall_e2e`, `test_recency`, `test_decay`, `test_session_boost`,
    `test_pit_routing`, `test_reproducibility` with bit-comparable fingerprints,
    `test_degradation`) pass unchanged.
-2. **Decompose `run_doctor`** — `src/seahorse/cli/doctor.py:266` (714 lines,
+2. **Decompose `run_doctor`** — `src/seahorse/cli/doctor.py:283` (731 lines,
    ~20 inline check dicts + fix loop + rendering). Extract the two per-harness
    loops verbatim, then group into `_llm_family_checks` / `_capture_family_checks`
    / `_agent_surface_checks` / `_environment_checks`, and separate
