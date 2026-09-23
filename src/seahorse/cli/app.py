@@ -529,7 +529,11 @@ def improve(
     reason: str = typer.Option("correction", "--reason"),
     source_type: str = typer.Option("human", "--source-type"),
     agent_id: str | None = typer.Option(None, "--agent-id"),
-    valid_at: str | None = typer.Option(None, "--valid-at"),
+    valid_at: str | None = typer.Option(
+        None,
+        "--valid-at",
+        help="ISO-8601 valid_at (not in the future; use remember for future-dated facts).",
+    ),
 ) -> None:
     """Improve a fact (editorial correction: invalidate + append)."""
     validate_improve_inputs(ep_id=ep_id, new_body=new_body, reason=reason)

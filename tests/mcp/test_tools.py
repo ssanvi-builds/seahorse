@@ -616,6 +616,14 @@ class TestToolListDescriptions:
         assert "PIT" in desc
         assert "no PIT" not in desc
 
+    def test_improve_description_matches_valid_at_restriction(self) -> None:
+        """Regression: improve rejects a future valid_at (E_IMPROVE_VALID_AT_FUTURE,
+        -32022) while remember accepts one (PENDING_INGEST). The description
+        must state the restriction and the remember redirect."""
+        desc = self._tool("improve")["description"]
+        assert "future" in desc
+        assert "remember" in desc
+
 
 class TestHandlerDirectCall:
     """Handlers are callable directly (not just via dispatch)."""

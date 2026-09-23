@@ -342,7 +342,9 @@ TOOL_LIST: list[dict[str, Any]] = [
     {
         "name": "improve",
         "description": "Improve a fact (human edit): supersedes the target episode "
-        "with a new body. The facade synthesizes the effective provenance.",
+        "with a new body. The facade synthesizes the effective provenance. valid_at "
+        "cannot be in the future — a correction takes effect when made; use remember "
+        "for a future-dated fact.",
         "inputSchema": schema_for("improve"),
     },
     {

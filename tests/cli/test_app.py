@@ -373,6 +373,22 @@ def test_improve_then_forget_conflict(vault):
     assert "component: #2" in err
 
 
+def test_improve_valid_at_help_names_future_restriction():
+    """improve --valid-at cannot be future-dated (exit 95); remember can.
+
+    The help text must state the asymmetry at the surface: improve rejects a
+    future valid_at (a correction takes effect when made), remember accepts
+    one (PENDING_INGEST)."""
+    code, out, err = invoke(["improve", "--help"])
+    assert code == 0, err
+    assert "not in the future" in out
+    assert "remember" in out  # the redirect for future-dated facts
+
+    code, out, err = invoke(["remember", "--help"])
+    assert code == 0, err
+    assert "not in the future" not in out  # future-dating is legal on remember
+
+
 # ---------------------------------------------------------------------------
 # Management commands.
 # ---------------------------------------------------------------------------
