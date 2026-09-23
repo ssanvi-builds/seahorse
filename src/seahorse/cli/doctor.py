@@ -383,19 +383,8 @@ def _per_harness_instruction_checks() -> list[dict[str, str]]:
     return checks
 
 
-def run_doctor(
-    config: SeahorseConfig,
-    *,
-    fmt: OutputFormat = "human",
-    out: TextIO,
-    fix: bool = False,
-) -> None:
-    """Render the diagnostic report for the resolved vault config.
-
-    ``fix=True`` attempts the repairs Seahorse owns for every actionable
-    (WARN/FAIL) check in ``_REPAIRABLE_CHECKS`` and appends one
-    ``fix:<check>`` line per attempt — the diagnosis itself is untouched.
-    """
+def _llm_family_checks(config: SeahorseConfig) -> list[dict[str, str]]:
+    """Extraction regime: llm config, installed extra, keys, provider, mode."""
     checks: list[dict[str, str]] = []
 
     if config.llm is None:
@@ -456,6 +445,13 @@ def run_doctor(
             "detail": config.default_extraction_mode,
         }
     )
+    return checks
+
+
+def _capture_family_checks(config: SeahorseConfig) -> list[dict[str, str]]:
+    """Capture end-to-end: db, hooks, observer, health, context render."""
+    checks: list[dict[str, str]] = []
+
     db_status, db_detail = _db_check(config)
     checks.append({"check": "db", "status": db_status, "detail": db_detail})
 
@@ -471,11 +467,18 @@ def run_doctor(
     checks.append(
         {"check": "context", "status": "OK" if ctx_ok else "WARN", "detail": ctx_detail}
     )
+    return checks
 
-    # The agent surface: MCP registration, agent instructions, auto-consolidate
-    # (opt-in — off is a valid state, never a WARN). Instruction/skill checks
-    # compare CONTENT, not markers: a stale install (an older Seahorse wrote
-    # the block/skill, the user never re-ran setup) must WARN, not report OK.
+
+def _agent_surface_checks() -> list[dict[str, str]]:
+    """The agent-visible install: MCP, instructions, Codex hooks, skills.
+
+    Instruction/skill checks compare CONTENT, not markers: a stale install
+    (an older Seahorse wrote the block/skill, the user never re-ran setup)
+    must WARN, not report OK.
+    """
+    checks: list[dict[str, str]] = []
+
     from seahorse.cli.agent_instructions import installed as _ai_installed
     from seahorse.cli.agent_instructions import installed_current as _ai_current
     from seahorse.cli.mcp_register import is_mcp_registered
@@ -625,6 +628,13 @@ def run_doctor(
         checks.append(
             {"check": "skills_installed", "status": "WARN", "detail": detail}
         )
+    return checks
+
+
+def _environment_checks(config: SeahorseConfig) -> list[dict[str, str]]:
+    """Environment + policy: credentials, consolidate (opt-in — off is a
+    valid state, never a WARN), materialization, python, uv, sqlite-vec."""
+    checks: list[dict[str, str]] = []
 
     from seahorse.cli.credentials import check_permissions
 
@@ -726,6 +736,28 @@ def run_doctor(
                 ),
             }
         )
+    return checks
+
+
+def run_doctor(
+    config: SeahorseConfig,
+    *,
+    fmt: OutputFormat = "human",
+    out: TextIO,
+    fix: bool = False,
+) -> None:
+    """Render the diagnostic report for the resolved vault config.
+
+    ``fix=True`` attempts the repairs Seahorse owns for every actionable
+    (WARN/FAIL) check in ``_REPAIRABLE_CHECKS`` and appends one
+    ``fix:<check>`` line per attempt — the diagnosis itself is untouched.
+    """
+    checks: list[dict[str, str]] = []
+
+    checks.extend(_llm_family_checks(config))
+    checks.extend(_capture_family_checks(config))
+    checks.extend(_agent_surface_checks())
+    checks.extend(_environment_checks(config))
 
     if fix:
         actionable = [
