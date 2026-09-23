@@ -280,6 +280,109 @@ def _capture_health_check(config: SeahorseConfig) -> tuple[str, str]:
     return "OK", "no hooks — capture-on-intent (episodes land when the agent writes)"
 
 
+def _per_harness_mcp_checks() -> list[dict[str, str]]:
+    """MCP registration for the non-claude-code harnesses.
+
+    A harness only reports when it appears installed (its config file
+    exists) — never WARN a Codex-only user about a machine where Seahorse
+    would be noise.
+    """
+    from seahorse.cli.harness_targets import harness_ids, resolve_target
+
+    checks: list[dict[str, str]] = []
+    for hid in harness_ids():
+        if hid == "claude-code":
+            continue
+        target = resolve_target(hid)
+        path = target.config_path()
+        if not path.exists():
+            checks.append(
+                {
+                    "check": f"mcp_registered:{hid}",
+                    "status": "OK",
+                    "detail": f"{hid} not installed ({path} absent) — skipped",
+                }
+            )
+        elif target.is_registered(path):
+            checks.append(
+                {
+                    "check": f"mcp_registered:{hid}",
+                    "status": "OK",
+                    "detail": f"registered in {path}",
+                }
+            )
+        else:
+            checks.append(
+                {
+                    "check": f"mcp_registered:{hid}",
+                    "status": "WARN",
+                    "detail": f"seahorse-mcp not in {path}; run `seahorse setup --harness {hid}`",
+                }
+            )
+    return checks
+
+
+def _per_harness_instruction_checks() -> list[dict[str, str]]:
+    """Instruction files for the other harnesses.
+
+    Same "only when the harness appears installed" rule as the MCP checks
+    above (proxy: the harness's global instruction file exists).
+    """
+    from seahorse.cli.agent_instructions import (
+        installed as _ai_installed,
+    )
+    from seahorse.cli.agent_instructions import (
+        installed_current as _ai_current,
+    )
+    from seahorse.cli.agent_instructions import (
+        instructions_path_for,
+    )
+
+    checks: list[dict[str, str]] = []
+    for hid in ("codex", "antigravity", "gemini"):
+        instr_path = instructions_path_for(hid)
+        if instr_path is None or not instr_path.exists():
+            checks.append(
+                {
+                    "check": f"agent_instructions:{hid}",
+                    "status": "OK",
+                    "detail": f"{hid} not installed ({instr_path} absent) — skipped",
+                }
+            )
+        elif _ai_installed(instr_path):
+            if _ai_current(instr_path, hid):
+                checks.append(
+                    {
+                        "check": f"agent_instructions:{hid}",
+                        "status": "OK",
+                        "detail": f"installed in {instr_path}",
+                    }
+                )
+            else:
+                checks.append(
+                    {
+                        "check": f"agent_instructions:{hid}",
+                        "status": "WARN",
+                        "detail": (
+                            f"instructions stale in {instr_path} (an older "
+                            f"Seahorse wrote them) — run `seahorse setup --harness {hid}`"
+                        ),
+                    }
+                )
+        else:
+            checks.append(
+                {
+                    "check": f"agent_instructions:{hid}",
+                    "status": "WARN",
+                    "detail": (
+                        f"no memory instructions in {instr_path}; "
+                        f"run `seahorse setup --harness {hid}`"
+                    ),
+                }
+            )
+    return checks
+
+
 def run_doctor(
     config: SeahorseConfig,
     *,
@@ -391,37 +494,7 @@ def run_doctor(
     # The other harnesses: only relevant when the harness itself appears
     # installed (its config file exists) — never WARN a Codex-only user
     # about a machine where Seahorse would be noise.
-    from seahorse.cli.harness_targets import harness_ids, resolve_target
-
-    for hid in harness_ids():
-        if hid == "claude-code":
-            continue
-        target = resolve_target(hid)
-        path = target.config_path()
-        if not path.exists():
-            checks.append(
-                {
-                    "check": f"mcp_registered:{hid}",
-                    "status": "OK",
-                    "detail": f"{hid} not installed ({path} absent) — skipped",
-                }
-            )
-        elif target.is_registered(path):
-            checks.append(
-                {
-                    "check": f"mcp_registered:{hid}",
-                    "status": "OK",
-                    "detail": f"registered in {path}",
-                }
-            )
-        else:
-            checks.append(
-                {
-                    "check": f"mcp_registered:{hid}",
-                    "status": "WARN",
-                    "detail": f"seahorse-mcp not in {path}; run `seahorse setup --harness {hid}`",
-                }
-            )
+    checks.extend(_per_harness_mcp_checks())
     if _ai_installed():
         if _ai_current():
             checks.append(
@@ -449,49 +522,7 @@ def run_doctor(
     # The other harnesses' instruction files: same "only when the harness
     # appears installed" rule as the MCP checks above (proxy: the harness's
     # global instruction file exists).
-    from seahorse.cli.agent_instructions import instructions_path_for
-
-    for hid in ("codex", "antigravity", "gemini"):
-        instr_path = instructions_path_for(hid)
-        if instr_path is None or not instr_path.exists():
-            checks.append(
-                {
-                    "check": f"agent_instructions:{hid}",
-                    "status": "OK",
-                    "detail": f"{hid} not installed ({instr_path} absent) — skipped",
-                }
-            )
-        elif _ai_installed(instr_path):
-            if _ai_current(instr_path, hid):
-                checks.append(
-                    {
-                        "check": f"agent_instructions:{hid}",
-                        "status": "OK",
-                        "detail": f"installed in {instr_path}",
-                    }
-                )
-            else:
-                checks.append(
-                    {
-                        "check": f"agent_instructions:{hid}",
-                        "status": "WARN",
-                        "detail": (
-                            f"instructions stale in {instr_path} (an older "
-                            f"Seahorse wrote them) — run `seahorse setup --harness {hid}`"
-                        ),
-                    }
-                )
-        else:
-            checks.append(
-                {
-                    "check": f"agent_instructions:{hid}",
-                    "status": "WARN",
-                    "detail": (
-                        f"no memory instructions in {instr_path}; "
-                        f"run `seahorse setup --harness {hid}`"
-                    ),
-                }
-            )
+    checks.extend(_per_harness_instruction_checks())
     # Codex GA hooks: same "harness appears installed" proxy as above, but the
     # directory is the proxy (the hooks file is exactly what may be missing).
     from seahorse.cli.codex_hooks import codex_hooks_installed, codex_hooks_path
