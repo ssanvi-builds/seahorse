@@ -739,6 +739,52 @@ def _environment_checks(config: SeahorseConfig) -> list[dict[str, str]]:
     return checks
 
 
+def _apply_repairs(checks: list[dict[str, str]], *, vault: Path) -> None:
+    """Attempt the repairs Seahorse owns for the actionable checks, in place.
+
+    One ``fix:<check>`` row is appended per attempt (a failed repair is a
+    report, not a crash); the diagnosis rows themselves are untouched.
+    """
+    actionable = [
+        c["check"]
+        for c in checks
+        if c["status"] in ("WARN", "FAIL") and _repairable(c["check"])
+    ]
+    if not actionable:
+        return
+    from seahorse.cli.onboarding import repair_steps_for
+
+    for step in repair_steps_for(actionable, vault=vault):
+        try:
+            detail = step.run()
+        except Exception as exc:  # noqa: BLE001 — a failed repair is a report, not a crash
+            detail = f"error: {exc}"
+        status = "FAIL" if detail.startswith("error:") else "OK"
+        checks.append(
+            {"check": f"fix:{step.check}", "status": status, "detail": detail}
+        )
+
+
+def _render_doctor(
+    checks: list[dict[str, str]],
+    *,
+    fmt: OutputFormat,
+    out: TextIO,
+) -> None:
+    """Render the diagnosis; healthy is computed AFTER any repairs ran."""
+    healthy = all(c["status"] == "OK" for c in checks)
+    payload = {"command": "doctor", "healthy": healthy, "checks": checks}
+    lines = "".join(
+        f"  {c['status']:<4} {c['check']:<16} {c['detail']}\n" for c in checks
+    )
+    human = (
+        "Seahorse doctor\n"
+        + lines
+        + ("\n✓ healthy" if healthy else "\n⚠ fix the WARN/FAIL items above")
+    )
+    render_message(payload, fmt=fmt, out=out, human_text=human)
+
+
 def run_doctor(
     config: SeahorseConfig,
     *,
@@ -760,35 +806,9 @@ def run_doctor(
     checks.extend(_environment_checks(config))
 
     if fix:
-        actionable = [
-            c["check"]
-            for c in checks
-            if c["status"] in ("WARN", "FAIL") and _repairable(c["check"])
-        ]
-        if actionable:
-            from seahorse.cli.onboarding import repair_steps_for
+        _apply_repairs(checks, vault=config.vault)
 
-            for step in repair_steps_for(actionable, vault=config.vault):
-                try:
-                    detail = step.run()
-                except Exception as exc:  # noqa: BLE001 — a failed repair is a report, not a crash
-                    detail = f"error: {exc}"
-                status = "FAIL" if detail.startswith("error:") else "OK"
-                checks.append(
-                    {"check": f"fix:{step.check}", "status": status, "detail": detail}
-                )
-
-    healthy = all(c["status"] == "OK" for c in checks)
-    payload = {"command": "doctor", "healthy": healthy, "checks": checks}
-    lines = "".join(
-        f"  {c['status']:<4} {c['check']:<16} {c['detail']}\n" for c in checks
-    )
-    human = (
-        "Seahorse doctor\n"
-        + lines
-        + ("\n✓ healthy" if healthy else "\n⚠ fix the WARN/FAIL items above")
-    )
-    render_message(payload, fmt=fmt, out=out, human_text=human)
+    _render_doctor(checks, fmt=fmt, out=out)
 
 
 __all__ = ["run_doctor"]
