@@ -40,6 +40,7 @@ from typing import TextIO
 
 from seahorse.cli.config import (
     ConsolidateConfig,
+    SeahorseConfig,
     is_initialized,
     load_config,
     write_consolidate_config,
@@ -75,17 +76,11 @@ def run_full_setup(
     """
     from seahorse.cli.agent_instructions import (
         _NO_GLOBAL_INSTRUCTIONS_DETAIL,
-        install_agent_instructions,
-        install_instructions_for,
         instructions_path_for,
     )
-    from seahorse.cli.codex_hooks import codex_hooks_path, merge_codex_hooks
     from seahorse.cli.errors import CliObserverRunning
     from seahorse.cli.provider_bootstrap import bootstrap_llm_provider
-    from seahorse.cli.setup import (
-        merge_consolidate_hook,
-        run_setup,
-    )
+    from seahorse.cli.setup import run_setup
     from seahorse.observe.cli import run_observe_start
 
     vault = vault.expanduser().resolve()
@@ -103,13 +98,6 @@ def run_full_setup(
             checks.append({"check": name, "status": _OK, "detail": detail})
         except Exception as exc:  # noqa: BLE001 — a step failure is a WARN, never a crash
             checks.append({"check": name, "status": _WARN, "detail": f"error: {exc}"})
-
-    def _db() -> str:
-        from seahorse.cli.vault_ops import run_migrate
-
-        buf = io.StringIO()
-        run_migrate(cfg, up_to=None, fmt="json", out=buf)
-        return "schema applied"
 
     def _config_and_hooks() -> str:
         buf = io.StringIO()
@@ -134,35 +122,6 @@ def run_full_setup(
         except Exception as exc:  # noqa: BLE001 — hook path must never raise
             return f"not started ({exc}) — auto-starts on the next session"
 
-    def _mcp_for(harness_id: str) -> str:
-        if harness_id == "claude-code":
-            # Keep the _register_mcp seam (tests monkeypatch it); the
-            # env-resolved path inside mcp_register matches claude-code's.
-            ok, detail = _register_mcp()
-        else:
-            from seahorse.cli.harness_targets import resolve_target
-
-            target = resolve_target(harness_id)
-            ok, detail = target.register(target.config_path())
-        if not ok:
-            raise RuntimeError(detail)
-        return detail
-
-    def _instructions() -> str:
-        ok, detail = install_agent_instructions()
-        if not ok:
-            raise RuntimeError(detail)
-        return detail
-
-    def _skills() -> str:
-        from seahorse.cli.skill_install import install_skills
-
-        rows = install_skills()
-        failed = [f"{name}: {detail}" for name, ok, detail in rows if not ok]
-        if failed:
-            raise RuntimeError("; ".join(failed))
-        return "; ".join(detail for _, _, detail in rows)
-
     def _llm() -> str:
         decision = bootstrap_llm_provider(vault, out=out)
         if decision.primary is None:
@@ -170,16 +129,12 @@ def run_full_setup(
         return f"[llm] written — primary {decision.primary} ({decision.detail})"
 
     def _consolidate() -> str:
-        write_consolidate_config(vault, ConsolidateConfig(auto_on_stop=True))
         settings = Path(settings_path) if settings_path else _default_settings_path()
-        merge_consolidate_hook(
-            settings,
-            hook_command=f"{sys.executable} -m seahorse.cli.app consolidate --auto",
-        )
+        _install_consolidate_hook(vault=vault, settings=settings)
         return "consolidate --auto on Stop ([consolidate] auto_on_stop = true)"
 
     step("vault", lambda: str(vault))
-    step("db", _db)
+    step("db", lambda: _apply_migrations(cfg))
     step("capture", _config_and_hooks)
     if no_observer:
         checks.append({"check": "observer", "status": _SKIP, "detail": "--no-observer"})
@@ -191,7 +146,7 @@ def run_full_setup(
         for harness_id in harnesses:
 
             def _mcp_step(hid: str = harness_id) -> str:
-                return _mcp_for(hid)
+                return _register_mcp_for(hid)
 
             step(f"mcp:{harness_id}", _mcp_step)
     else:
@@ -211,15 +166,12 @@ def run_full_setup(
                     }
                 )
             elif harness_id == "claude-code":
-                step("agent_instructions", _instructions)
+                step("agent_instructions", _install_agent_instructions)
             else:
                 check_name = f"agent_instructions:{harness_id}"
 
                 def _instr_step(hid: str = harness_id) -> str:
-                    ok, detail = install_instructions_for(hid)
-                    if not ok:
-                        raise RuntimeError(detail)
-                    return detail
+                    return _install_instructions_for(hid)
 
                 step(check_name, _instr_step)
     else:
@@ -238,19 +190,11 @@ def run_full_setup(
         else:
 
             def _codex_hooks_step() -> str:
-                ok, detail = merge_codex_hooks(
-                    codex_hooks_path(),
-                    hook_command=(
-                        f"{sys.executable} -m seahorse.cli.app observe event --agent-id codex"
-                    ),
-                )
-                if not ok:
-                    raise RuntimeError(detail)
-                return detail
+                return _install_codex_hooks()
 
             step("codex_hooks", _codex_hooks_step)
     if not no_skills and claude_selected:
-        step("skills", _skills)
+        step("skills", _install_skills)
     elif not claude_selected:
         checks.append(
             {
@@ -305,6 +249,93 @@ def _register_mcp() -> tuple[bool, str]:
     from seahorse.cli.mcp_register import register_mcp
 
     return register_mcp()
+
+
+def _apply_migrations(cfg: SeahorseConfig) -> str:
+    """Apply every pending migration (fresh capture must never cold-start)."""
+    from seahorse.cli.vault_ops import run_migrate
+
+    run_migrate(cfg, up_to=None, fmt="json", out=io.StringIO())
+    return "schema applied"
+
+
+def _register_mcp_for(harness_id: str) -> str:
+    """Register the MCP server for one harness id.
+
+    claude-code keeps the ``_register_mcp`` seam (tests monkeypatch it); the
+    other harnesses register through their resolved target.
+    """
+    if harness_id == "claude-code":
+        ok, detail = _register_mcp()
+    else:
+        from seahorse.cli.harness_targets import resolve_target
+
+        target = resolve_target(harness_id)
+        ok, detail = target.register(target.config_path())
+    if not ok:
+        raise RuntimeError(detail)
+    return detail
+
+
+def _install_agent_instructions() -> str:
+    """Install the managed block into the claude-code global file."""
+    from seahorse.cli.agent_instructions import install_agent_instructions
+
+    ok, detail = install_agent_instructions()
+    if not ok:
+        raise RuntimeError(detail)
+    return detail
+
+
+def _install_skills() -> str:
+    """Install the packaged agent skills (a claude-code artifact)."""
+    from seahorse.cli.skill_install import install_skills
+
+    rows = install_skills()
+    failed = [f"{name}: {detail}" for name, ok, detail in rows if not ok]
+    if failed:
+        raise RuntimeError("; ".join(failed))
+    return "; ".join(detail for _, _, detail in rows)
+
+
+def _install_codex_hooks() -> str:
+    """Merge the capture command into ~/.codex/hooks.json."""
+    from seahorse.cli.codex_hooks import codex_hooks_path, merge_codex_hooks
+
+    ok, detail = merge_codex_hooks(
+        codex_hooks_path(),
+        hook_command=(
+            f"{sys.executable} -m seahorse.cli.app observe event --agent-id codex"
+        ),
+    )
+    if not ok:
+        raise RuntimeError(detail)
+    return detail
+
+
+def _install_instructions_for(harness_id: str) -> str:
+    """Install the managed block into one harness's global instruction file."""
+    from seahorse.cli.agent_instructions import install_instructions_for
+
+    ok, detail = install_instructions_for(harness_id)
+    if not ok:
+        raise RuntimeError(detail)
+    return detail
+
+
+def _install_consolidate_hook(*, vault: Path, settings: Path) -> None:
+    """Write the [consolidate] config + merge the consolidate-on-stop hook.
+
+    Setup and repair share this action but report different detail strings
+    from their own wrappers.
+    """
+    write_consolidate_config(vault, ConsolidateConfig(auto_on_stop=True))
+    from seahorse.cli.setup import merge_consolidate_hook
+
+    merge_consolidate_hook(
+        settings,
+        hook_command=f"{sys.executable} -m seahorse.cli.app consolidate --auto",
+    )
 
 
 def _default_settings_path() -> Path:
