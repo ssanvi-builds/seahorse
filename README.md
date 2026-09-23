@@ -76,6 +76,8 @@ Recall: 'where does Sergio live?' (1 results)
 > first `remember`/`recall`; `setup --warm-embeddings` pre-downloads it.
 
 The full agentic loop ships since v1.0.0, end to end from that one command.
+The whole story — the problem, the machine, the people who shaped it, and
+its honest limits — is told in [docs/explainer.md](docs/explainer.md).
 What's next: [ROADMAP.md](ROADMAP.md).
 
 ## Why
