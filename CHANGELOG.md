@@ -4,6 +4,61 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-25
+
+A small honesty patch on the `improve` surface, the two remaining
+deferred post-1.0 refactors landed behavior-preserving, and the
+end-to-end explainer joins the repository.
+
+### Added
+
+- **The end-to-end explainer** (`docs/explainer.md`, linked from the
+  README): the full narrative walkthrough of seahorse-memory v1.5.0 for
+  a non-technical reader — the six failure modes of existing memory
+  tools, the vault, the bi-temporal engine, the F3.1 standard, the
+  three retrieval levels, the write budget, capture, distillation,
+  point-in-time queries, the users who shaped the product, the
+  benchmarks with their limits stated, and what Seahorse cannot do.
+  The repository copy is an editorial version of the author's vault
+  document: vault frontmatter stripped, links made relative,
+  GitHub-style `[!NOTE]` callouts, and the private vault sources
+  described in prose rather than linked.
+
+### Fixed
+
+- **`improve --valid-at` states the future restriction.** The CLI help
+  and the `improve` MCP tool description now say up front that a
+  correction's `valid_at` cannot lie in the future — a correction
+  takes effect when made; `remember` is the tool for a future-dated
+  fact (it enters the PENDING_INGEST state). Both surface texts echo
+  the engine's named error (`E_IMPROVE_VALID_AT_FUTURE`, exit 95), so
+  the agent reads the same rule in the manual it has and in the error
+  it gets. `remember` keeps its existing help: future-dating is legal
+  there.
+
+### Changed
+
+- **`run_doctor` decomposed** (behavior-preserving): the per-harness
+  check loops and the inline check dicts moved into focused helpers
+  (`_per_harness_mcp_checks`, `_per_harness_instruction_checks`,
+  `_llm_family_checks`, `_capture_family_checks`,
+  `_agent_surface_checks`, `_environment_checks`), and the fix loop
+  and rendering split into `_apply_repairs` and `_render_doctor`.
+  No check name, status, or detail string changed: `tests/cli/test_doctor.py`
+  passes unchanged and the `doctor --format json` payload is
+  byte-identical before and after. Closes the second deferred
+  post-1.0 refactor ticket (ROADMAP).
+- **Setup steps extracted from `run_full_setup`**
+  (behavior-preserving): the actions setup and repair previously
+  duplicated are now module-level hoists with explicit parameters,
+  `run_full_setup` plans through `_plan_setup_steps` plus a frozen
+  `SetupStep` dataclass, and `repair_steps_for` maps over the same
+  hoists — a capture-command change is now made once, not twice.
+  Every status and detail string is identical;
+  `tests/cli/test_onboarding.py`, `test_setup.py`, and `test_app.py`
+  pass unchanged; migrations/ stayed frozen. Closes the last deferred
+  post-1.0 refactor ticket (ROADMAP).
+
 ## [1.5.0] - 2026-09-19
 
 The context-persistence sprint: the bootstrap now survives `/clear` and
