@@ -635,5 +635,6 @@ def test_experiments_and_corpora_constants():
         "reader_quality",
         "context_assembly",
         "two_stage_retrieval",
+        "chunk_indexing",
     }
     assert set(CORPORA) == {"synthetic", "lmeb-s", "claude-mem"}

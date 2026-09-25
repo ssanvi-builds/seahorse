@@ -305,7 +305,7 @@ def build_synthetic_corpus(
 
 
 def build_real_corpus(
-    db_path: Path, *, subsample: bool = True
+    db_path: Path, *, subsample: bool = True, chunk_mode: str = "off"
 ) -> tuple[Any, Any, list[Episode], list[EndToEndQuestion], dict[str, str]]:
     """Build the real LMEB-S corpus (the authoritative decision).
 
@@ -315,9 +315,11 @@ def build_real_corpus(
     carry no per-episode answer — and ``ep_id_to_session`` is the TRUE stored
     episode inventory the session-level recall resolves through. Every LMEB
     instance carries a ``question_date`` and ``golden_answer``.
+    ``chunk_mode`` threads the P3.2 seam through to the facade (default
+    ``off`` — the flag-off surface).
     """
     dataset = load_lmeb_subsample(subsample=subsample)
-    facade, storage = build_real_facade(db_path)
+    facade, storage = build_real_facade(db_path, chunk_mode=chunk_mode)
     _, ep_id_to_session = ingest_haystack(facade, dataset)
     questions = [
         EndToEndQuestion(

@@ -45,14 +45,18 @@ def load_lmeb_subsample(dataset_config: str = "s", *, subsample: bool = True) ->
     return dataset
 
 
-def build_real_facade(db_path: Path | str) -> tuple[Any, Any]:
+def build_real_facade(
+    db_path: Path | str, chunk_mode: str = "off"
+) -> tuple[Any, Any]:
     """The real hybrid facade over the fastembed backend (no embedder override).
 
     ``retrieval_available=True`` forces the hybrid wiring; the passage embedder
-    auto-resolves to ``multilingual-e5-small`` (the pinned model). Returns
-    ``(facade, storage)`` so the caller can ``storage.close()``.
+    auto-resolves to ``multilingual-e5-small`` (the pinned model).
+    ``chunk_mode`` threads the P3.2 seam (default ``off`` — one vector per
+    episode, the flag-off surface). Returns ``(facade, storage)`` so the caller
+    can ``storage.close()``.
     """
-    return build_facade(db_path, retrieval_available=True)
+    return build_facade(db_path, retrieval_available=True, chunk_mode=chunk_mode)
 
 
 def real_query_embedder() -> Any:

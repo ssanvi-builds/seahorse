@@ -457,6 +457,16 @@ def render_experiment_report(report: ExperimentReport) -> str:
             cast(EpisodeGranularityExperimentResult, report.batch_result),
             report.decision,
         )
+    if report.experiment == "chunk_indexing":
+        from seahorse.benchmark.experiments.chunk_indexing import (
+            ChunkIndexingExperimentResult,
+            render_chunk_indexing_report,
+        )
+
+        return render_chunk_indexing_report(
+            cast(ChunkIndexingExperimentResult, report.batch_result),
+            report.decision,
+        )
     if report.experiment == "reader_quality":
         from seahorse.benchmark.experiments.reader_quality import (
             ReaderQualityExperimentResult,
@@ -537,6 +547,7 @@ def run_experiment(
     pit_queries: bool = True,
     subsample: bool = True,
     context_mode: str = "summary",
+    chunk_mode: str = "chunked",
 ) -> ExperimentReport:
     """Run a benchmark experiment and return the report with the decision verdict.
 
@@ -843,6 +854,37 @@ def run_experiment(
             results=(),
             decision=decide_episode_granularity(episode_granularity_result),
             batch_result=episode_granularity_result,
+        )
+
+    if experiment == "chunk_indexing":
+        # (chunk indexing) the P3.2 seam's decision gate is a standalone
+        # measurement: no EvaluationRunner, no BenchmarkDataset — the corpus is
+        # the synthetic A/B/C cases (or the authoritative LMEB-S run) and the
+        # metrics are session/episode-level recall + the p95 latency budget,
+        # measured ONE MODE PER RUN (P3.3 runs the pair: --chunk-mode off then
+        # chunked over the same committed tree). Delegates to the
+        # chunk_indexing module. The standalone result rides the
+        # ``batch_result`` slot.
+        from seahorse.benchmark.experiments.chunk_indexing import (
+            decide_chunk_indexing,
+            run_chunk_indexing_experiment,
+        )
+
+        if corpus not in ("synthetic", "lmeb-s"):
+            raise ValueError(
+                f"chunk_indexing experiment corpus must be 'synthetic' or "
+                f"'lmeb-s', got {corpus!r}"
+            )
+        chunk_indexing_result = run_chunk_indexing_experiment(
+            corpus=corpus, top_k=top_k, subsample=subsample, chunk_mode=chunk_mode
+        )
+        return ExperimentReport(
+            experiment="chunk_indexing",
+            corpus=corpus,
+            temporal_mode=temporal,
+            results=(),
+            decision=decide_chunk_indexing(chunk_indexing_result),
+            batch_result=chunk_indexing_result,
         )
 
     if experiment == "reader_quality":
