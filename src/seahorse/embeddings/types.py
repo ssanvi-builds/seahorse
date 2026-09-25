@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 # numpy-light — import-laziness).
 EMBED_MODES = ("body", "body+summary")
 
+# Chunk-indexing mode (P3.2 seam): ``off`` embeds one vector per episode (the
+# baseline); ``chunked`` embeds fixed windows over the SAME effective text
+# (see embeddings/chunker.py). Same single-source rule as EMBED_MODES.
+CHUNK_MODES = ("off", "chunked")
+
 Role = Literal["query", "passage"]
 
 
@@ -84,4 +89,11 @@ def _l2_normalize(vecs: np.ndarray) -> np.ndarray:
     return arr / norms
 
 
-__all__ = ["ModelIdentity", "Embedder", "Role", "EMBED_MODES", "_l2_normalize"]
+__all__ = [
+    "ModelIdentity",
+    "Embedder",
+    "Role",
+    "EMBED_MODES",
+    "CHUNK_MODES",
+    "_l2_normalize",
+]
