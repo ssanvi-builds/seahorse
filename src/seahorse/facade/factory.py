@@ -23,9 +23,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from seahorse.contracts.embeddings import QueryEmbedder
+from seahorse.contracts.persistence import VectorIndexRepository
 from seahorse.contracts.rerank import QueryReranker
 from seahorse.disclosure.shaper import DisclosureShaperImpl
-from seahorse.embeddings.types import EMBED_MODES
+from seahorse.embeddings.types import CHUNK_MODES, EMBED_MODES
 from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
 from seahorse.facade.types import FacadeConfig
@@ -56,6 +57,7 @@ def build_facade(
     recency: RecencyConfig | None = None,
     decay: DecayConfig | None = None,
     embed_mode: str = "body+summary",
+    chunk_mode: str = "off",
     passage_embedder: Any | None = None,
     reranker: QueryReranker | None = None,
     vault_root: Path | None = None,
@@ -111,6 +113,16 @@ def build_facade(
     boundary (fail-fast); propagated to the ``RetrievalIndexer`` (single-point
     swap for the reindex experiment).
 
+    The ``chunk_mode`` slot (P3.2 seam) selects the vector surface. Default
+    ``off`` keeps the classic repo and the whole flag-off path bit-identical
+    (the migration-013 chunk tables stay empty). ``chunked`` swaps the vector
+    repository for ``SqliteChunkedVectorIndexRepository`` at this composition
+    root — the SAME signed Protocol instance serves the retriever (read side;
+    the kNN fold to parent ep_ids lives inside the repo) and the indexer
+    (write side; ``upsert_chunks``). Validated at the boundary (fail-fast);
+    propagated to the ``RetrievalIndexer``. The listing regime ignores the
+    flag (no vector access to chunk).
+
     The ``passage_embedder`` slot overrides the auto-resolved fastembed backend
     with a deterministic embedder (the synthetic mechanical verification in CI).
     When None, ``_build_passage_embedder`` resolves the real backend exactly as
@@ -136,6 +148,10 @@ def build_facade(
         raise ValueError(
             f"embed_mode must be one of {EMBED_MODES!r}, got {embed_mode!r}"
         )
+    if chunk_mode not in CHUNK_MODES:
+        raise ValueError(
+            f"chunk_mode must be one of {CHUNK_MODES!r}, got {chunk_mode!r}"
+        )
     own_storage = storage if storage is not None else Storage(db_path)
     engine = BiTemporalEngine(repo=own_storage.episodes, audit=own_storage.audit)
     shaper = DisclosureShaperImpl(
@@ -150,7 +166,16 @@ def build_facade(
         from seahorse.embeddings.indexer import RetrievalIndexer  # lazy: numpy
         from seahorse.facade.hybrid_retriever import HybridRetriever
 
-        vector = own_storage.vector  # lazy import: vec0 repo (sqlite-vec)
+        # The vector repo serving BOTH sides (retriever read + indexer write).
+        # Typed as the signed Protocol: chunk_mode="chunked" swaps in the
+        # chunked repo (same Protocol — the fold hides behind the interface).
+        vector: VectorIndexRepository = own_storage.vector  # lazy: vec0 repo
+        if chunk_mode == "chunked":
+            from seahorse.persistence.vector_index_chunked import (  # lazy: vec0
+                SqliteChunkedVectorIndexRepository,
+            )
+
+            vector = SqliteChunkedVectorIndexRepository(own_storage.connection_manager)
         fts = own_storage.fts  # lazy import: FTS repo
         fallback = VigenteListingRetriever(
             engine=engine, clock=clk, config=cfg, pit_source=own_storage.episodes
@@ -175,6 +200,7 @@ def build_facade(
             own_storage.episodes,
             own_storage.connection_manager,
             embed_mode=embed_mode,
+            chunk_mode=chunk_mode,
         )
         write_path = StubWritePath(engine=engine, indexer=indexer, llm_client=llm_client)
         facade_embedder: QueryEmbedder | None = query_embedder
