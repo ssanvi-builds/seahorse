@@ -60,6 +60,7 @@ class BenchmarkConfig:
     rerank_enabled: bool = False
     rerank_model: str = ""  # pinned cross-encoder identity ("" when rerank OFF)
     embed_mode: str = "body+summary"  # "body" | "body+summary" — default embedding surface
+    chunk_mode: str = "off"  # "off" | "chunked" (P3.2 seam) — one vector per episode vs per window
 
     # Reproducibility
     repetitions: int = 1
@@ -100,6 +101,10 @@ class BenchmarkConfig:
         if self.embed_mode not in ("body", "body+summary"):
             raise ValueError(
                 f"embed_mode must be 'body' or 'body+summary', got {self.embed_mode!r}"
+            )
+        if self.chunk_mode not in ("off", "chunked"):
+            raise ValueError(
+                f"chunk_mode must be 'off' or 'chunked', got {self.chunk_mode!r}"
             )
         if self.rerank_enabled and not self.rerank_model:
             raise ValueError(

@@ -255,6 +255,119 @@ def test_index_rebuild_backfill_uses_embed_mode(tmp_path, monkeypatch):
     assert captured["embed_mode"] == "body+summary"
 
 
+def test_index_rebuild_backfill_uses_chunk_mode(tmp_path, monkeypatch):
+    """``index rebuild --chunk-mode chunked`` swaps the backfill vector repo.
+
+    The backfill ``RetrievalIndexer`` receives the requested ``chunk_mode`` AND
+    the chunked vector repository — the CLI composition-root swap, mirroring
+    ``build_facade``.
+    """
+    import numpy as np
+
+    import seahorse.cli.vault_ops as vo
+    import seahorse.embeddings.indexer as idx_mod
+    from seahorse.embeddings.types import ModelIdentity
+    from seahorse.persistence.vector_index_chunked import (
+        SqliteChunkedVectorIndexRepository,
+    )
+
+    class _FakePassageEmbedder:
+        dim = 384
+
+        async def embed(self, texts, role):
+            return np.ones((len(texts), 384), dtype=np.float32)
+
+        def model_identity(self) -> ModelIdentity:
+            return ModelIdentity(
+                backend="test", model_name="m", revision="r",
+                dim=384, quantization="fp32", normalized=True,
+            )
+
+    monkeypatch.setattr(vo, "_try_build_passage_embedder", lambda: _FakePassageEmbedder())
+    captured: dict = {}
+    real_indexer = idx_mod.RetrievalIndexer
+
+    def spy(*args, **kwargs):
+        captured["chunk_mode"] = kwargs.get("chunk_mode")
+        captured["vector_repo"] = args[1]  # (embedder, vector_repo, fts, ...)
+        return real_indexer(*args, **kwargs)
+
+    monkeypatch.setattr(idx_mod, "RetrievalIndexer", spy)
+    v, cfg = _config(tmp_path)
+    _write_note(v, "madrid", ep_id=_uuid7("01"))
+    run_index_rebuild(cfg, fmt="json", out=_out(), chunk_mode="chunked")
+    assert captured["chunk_mode"] == "chunked"
+    assert isinstance(captured["vector_repo"], SqliteChunkedVectorIndexRepository)
+
+
+def test_index_rebuild_wipes_chunk_table_even_flag_off(tmp_path, monkeypatch):
+    """A flag-off rebuild leaves NO ghost chunks from an earlier chunked run.
+
+    The chunk table is part of the rebuild's derived surface — the wipe is
+    UNCONDITIONAL. A conditional wipe would leave stale chunks referencing
+    re-created ep_ids: their aux columns (invalid_at included) were inherited
+    from the OLD index rows and would poison the next chunked run.
+    """
+    import numpy as np
+
+    import seahorse.cli.vault_ops as vo
+    from seahorse.embeddings.types import ModelIdentity
+    from seahorse.persistence.connection import ConnectionManager
+    from seahorse.persistence.vector_index import SqliteVectorIndexRepository
+    from seahorse.persistence.vector_index_chunked import (
+        SqliteChunkedVectorIndexRepository,
+    )
+
+    class _FakePassageEmbedder:
+        dim = 384
+
+        async def embed(self, texts, role):
+            return np.ones((len(texts), 384), dtype=np.float32)
+
+        def model_identity(self) -> ModelIdentity:
+            return ModelIdentity(
+                backend="test", model_name="m", revision="r",
+                dim=384, quantization="fp32", normalized=True,
+            )
+
+    monkeypatch.setattr(vo, "_try_build_passage_embedder", lambda: _FakePassageEmbedder())
+    v, cfg = _config(tmp_path)
+    _write_note(v, "madrid", ep_id=_uuid7("01"))
+    run_index_rebuild(cfg, fmt="json", out=_out(), chunk_mode="chunked")
+
+    def _counts() -> tuple[int, int]:
+        mgr = ConnectionManager(cfg.db_path, pool_size=1, extensions=("vec0",))
+        mgr.open()
+        try:
+            chunked = SqliteChunkedVectorIndexRepository(mgr)
+            classic = SqliteVectorIndexRepository(mgr)
+            return chunked.chunk_count(), classic.count()
+        finally:
+            mgr.close()
+
+    # The chunked rebuild landed chunks (the chunk table empty would mean the
+    # swap silently did nothing).
+    chunks_before, _classic_before = _counts()
+    assert chunks_before >= 1
+    # A flag-off rebuild (the default) wipes the chunk table unconditionally
+    # and re-embeds through the classic repo.
+    run_index_rebuild(cfg, fmt="json", out=_out())
+    chunks_after, classic_after = _counts()
+    assert chunks_after == 0
+    assert classic_after == 1
+
+
+def test_index_rebuild_invalid_chunk_mode_is_usage_error(tmp_path):
+    # Fail-fast at the boundary BEFORE anything runs: no DB is created, no
+    # wipe happens (the --up-to precedent for CLI-shape validation, exit 2).
+    v, cfg = _config(tmp_path)
+    _write_note(v, "madrid", ep_id=_uuid7("01"))
+    with pytest.raises(CliUsageError) as exc_info:
+        run_index_rebuild(cfg, fmt="json", out=_out(), chunk_mode="bogus")
+    assert exc_info.value.exit_code == 2
+    assert not cfg.db_path.exists()  # validated BEFORE Storage construction
+
+
 def test_index_rebuild_empty_vault_is_clean_zero(tmp_path):
     v, cfg = _config(tmp_path)
     # no .md notes at all

@@ -54,6 +54,8 @@ if TYPE_CHECKING:
 from seahorse.cli.config import SEAHORSE_DIR_NAME, SeahorseConfig
 from seahorse.cli.errors import CliMigrationDeferred, CliRebuildConflicts, CliUsageError
 from seahorse.cli.output import OutputFormat, render_message
+from seahorse.contracts.persistence import VectorIndexRepository
+from seahorse.embeddings.types import CHUNK_MODES
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.migrations.migrator import (
     apply_migrations,
@@ -172,14 +174,22 @@ def _try_build_passage_embedder() -> Embedder | None:
         return None
 
 
-def _run_backfill(vault: Path, storage: Storage, *, embed_mode: str = "body+summary") -> str:
+def _run_backfill(
+    vault: Path,
+    storage: Storage,
+    *,
+    embed_mode: str = "body+summary",
+    chunk_mode: str = "off",
+) -> str:
     """Best-effort vec0/FTS backfill over the rebuilt index.
 
     ``embed_mode`` selects the passage text. Default ``body+summary`` is the
     flip default; re-running under a new mode re-embeds honestly (new content
-    hash → cache miss). Returns an honest report line; never raises (the
-    episode_index rebuild is the primary op — the index backfill is
-    derived/best-effort, fail-loud honesty).
+    hash → cache miss). ``chunk_mode`` selects the vector surface (P3.2 seam):
+    ``chunked`` swaps the backfill's vector repository for the chunked repo —
+    the CLI composition-root swap, mirroring ``build_facade``. Returns an
+    honest report line; never raises (the episode_index rebuild is the primary
+    op — the index backfill is derived/best-effort, fail-loud honesty).
     """
     from seahorse.embeddings.indexer import RetrievalIndexer
     from seahorse.frontmatter.adapter import parse_file
@@ -188,9 +198,23 @@ def _run_backfill(vault: Path, storage: Storage, *, embed_mode: str = "body+summ
     embedder = _try_build_passage_embedder()
     if embedder is None:
         return "skipped (embedder unavailable)"
+    # The vector repo the backfill writes through — the chunk_mode swap is the
+    # ONLY difference from the classic path (same Protocol on both sides).
+    vector: VectorIndexRepository = storage.vector
+    if chunk_mode == "chunked":
+        from seahorse.persistence.vector_index_chunked import (  # lazy: vec0
+            SqliteChunkedVectorIndexRepository,
+        )
+
+        vector = SqliteChunkedVectorIndexRepository(storage.connection_manager)
     indexer = RetrievalIndexer(
-        embedder, storage.vector, storage.fts, storage.episodes, storage._cm,  # noqa: SLF001
+        embedder,
+        vector,
+        storage.fts,
+        storage.episodes,
+        storage._cm,  # noqa: SLF001
         embed_mode=embed_mode,
+        chunk_mode=chunk_mode,
     )
     count = 0
     for path in discover_notes(vault):
@@ -207,6 +231,7 @@ def run_index_rebuild(
     fmt: OutputFormat = "human",
     out: TextIO,
     embed_mode: str = "body+summary",
+    chunk_mode: str = "off",
 ) -> None:
     """``seahorse index rebuild`` — regenerate the sidecar from the vault.
 
@@ -226,8 +251,19 @@ def run_index_rebuild(
 
     ``embed_mode`` drives the vec0/FTS backfill — the flip makes
     ``body+summary`` the default. The ``episode_index`` rebuild itself is
-    embed-mode-independent.
+    embed-mode-independent. ``chunk_mode`` (P3.2 seam) selects the backfill's
+    vector surface: ``chunked`` writes one embedding per window through the
+    chunked repo. The chunk-table wipe is UNCONDITIONAL — the chunk table is
+    part of the rebuild's derived surface (a flag-off rebuild after a chunked
+    run must not leave ghost chunks whose aux columns were inherited from the
+    OLD index rows).
     """
+    if chunk_mode not in CHUNK_MODES:
+        # Boundary validation BEFORE any wipe/Storage construction — an
+        # invalid flag must have zero side effects (the --up-to precedent).
+        raise CliUsageError(
+            f"--chunk-mode must be one of {CHUNK_MODES!r}, got {chunk_mode!r}"
+        )
     # Lazy import: frontmatter.rebuild transitively pulls ruamel (via
     # frontmatter.adapter). Importing it at module top would leak ruamel into
     # every CLI command (app.py imports vault_ops eagerly). Keeping it lazy
@@ -238,6 +274,7 @@ def run_index_rebuild(
     from seahorse.frontmatter.rebuild import rebuild_from_vault
     from seahorse.persistence.fts_index import fts_wipe
     from seahorse.persistence.vector_index import vec_wipe
+    from seahorse.persistence.vector_index_chunked import vec_chunks_wipe  # lazy: vec0
 
     storage = Storage(config.db_path)
     backfill: str | None = None
@@ -257,11 +294,19 @@ def run_index_rebuild(
         report = rebuild_from_vault(
             config.vault,
             storage.sidecar,
-            secondary_index_wipes=(vec_wipe, fts_wipe),
+            # vec_chunks_wipe is UNCONDITIONAL (not chunk_mode-gated): the
+            # chunk table is a derived secondary index like vec/FTS — a
+            # rebuild re-derives ALL of them from the vault. Wiping only under
+            # the flag would leave ghost chunks from an earlier chunked run,
+            # whose aux columns were inherited from index rows the rebuild may
+            # have replaced.
+            secondary_index_wipes=(vec_wipe, vec_chunks_wipe, fts_wipe),
             live_body=_live_body,
         )
         # Best-effort vec0/FTS backfill over the rebuilt index.
-        backfill = _run_backfill(config.vault, storage, embed_mode=embed_mode)
+        backfill = _run_backfill(
+            config.vault, storage, embed_mode=embed_mode, chunk_mode=chunk_mode
+        )
     finally:
         storage.close()
     conflicts = [asdict(c) for c in report.skipped]

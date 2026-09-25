@@ -53,6 +53,7 @@ class SeahorseSUT:
         decay_config: dict | None = None,
         rerank_enabled: bool = False,
         embed_mode: str = "body+summary",
+        chunk_mode: str = "off",
         context_mode: str = "summary",
         ep_id_to_session: dict[str, str] | None = None,
         fact_key_to_ep_id: dict[str, str] | None = None,
@@ -71,6 +72,7 @@ class SeahorseSUT:
         self._decay_config = decay_config
         self._rerank_enabled = rerank_enabled
         self._embed_mode = embed_mode
+        self._chunk_mode = chunk_mode
         self._context_mode = context_mode
         # Retrieval bridge: fact_id→session (spec contract) + ep_id→session
         # (accurate, covers improve-created versions) + fact_key→ep_id (for the
@@ -302,6 +304,7 @@ class SeahorseSUT:
             "decay_config": self._decay_config,
             "rerank_enabled": self._rerank_enabled,
             "embed_mode": self._embed_mode,
+            "chunk_mode": self._chunk_mode,
         }
 
 

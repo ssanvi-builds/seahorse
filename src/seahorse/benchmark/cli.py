@@ -68,6 +68,7 @@ def run_benchmark(
     recency_half_life: float | None = None,
     decay_half_life: float | None = None,
     embed_mode: str = "body+summary",
+    chunk_mode: str = "off",
     rerank_enable: bool = False,
     context_mode: str = "summary",
     thresholds: dict[str, float] | None = None,
@@ -88,6 +89,7 @@ def run_benchmark(
         recency_config=recency_config,
         decay_config=decay_config,
         embed_mode=embed_mode,
+        chunk_mode=chunk_mode,
         rerank_enabled=rerank_enable,
     )
     config.validate()
@@ -123,6 +125,7 @@ def run_benchmark(
             recency=recency,
             decay=decay,
             embed_mode=config.embed_mode,
+            chunk_mode=config.chunk_mode,
             reranker=reranker,
         )
         return SeahorseSUT(
@@ -132,6 +135,7 @@ def run_benchmark(
                 recency=recency,
                 decay=decay,
                 embed_mode=config.embed_mode,
+                chunk_mode=config.chunk_mode,
                 reranker=reranker,
             )[0],
             reader_llm=reader,
@@ -144,6 +148,7 @@ def run_benchmark(
             decay_config=config.decay_config,
             rerank_enabled=rerank_enable,
             embed_mode=config.embed_mode,
+            chunk_mode=config.chunk_mode,
             context_mode=context_mode,
         )
 
