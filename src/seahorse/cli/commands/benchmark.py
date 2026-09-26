@@ -102,8 +102,7 @@ def register(app: typer.Typer) -> None:
                 "recency | rerank | embed | decay_rrf | batch | entity_centric | "
                 "multi_hop | decay | skills | rrf_k | rerank_body | end_to_end | "
                 "reader_context | episode_granularity | reader_quality | "
-                "context_assembly | two_stage_retrieval | chunk_indexing "
-                "(which experiment to run)."
+                "context_assembly | two_stage_retrieval (which experiment to run)."
             ),
         ),
         corpus: str = typer.Option(
@@ -169,15 +168,6 @@ def register(app: typer.Typer) -> None:
                 "three and ignores this flag)."
             ),
         ),
-        chunk_mode: str = typer.Option(
-            "chunked",
-            "--chunk-mode",
-            help=(
-                "chunk_indexing only: chunked (default — one embedding per text "
-                "window, the candidate) | off (the baseline side of the pair). "
-                "Run BOTH over the same committed tree for the keep/revert gates."
-            ),
-        ),
     ) -> None:
         """Run an experiment and print the sweep table + decision."""
         from seahorse.benchmark.experiments.runner import (
@@ -199,7 +189,6 @@ def register(app: typer.Typer) -> None:
             reader_llm=StubReaderLLM() if retrieval_only else None,
             subsample=subsample,
             context_mode=context_mode,
-            chunk_mode=chunk_mode,
         )
         typer.echo(render_experiment_report(report))
 

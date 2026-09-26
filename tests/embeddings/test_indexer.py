@@ -15,16 +15,14 @@ import pytest
 
 from seahorse.contracts.episode import Episode
 from seahorse.embeddings.cache import _content_hash
-from seahorse.embeddings.chunker import chunk_text
 from seahorse.embeddings.indexer import RetrievalIndexer
-from seahorse.embeddings.types import CHUNK_MODES, ModelIdentity
+from seahorse.embeddings.types import ModelIdentity
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.fts_index import SqliteFullTextIndexRepository
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.sqlite_audit import SqliteAuditEventRepository
 from seahorse.persistence.sqlite_episode_repo import SqliteEpisodeRepository
 from seahorse.persistence.vector_index import SqliteVectorIndexRepository
-from seahorse.persistence.vector_index_chunked import SqliteChunkedVectorIndexRepository
 
 
 @pytest.fixture()
@@ -248,166 +246,3 @@ def test_stub_write_path_indexes_after_ingest(mgr) -> None:
     assert result.ep_id is not None
     assert vector.count() == 1
     assert fts.count() == 1
-
-
-# ----------------------------------------------------------- chunk_mode (P3.2)
-
-
-def _chunk_stack(mgr):
-    """The chunked-mode stack: the chunked vector repo + chunk_mode='chunked'."""
-    episodes = SqliteEpisodeRepository(mgr)
-    chunked = SqliteChunkedVectorIndexRepository(mgr)
-    fts = SqliteFullTextIndexRepository(mgr)
-    embedder = _FakePassageEmbedder()
-    indexer = RetrievalIndexer(
-        embedder, chunked, fts, episodes, mgr, chunk_mode="chunked"
-    )
-    return indexer, embedder, chunked, fts, episodes
-
-
-_LONG_BODY = "chunk window filler sentence. " * 180  # spans several chunk windows
-
-
-def test_chunk_modes_constant() -> None:
-    # The flag surface: ``off`` (default, one embedding per episode) is the
-    # baseline; ``chunked`` is the P3.2 seam. Single source in types.py.
-    assert CHUNK_MODES == ("off", "chunked")
-
-
-def test_invalid_chunk_mode_rejected(mgr) -> None:
-    episodes = SqliteEpisodeRepository(mgr)
-    chunked = SqliteChunkedVectorIndexRepository(mgr)
-    fts = SqliteFullTextIndexRepository(mgr)
-    with pytest.raises(ValueError, match="chunk_mode"):
-        RetrievalIndexer(
-            _FakePassageEmbedder(), chunked, fts, episodes, mgr, chunk_mode="bogus"
-        )
-
-
-def test_chunked_mode_requires_chunked_repository(mgr) -> None:
-    # Fail-fast: chunk_mode='chunked' cannot write through the classic repo —
-    # the signed Protocol carries no multi-chunk write (upsert_chunks is the
-    # chunked repo's own surface).
-    episodes = SqliteEpisodeRepository(mgr)
-    vector = SqliteVectorIndexRepository(mgr)
-    fts = SqliteFullTextIndexRepository(mgr)
-    with pytest.raises(ValueError, match="chunked vector repository"):
-        RetrievalIndexer(
-            _FakePassageEmbedder(), vector, fts, episodes, mgr, chunk_mode="chunked"
-        )
-
-
-def test_chunk_mode_off_default_keeps_classic_path(mgr) -> None:
-    # The default stack is unchanged: vec_episodes gets the row, the chunk
-    # table stays EMPTY (the flag-off blast radius pinned at the indexer).
-    indexer, _embedder, vector, _fts, episodes = _stack(mgr)
-    chunked = SqliteChunkedVectorIndexRepository(mgr)
-    episodes.append(_episode("e1", "madrid spain"))
-    indexer.index_episode("e1")
-    assert vector.count() == 1
-    assert chunked.chunk_count() == 0
-
-
-def test_chunked_mode_writes_one_row_per_chunk(mgr) -> None:
-    indexer, embedder, chunked, fts, episodes = _chunk_stack(mgr)
-    episodes.append(_episode("e1", _LONG_BODY))
-    indexer.index_episode("e1")
-    chunks = chunk_text(_LONG_BODY)  # the indexer feeds the chunker's exact output
-    assert len(chunks) > 1
-    assert chunked.chunk_count() == len(chunks)
-    assert chunked.count() == 1  # one PARENT (distinct parents)
-    # ONE batched embed call carrying ALL chunks (single roundtrip).
-    assert len(embedder.calls) == 1
-    assert embedder.calls[0] == (chunks, "passage")
-    # Per-chunk content hashes: each chunk is a distinct embedded text, so a
-    # chunker change re-embeds honestly (cache miss on the moved window).
-    meta = mgr.writer.execute(
-        "SELECT content_hash FROM vec_chunks_meta ORDER BY chunk_id"
-    ).fetchall()
-    assert [r[0] for r in meta] == [_content_hash(c, "passage") for c in chunks]
-
-
-def test_chunked_mode_short_body_is_single_chunk(mgr) -> None:
-    indexer, embedder, chunked, _fts, episodes = _chunk_stack(mgr)
-    episodes.append(_episode("e1", "madrid spain"))
-    indexer.index_episode("e1")
-    assert embedder.calls == [(["madrid spain"], "passage")]
-    assert chunked.chunk_count() == 1  # "{e1}#0" — the flag-off embedding surface
-
-
-def test_chunked_mode_fts_stays_episode_level(mgr) -> None:
-    # Documented caveat: FTS remains one doc per EPISODE — chunking changes
-    # only the vector surface (BM25 windows need their own position-aware
-    # eval; out of scope for P3.2).
-    indexer, _embedder, chunked, fts, episodes = _chunk_stack(mgr)
-    episodes.append(_episode("e1", _LONG_BODY))
-    indexer.index_episode("e1")
-    assert chunked.chunk_count() > 1
-    assert fts.count() == 1
-
-
-def test_chunked_mode_reindex_replaces_parents_chunks(mgr) -> None:
-    # Re-indexing is a fold-into by parent: no stale chunks survive the new
-    # (shorter) body, in either the chunk table or the lateral meta.
-    indexer, _embedder, chunked, _fts, _episodes = _chunk_stack(mgr)
-    ep = _episode("e1", _LONG_BODY)
-    indexer.index_episode_from_note(ep, _LONG_BODY)
-    assert chunked.chunk_count() > 1
-    indexer.index_episode_from_note(ep, "one short body")
-    assert chunked.chunk_count() == 1
-    rows = mgr.writer.execute("SELECT chunk_id FROM vec_episode_chunks").fetchall()
-    assert [r[0] for r in rows] == ["e1#0"]
-    meta = mgr.writer.execute("SELECT chunk_id FROM vec_chunks_meta").fetchall()
-    assert [r[0] for r in meta] == ["e1#0"]
-
-
-def test_chunked_mode_composes_with_embed_mode(mgr) -> None:
-    # chunking splits the SAME effective text embed_mode builds — the summary
-    # leads the first chunk (composability is the seam's design point).
-    episodes = SqliteEpisodeRepository(mgr)
-    chunked = SqliteChunkedVectorIndexRepository(mgr)
-    fts = SqliteFullTextIndexRepository(mgr)
-    embedder = _FakePassageEmbedder()
-    indexer = RetrievalIndexer(
-        embedder,
-        chunked,
-        fts,
-        episodes,
-        mgr,
-        embed_mode="body+summary",
-        chunk_mode="chunked",
-    )
-    summary = "The distilled gist."
-    episodes.append(_episode("e1", _LONG_BODY, summary=summary))
-    indexer.index_episode("e1")
-    effective = f"{summary}\n\n{_LONG_BODY}"
-    assert embedder.calls == [(chunk_text(effective), "passage")]
-    assert chunked.chunk_count() == len(chunk_text(effective))
-
-
-def test_chunked_mode_best_effort_on_embedder_failure(mgr) -> None:
-    # The best-effort contract is unchanged under chunking: an embedder
-    # failure never raises out of the write path (the index is derived).
-
-    class _BrokenEmbedder:
-        dim = 384
-
-        async def embed(self, texts, role):
-            raise RuntimeError("onnx session unavailable")
-
-        def model_identity(self) -> ModelIdentity:
-            return ModelIdentity(
-                backend="test", model_name="m", revision="r",
-                dim=384, quantization="fp32", normalized=True,
-            )
-
-    episodes = SqliteEpisodeRepository(mgr)
-    chunked = SqliteChunkedVectorIndexRepository(mgr)
-    fts = SqliteFullTextIndexRepository(mgr)
-    episodes.append(_episode("e1", _LONG_BODY))
-    indexer = RetrievalIndexer(
-        _BrokenEmbedder(), chunked, fts, episodes, mgr, chunk_mode="chunked"
-    )
-    indexer.index_episode("e1")  # swallows the embed error
-    assert chunked.chunk_count() == 0
-    assert fts.count() == 0

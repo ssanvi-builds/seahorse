@@ -34,7 +34,6 @@ from seahorse.benchmark.experiments.decide import ExperimentResult
 from seahorse.benchmark.experiments.variants import (
     RECENCY_SWEEP_GAMMAS,
     RECENCY_SWEEP_HALF_LIVES_DAYS,
-    ExperimentVariant,
 )
 from tests.benchmark.conftest import FakeReaderLLM
 
@@ -73,27 +72,6 @@ class TestEmbedVariants:
         assert [v.embed_mode for v in variants] == ["body", "body+summary"]
         assert variants[0].name == "embed_body"
         assert variants[1].name == "embed_body_summary"
-
-
-class TestChunkModeVariantWiring:
-    """The P3.2 seam on the variant surface: default flag-off, honest
-    propagation into the ``BenchmarkConfig`` the runner folds per variant."""
-
-    def test_variant_chunk_mode_defaults_off(self):
-        v = ExperimentVariant(name="x", score_source="mvp1_rrf")
-        assert v.chunk_mode == "off"
-
-    def test_as_config_kwargs_carries_chunk_mode(self):
-        from dataclasses import replace
-
-        from seahorse.benchmark.config import BenchmarkConfig
-
-        v = ExperimentVariant(
-            name="chunked", score_source="mvp1_rrf", chunk_mode="chunked"
-        )
-        cfg = replace(BenchmarkConfig(), **v.as_config_kwargs())
-        cfg.validate()  # the folded config is valid
-        assert cfg.chunk_mode == "chunked"
 
 
 class TestRerankVariants:
@@ -527,82 +505,6 @@ def test_warm_db_embed_reuses_body_template(tmp_path):
     assert any(k[1] == "body+summary" for k in cache)
 
 
-# ------------------------------------------------- chunk_mode wiring (P3.2)
-
-def test_facade_factory_bakes_variant_chunk_mode(tmp_path):
-    """``_facade_factory`` bakes ``variant.chunk_mode`` into ``build_facade``:
-    the chunked variant gets the chunked repo on the retriever read side, the
-    default variant keeps the classic repo (bit-identical flag-off)."""
-    from datetime import UTC, datetime
-
-    from seahorse.benchmark.experiments.runner import _facade_factory
-    from seahorse.persistence.vector_index import SqliteVectorIndexRepository
-    from seahorse.persistence.vector_index_chunked import (
-        SqliteChunkedVectorIndexRepository,
-    )
-
-    def _clock():
-        return datetime.now(UTC)
-
-    off = _facade_factory(
-        "synthetic", _clock, ExperimentVariant(name="off", score_source="mvp1_rrf")
-    )
-    facade_off, storage_off = off(tmp_path / "off.db")
-    try:
-        assert isinstance(facade_off._retriever._vector_repo, SqliteVectorIndexRepository)
-    finally:
-        storage_off.close()
-
-    chunked = _facade_factory(
-        "synthetic",
-        _clock,
-        ExperimentVariant(name="chunked", score_source="mvp1_rrf", chunk_mode="chunked"),
-    )
-    facade_c, storage_c = chunked(tmp_path / "chunked.db")
-    try:
-        assert isinstance(
-            facade_c._retriever._vector_repo, SqliteChunkedVectorIndexRepository
-        )
-    finally:
-        storage_c.close()
-
-
-def test_build_template_bakes_chunk_mode(tmp_path, synthetic_dataset):
-    """The warm-DB template bakes in the variant's ``chunk_mode`` — a chunked
-    template DB carries chunks; a flag-off template leaves the chunk table
-    empty. The two surfaces can NEVER share a template (the cache key carries
-    chunk_mode for exactly this reason)."""
-    from seahorse.benchmark.config import BenchmarkConfig
-    from seahorse.benchmark.experiments.runner import _build_template
-    from seahorse.benchmark.harness.tokenizer import Tokenizer
-    from seahorse.persistence.connection import ConnectionManager
-    from seahorse.persistence.vector_index_chunked import (
-        SqliteChunkedVectorIndexRepository,
-    )
-
-    def _chunk_rows(db_path) -> int:
-        mgr = ConnectionManager(db_path, pool_size=1, extensions=("vec0",))
-        mgr.open()
-        try:
-            return SqliteChunkedVectorIndexRepository(mgr).chunk_count()
-        finally:
-            mgr.close()
-
-    kwargs = {
-        "base_config": BenchmarkConfig(),
-        "dataset": synthetic_dataset,
-        "corpus": "synthetic",
-        "reader": FakeReaderLLM(),
-        "tokenizer": Tokenizer(),
-        "embed_mode": "body+summary",
-        "temporal": False,
-    }
-    off = _build_template(**kwargs, chunk_mode="off")
-    chunked = _build_template(**kwargs, chunk_mode="chunked")
-    assert _chunk_rows(off.db_path) == 0
-    assert _chunk_rows(chunked.db_path) >= 1
-
-
 def test_clock_delta_spans_real_date_range(synthetic_dataset):
     """The AdvancingClock delta is derived from the haystack's real date spread
     (span / deduped turns), NOT a fixed 1-day-per-write — a fixed delta would
@@ -635,6 +537,5 @@ def test_experiments_and_corpora_constants():
         "reader_quality",
         "context_assembly",
         "two_stage_retrieval",
-        "chunk_indexing",
     }
     assert set(CORPORA) == {"synthetic", "lmeb-s", "claude-mem"}

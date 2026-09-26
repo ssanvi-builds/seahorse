@@ -267,7 +267,7 @@ def test_inspect_after_write_reports_schema(vault: Path) -> None:
     assert r.returncode == 0, r.stderr
     snap = _j(r.stdout)
     assert snap["db_exists"] is True
-    assert snap["schema_version"] == 13
+    assert snap["schema_version"] == 12
     assert snap["episodes"] >= 1
 
 
@@ -276,7 +276,7 @@ def test_migrate_idempotent(vault: Path) -> None:
     assert r.returncode == 0, r.stderr
     r = _run(["migrate", "--up-to", "10"], vault=vault, json_out=True)
     assert r.returncode == 0, r.stderr
-    assert _j(r.stdout)["schema_version"] == 13
+    assert _j(r.stdout)["schema_version"] == 12
 
 
 def test_uuid7_emits_valid_v7(vault: Path) -> None:

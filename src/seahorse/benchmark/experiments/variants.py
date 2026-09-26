@@ -54,7 +54,6 @@ EXPERIMENTS = (
     "reader_quality",
     "context_assembly",
     "two_stage_retrieval",
-    "chunk_indexing",
 )
 
 # Corpora: synthetic (mechanical CI verification), the real LMEB-S haystack,
@@ -71,7 +70,6 @@ class ExperimentVariant:
     recency_config: dict | None = None
     decay_config: dict | None = None
     embed_mode: str = "body+summary"  # embedding flip default
-    chunk_mode: str = "off"  # P3.2 seam: flag-off default (one vector per episode)
     rerank_enabled: bool = False
     description: str = ""
 
@@ -82,7 +80,6 @@ class ExperimentVariant:
             "recency_config": self.recency_config,
             "decay_config": self.decay_config,
             "embed_mode": self.embed_mode,
-            "chunk_mode": self.chunk_mode,
             "rerank_enabled": self.rerank_enabled,
         }
 

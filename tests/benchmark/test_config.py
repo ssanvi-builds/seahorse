@@ -46,20 +46,6 @@ def test_validate_rejects_unknown_embed_mode():
         BenchmarkConfig(embed_mode="summary-only").validate()  # type: ignore[arg-type]
 
 
-def test_validate_rejects_unknown_chunk_mode():
-    with pytest.raises(ValueError, match="chunk_mode"):
-        BenchmarkConfig(chunk_mode="bogus").validate()  # type: ignore[arg-type]
-
-
-def test_config_hash_distinguishes_chunk_mode():
-    # The fingerprint must separate the chunk A/B — a flag that changes the
-    # embedding surface (one vector per episode vs one per window) changes
-    # the run identity.
-    assert (
-        BenchmarkConfig().config_hash() != BenchmarkConfig(chunk_mode="chunked").config_hash()
-    )
-
-
 def test_config_is_frozen():
     cfg = BenchmarkConfig()
     with pytest.raises(FrozenInstanceError):

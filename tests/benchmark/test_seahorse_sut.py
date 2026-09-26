@@ -261,26 +261,6 @@ def test_identity_reports_experiment_flags(sut):
     assert ident["decay_config"] is None  # decay default-OFF (pure-RRF fingerprint)
     assert ident["rerank_enabled"] is False
     assert ident["embed_mode"] == "body+summary"  # current product default
-    assert ident["chunk_mode"] == "off"  # P3.2 seam: flag-off default
-
-
-def test_identity_reports_chunk_mode_when_wired(tmp_path, fake_reader, fake_tokenizer):
-    """The chunk variant SUT pins its composition-root config in the identity
-    (the fingerprint must separate the chunk A/B)."""
-    facade, storage = build_facade(tmp_path / "bench.db", retrieval_available=False)
-    chunked = SeahorseSUT(
-        facade,
-        lambda: build_facade(tmp_path / "bench2.db", retrieval_available=False)[0],
-        reader_llm=fake_reader,
-        tokenizer=fake_tokenizer,
-        fact_id_to_session={},
-        chunk_mode="chunked",
-    )
-    try:
-        ident = chunked.identity()
-    finally:
-        storage.close()
-    assert ident["chunk_mode"] == "chunked"
 
 
 def test_identity_reports_decay_config_when_wired(tmp_path, fake_reader, fake_tokenizer):

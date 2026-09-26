@@ -884,14 +884,6 @@ def index_rebuild_cmd(
         "--embed-mode",
         help="Passage text to embed: body+summary (default) | body (baseline).",
     ),
-    chunk_mode: str = typer.Option(
-        "off",
-        "--chunk-mode",
-        help=(
-            "Vector surface: off (one embedding per episode, default) | "
-            "chunked (one embedding per text window)."
-        ),
-    ),
 ) -> None:
     """Rebuild the sidecar index from the vault's .md notes (clear-then-rebuild)."""
     run_index_rebuild(
@@ -899,7 +891,6 @@ def index_rebuild_cmd(
         fmt=ctx.obj.fmt,
         out=_out(ctx),
         embed_mode=embed_mode,
-        chunk_mode=chunk_mode,
     )
 
 
