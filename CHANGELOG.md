@@ -4,6 +4,19 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Rejected alternatives
+
+- **Chunk-level vector indexing (windowed per-episode embeddings)** — the
+  P3 hypothesis from the episode-granularity decision, implemented behind
+  a flag-off seam and measured on the authoritative LMEB-S pair: episode
+  recall@10 0.533 → 0.554, below the pre-registered +0.05 materiality gate,
+  at a p95 latency cost of 97.9 → 226.3 ms. Reverted in full before any
+  release (migration 013 was never published — no user DB carries it); the
+  negative result and the methodology are documented in
+  [docs/benchmark.md](docs/benchmark.md). No user-visible change.
+
 ## [1.5.1] - 2026-09-25
 
 A small honesty patch on the `improve` surface, the two remaining

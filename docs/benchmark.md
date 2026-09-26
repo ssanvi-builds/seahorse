@@ -355,6 +355,56 @@ verified) but a structural limit of the data (short sessions → identification
 ties). The oracle-vs-automatic gap (0.707 vs 0.424) is the honest measure of how
 much the missing session-retrieval stage would be worth if it existed.
 
+## Authoritative experiment decisions — 2026-09-25 chunk-indexing (windowed vectors)
+
+The `chunk_indexing` experiment tested the last open hypothesis from the
+episode-granularity decision: long golden bodies dilute the single
+whole-episode embedding, so indexing fixed text windows (~1200 chars, 120
+overlap, max 32 per episode) into a parallel vec0 table — over-fetch at the
+chunk level, fold chunk→parent (first occurrence wins), re-cap to k after
+the fold — should surface answer-bearing episodes that whole-body vectors
+miss. The flag-off side was measured first and reproduced the P3.1 pins
+bit-exactly (0.533 / 0.790 / 0.350), confirming the seam was
+retrieval-inert with the flag off before the candidate was judged.
+
+Methodology: committed tree `fc4cb3c` (v1.5.1 + the seam + the experiment;
+the 1.5.1 surface is CLI-only and retrieval-inert), the reproducible
+100-question subsample (seed 42), `--retrieval-only`, quiet machine,
+**sequential** runs (off then chunked) with the same harness and a fresh DB
+per side, p95 timed around the recall call only. The pair is reproducible
+by checking out `fc4cb3c` and running `--chunk-mode off` then `chunked`.
+
+| Metric | off (baseline) | chunked (candidate) | Gate |
+|---|---|---|---|
+| episode recall@10 | **0.533** (49/92) | **0.554** (51/92) | keep iff ≥ 0.583 — **failed** |
+| session recall@10 | 0.790 | 0.800 | sanity |
+| answer-in-context | 0.350 | 0.390 | diagnostic |
+| latency p95 (recall only) | 97.9 ms | 226.3 ms | ≤ 250 ms — passed (2.3× cost) |
+| chunk census | 0 | 71,304 (avg 1.56/episode) | surface real |
+
+**Decision: `revert_chunk_indexing`.** The pre-registered keep gate demanded
+a material lift (≥ +0.05 → 0.583) AND p95 ≤ 250 ms; the measured lift is
++0.021. Reverted as a single commit (`c39b2fb`, reverting `1174d6f..fc4cb3c`)
+— the tree is byte-equivalent to v1.5.1. Migration 013 was never published
+(no user DB carries it), so the revert is total; a disabled seam was not an
+option once the gate failed, so nothing of the experiment ships.
+
+**Honest reading of the numbers.** The mechanism's direction is positive on
+every metric — episode +0.021, context +0.040, session +0.010 — but it
+fires only on the minority of episodes whose body exceeds one window (avg
+1.56 chunks/episode; single-window bodies are bit-identical to flag-off by
+construction). The aggregate lift concentrates in that subset and cannot
+reach +0.05. The p95 landed inside the 200–300 ms band where the protocol
+prescribes a re-run — but a re-run would only re-measure latency: recall is
+deterministic on this corpus, and the failing gate is recall.
+
+**Caveats.** This closes the 1200/120 window configuration on LMEB-S, not
+windowing in general: the constants were the "simplest defensible" choice,
+and only the vector channel was windowed (FTS stayed episode-level). A
+re-open requires a new pre-registered gate and should target a corpus (or
+subset) with denser long bodies, where the affected fraction is large
+enough for the lift to matter in the aggregate.
+
 ## Caveats
 
 1. **Subsample.** n≈470–500 questions from `longmemeval-s-s`, not the full

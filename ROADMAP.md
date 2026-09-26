@@ -86,7 +86,12 @@ What works today (v1.4.0):
   79 → 62 and episode recall@10 0.533 → 0.424 in every design, so the
   `session_boost` seam ships disabled (the SUT is byte-identical to the
   v0.13.0 baseline); the bottleneck is session identification, not the
-  re-rank.
+  re-rank; and chunk-indexing (windowed vectors) `revert_chunk_indexing` —
+  the dilution hypothesis from episode-granularity, implemented flag-off
+  and measured on the LMEB-S pair: episode recall@10 0.533 → 0.554 (below
+  the pre-registered +0.05 materiality gate) at p95 97.9 → 226.3 ms, so
+  the feature commits were reverted in full before release (migration 013
+  was never published; the tree is byte-equivalent to v1.5.1).
 
 CI runs the full test suite with a coverage gate (≥80%), plus lint and type
 checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally.
@@ -112,7 +117,15 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   recall@10 0.533 → 0.424) — short sessions (~4 turns) make majority
   identification tie and degenerate, so the bottleneck is session
   identification, not the re-rank. The seam ships disabled; re-opening it
-  would require a real session-retrieval product stage (out of scope). The A4
+  would require a real session-retrieval product stage (out of scope). The
+  chunk-indexing follow-up (the last open hypothesis from granularity —
+  long bodies dilute the whole-episode embedding) was measured and CLOSED
+  AS NEGATIVE: windowed vectors lift episode recall@10 only 0.533 → 0.554
+  on the authoritative pair (the gate demanded ≥ 0.583) at a 2.3× p95
+  recall cost — the lift concentrates in the ~third of episodes whose
+  body exceeds one window and cannot move the aggregate. Reverted in full
+  before release; the negative result is documented in
+  `docs/benchmark.md`. The A4
   chain is fully explained; the remaining near-term focus is the Fase 2
   re-sequence (the remote MCP server as a standard expansion) or the next
   retrieval-quality workstream. The F7 experiments (multi-hop, entity-centric,
