@@ -59,6 +59,20 @@ append-only supersession with a recorded reason, and an `x-*` extension
 channel. Interchange in both directions is a stated design goal: losses on
 import must be declared, never silent.
 
+## License posture
+
+Some memory systems — claude-mem among them — are licensed AGPL-3.0.
+Seahorse's standard is Apache-2.0, and that difference is deliberate: a
+memory standard that others must embed, extend, and ship products on
+cannot ask every adopter to accept strong copyleft. We study AGPL tools
+openly — their mechanisms, measured results, and design choices inform
+ours (the comparison table above is that study) — and mechanism-level
+study is fully compatible with both licenses. What never happens is
+line-level reuse: no AGPL code, configuration, or text is copied into
+this repository, and every idea adopted from an AGPL project is
+re-implemented from its public description. Ideas are not copyrightable;
+expression is. We keep to the ideas.
+
 ## How we keep this page honest
 
 Every external claim above carries a primary source. Numbers Seahorse cites
