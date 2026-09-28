@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v1.4.0):
+What works today (v1.5.1):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
