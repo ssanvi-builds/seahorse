@@ -59,6 +59,45 @@ Integration scripts (used by CI, run manually with a local install):
 5. Open a pull request against `main` with a clear description of what changed
    and why, plus a short test plan.
 
+## Signing the CLA
+
+External contributions are accepted under a Contributor License Agreement
+([CLA.md](CLA.md)), adapted from the Apache Software Foundation's ICLA. You
+sign once, and the signature covers all your present and future contributions
+to this project.
+
+Signing costs one comment. In your first pull request, add a comment
+containing:
+
+```
+I have read the CLA at CLA.md and agree to its terms — <legal name> (<github handle>)
+```
+
+Use your legal name (or the name your employer uses for you) — not a pseudonym
+— and your GitHub handle. Alternatively, email the contact address listed on
+the repository profile with the same statement. Signatures are recorded
+publicly in the pull request thread, so the record is auditable by anyone.
+
+Maintainers will not merge an external pull request until it carries a valid
+signature. If anything in the agreement is unclear, ask in your issue or PR —
+questions before signing are welcome.
+
+## Licensing of contributions
+
+The project is licensed Apache-2.0 (see [LICENSE](LICENSE)), and your
+contributions are licensed to recipients under the same terms — that is the
+substance of the CLA above.
+
+One boundary matters before you bring code or text from another project: some
+memory systems this project compares against are licensed AGPL-3.0. Seahorse
+studies those tools at the mechanism level — their ideas, measured results,
+and design choices are fair input — but **line-level reuse is never
+acceptable**: no AGPL code, configuration, or text may be copied into this
+repository, and an idea adopted from an AGPL project must be re-implemented
+from its public description. A pull request containing AGPL-licensed code will
+be rejected. The full reasoning lives in
+[docs/related-work.md](docs/related-work.md) (License posture).
+
 ## Commit conventions
 
 - Use [Conventional Commits](https://www.conventionalcommits.org/): `feat:`,
@@ -73,3 +112,18 @@ Integration scripts (used by CI, run manually with a local install):
 - Handle errors explicitly at every level; never swallow them silently.
 - Do not add comments that restate what the code does — use descriptive names,
   and reserve comments for the non-obvious "why".
+
+## Your first contribution
+
+A short path for a first change:
+
+1. Open an issue describing the problem or the improvement, so the direction
+   is agreed before any code is written.
+2. Fork and create a feature branch (`git checkout -b <your-branch>`).
+3. Make the change and add or update tests; then run `uv run pytest`,
+   `uv run ruff check src tests`, and `uv run mypy src` locally.
+4. Commit with Conventional Commits and open the pull request (see the
+   workflow above).
+5. If this is your first contribution, sign the CLA in a comment on that PR.
+
+A maintainer takes it from there.
