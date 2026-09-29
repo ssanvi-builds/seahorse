@@ -45,23 +45,36 @@ Exit-code layout (64–99, ``sysexits.h`` application band):
 
 - ``0``  success, ``1`` general/unhandled, ``2`` usage/argparse.
 - Cat A (22): 64–74, 76–81 (75 skipped — Cat C anchor), 90–93 (frontmatter),
-  95 (engine — every lower slot is taken). The 4 frontmatter codes live in
-  the previously-reserved 90–93 band because they are a distinct component
-  origin (the frontmatter migrator, not the facade/engine) and the 64–81
-  band was already full.
-- Cat C (5):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty),
+  95 (engine). The 4 frontmatter codes live in the previously-reserved
+  90–93 band because they are a distinct component origin (the frontmatter
+  migrator, not the facade/engine) and the 64–81 band was already full.
+- Cat C (8):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty),
   82 ``CLI_VAULT_NOT_FOUND``, 83 ``CLI_CONFIG_INVALID``,
   94 ``CLI_REBUILD_CONFLICTS`` (index-rebuild conflict honesty),
-  97 ``CLI_MIGRATION_DEFERRED`` (frontmatter migrate case-D honesty).
-- Cat B (6):  84–89.
+  95 ``CLI_OBSERVER_RUNNING`` (single-writer observer lock),
+  97 ``CLI_MIGRATION_DEFERRED`` (frontmatter migrate case-D honesty),
+  98 ``CLI_MATERIALIZE_NOT_CONFIGURED`` (opt-in materialize section),
+  99 ``CLI_HTTP_TOKEN_MISSING`` (http transport, no bearer token).
+- Cat B (7):  84–89, 96 (``ProceduralError``).
 
-NOTE — 75 overload resolved: ``CLI_NOT_IN_MVP_0`` and ``CLI_REBUILD_CONFLICTS``
-shared exit code 75 (distinguishable only on the structured ``cli_code``
-payload, not on the int). ``CLI_REBUILD_CONFLICTS`` was split onto a fresh
-90–99 slot (94 — frontmatter Cat A took 90–93, so 94 is the next free
-CLI-owned slot) so the two are distinct even on the int exit code. Both stay
-CLI-owned Cat C (never Cat A), so they never collide with the 21-code Cat A
-table; 94 is also outside the Cat A 64–81 / 90–93 set.
+NOTE — two shared exits (documented, not re-assigned). 75 and 95 each host
+two names, distinguishable only on the structured payload, never on the int.
+
+75: ``CLI_NOT_IN_MVP_0`` and ``CLI_REBUILD_CONFLICTS`` — RESOLVED by splitting
+the latter onto 94 (fresh 90–99 slot after frontmatter took 90–93); both stay
+CLI-owned Cat C (never Cat A), so they never collide with the 22-code Cat A
+table.
+
+95: ``CLI_OBSERVER_RUNNING`` (Cat C — landed first, ca04b57, Sprint B #17)
+and ``E_IMPROVE_VALID_AT_FUTURE`` (Cat A — landed later, 0e767e1, F3.1) both
+exit 95. The engine slot was assigned believing 95 free while
+``CLI_OBSERVER_RUNNING`` already occupied it in this same file's Cat C
+constant list. Both origins are live in the field; re-assigning either
+changes scripts already keyed on exit 95, so no code moves here. Callers
+that must disambiguate read the payload: the observer case carries
+``cli_code == "CLI_OBSERVER_RUNNING"``, the engine case carries
+``seahorse_code == "E_IMPROVE_VALID_AT_FUTURE"``. Flagged for triage — a
+future release may move the newer engine code off 95.
 """
 
 from __future__ import annotations
@@ -160,6 +173,10 @@ CLI_MIGRATION_DEFERRED = 97
 # (materialization is opt-in). Fail-loud with the setup hint — the operator
 # runs ``seahorse setup`` or adds the section by hand.
 CLI_MATERIALIZE_NOT_CONFIGURED = 98
+# ``--transport http`` with no bearer token configured anywhere. The HTTP
+# server MUST never start unauthenticated, so this fails loud BEFORE binding.
+# 99 is the last free Cat C slot (96 is Cat B ProceduralError; 97/98 above).
+CLI_HTTP_TOKEN_MISSING = 99
 
 # ---------------------------------------------------------------------------
 # Component-of-origin attribution for stderr ``component:`` (parity with the MCP server).
@@ -318,6 +335,7 @@ __all__ = [
     "CLI_REBUILD_CONFLICTS",
     "CLI_OBSERVER_RUNNING",
     "CLI_MIGRATION_DEFERRED",
+    "CLI_HTTP_TOKEN_MISSING",
     "translate",
     "message_for",
 ]

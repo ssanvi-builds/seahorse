@@ -15,6 +15,7 @@ non-object request → ``-32600``.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from importlib.metadata import PackageNotFoundError
@@ -259,6 +260,14 @@ def main(
     )
     parser.add_argument("--vault", help="Vault root dir (default: discover).")
     parser.add_argument("--config", help="Explicit seahorse.toml path.")
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "http"),
+        default="stdio",
+        help="Wire transport: stdio (default) or Streamable HTTP.",
+    )
+    parser.add_argument("--host", help="HTTP bind host (http transport only).")
+    parser.add_argument("--port", type=int, help="HTTP bind port (http transport only).")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -298,7 +307,29 @@ def main(
         return code
 
     try:
-        serve(facade, stdin=stdin, stdout=stdout)
+        if args.transport == "http":
+            # Deferred imports keep `import seahorse.mcp` stdlib-only and let
+            # the entrypoint tests monkeypatch serve_http by string path.
+            from seahorse.cli.errors import CliHttpTokenMissing
+            from seahorse.mcp.http_server import HttpServeConfig, serve_http
+
+            token = os.environ.get("SEAHORSE_HTTP_TOKEN") or cfg.http.token
+            if not token:
+                missing = CliHttpTokenMissing()
+                sys.stderr.write(f"seahorse-mcp: {missing}\n")
+                return missing.exit_code
+            # Flag beats config for host/port; `args.X is not None` (never
+            # `or`) because --port 0 is a legal ephemeral-port request.
+            serve_http(
+                facade,
+                config=HttpServeConfig(
+                    host=args.host if args.host is not None else cfg.http.host,
+                    port=args.port if args.port is not None else cfg.http.port,
+                    token=token,
+                ),
+            )
+        else:
+            serve(facade, stdin=stdin, stdout=stdout)
     finally:
         storage.close()
     return 0

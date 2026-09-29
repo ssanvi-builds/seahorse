@@ -25,6 +25,7 @@ from __future__ import annotations
 # ruff: noqa: B008
 import io
 import logging
+import os
 import sys
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError
@@ -676,20 +677,64 @@ benchmark.register(app)
 
 
 @app.command()
-def mcp(ctx: typer.Context) -> None:
-    """Run the stdio MCP server (io.seahorse.memory/v1) for this vault.
+def mcp(
+    ctx: typer.Context,
+    transport: str = typer.Option(
+        "stdio",
+        "--transport",
+        help="Wire transport: stdio (default) or Streamable HTTP.",
+    ),
+    host: str | None = typer.Option(
+        None,
+        "--host",
+        help="HTTP bind host (http transport).",
+    ),
+    port: int | None = typer.Option(
+        None,
+        "--port",
+        help="HTTP bind port (http transport).",
+    ),
+) -> None:
+    """Run the MCP server (io.seahorse.memory/v1) for this vault.
 
-    The agent surface: newline-delimited JSON-RPC 2.0 over stdin/stdout. Shares
-    the vault/db resolution + storage lifecycle of every other command (the
-    facade comes from ``ctx.obj.facade()`` and is closed by ``main()``'s
-    ``finally``). Writes JSON-RPC directly to ``sys.stdout`` regardless of
-    ``--quiet`` (the protocol owns stdout). Mirrors the ``seahorse-mcp`` console
-    script and ``python -m seahorse.mcp`` — same ``serve``, same profile.
+    The agent surface: newline-delimited JSON-RPC 2.0 over stdin/stdout with
+    ``--transport stdio`` (default), or Streamable HTTP (stateless JSON mode)
+    with ``--transport http``. Shares the vault/db resolution + storage
+    lifecycle of every other command (the facade comes from
+    ``ctx.obj.facade()`` and is closed by ``main()``'s ``finally``). Writes
+    JSON-RPC directly to ``sys.stdout`` on stdio regardless of ``--quiet``
+    (the protocol owns stdout). Mirrors the ``seahorse-mcp`` console script
+    and ``python -m seahorse.mcp`` — same profile, both transports.
     """
     # Long-lived server process: restore WARNING so the embedder self-test /
     # hybrid-degrade diagnostics reach the operator (main() suppresses them for
     # the one-shot CLI; stderr is not a protocol channel here).
     logging.getLogger("seahorse").setLevel(logging.WARNING)
+    if transport not in ("stdio", "http"):
+        raise typer.BadParameter(f"transport must be 'stdio' or 'http', got {transport!r}")
+
+    if transport == "http":
+        # Deferred imports mirror profile.main(): http_server stays out of the
+        # import graph until the launch path runs.
+        from seahorse.cli.errors import CliHttpTokenMissing
+        from seahorse.mcp.http_server import HttpServeConfig, serve_http
+
+        cfg = ctx.obj.resolved_config()
+        token = os.environ.get("SEAHORSE_HTTP_TOKEN") or cfg.http.token
+        if not token:
+            raise CliHttpTokenMissing()
+        # Flag beats config for host/port; `is not None` (never `or`) because
+        # --port 0 is a legal ephemeral-port request.
+        serve_http(
+            ctx.obj.facade(),
+            config=HttpServeConfig(
+                host=host if host is not None else cfg.http.host,
+                port=port if port is not None else cfg.http.port,
+                token=token,
+            ),
+        )
+        return
+
     from seahorse.mcp.profile import serve
 
     serve(ctx.obj.facade(), stdin=sys.stdin, stdout=sys.stdout)

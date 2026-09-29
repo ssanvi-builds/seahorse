@@ -26,6 +26,8 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 from seahorse.cli.config import write_default_config
 
 # ---------------------------------------------------------------------------
@@ -325,3 +327,115 @@ def test_main_bad_flag_returns_two(capsys) -> None:
 
     capsys.readouterr()
     assert main(["--bogus"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# --transport http (both entrypoints)
+# ---------------------------------------------------------------------------
+
+
+class _StopServe(Exception):
+    """Sentinel raised by the fake serve_http so main() unwinds without binding."""
+
+
+def test_main_http_transport_without_token_fails_fast(tmp_path, capsys, monkeypatch) -> None:
+    """No token anywhere → exit 99 with a named, actionable stderr message."""
+    from seahorse.mcp.profile import main
+
+    vault = tmp_path / "vault"
+    write_default_config(vault)
+    monkeypatch.delenv("SEAHORSE_HTTP_TOKEN", raising=False)
+    capsys.readouterr()
+
+    code = main(["--vault", str(vault), "--transport", "http"])
+
+    captured = capsys.readouterr()
+    assert code == 99
+    assert "CLI_HTTP_TOKEN_MISSING" in captured.err
+    assert "SEAHORSE_HTTP_TOKEN" in captured.err
+
+
+def test_main_http_transport_honors_env_token(tmp_path, monkeypatch) -> None:
+    """A bearer token from the env reaches serve_http with transport defaults."""
+    from seahorse.mcp.profile import main
+
+    vault = tmp_path / "vault"
+    write_default_config(vault)
+    monkeypatch.setenv("SEAHORSE_HTTP_TOKEN", "tok")
+
+    captured: list[object] = []
+
+    def fake_serve_http(_facade, *, config):
+        captured.append(config)
+        raise _StopServe()
+
+    monkeypatch.setattr("seahorse.mcp.http_server.serve_http", fake_serve_http)
+
+    with pytest.raises(_StopServe):
+        main(["--vault", str(vault), "--transport", "http"])
+
+    (config,) = captured
+    assert config.token == "tok"
+    assert config.host == "127.0.0.1"
+    assert config.port == 8767
+
+
+def test_main_http_transport_precedence_flag_env_config(tmp_path, monkeypatch) -> None:
+    """flag > env > [http] token; --port must beat every lower layer (never ``or``)."""
+    from seahorse.cli.config import load_config
+    from seahorse.cli.setup import write_http_config
+    from seahorse.mcp.profile import main
+
+    vault = tmp_path / "vault"
+    write_default_config(vault)
+    write_http_config(vault)
+    file_token = load_config(vault).http.token
+    assert file_token  # setup wrote one
+
+    captured: list[object] = []
+
+    def fake_serve_http(_facade, *, config):
+        captured.append(config)
+        raise _StopServe()
+
+    monkeypatch.setattr("seahorse.mcp.http_server.serve_http", fake_serve_http)
+
+    # env > config for the token; config/default for host and port
+    monkeypatch.setenv("SEAHORSE_HTTP_TOKEN", "tok-env")
+    with pytest.raises(_StopServe):
+        main(["--vault", str(vault), "--transport", "http"])
+    (config,) = captured
+    assert config.token == "tok-env"
+    assert config.host == "127.0.0.1"
+    assert config.port == 8767
+
+    # flag > env > config: --port 5 beats every lower layer
+    captured.clear()
+    with pytest.raises(_StopServe):
+        main(["--vault", str(vault), "--transport", "http", "--port", "5"])
+    (config,) = captured
+    assert config.token == "tok-env"
+    assert config.port == 5
+
+    # config only: without env the file token is used
+    monkeypatch.delenv("SEAHORSE_HTTP_TOKEN")
+    captured.clear()
+    with pytest.raises(_StopServe):
+        main(["--vault", str(vault), "--transport", "http"])
+    (config,) = captured
+    assert config.token == file_token
+    assert config.port == 8767
+
+
+def test_cli_mcp_subcommand_http_without_token_fails_fast(tmp_path, monkeypatch) -> None:
+    """``seahorse mcp --transport http`` surfaces the same fail-loud exit 99."""
+    from tests.cli.conftest import invoke
+
+    vault = tmp_path / "vault"
+    write_default_config(vault)
+    monkeypatch.delenv("SEAHORSE_HTTP_TOKEN", raising=False)
+
+    code, _out, err = invoke(["--vault", str(vault), "mcp", "--transport", "http"])
+
+    assert code == 99
+    assert "CLI_HTTP_TOKEN_MISSING" in err

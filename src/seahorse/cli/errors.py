@@ -17,6 +17,23 @@ Cat C codes (owned by the CLI):
   does not silently disappear.
 - ``CLI_VAULT_NOT_FOUND`` (82) — vault resolution failed.
 - ``CLI_CONFIG_INVALID`` (83) — ``seahorse.toml`` failed to parse/load.
+- ``CLI_REBUILD_CONFLICTS`` (94) — ``seahorse index rebuild`` found conflicts
+  (incompatible/malformed rows) and fails loud instead of auto-picking; the
+  operator decides. Split off the shared 75 exit so the rebuild-conflict
+  concern is distinct on the int, not only on the payload.
+- ``CLI_OBSERVER_RUNNING`` (95) — ``seahorse observe start`` while the observer
+  is already running (single-writer lock). Note: 95 is a shared exit — the
+  engine's ``E_IMPROVE_VALID_AT_FUTURE`` (Cat A) also maps to 95; see the NOTE
+  in ``exit_codes.py`` (distinguish via the structured payload, never the int).
+- ``CLI_MIGRATION_DEFERRED`` (97) — ``seahorse frontmatter migrate`` ended with
+  case-D notes deferred (the run completes but the vault is not fully
+  migrated; scripts must see it).
+- ``CLI_MATERIALIZE_NOT_CONFIGURED`` (98) — ``seahorse materialize`` on a vault
+  without a ``[materialize]`` section (the feature is opt-in; fail-loud with
+  the setup hint).
+- ``CLI_HTTP_TOKEN_MISSING`` (99) — ``--transport http`` with no bearer token
+  configured anywhere. Fail-loud BEFORE bind: the HTTP server must never start
+  unauthenticated.
 """
 
 from __future__ import annotations
@@ -25,6 +42,7 @@ from typing import Any
 
 from seahorse.cli.exit_codes import (
     CLI_CONFIG_INVALID,
+    CLI_HTTP_TOKEN_MISSING,
     CLI_MATERIALIZE_NOT_CONFIGURED,
     CLI_MIGRATION_DEFERRED,
     CLI_NOT_IN_MVP_0,
@@ -224,6 +242,27 @@ class CliMaterializeNotConfigured(CliError):
         )
 
 
+class CliHttpTokenMissing(CliError):
+    """``--transport http`` with no bearer token configured anywhere — fail
+    loud, no bind.
+
+    The token is the only barrier between the 15 tools and the network, so the
+    HTTP server MUST never start without one: this fails loud at exit 99 (Cat
+    C) before any socket exists. The caller checks all three sources (flag/env
+    /``[http]``) first; this error only names the actionable fix.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            exit_code=CLI_HTTP_TOKEN_MISSING,
+            name="CLI_HTTP_TOKEN_MISSING",
+            detail=(
+                "no HTTP bearer token found; set SEAHORSE_HTTP_TOKEN or add a "
+                "[http] token to seahorse.toml (`seahorse setup` writes one)"
+            ),
+        )
+
+
 __all__ = [
     "CliError",
     "CliNotInMVP0",
@@ -233,4 +272,5 @@ __all__ = [
     "CliMigrationDeferred",
     "CliRebuildConflicts",
     "CliMaterializeNotConfigured",
+    "CliHttpTokenMissing",
 ]
