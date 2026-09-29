@@ -24,6 +24,8 @@ from typing import TextIO
 
 from seahorse.cli.config import (
     DEFAULT_DROP_TOOLS,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
     DEFAULT_OBSERVE_SOCKET,
     DEFAULT_SKIP_TOOLS,
     config_path_for,
@@ -187,6 +189,32 @@ def _remove_observe_section(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# [http] config
+# ---------------------------------------------------------------------------
+
+
+def write_http_config(vault: Path) -> Path:
+    """Write the ``[http]`` section to ``seahorse.toml`` (idempotent).
+
+    A present section is preserved (the user's config wins — a silent re-run
+    must never rotate the bearer token behind live remote clients); a missing
+    one is appended with the defaults + a generated auth token.
+    """
+    cfg_path = config_path_for(vault)
+    content = cfg_path.read_text(encoding="utf-8")
+    if "[http]" not in content:
+        token = secrets.token_hex(16)
+        content += (
+            "\n[http]\n"
+            f'host = "{DEFAULT_HTTP_HOST}"\n'
+            f"port = {DEFAULT_HTTP_PORT}\n"
+            f'token = "{token}"\n'
+        )
+        cfg_path.write_text(content, encoding="utf-8")
+    return cfg_path
+
+
+# ---------------------------------------------------------------------------
 # settings.json hooks
 # ---------------------------------------------------------------------------
 
@@ -325,16 +353,19 @@ def run_setup(
 ) -> None:
     """Install the observer + materialization: config sections + Claude Code hooks.
 
-    Writes the ``[observe]`` section (with a generated auth token) and the
+    Writes the ``[observe]`` section (with a generated auth token), the
     ``[materialize]`` section (defaults — the opt-in path for episode → .md
-    materialization), then merges the observer hooks into the Claude Code
-    settings. Both config writes are idempotent appends: a present section is
-    preserved (the user's config wins). ``auto_consolidate`` additionally
-    writes the ``[consolidate]`` section and merges the consolidate-on-stop
-    hook. ``no_observer`` is the hooks-consent path: no hook merge and no
-    ``[observe]`` section — ``[materialize]`` and the global pointer still
-    install (they only affect the vault's own layout). The consolidate hook
-    is its own explicit consent (``--auto-consolidate``) and still merges.
+    materialization) and the ``[http]`` section (bearer token for the remote
+    server), then merges the observer hooks into the Claude Code settings.
+    All config writes are idempotent appends: a present section is preserved
+    (the user's config wins). ``auto_consolidate`` additionally writes the
+    ``[consolidate]`` section and merges the consolidate-on-stop hook.
+    ``no_observer`` is the hooks-consent path: no hook merge and no
+    ``[observe]`` section — ``[materialize]``, the ``[http]`` token and the
+    global pointer still install (they only affect the vault's own layout,
+    and the remote server's opt-in is ``--transport http``, not hook
+    consent). The consolidate hook is its own explicit consent
+    (``--auto-consolidate``) and still merges.
     """
     from seahorse.cli.config import (
         ConsolidateConfig,
@@ -345,6 +376,10 @@ def run_setup(
 
     if not no_observer:
         write_observe_config(vault)
+    # The http bearer token is not the observer's business: ``--no-observer``
+    # only gates hook capture; the opt-in for the remote server is
+    # ``--transport http``, so the token is written unconditionally.
+    write_http_config(vault)
     write_materialize_config(vault, MaterializeConfig())
     if auto_consolidate:
         write_consolidate_config(vault, ConsolidateConfig(auto_on_stop=True))
@@ -470,6 +505,7 @@ __all__ = [
     "discover_obsidian_vaults",
     "ensure_vault",
     "write_observe_config",
+    "write_http_config",
     "merge_hooks",
     "merge_consolidate_hook",
     "remove_hooks",

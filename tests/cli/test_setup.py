@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from seahorse.cli.config import load_config, write_default_config
@@ -23,6 +24,7 @@ from seahorse.cli.setup import (
     remove_hooks,
     run_setup,
     run_setup_uninstall,
+    write_http_config,
     write_observe_config,
 )
 
@@ -112,6 +114,89 @@ def test_write_observe_config_preserves_existing_section(tmp_path) -> None:
     assert cfg.observe is not None
     assert cfg.observe.extraction == "llm"  # preserved
     assert cfg.observe.token == "keep-me"  # preserved
+
+
+# ---------------------------------------------------------------------------
+# write_http_config
+# ---------------------------------------------------------------------------
+
+
+def test_write_http_config_adds_section(tmp_path) -> None:
+    vault = _cfg(tmp_path)
+    write_http_config(vault)
+    cfg = load_config(vault)
+    assert cfg.http.host == "127.0.0.1"
+    assert cfg.http.port == 8767
+    assert cfg.http.token is not None  # bearer token generated
+
+
+def test_write_http_config_token_is_32_hex_chars(tmp_path) -> None:
+    vault = _cfg(tmp_path)
+    write_http_config(vault)
+    token = load_config(vault).http.token
+    assert token is not None
+    assert re.fullmatch(r"[0-9a-f]{32}", token)
+
+
+def test_write_http_config_preserves_existing_section(tmp_path) -> None:
+    vault = _cfg(tmp_path)
+    (vault / ".seahorse" / "seahorse.toml").write_text(
+        "[seahorse]\n"
+        'db_path = "seahorse.db"\n'
+        'default_extraction_mode = "skip"\n'
+        "top_k = 10\n"
+        "[http]\n"
+        'token = "keep-me"\n',
+        encoding="utf-8",
+    )
+    write_http_config(vault)
+    cfg = load_config(vault)
+    assert cfg.http.token == "keep-me"  # preserved, no re-generation
+
+
+def test_write_http_config_same_token_on_two_runs(tmp_path) -> None:
+    """Idempotent: the second run must not rotate the token (a silent
+    rotation would silently break every registered remote client)."""
+    vault = _cfg(tmp_path)
+    write_http_config(vault)
+    content_after_first = (vault / ".seahorse" / "seahorse.toml").read_text(
+        encoding="utf-8"
+    )
+    write_http_config(vault)
+    content_after_second = (vault / ".seahorse" / "seahorse.toml").read_text(
+        encoding="utf-8"
+    )
+    assert content_after_second == content_after_first
+
+
+def test_run_setup_writes_http_config(tmp_path, monkeypatch) -> None:
+    vault = _cfg(tmp_path)
+    settings = _settings_path(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    _isolate_global_config(monkeypatch, tmp_path)
+    import io
+
+    run_setup(vault, settings_path=settings, fmt="human", out=io.StringIO())
+    cfg = load_config(vault)
+    assert cfg.http.token is not None  # ready for ``--transport http``
+
+
+def test_run_setup_no_observer_still_writes_http_config(tmp_path, monkeypatch) -> None:
+    """The http token is not the observer's business — --no-observer skips
+    the hooks and ``[observe]`` but still generates the ``[http]`` token:
+    the opt-in gate is ``--transport http``, not observer consent."""
+    vault = _cfg(tmp_path)
+    settings = _settings_path(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLAUDE_SETTINGS", settings)
+    _isolate_global_config(monkeypatch, tmp_path)
+    import io
+
+    run_setup(
+        vault, settings_path=settings, fmt="human", out=io.StringIO(), no_observer=True
+    )
+    cfg = load_config(vault)
+    assert cfg.observe is None
+    assert cfg.http.token is not None  # token written unconditionally
 
 
 # ---------------------------------------------------------------------------
