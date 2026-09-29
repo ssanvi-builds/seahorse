@@ -77,6 +77,14 @@ DEFAULT_MATERIALIZE_MODE = "consolidated"
 DEFAULT_MATERIALIZE_DIR = "Memory"
 _VALID_MATERIALIZE_MODES = frozenset({"consolidated", "all", "off"})
 
+# The [http] section is ALWAYS parsed (missing section → defaults): the opt-in
+# for the remote server is the `--transport http` flag at the transport level,
+# not a config knob. That is why these defaults are safe to apply unconditionally:
+# `write_default_config` never emits [http], so no token exists until
+# `seahorse setup` writes one.
+DEFAULT_HTTP_HOST = "127.0.0.1"
+DEFAULT_HTTP_PORT = 8767
+
 _VAULT_ENV = "SEAHORSE_VAULT"
 _APP_DIR_NAME = "seahorse"
 POINTER_FILENAME = "vault"
@@ -226,6 +234,21 @@ class ConsolidateConfig:
 
 
 @dataclass(frozen=True)
+class HttpConfig:
+    """HTTP serve configuration from the ``[http]`` section.
+
+    Always present on ``SeahorseConfig`` (never ``None``): a missing section
+    yields the defaults because the opt-in is the ``--transport http`` flag,
+    not a config knob. ``token`` stays ``None`` until ``seahorse setup``
+    writes one.
+    """
+
+    host: str = DEFAULT_HTTP_HOST
+    port: int = DEFAULT_HTTP_PORT
+    token: str | None = None
+
+
+@dataclass(frozen=True)
 class SeahorseConfig:
     """Resolved Seahorse configuration for a vault.
 
@@ -247,6 +270,7 @@ class SeahorseConfig:
     distill: DistillConfig | None = None
     materialize: MaterializeConfig | None = None
     consolidate: ConsolidateConfig | None = None
+    http: HttpConfig = HttpConfig()
 
     def with_overrides(
         self, *, extraction_mode: str | None = None, top_k: int | None = None
@@ -370,6 +394,10 @@ def load_config(
     # (auto-consolidation is opt-in: `seahorse setup --auto-consolidate`).
     consolidate = _parse_consolidate_section(data.get("consolidate"))
 
+    # [http] is ALWAYS parsed (missing section → defaults): the opt-in for
+    # the remote server is the --transport http flag, not the config.
+    http = _parse_http_section(data.get("http"))
+
     return SeahorseConfig(
         vault=vault,
         seahorse_dir=seahorse_dir,
@@ -382,6 +410,7 @@ def load_config(
         distill=distill,
         materialize=materialize,
         consolidate=consolidate,
+        http=http,
     )
 
 
@@ -567,6 +596,33 @@ def _parse_consolidate_section(raw: object) -> ConsolidateConfig | None:
     return ConsolidateConfig(auto_on_stop=auto_on_stop)
 
 
+def _parse_http_section(raw: object) -> HttpConfig:
+    """Parse the ``[http]`` table. Missing → defaults (never ``None``).
+
+    Unlike ``[observe]``, there is no "off" state in the config: the remote
+    server only runs when ``--transport http`` is requested, so the defaults
+    are always safe and ``SeahorseConfig.http`` is never ``None``.
+    """
+    if raw is None:
+        return HttpConfig()
+    if not isinstance(raw, dict):
+        raise CliConfigInvalid("http must be a [http] table")
+
+    host = raw.get("host", DEFAULT_HTTP_HOST)
+    if not isinstance(host, str) or not host:
+        raise CliConfigInvalid("http.host must be a non-empty string")
+
+    port = raw.get("port", DEFAULT_HTTP_PORT)
+    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+        raise CliConfigInvalid("http.port must be an integer in 1..65535")
+
+    token = raw.get("token")
+    if token is not None and (not isinstance(token, str) or not token):
+        raise CliConfigInvalid("http.token must be a non-empty string or absent")
+
+    return HttpConfig(host=host, port=port, token=token)
+
+
 def write_default_config(vault: Path) -> Path:
     """Write the minimal ``seahorse.toml`` into ``<vault>/.seahorse/``.
 
@@ -674,11 +730,14 @@ __all__ = [
     "DEFAULT_OBSERVE_SOCKET",
     "DEFAULT_MATERIALIZE_MODE",
     "DEFAULT_MATERIALIZE_DIR",
+    "DEFAULT_HTTP_HOST",
+    "DEFAULT_HTTP_PORT",
     "SeahorseConfig",
     "LlmConfig",
     "ObserveConfig",
     "MaterializeConfig",
     "ConsolidateConfig",
+    "HttpConfig",
     "is_initialized",
     "resolve_vault",
     "config_path_for",
