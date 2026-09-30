@@ -149,6 +149,62 @@ You can verify the whole chain any time:
 seahorse doctor --fix
 ```
 
+## Remote access (Streamable HTTP)
+
+Apps without child processes — Claude.ai, ChatGPT, Gemini — cannot speak
+stdio. For them the same `io.seahorse.memory/v1` server also serves Streamable
+HTTP (MCP spec `2025-11-25`): same 15 tools, same vault, byte-identical
+responses — a different wire. Use it only when stdio is impossible; locally,
+stdio is simpler and needs no token.
+
+```bash
+# Start the remote server (binds 127.0.0.1; --port 0 = ephemeral port):
+seahorse mcp --transport http --port 0
+
+# Same server, no install:
+uvx --from seahorse-memory seahorse-mcp --transport http --port 0
+
+# It prints the bound URL on stderr:
+#   seahorse-mcp: listening on http://127.0.0.1:49896
+```
+
+The bearer token is required — always. `seahorse setup` generates one into
+the vault's `[http]` section (`<vault>/.seahorse/seahorse.toml`), so after
+setup the server starts with no further configuration; `SEAHORSE_HTTP_TOKEN`
+overrides it, and without any token the server exits before binding (exit
+code 99).
+
+Register it in Claude Code (the URL and name first, `--header` last — it is a
+variadic option):
+
+```bash
+claude mcp add --transport http seahorse-remote \
+  http://127.0.0.1:8767/mcp \
+  --header "Authorization: Bearer $SEAHORSE_HTTP_TOKEN"
+```
+
+Every POST carries the token; anything else gets `401`. The surface is
+POST-only: id'd requests answer `200`, notifications `202`, GET/DELETE answer
+`405` — there is no SSE stream. The server is **stateless JSON mode**: no
+`Mcp-Session-Id` is issued and every request is self-contained; clients that
+require a session handshake are out of scope. Also enforced per request:
+per-IP rate limiting (`429`), a 256 KiB body cap (`413`), Origin checking
+(`403`) and protocol-version validation (`400`).
+
+### Beyond loopback
+
+Remote consumers need an HTTPS URL, and the server does no TLS itself — bind
+loopback and put a reverse proxy or tunnel in front:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8767   # or: ngrok http 127.0.0.1:8767
+```
+
+**Warning**: behind a tunnel the bearer token becomes the *only* barrier
+between the internet and your vault. Use a long token, keep the tunnel URL
+private, and let the proxy terminate TLS. The in-memory rate limit resets on
+restart — it deters abuse; it is not an access-control layer.
+
 ## Listings
 
 The manifests for the MCP registry, Smithery and mcpm live in the repo — see

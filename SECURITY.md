@@ -26,7 +26,8 @@ directories) and are not exposed to untrusted network input in their default
 configuration. Relevant areas for security review include:
 
 - Markdown/frontmatter parsing of vault notes (malformed or hostile files).
-- The MCP stdio server (agent-facing) and its wire-level input validation.
+- The MCP servers — stdio and Streamable HTTP (agent-facing) and their
+  wire-level and HTTP-boundary input validation.
 - Any optional remote-provider paths (LLM calls) — these only transmit the data
   you ask them to extract.
 
