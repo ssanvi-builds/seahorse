@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v1.5.1):
+What works today (v1.6.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -14,6 +14,14 @@ What works today (v1.5.1):
   `seahorse-mcp` console scripts are unchanged.
 - **Agent-first MCP surface** — register the server in any MCP agent
   (`claude mcp add seahorse-mcp -- uvx --from seahorse-memory seahorse-mcp --vault "${HOME}/myvault"` or `.mcp.json`); the agent sees 15 memory tools.
+- **Remote access (Streamable HTTP, ADR-013)** — the same 15-tool profile
+  also serves MCP spec `2025-11-25` Streamable HTTP (`seahorse-mcp
+  --transport http`, stateless JSON mode: POST-only, 200/202, 405 without
+  SSE, no sessions) for apps that cannot spawn child processes. A bearer
+  token is always required (`seahorse setup` writes it into `[http]`);
+  per-request rate limiting, body caps, Origin and protocol-version checks.
+  Parity with stdio is by construction — one `handle_request` seam, one
+  shared protocol session proven over both transports.
 - **Bi-temporal, append-only memory engine** — every episode carries both when it
   became true (`valid_at`) and when it was recorded (`created_at`), so the
   knowledge base is reproducible at any past point in time. Supersession
@@ -126,9 +134,9 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   body exceeds one window and cannot move the aggregate. Reverted in full
   before release; the negative result is documented in
   `docs/benchmark.md`. The A4
-  chain is fully explained; the remaining near-term focus is the Fase 2
-  re-sequence (the remote MCP server as a standard expansion) or the next
-  retrieval-quality workstream. The F7 experiments (multi-hop, entity-centric,
+  chain is fully explained; the remaining near-term focus is the next
+  retrieval-quality workstream (the Fase 2 remote MCP server shipped in
+  v1.6.0). The F7 experiments (multi-hop, entity-centric,
   decay, skills)
   and the roadmap-review experiments (RRF_K sweep, rerank-with-body, end-to-end
   measurement) are wired into the harness (`seahorse benchmark experiment`); the
@@ -153,10 +161,11 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   passed), the self-evolving loop (`e2e-loop.sh` 39 passed), and release
   quality (CI green, `e2e-pypi.sh` 24 passed, `e2e-vm.sh` 32 passed on a clean
   Linux VM with no dev tooling). Shipped: the v1.0.0 tag.
-- **Medium term** — the Fase 2 re-sequenced: the remote MCP server (Streamable
-  HTTP) as a standard expansion that also serves the local free tier, with the
-  web dashboard and managed sync deferred until the adoption gate produces data.
-  Cross-project sync and the web viewer follow that gate.
+- **Medium term** — the web dashboard and managed sync, deferred until
+  the adoption gate produces data; cross-project sync and the web viewer
+  follow that gate. (The re-sequenced remote MCP server — Streamable HTTP —
+  shipped in v1.6.0 as a standard expansion that also serves the local
+  free tier.)
 - **Long term** — a managed cloud offering as a later phase, gated by adoption,
   and wider adoption of the memory standard across agents and harnesses.
 

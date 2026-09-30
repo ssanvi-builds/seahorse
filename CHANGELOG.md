@@ -4,7 +4,54 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.6.0] - 2026-09-30
+
+Fase 2: the same `io.seahorse.memory/v1` MCP server now also speaks
+Streamable HTTP, so apps without child processes (Claude.ai, ChatGPT,
+Gemini) can reach the memory. Plus the Apache contribution kit that lets
+external contributions land clean.
+
+### Added
+
+- **Remote access — the Streamable HTTP transport (stateless JSON mode,
+  ADR-013)** — `seahorse-mcp --transport http` (or `seahorse mcp
+  --transport http`) serves the same 15-tool profile over MCP spec
+  `2025-11-25`: POST-only, id'd requests answer `200`, notifications
+  `202`, GET/DELETE `405` (no SSE), no `Mcp-Session-Id` (stateless).
+  Parity is by construction: both transports ride the same pure
+  `handle_request` seam, and one shared 9-step protocol session runs
+  over each. A bearer token is ALWAYS required (constant-time compare;
+  exit code 99 before binding if absent) — `seahorse setup` generates it
+  into the new `[http]` config section (host, port, token;
+  `SEAHORSE_HTTP_TOKEN` overrides). Adversarial per-request pipeline:
+  per-IP rate limiting (`429`), a 256 KiB body cap (`411`/`413`), Origin
+  checking (`403`), Accept validation (`406`) and protocol-version
+  validation (`400`). stdlib-only — no new dependencies.
+- **`scripts/e2e-remote-http.sh`** — a sandboxed end-to-end on the real
+  wire (initialize, 15 tools, remember, 202 notification, 401, 405),
+  then a real `claude mcp add --transport http` registration and a
+  `claude -p` invocation against the remote server; teardown proves the
+  SIGINT unwind and the no-orphan contract. Not CI-gated (the
+  `claude -p` step makes a real model call).
+- **Remote access documentation** — `docs/connect.md` gains the
+  "Remote access (Streamable HTTP)" section (when to use it, startup,
+  the Claude Code registration, the tunnel warning: behind
+  cloudflared/ngrok the bearer token becomes the only barrier);
+  SECURITY.md scope now names both transports and their wire-level and
+  HTTP-boundary input validation.
+- **Apache contribution kit** — `CLA.md` (the Apache ICLA adapted to
+  digital signature via a PR comment — public, auditable, no
+  infrastructure), `NOTICE`, the LICENSE copyright appendix, and
+  CONTRIBUTING sections for CLA signing, contribution licensing
+  (Apache-2.0; AGPL contributions rejected), and a first-contribution
+  walkthrough.
+
+### Fixed
+
+- **ROADMAP version drift** — the "what works today" header said v1.4.0
+  while the release was v1.5.1; it now states v1.6.0 with the
+  remote-access line, and the remote MCP server moved from "Medium
+  term" to shipped.
 
 ### Rejected alternatives
 
