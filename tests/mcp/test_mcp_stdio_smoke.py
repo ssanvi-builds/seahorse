@@ -1,23 +1,28 @@
-"""Real-stdio MCP smoke — the systematic functional review for the agent
-surface, committed as regression tests.
+"""Real-stdio MCP smoke — the stdio half of the parity contract (ADR-013).
 
 Spawns ``python -m seahorse.mcp --vault <tmp>`` as a real subprocess with
-stdin/stdout pipes and drives the newline-delimited JSON-RPC 2.0 protocol:
-initialize → tools/list (7) → remember → recall → improve → forget →
-build_pit → notification (no reply) → deferred tool (-32601) → malformed
-(-32700) → EOF (clean exit 0).
+stdin/stdout pipes and drives the newline-delimited JSON-RPC 2.0 protocol.
+The core session lives in ``contract_session.run_contract_session`` — ONE
+behavior shared with the HTTP contract test. The stdio-only halves proven
+here (divergent by transport design, never duplicated there):
+
+- notification (no id) → NOTHING on stdout; proven by the NEXT reply arriving
+  first (HTTP answers 202 + empty body instead).
+- malformed JSON → -32700 with explicit ``id: null`` on stdout (HTTP answers
+  400 without any id member).
+- EOF on stdin → clean exit 0; missing vault → exit 82.
 
 This catches what the in-process ``serve(io.StringIO)`` tests cannot: the
 ``main()`` launch path (argparse, vault resolution via ``seahorse.cli.config``,
 ``build_facade`` honoring ``seahorse.toml``, the Storage ``finally`` close),
-the real process boundary, and real pipe I/O (incl. the ``serverInfo.version``
-single-source from package metadata).
+the real process boundary, and real pipe I/O — including the
+``serverInfo.version`` single-source from package metadata, asserted inside
+the shared session.
 """
 
 from __future__ import annotations
 
 import contextlib
-import importlib.metadata
 import json
 import select
 import subprocess
@@ -27,6 +32,7 @@ from pathlib import Path
 import pytest
 
 from seahorse.cli.config import write_default_config
+from tests.mcp.contract_session import run_contract_session, tool_result
 
 # Per-read deadline: a regression where the server returns None for an id'd
 # request (a handler that forgets to emit a response) would otherwise block
@@ -58,10 +64,6 @@ def _recv(proc) -> dict:
     return json.loads(line)
 
 
-def _content(resp: dict):
-    return json.loads(resp["result"]["content"][0]["text"])
-
-
 @pytest.fixture()
 def vault(tmp_path: Path) -> Path:
     v = tmp_path / "vault"
@@ -83,134 +85,23 @@ def _spawn(vault: Path) -> subprocess.Popen:
 def test_stdio_full_session(vault: Path) -> None:
     proc = _spawn(vault)
     try:
-        # initialize
-        _send(proc, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
-        init = _recv(proc)
-        assert init["result"]["protocolVersion"] == "2025-11-25"
-        assert init["result"]["serverInfo"]["name"] == "seahorse-memory"
-        # version is single-sourced from package metadata
-        try:
-            expected_version = importlib.metadata.version("seahorse-memory")
-        except importlib.metadata.PackageNotFoundError:
-            expected_version = "0.0.0"
-        assert init["result"]["serverInfo"]["version"] == expected_version
-
-        # tools/list → exactly 15
-        _send(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        listing = _recv(proc)
-        names = {t["name"] for t in listing["result"]["tools"]}
-        assert len(names) == 15
-
-        # remember → ep_id
-        _send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {
-                    "name": "remember",
-                    "arguments": {
-                        "body": "Sergio lives in Madrid",
-                        "by": {"agent_id": "a", "session_id": "s", "source_type": "agent"},
-                    },
-                },
-            },
-        )
-        wr = _content(_recv(proc))
-        assert wr["status"] == "ACTIVE"
-        ep_id = wr["ep_id"]
-
-        # recall → shows it
-        _send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 4,
-                "method": "tools/call",
-                "params": {"name": "recall", "arguments": {"query": "madrid"}},
-            },
-        )
-        rows = _content(_recv(proc))
-        assert ep_id in [r["ep_id"] for r in rows]
-
-        # improve → new episode superseding the old
-        _send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 5,
-                "method": "tools/call",
-                "params": {
-                    "name": "improve",
-                    "arguments": {
-                        "ep_id": ep_id,
-                        "new_body": "Sergio lives in Barcelona",
-                        "by": {"agent_id": "s", "session_id": "s2", "source_type": "human"},
-                        "reason": "correction",
-                    },
-                },
-            },
-        )
-        new_ep = _content(_recv(proc))
-        assert new_ep["id"] != ep_id
-        new_id = new_ep["id"]
-
-        # forget → invalidated
-        _send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 6,
-                "method": "tools/call",
-                "params": {
-                    "name": "forget",
-                    "arguments": {
-                        "ep_id": new_id,
-                        "reason": "wrong",
-                        "by": {"agent_id": "a", "session_id": "s", "source_type": "agent"},
-                    },
-                },
-            },
-        )
-        forgotten = _content(_recv(proc))
-        assert forgotten["invalid_at"] is not None
-
-        # build_pit all-None → null
-        _send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 7,
-                "method": "tools/call",
-                "params": {"name": "build_pit", "arguments": {}},
-            },
-        )
-        assert _content(_recv(proc)) is None
+        # ①–⑨ the shared parity session (identical to the HTTP contract run).
+        run_contract_session(lambda request: _send(proc, request), lambda: _recv(proc))
 
         # notification (no id) → NO response; the next request's reply arrives
         # first, proving the notification was silently consumed.
         _send(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})
-        _send(proc, {"jsonrpc": "2.0", "id": 8, "method": "tools/list"})
+        _send(proc, {"jsonrpc": "2.0", "id": 10, "method": "tools/list"})
         nt_reply = _recv(proc)
-        assert nt_reply["id"] == 8
+        assert nt_reply["id"] == 10
         assert len(nt_reply["result"]["tools"]) == 15
 
-        # unknown tool → -32601 (expire is still outside the MCP surface)
-        _send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 9,
-                "method": "tools/call",
-                "params": {"name": "expire", "arguments": {}},
-            },
-        )
-        assert _recv(proc)["error"]["code"] == -32601
-
-        # malformed JSON → -32700
+        # malformed JSON → -32700; serve() serializes _error(None, ...) →
+        # an explicit id:null on stdout (HTTP answers 400 WITHOUT any id).
         _send_raw(proc, "not json")
-        assert _recv(proc)["error"]["code"] == -32700
+        parse = _recv(proc)
+        assert parse["error"]["code"] == -32700
+        assert parse["id"] is None
 
         # EOF → clean exit
         proc.stdin.close()
@@ -252,7 +143,7 @@ def test_stdio_recall_pit_serves_pit_listing(vault: Path) -> None:
                 },
             },
         )
-        ep_id = _content(_recv(proc))["ep_id"]
+        ep_id = tool_result(_recv(proc))["ep_id"]
 
         # known_at BEFORE the write → the row is not known yet (empty listing).
         _send(
@@ -271,7 +162,7 @@ def test_stdio_recall_pit_serves_pit_listing(vault: Path) -> None:
                 },
             },
         )
-        assert _content(_recv(proc)) == []
+        assert tool_result(_recv(proc)) == []
 
         # known_at now (a far-future t includes everything ever created).
         _send(
@@ -290,7 +181,7 @@ def test_stdio_recall_pit_serves_pit_listing(vault: Path) -> None:
                 },
             },
         )
-        rows = _content(_recv(proc))
+        rows = tool_result(_recv(proc))
         assert ep_id in [r["ep_id"] for r in rows]
         proc.stdin.close()
     finally:
