@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 from typing import Literal, TextIO, cast
 
+from seahorse.cli import procutil
 from seahorse.cli.config import SeahorseConfig
 from seahorse.cli.errors import CliError, CliObserverRunning
 from seahorse.cli.exit_codes import CLI_CONFIG_INVALID
@@ -86,23 +87,10 @@ def socket_path(cfg: SeahorseConfig) -> Path:
 
 
 def _read_pid(cfg: SeahorseConfig) -> int | None:
-    path = pid_file(cfg)
-    if not path.is_file():
-        return None
-    try:
-        return int(path.read_text(encoding="utf-8").strip())
-    except (ValueError, OSError):
-        return None
+    return procutil.read_pid(pid_file(cfg))
 
 
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+_pid_alive = procutil.pid_alive
 
 
 def observer_liveness(cfg: SeahorseConfig) -> tuple[bool, int | None]:
@@ -118,14 +106,11 @@ def observer_liveness(cfg: SeahorseConfig) -> tuple[bool, int | None]:
 
 
 def _write_pid(cfg: SeahorseConfig, pid: int) -> None:
-    observer_dir(cfg).mkdir(parents=True, exist_ok=True)
-    pid_file(cfg).write_text(str(pid), encoding="utf-8")
+    procutil.write_pid(pid_file(cfg), pid)
 
 
 def _remove_pid(cfg: SeahorseConfig) -> None:
-    path = pid_file(cfg)
-    if path.exists():
-        path.unlink()
+    procutil.remove_pid(pid_file(cfg))
 
 
 def _emit(cfg: SeahorseConfig, fmt: OutputFormat, out: TextIO, payload: dict) -> None:
