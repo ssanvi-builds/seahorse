@@ -299,6 +299,17 @@ def test_index_rebuild_on_empty_vault(vault: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# remote (the wizard's read-only face — no daemon is started).
+# ---------------------------------------------------------------------------
+
+
+def test_remote_status_not_running(vault: Path) -> None:
+    r = _run(["remote", "status"], vault=vault, json_out=True)
+    assert r.returncode == 0, r.stderr
+    assert _j(r.stdout) == {"running": False}
+
+
+# ---------------------------------------------------------------------------
 # env discovery (SEAHORSE_VAULT)
 # ---------------------------------------------------------------------------
 
