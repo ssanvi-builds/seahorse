@@ -18,19 +18,23 @@ from pathlib import Path
 import pytest
 
 from seahorse.cli.errors import (
+    CliCloudflaredMissing,
     CliConfigInvalid,
     CliError,
     CliNotInMVP0,
     CliRebuildConflicts,
+    CliRemoteStartFailed,
     CliUsageError,
     CliVaultNotFound,
 )
 from seahorse.cli.exit_codes import (
     CAT_A,
     CAT_B,
+    CLI_CLOUDFLARED_MISSING,
     CLI_CONFIG_INVALID,
     CLI_NOT_IN_MVP_0,
     CLI_REBUILD_CONFLICTS,
+    CLI_REMOTE_START_FAILED,
     CLI_VAULT_NOT_FOUND,
     EXIT_GENERAL,
     EXIT_SUCCESS,
@@ -192,6 +196,8 @@ def test_cat_b_table_is_seven_classes():
         (CliConfigInvalid("bad"), CLI_CONFIG_INVALID),
         (CliUsageError("--body too long"), EXIT_USAGE),
         (CliRebuildConflicts(2), CLI_REBUILD_CONFLICTS),
+        (CliCloudflaredMissing("brew install cloudflared"), CLI_CLOUDFLARED_MISSING),
+        (CliRemoteStartFailed("server", Path("/tmp/server.log")), CLI_REMOTE_START_FAILED),
     ],
 )
 def test_cat_c_cli_error_short_circuits(exc, expected):
@@ -200,6 +206,22 @@ def test_cat_c_cli_error_short_circuits(exc, expected):
     assert info["cli_code"] == exc.name
     assert info["exit_code"] == expected
     assert info["component"] == "#14"
+
+
+def test_remote_wizard_codes_live_above_the_closed_band():
+    """100/101 are the first Cat C codes above the closed 64–99 band.
+
+    The band is full: 99 (``CLI_HTTP_TOKEN_MISSING``) was its last free
+    slot, and 95 is already a documented shared exit
+    (``CLI_OBSERVER_RUNNING`` + ``E_IMPROVE_VALID_AT_FUTURE``) that must
+    not grow a third name. The remote-wizard codes are unique ints (no
+    payload disambiguation needed) and collide with no domain (Cat A) or
+    propagated (Cat B) exit.
+    """
+    assert CLI_CLOUDFLARED_MISSING == 100
+    assert CLI_REMOTE_START_FAILED == 101
+    assert 100 not in CAT_A.values() and 100 not in CAT_B.values()
+    assert 101 not in CAT_A.values() and 101 not in CAT_B.values()
 
 
 def test_cli_error_subclasses_are_cli_error():

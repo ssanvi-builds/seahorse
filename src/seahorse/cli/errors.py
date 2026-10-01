@@ -34,13 +34,22 @@ Cat C codes (owned by the CLI):
 - ``CLI_HTTP_TOKEN_MISSING`` (99) — ``--transport http`` with no bearer token
   configured anywhere. Fail-loud BEFORE bind: the HTTP server must never start
   unauthenticated.
+- ``CLI_CLOUDFLARED_MISSING`` (100) — ``seahorse remote`` with cloudflared
+  absent (install offer declined or impossible: no TTY, no brew). Names the
+  install line; the wizard refuses to half-start. First Cat C code ABOVE the
+  closed 64–99 band (see ``exit_codes.py``).
+- ``CLI_REMOTE_START_FAILED`` (101) — a remote child (HTTP server or tunnel)
+  died before readiness. The wizard tears down what it spawned; the detail
+  names the child and its log path.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from seahorse.cli.exit_codes import (
+    CLI_CLOUDFLARED_MISSING,
     CLI_CONFIG_INVALID,
     CLI_HTTP_TOKEN_MISSING,
     CLI_MATERIALIZE_NOT_CONFIGURED,
@@ -48,6 +57,7 @@ from seahorse.cli.exit_codes import (
     CLI_NOT_IN_MVP_0,
     CLI_OBSERVER_RUNNING,
     CLI_REBUILD_CONFLICTS,
+    CLI_REMOTE_START_FAILED,
     CLI_VAULT_NOT_FOUND,
     EXIT_USAGE,
 )
@@ -263,6 +273,38 @@ class CliHttpTokenMissing(CliError):
         )
 
 
+class CliCloudflaredMissing(CliError):
+    """``seahorse remote`` needs cloudflared and it is not installed.
+
+    Raised after the install offer is declined or impossible (no TTY, no
+    brew): the wizard refuses to half-start — no server is spawned behind a
+    tunnel that cannot exist. The detail carries the install line.
+    """
+
+    def __init__(self, install_line: str) -> None:
+        super().__init__(
+            exit_code=CLI_CLOUDFLARED_MISSING,
+            name="CLI_CLOUDFLARED_MISSING",
+            detail=f"cloudflared not found; install it first — {install_line}",
+        )
+
+
+class CliRemoteStartFailed(CliError):
+    """A ``seahorse remote`` child (server or tunnel) died before readiness.
+
+    The wizard tears down whatever it spawned before raising — no
+    half-started state survives this exit. The detail names the child and
+    its log so the operator can diagnose without re-running.
+    """
+
+    def __init__(self, child: str, log_path: Path) -> None:
+        super().__init__(
+            exit_code=CLI_REMOTE_START_FAILED,
+            name="CLI_REMOTE_START_FAILED",
+            detail=f"{child} exited before becoming ready; log: {log_path}",
+        )
+
+
 __all__ = [
     "CliError",
     "CliNotInMVP0",
@@ -273,4 +315,6 @@ __all__ = [
     "CliRebuildConflicts",
     "CliMaterializeNotConfigured",
     "CliHttpTokenMissing",
+    "CliCloudflaredMissing",
+    "CliRemoteStartFailed",
 ]

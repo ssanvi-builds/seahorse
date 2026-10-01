@@ -41,20 +41,25 @@ fail-loud honesty + YAGNI — tags are a later-release enabler).
 mapped at 71 for parity with the MCP server and as defense-in-depth if a
 future surface routes here.
 
-Exit-code layout (64–99, ``sysexits.h`` application band):
+Exit-code layout (64–101: the ``sysexits.h`` application band plus a
+CLI-owned continuation above it):
 
 - ``0``  success, ``1`` general/unhandled, ``2`` usage/argparse.
 - Cat A (22): 64–74, 76–81 (75 skipped — Cat C anchor), 90–93 (frontmatter),
   95 (engine). The 4 frontmatter codes live in the previously-reserved
   90–93 band because they are a distinct component origin (the frontmatter
   migrator, not the facade/engine) and the 64–81 band was already full.
-- Cat C (8):  75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty),
+- Cat C (10): 75 ``CLI_NOT_IN_MVP_0`` (reserved/stub honesty),
   82 ``CLI_VAULT_NOT_FOUND``, 83 ``CLI_CONFIG_INVALID``,
   94 ``CLI_REBUILD_CONFLICTS`` (index-rebuild conflict honesty),
   95 ``CLI_OBSERVER_RUNNING`` (single-writer observer lock),
   97 ``CLI_MIGRATION_DEFERRED`` (frontmatter migrate case-D honesty),
   98 ``CLI_MATERIALIZE_NOT_CONFIGURED`` (opt-in materialize section),
-  99 ``CLI_HTTP_TOKEN_MISSING`` (http transport, no bearer token).
+  99 ``CLI_HTTP_TOKEN_MISSING`` (http transport, no bearer token),
+  100 ``CLI_CLOUDFLARED_MISSING`` / 101 ``CLI_REMOTE_START_FAILED``
+  (the ``seahorse remote`` wizard — the 64–99 band is CLOSED for Cat C:
+  99 was its last free slot and 95 is already a documented shared exit, so
+  new CLI-owned codes live at 100+, unique ints, no payload disambiguation).
 - Cat B (7):  84–89, 96 (``ProceduralError``).
 
 NOTE — two shared exits (documented, not re-assigned). 75 and 95 each host
@@ -177,6 +182,16 @@ CLI_MATERIALIZE_NOT_CONFIGURED = 98
 # server MUST never start unauthenticated, so this fails loud BEFORE binding.
 # 99 is the last free Cat C slot (96 is Cat B ProceduralError; 97/98 above).
 CLI_HTTP_TOKEN_MISSING = 99
+# ``seahorse remote`` wizard codes — ABOVE the sysexits band. The 64–99 band
+# is closed for Cat C: 99 (above) was its last free slot, and 95 is already a
+# documented shared exit that must not grow a third name. New CLI-owned codes
+# live at 100+ (unique ints; no payload disambiguation needed).
+# ``seahorse remote`` with cloudflared absent (install declined or impossible
+# in this context) — refuses to half-start a tunnel-less remote setup.
+CLI_CLOUDFLARED_MISSING = 100
+# A remote child (HTTP server or tunnel) died before readiness. The wizard
+# tears down whatever it spawned — no half-started state survives this exit.
+CLI_REMOTE_START_FAILED = 101
 
 # ---------------------------------------------------------------------------
 # Component-of-origin attribution for stderr ``component:`` (parity with the MCP server).
@@ -336,6 +351,8 @@ __all__ = [
     "CLI_OBSERVER_RUNNING",
     "CLI_MIGRATION_DEFERRED",
     "CLI_HTTP_TOKEN_MISSING",
+    "CLI_CLOUDFLARED_MISSING",
+    "CLI_REMOTE_START_FAILED",
     "translate",
     "message_for",
 ]

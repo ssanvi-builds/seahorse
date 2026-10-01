@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from seahorse.cli.errors import (
+    CliCloudflaredMissing,
     CliConfigInvalid,
     CliError,
     CliNotInMVP0,
+    CliRemoteStartFailed,
     CliUsageError,
     CliVaultNotFound,
 )
 from seahorse.cli.exit_codes import (
+    CLI_CLOUDFLARED_MISSING,
     CLI_CONFIG_INVALID,
     CLI_NOT_IN_MVP_0,
+    CLI_REMOTE_START_FAILED,
     CLI_VAULT_NOT_FOUND,
     EXIT_USAGE,
 )
@@ -65,6 +71,21 @@ def test_usage_error_is_exit_2():
     assert err.name == "CLI_USAGE"
 
 
+def test_cloudflared_missing_carries_install_line():
+    err = CliCloudflaredMissing("brew install cloudflared")
+    assert err.exit_code == CLI_CLOUDFLARED_MISSING
+    assert err.name == "CLI_CLOUDFLARED_MISSING"
+    assert "brew install cloudflared" in err.detail
+
+
+def test_remote_start_failed_names_child_and_log(tmp_path):
+    log = tmp_path / "server.log"
+    err = CliRemoteStartFailed("server", log)
+    assert err.exit_code == CLI_REMOTE_START_FAILED
+    assert err.name == "CLI_REMOTE_START_FAILED"
+    assert "server" in err.detail and str(log) in err.detail
+
+
 @pytest.mark.parametrize(
     ("exc", "code"),
     [
@@ -72,6 +93,8 @@ def test_usage_error_is_exit_2():
         (CliVaultNotFound(), CLI_VAULT_NOT_FOUND),
         (CliConfigInvalid("z"), CLI_CONFIG_INVALID),
         (CliUsageError("w"), EXIT_USAGE),
+        (CliCloudflaredMissing("install me"), CLI_CLOUDFLARED_MISSING),
+        (CliRemoteStartFailed("tunnel", Path("/tmp/t.log")), CLI_REMOTE_START_FAILED),
     ],
 )
 def test_all_subclasses_are_cli_error(exc, code):
