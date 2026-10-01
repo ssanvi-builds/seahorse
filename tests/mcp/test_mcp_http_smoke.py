@@ -76,11 +76,23 @@ def _shut_down(proc) -> None:
     """SIGINT (not SIGTERM): serve_http catches KeyboardInterrupt and unwinds
     through its ``finally: httpd.server_close()`` plus main()'s
     ``storage.close()``, so the process exits 0. SIGTERM bypasses that handler
-    and would exit -15 with neither close running."""
+    and would exit -15 with neither close running.
+
+    WAIT BEFORE SIGNALLING: the test body may already have sent its own SIGINT
+    (the Ctrl-C path being asserted). A second SIGINT arriving while the server
+    is inside that ``finally: server_close()`` raises an uncaught
+    KeyboardInterrupt there and the process dies -2 — a double-signal race
+    that only shows under full-suite load. Give the in-flight unwind 2s to
+    finish, signal only a still-live process, SIGKILL as the last resort."""
     with contextlib.suppress(Exception):
         proc.stdin.close()
-    # The kill may target an already-reaped pid (the body's own SIGINT, or the
-    # exit-99 path) — ProcessLookupError is a no-op there, never an error.
+    try:
+        proc.wait(timeout=2)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    # The kill may target an already-reaped pid — ProcessLookupError is a
+    # no-op there, never an error.
     with contextlib.suppress(Exception):
         os.kill(proc.pid, signal.SIGINT)
     try:
