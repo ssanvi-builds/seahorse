@@ -39,7 +39,7 @@ import typer
 # base covers UsageError / NoSuchOption / BadParameter / MissingParameter.
 from typer._click.exceptions import ClickException
 
-from seahorse.cli.commands import benchmark, observe, skills
+from seahorse.cli.commands import benchmark, observe, remote, skills
 from seahorse.cli.config import (
     SeahorseConfig,
     load_config,
@@ -738,6 +738,12 @@ def mcp(
     from seahorse.mcp.profile import serve
 
     serve(ctx.obj.facade(), stdin=sys.stdin, stdout=sys.stdout)
+
+
+# ``remote`` group: ``remote start|stop|status`` (the remote-access wizard) —
+# registered right after ``mcp``, the command it fronts, so the ``--help``
+# listing reads server-then-wizard; same extraction pattern as observe.
+remote.register(app, out=_out)
 
 
 # ---------------------------------------------------------------------------

@@ -29,7 +29,9 @@ from seahorse.cli.errors import (
     CliRemoteStartFailed,
     CliUsageError,
 )
-from seahorse.cli.remote_instructions import APP_KEYS
+from seahorse.cli.exit_codes import EXIT_USAGE
+from seahorse.cli.remote_instructions import APP_CHOICES, APP_KEYS
+from tests.cli.conftest import invoke
 
 TOKEN = "test-token-1234"
 SERVER_URL = "http://127.0.0.1:8767"
@@ -635,3 +637,36 @@ def test_mcp_url_prefers_tunnel() -> None:
     assert remote._mcp_url(TUNNEL_URL, SERVER_URL) == f"{TUNNEL_URL}/mcp"
     assert remote._mcp_url(None, SERVER_URL) == f"{SERVER_URL}/mcp"
     assert remote._mcp_url(None, None) is None
+
+
+# ---------------------------------------------------------------------------
+# CLI wiring (the ``commands/remote.py`` group through the real Typer app).
+# ---------------------------------------------------------------------------
+
+
+def test_app_choices_covers_every_filter_key() -> None:
+    """``--app`` validates against exactly the keys the blocks filter by."""
+    assert set(APP_CHOICES) == {"all", "chatgpt", "gemini", "gemini-cli", "claude-code"}
+
+
+def test_remote_help_lists_start_stop_status(vault) -> None:
+    code, out, err = invoke(["--vault", str(vault), "remote", "--help"])
+    assert code == 0, err
+    for word in ("start", "stop", "status"):
+        assert word in out
+
+
+def test_remote_status_not_running_reports_cleanly(vault) -> None:
+    code, out, err = invoke(["--vault", str(vault), "--json", "remote", "status"])
+    assert code == 0, err
+    assert json.loads(out) == {"running": False}
+
+
+def test_remote_start_rejects_unknown_app(vault) -> None:
+    code, out, err = invoke(
+        ["--vault", str(vault), "remote", "start", "--app", "slack"]
+    )
+    assert code == EXIT_USAGE
+    assert "slack" in err
+    for choice in APP_CHOICES:  # the message teaches the valid values
+        assert choice in err

@@ -47,6 +47,10 @@ _APP_CHOICE_KEYS = {
     "claude-code": ("claude_code",),
 }
 
+# The CLI ``--app`` boundary validates against this tuple (exit 2 on a bad
+# choice) — the same source ``instruction_blocks`` filters by above.
+APP_CHOICES = tuple(_APP_CHOICE_KEYS)
+
 
 def chatgpt_block(mcp_url: str, token: str) -> str:
     """ChatGPT web connector (Developer mode; Token auth)."""
@@ -120,6 +124,7 @@ __all__ = [
     "CHATGPT_UNVERIFIED",
     "GEMINI_WEB_PENDING",
     "APP_KEYS",
+    "APP_CHOICES",
     "chatgpt_block",
     "gemini_web_block",
     "gemini_cli_block",
