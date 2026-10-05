@@ -132,6 +132,13 @@ def tunnel_liveness(cfg: SeahorseConfig) -> tuple[bool, int | None]:
 def _spawn_child(argv: list[str], *, log_path: Path, start_new_session: bool) -> int:
     """Spawn a child logging to ``log_path``; return its pid.
 
+    The log is opened exclusive-write: a respawn owns its log from line 0.
+    Append would mix the previous child's lines in — and because readiness
+    polls the whole file, a respawned child could be declared ready on the
+    FIRST STALE MATCH before printing its own line (observed 2026-10-05:
+    after stop+start the wizard reported Friday's dead URLs for both the
+    server and the tunnel because the fresh children hadn't printed yet).
+
     ``start_new_session`` detaches the child (daemon mode — it survives the
     terminal); foreground children stay in this session so Ctrl-C reaches
     them through the process group.
@@ -140,7 +147,7 @@ def _spawn_child(argv: list[str], *, log_path: Path, start_new_session: bool) ->
     kwargs: dict = {}
     if start_new_session:
         kwargs["start_new_session"] = True
-    with open(log_path, "ab") as log:
+    with open(log_path, "wb") as log:
         proc = subprocess.Popen(argv, stdout=log, stderr=log, **kwargs)  # noqa: S603
     return proc.pid
 

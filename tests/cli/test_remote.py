@@ -68,26 +68,68 @@ def _write_pid(path: Path, pid: int) -> None:
 
 
 def _write_log(path: Path, content: str) -> None:
-    # The real _spawn_child mkdirs + append-opens the log; the tests that
-    # pre-write a log describe a child that already wrote its ready line.
+    # Pre-writing a log describes a REUSED child that already wrote its ready
+    # line (reuse reads the whole file). A respawn is different: _spawn_child
+    # truncates the log — the spawning_children fixture covers that path.
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 
+class _SpawnCalls(list):
+    """Record of spawn argvs + per-child-kind silence control.
+
+    ``silent.add("tunnel")`` makes the NEXT fake tunnel (and every one in
+    that test) spawn WITHOUT writing its ready line — the shape of a child
+    that dies before proving readiness. Default: children write."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.silent: set[str] = set()
+
+
 @pytest.fixture
 def spawn_calls(monkeypatch):
-    """Fake Popen recording argv — the fake pid is DEAD by design so the
-    readiness tests can only pass through their pre-written log lines."""
-    calls: list[list[str]] = []
+    """Fake Popen recording argv AND writing the child's ready line into the
+    log handle real Popen receives. A spawned child owns its log
+    (``_spawn_child`` opens truncate — 2026-10-05 incident: append-mode let
+    readiness match the PREVIOUS incarnation's lines), so a spawned child's
+    readiness can only come from the line THE NEW CHILD ITSELF writes.
+
+    The fake pid is DEAD by design so nothing real is ever signalled by the
+    teardown paths; readiness passes on the written line, not on liveness.
+    First spawn of each child keeps the module constants (existing
+    assertions); later spawns mint fresh URLs/ports so a respawn is
+    provably distinguishable. Failure paths mark the silent child:
+    ``spawns.silent.add("tunnel")``."""
+    spawns = _SpawnCalls()
+    spawned = {"server": 0, "tunnel": 0}
 
     class _FakePopen:
         pid = FAKE_PID
 
-        def __init__(self, argv, **kwargs):
-            calls.append(list(argv))
+        def __init__(self, argv, stdout=None, stderr=None, **kwargs):
+            spawns.append(list(argv))
+            if stdout is None:
+                return
+            if "seahorse.cli.app" in argv:
+                spawned["server"] += 1
+                if "server" not in spawns.silent:
+                    port = 8766 + spawned["server"]
+                    stdout.write(
+                        f"seahorse-mcp: listening on http://127.0.0.1:{port}\n".encode()
+                    )
+            elif "tunnel" in argv:
+                spawned["tunnel"] += 1
+                if "tunnel" not in spawns.silent:
+                    url = (
+                        TUNNEL_URL
+                        if spawned["tunnel"] == 1
+                        else f"https://example-words-{spawned['tunnel']}.trycloudflare.com"
+                    )
+                    stdout.write(f"2026-10-01T12:00:00Z INF  {url}\n".encode())
 
     monkeypatch.setattr(remote.subprocess, "Popen", _FakePopen)
-    return calls
+    return spawns
 
 
 class _FakeTTYOut:
@@ -314,8 +356,9 @@ def test_server_argv_has_no_token(tmp_path, monkeypatch, spawn_calls) -> None:
 
 def test_server_dies_before_listen_fails_101(tmp_path, spawn_calls) -> None:
     cfg = _cfg(tmp_path)
-    # --no-tunnel isolates the server; empty log + dead fake pid → readiness
-    # finds neither a line nor a live child.
+    # --no-tunnel isolates the server; the silent fake + dead pid model a
+    # server that exits before writing its listen line.
+    spawn_calls.silent.add("server")
     with pytest.raises(CliRemoteStartFailed) as exc_info:
         remote.run_remote_start(cfg, fmt="human", out=_out(), no_tunnel=True)
     assert exc_info.value.exit_code == 101
@@ -328,8 +371,7 @@ def test_tunnel_deadline_tears_down_spawned_server(tmp_path, monkeypatch, spawn_
     half-started state must not survive the wizard."""
     cfg = _cfg(tmp_path)
     monkeypatch.setenv("SEAHORSE_CLOUDFLARED_BIN", "/opt/fake/cloudflared")
-    _write_log(remote.server_log_file(cfg), LISTEN_LINE)
-    _write_log(remote.tunnel_log_file(cfg), "2026-10-01 INF Connection registered\n")
+    spawn_calls.silent.add("tunnel")
     with pytest.raises(CliRemoteStartFailed) as exc_info:
         remote.run_remote_start(cfg, fmt="human", out=_out(), yes=True)
     assert exc_info.value.exit_code == 101
@@ -358,7 +400,60 @@ def test_spawn_child_detaches_only_in_daemon_mode(tmp_path, monkeypatch) -> None
     # session (stdout/stderr kwargs are the log handles, not part of the check).
     assert "start_new_session" in calls[0] and calls[0]["start_new_session"] is True
     assert "start_new_session" not in calls[1]
-    assert log.exists()  # the append-mode log exists before the child writes
+    assert log.exists()  # the child's log exists before the child writes
+
+
+def test_spawn_child_truncates_the_log_it_owns(tmp_path, monkeypatch) -> None:
+    """A respawn owns its log from line 0 (no-append contract, 2026-10-05
+    incident: the wizard reported Friday's dead URLs for BOTH children before
+    the fresh ones printed their own lines — the readiness poll read stale
+    output in append mode)."""
+    calls: list[list[str]] = []
+
+    class _FakePopen:
+        pid = FAKE_PID
+
+        def __init__(self, argv, **kwargs):
+            calls.append(list(argv))
+
+    monkeypatch.setattr(remote.subprocess, "Popen", _FakePopen)
+    log = tmp_path / "child.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("stale content\n", encoding="utf-8")
+    remote._spawn_child(["sleep", "1"], log_path=log, start_new_session=True)
+    assert log.read_text(encoding="utf-8") == ""
+
+
+def test_respawned_server_reports_its_own_port_not_the_stale_one(tmp_path, spawn_calls) -> None:
+    """Regression (2026-10-05 incident): after stop+start the wizard returned
+    the PREVIOUS respawn's listen line. Respawn truncation + the child's own
+    fresh line close that hole."""
+    cfg = _cfg(tmp_path)
+    stale = "seahorse-mcp: listening on http://127.0.0.1:50258\n"
+    _write_log(remote.server_log_file(cfg), stale)
+    out = _out()
+    remote.run_remote_start(cfg, fmt="json", out=out, no_tunnel=True)
+    assert _json(out)["server"]["url"] == SERVER_URL
+    assert "50258" not in out.getvalue()
+
+
+def test_respawned_tunnel_reports_its_own_url_not_the_stale_one(
+    tmp_path, monkeypatch, spawn_calls
+) -> None:
+    """Same stale-output contract for the tunnel: the OLD public URL must
+    never be rendered as the new spawn's address."""
+    cfg = _cfg(tmp_path)
+    monkeypatch.setenv("SEAHORSE_CLOUDFLARED_BIN", "/opt/fake/cloudflared")
+    _write_log(
+        remote.tunnel_log_file(cfg),
+        "2026-10-01T12:00:00Z INF  https://gif-dead-tunnel.trycloudflare.com\n",
+    )
+    out = _out()
+    remote.run_remote_start(cfg, fmt="json", out=out, yes=True)
+    payload = _json(out)
+    assert payload["tunnel"]["url"] == TUNNEL_URL
+    assert payload["mcp_url"] == f"{TUNNEL_URL}/mcp"
+    assert "gif-dead-tunnel" not in out.getvalue()
 
 
 # ---------------------------------------------------------------------------
