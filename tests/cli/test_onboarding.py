@@ -97,6 +97,19 @@ def llm_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture()
+def llm_bootstrap_real(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The REAL provider bootstrap runs with a fake probe. Unlike
+    ``llm_skipped`` (whole-function patch), this exercises the real write
+    path — ``_write_primary`` → ``write_llm_config`` — which is precisely
+    where the 2026-10-06 wipe bug lived (and CI could not see it: no ollama,
+    nothing was written there at all)."""
+    import seahorse.cli.provider_bootstrap as pb
+
+    monkeypatch.setattr(pb, "candidate_primaries", lambda: ["ollama/test-model:0.6b"])
+    monkeypatch.setattr(pb, "_default_probe", lambda primary: (True, "ok (test)"))
+
+
 def _run(vault: Path, paths: dict[str, Path] | None = None, **kwargs):
     out = io.StringIO()
     checks = run_full_setup(
@@ -296,6 +309,27 @@ class TestRunFullSetup:
         payload = json.loads(out.getvalue())
         assert payload["command"] == "setup"
         assert {"check", "status", "detail"} <= set(payload["checks"][0])
+
+
+class TestLlmBootstrapWriteOrder:
+    def test_real_llm_bootstrap_keeps_capture_config(
+        self, tmp_path, monkeypatch, no_observer, llm_bootstrap_real
+    ) -> None:
+        """Regression (2026-10-06 incident): setup writes [observe]/[materialize]/
+        [http] FIRST and bootstraps [llm] LAST — a wholesale file rewrite in the
+        bootstrap silently erased the capture config on real machines. The suite
+        passed because ``llm_skipped`` bypasses the real writer entirely."""
+        paths = _isolate(monkeypatch, tmp_path)
+        vault = _cfg(tmp_path / "vault")
+        checks, _ = _run(vault, paths)
+
+        llm = _status(checks, "llm")
+        assert llm["status"] == "OK"
+        cfg = load_config(vault)
+        assert cfg.llm is not None and cfg.llm.primary == "ollama/test-model:0.6b"
+        assert cfg.observe is not None and cfg.observe.token is not None
+        assert cfg.materialize is not None
+        assert cfg.http.token is not None
 
 
 class TestEnsureVaultNonTty:

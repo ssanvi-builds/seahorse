@@ -103,3 +103,40 @@ class TestWriteLlmConfig:
         write_llm_config(tmp_path, LlmConfig(primary="ollama/qwen3:1.7b"))
         cfg = load_config(tmp_path)
         assert cfg.llm.primary == "ollama/qwen3:1.7b"
+
+    def test_write_llm_config_preserves_other_sections(self, tmp_path) -> None:
+        """Regression (2026-10-06 incident): the llm writer must NOT re-serialize
+        the whole file — setup's llm bootstrap runs LAST and a wholesale rewrite
+        erased the [observe]/[materialize]/[http] sections the same run wrote."""
+        write_default_config(tmp_path)
+        cfg_path = tmp_path / ".seahorse" / "seahorse.toml"
+        body = cfg_path.read_text(encoding="utf-8")
+        body += (
+            "\n[observe]\nenabled = true\ntoken = \"observe-token\"\n\n"
+            "[http]\ntoken = \"http-token\"\n\n"
+            "[materialize]\nmode = \"consolidated\"\n"
+        )
+        cfg_path.write_text(body, encoding="utf-8")
+
+        write_llm_config(tmp_path, LlmConfig(primary="ollama/qwen3:1.7b"))
+
+        text = cfg_path.read_text(encoding="utf-8")
+        cfg = load_config(tmp_path)
+        assert cfg.llm.primary == "ollama/qwen3:1.7b"
+        assert cfg.observe is not None and cfg.observe.token == "observe-token"
+        assert cfg.http is not None and cfg.http.token == "http-token"
+        assert cfg.materialize is not None and cfg.materialize.mode == "consolidated"
+        assert '[observe]\nenabled = true\ntoken = "observe-token"\n' in text
+        assert '[http]\ntoken = "http-token"\n' in text
+        assert '[materialize]\nmode = "consolidated"\n' in text
+        assert text.index("[seahorse]") < text.index("[llm]") < text.index("[observe]")
+
+    def test_write_llm_config_appends_when_absent_and_stays_idempotent(self, tmp_path) -> None:
+        cfg_path = _write(tmp_path, '[seahorse]\ndb_path = "seahorse.db"\n')
+        write_llm_config(tmp_path, LlmConfig(primary="ollama/qwen3:0.6b"))
+        write_llm_config(tmp_path, LlmConfig(primary="ollama/qwen3:1.7b"))
+        text = cfg_path.read_text(encoding="utf-8")
+        cfg = load_config(tmp_path)
+        assert cfg.llm.primary == "ollama/qwen3:1.7b"
+        assert cfg.db_path.name == "seahorse.db"  # the [seahorse] block untouched
+        assert text.count("[llm]") == 1
