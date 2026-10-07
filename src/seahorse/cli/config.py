@@ -288,10 +288,19 @@ def is_initialized(vault: Path) -> bool:
     return (vault / SEAHORSE_DIR_NAME / CONFIG_FILENAME).is_file()
 
 
-def resolve_vault(explicit: Path | None) -> Path:
+def resolve_vault(
+    explicit: Path | None, *, allow_pointer: bool = True
+) -> Path:
     """Resolve the vault directory per the current-release discovery order.
 
     Raises ``CliVaultNotFound`` (exit 82) if nothing resolves.
+
+    ``allow_pointer`` gates the last-resort global-pointer fallback: agent
+    hooks may run in a session whose cwd is any project (often NOT a vault),
+    and the pointer's target moves across ``seahorse setup`` runs and machines
+    — resolving through it there captures into an unrelated vault
+    (the wrong-vault leak, 2026-10-07). Hook-invoked commands disable it;
+    human commands keep the convenience.
     """
     if explicit is not None:
         vault = explicit.expanduser().resolve()
@@ -313,9 +322,10 @@ def resolve_vault(explicit: Path | None) -> Path:
         if is_initialized(candidate):
             return candidate
 
-    pointer = read_global_pointer()
-    if pointer is not None:
-        return pointer
+    if allow_pointer:
+        pointer = read_global_pointer()
+        if pointer is not None:
+            return pointer
 
     raise CliVaultNotFound()
 

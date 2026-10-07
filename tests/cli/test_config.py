@@ -244,6 +244,28 @@ def test_resolve_vault_env_beats_pointer(tmp_path, monkeypatch):
     assert resolve_vault(None) == env_vault.resolve()
 
 
+def test_resolve_vault_pointer_fallback_disabled(tmp_path, monkeypatch):
+    """allow_pointer=False (the hook paths) refuses the global-pointer fallback.
+
+    The pointer's target moves across `seahorse setup` runs and machines; a
+    session in a non-vault directory must not resolve to whatever vault the
+    pointer happens to name — the capture would land in an unrelated vault.
+    """
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
+    v = tmp_path / "vault"
+    write_default_config(v)
+    write_global_pointer(v)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    with pytest.raises(CliVaultNotFound):
+        resolve_vault(None, allow_pointer=False)
+    # The gate blocks ONLY the pointer: a cwd vault still resolves with it on.
+    monkeypatch.chdir(v)
+    assert resolve_vault(None, allow_pointer=False) == v.resolve()
+
+
 # ---------------------------------------------------------------------------
 # load_config — validation of the [seahorse] section.
 # ---------------------------------------------------------------------------

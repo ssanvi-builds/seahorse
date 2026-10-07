@@ -46,6 +46,7 @@ from seahorse.cli.config import (
     resolve_vault,
 )
 from seahorse.cli.doctor import run_doctor
+from seahorse.cli.errors import CliVaultNotFound
 from seahorse.cli.exit_codes import EXIT_SUCCESS, translate
 from seahorse.cli.importer import run_import
 from seahorse.cli.management import run_init, run_reserved, run_status, run_uuid7
@@ -107,9 +108,17 @@ class CliContext:
     _llm_client: LLMClient | None = field(default=None, repr=False)
     _llm_client_ready: bool = field(default=False, repr=False)
 
-    def resolved_config(self) -> SeahorseConfig:
+    def resolved_config(self, *, allow_pointer: bool = True) -> SeahorseConfig:
+        """Resolve the vault config; ``allow_pointer`` gates the pointer fallback.
+
+        The flag matters on FIRST resolution: the resolved config is cached, so
+        a later call returns it as-is regardless of the flag. Hook-invoked
+        commands (``observe event``, ``consolidate --auto``) pass False — they
+        may run in any project directory and must never fall back to the
+        global pointer (the wrong-vault leak, 2026-10-07).
+        """
         if self._resolved_config is None:
-            vault = resolve_vault(self.vault)
+            vault = resolve_vault(self.vault, allow_pointer=allow_pointer)
             self._resolved_config = load_config(vault, explicit_config=self.config)
         return self._resolved_config
 
@@ -428,7 +437,18 @@ def consolidate(
     deterministic synthesis (a Stop hook must be fast; run
     ``consolidate --synthesis llm`` interactively for LLM bodies).
     """
-    config = ctx.obj.resolved_config()
+    try:
+        config = ctx.obj.resolved_config(allow_pointer=not auto)
+    except CliVaultNotFound:
+        if not auto:
+            raise  # a human running consolidate should see the real error
+        # The stop hook must never abort the agent session: without a vault
+        # resolvable from the session cwd, auto-consolidation is a silent no-op.
+        if ctx.obj.fmt == "human":
+            _out(ctx).write("consolidate: no vault resolved from the current directory — no-op\n")
+        else:
+            _out(ctx).write('{"auto": true, "ran": false, "reason": "no-vault"}\n')
+        return
     if auto:
         consolidate_cfg = config.consolidate
         if consolidate_cfg is None or not consolidate_cfg.auto_on_stop:
