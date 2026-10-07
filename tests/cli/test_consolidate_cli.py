@@ -14,6 +14,9 @@ from seahorse.facade.factory import build_facade
 from seahorse.facade.types import RememberPayload
 from seahorse.llm import BudgetContext, ExtractResult
 
+# Realistic detail text (> the trivial gate's 40 useful chars) for episodes.
+_DETAIL_TEXT = "Recorded repro, command run and the observed result."
+
 
 def _out() -> io.StringIO:
     return io.StringIO()
@@ -64,7 +67,7 @@ def test_consolidate_distills_cluster(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -100,7 +103,7 @@ def test_consolidate_synthesis_llm_human_output(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -126,7 +129,7 @@ def test_consolidate_llm_without_client_warns_not_silent(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -146,7 +149,7 @@ def test_consolidate_llm_without_client_json_warns(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -165,7 +168,7 @@ def test_consolidate_default_skip_does_not_warn(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -182,7 +185,7 @@ def test_consolidate_supersede_updates_note(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -190,7 +193,7 @@ def test_consolidate_supersede_updates_note(tmp_path) -> None:
         # A new episode arrives (the representative changes).
         facade.remember(
             RememberPayload(
-                body="# Topic [sess-1:4]\n\nDetail 4.",
+                body=f"# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
                 by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
             )
         )
@@ -213,7 +216,7 @@ def test_consolidate_supersede_respects_vault_mtime(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -221,7 +224,7 @@ def test_consolidate_supersede_respects_vault_mtime(tmp_path) -> None:
         # A new episode arrives.
         facade.remember(
             RememberPayload(
-                body="# Topic [sess-1:4]\n\nDetail 4.",
+                body=f"# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
                 by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
             )
         )
@@ -284,7 +287,7 @@ def test_consolidate_min_cluster_size_lowers_threshold(tmp_path) -> None:
         for i in range(2):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )
@@ -305,7 +308,7 @@ def test_consolidate_synthesis_llm_json_reports_mode(tmp_path) -> None:
         for i in range(3):
             facade.remember(
                 RememberPayload(
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
                 )
             )

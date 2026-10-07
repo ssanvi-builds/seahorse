@@ -24,7 +24,7 @@ def _remember(facade, *, body: str, session_id: str, now: datetime) -> None:
     # The body's H1 becomes the subject (title > H1 > None).
     facade.remember(
         RememberPayload(
-            body=f"# {body}\n\nDetails about {body}.",
+            body=f"# {body}\n\nRecorded repro, run and the observed result. ({body})",
             by={"source_type": "agent", "agent_id": "agent-1", "session_id": session_id},
         ),
         now=now,

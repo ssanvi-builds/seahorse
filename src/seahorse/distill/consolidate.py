@@ -45,6 +45,19 @@ _RESOLUTION_HINT = (
     "(a body with a different H1)"
 )
 
+# Trivial-prompt gate: hooks capture every user prompt as an episode, so
+# one-word prompts ("sigue", "listo" — useful content below the H1 is just the
+# prompt text) recur and cluster into EMPTY knowledge notes. A cluster where
+# EVERY member's useful body is at most ``_TRIVIAL_BODY_MAX_CHARS`` is left
+# episodic: recurring prompt noise, not knowledge. A mixed cluster — one
+# substantive member among trivial ones — is distilled as usual (conservative
+# gate; the substantive member is the evidence).
+_TRIVIAL_BODY_MAX_CHARS = 40
+_TRIVIAL_DETAIL = (
+    "all members trivial — no useful content below the H1; left episodic "
+    "(recurring prompt noise, not knowledge)"
+)
+
 
 @dataclass(frozen=True)
 class ConsolidateItem:
@@ -113,6 +126,23 @@ def _body_without_h1(ep: Any) -> str:
     lines = ep.body.splitlines()
     if lines and lines[0].lstrip().startswith("# "):
         lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def _useful_body(ep: Any) -> str:
+    """The member body below the H1, without ``##``-level structure headers.
+
+    The hook capture writes one-word prompts as ``# <prompt>\\n\\n## User
+    prompt\\n\\n<prompt>`` — the useful content is the trailing text, not the
+    ``## User prompt`` scaffold. The trivial gate counts this, not the raw
+    body below the H1, so the capture's scaffolding never inflates a prompt
+    into "substantive".
+    """
+    lines = [
+        line
+        for line in _body_without_h1(ep).splitlines()
+        if not line.lstrip().startswith("##")
+    ]
     return "\n".join(lines).strip()
 
 
@@ -206,6 +236,10 @@ def consolidate(
     ``min_cluster_size`` overrides the recurrence threshold (default 3 —
     additive CLI knob for experimentation; existing behavior unchanged).
 
+    A cluster whose every member is trivial (a one-word prompt with no content
+    below its H1) is never distilled: the row is reported with status
+    ``"TRIVIAL"`` and the sources stay episodic.
+
     ``supersede=True`` (F7+ supersession, opt-in) UPDATES an existing note when
     the cluster gains NEW valid episodes: the note supersedes the representative
     at consolidation time, so a changed representative means new episodes → the
@@ -226,6 +260,22 @@ def consolidate(
     clusters = cluster_episodes(sources, min_size=min_cluster_size)
     items: list[ConsolidateItem] = []
     for cluster in clusters:
+        if all(
+            len(_useful_body(ep)) <= _TRIVIAL_BODY_MAX_CHARS
+            for ep in cluster.episodes
+        ):
+            # Every member is prompt noise — minting a knowledge note here
+            # produced empty subjects like "sigue is sigue" (2026-10-07).
+            # The sources stay episodic; the report names the skip.
+            items.append(
+                ConsolidateItem(
+                    key=cluster.key,
+                    source_count=len(cluster.episodes),
+                    status="TRIVIAL",
+                    detail=_TRIVIAL_DETAIL,
+                )
+            )
+            continue
         existing = existing_notes.get(cluster.key)
         supersede_ep_id: str | None = None
         if existing is not None:

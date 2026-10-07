@@ -18,6 +18,11 @@ from seahorse.llm import BudgetContext, ExtractResult
 
 T0 = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
 
+# Realistic detail text for episode fixtures: longer than the trivial gate's
+# 40 useful chars, so these tests keep exercising the distill mechanism (not
+# prompt noise). Interpolated as ``{_DETAIL_TEXT}`` in the fixture bodies.
+_DETAIL_TEXT = "Recorded repro, command run and the observed result."
+
 
 class _FakeLLMClient:
     """Recording double for the ``LLMClient`` Protocol (extract only)."""
@@ -87,9 +92,10 @@ def test_consolidate_distills_recurrent_cluster(tmp_path) -> None:
     facade, storage = _facade(tmp_path / "seahorse.db")
     try:
         for i in range(3):
+            detail = f"Attempt {i + 1}. {_DETAIL_TEXT}"
             _remember(
                 facade,
-                body=f"# Fix the flaky recall test [sess-1:{i + 1}]\n\nAttempt {i + 1}.",
+                body=f"# Fix the flaky recall test [sess-1:{i + 1}]\n\n{detail}",
                 now=T0 + timedelta(minutes=i),
             )
         report = consolidate(facade)
@@ -112,7 +118,7 @@ def test_consolidate_sources_stay_vigente(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         consolidate(facade)
@@ -129,7 +135,7 @@ def test_consolidate_ignores_below_threshold(tmp_path) -> None:
         for i in range(2):
             _remember(
                 facade,
-                body=f"# Rare topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Rare topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         report = consolidate(facade)
@@ -149,7 +155,7 @@ def test_consolidate_is_deterministic(tmp_path) -> None:
             for i in range(3):
                 _remember(
                     facade,
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     now=T0 + timedelta(minutes=i),
                 )
             reports.append(consolidate(facade))
@@ -167,7 +173,7 @@ def test_consolidate_is_idempotent(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         first = consolidate(facade)
@@ -190,7 +196,7 @@ def test_consolidate_supersedes_when_new_episodes_arrive(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         first = consolidate(facade)
@@ -198,7 +204,7 @@ def test_consolidate_supersedes_when_new_episodes_arrive(tmp_path) -> None:
         # A new episode arrives (the representative changes).
         _remember(
             facade,
-            body="# Topic [sess-1:4]\n\nDetail 4.",
+            body="# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=3),
         )
         second = consolidate(facade, supersede=True)
@@ -220,7 +226,7 @@ def test_consolidate_supersede_skips_when_no_new_episodes(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         consolidate(facade)
@@ -241,13 +247,13 @@ def test_consolidate_supersede_respects_human_edits(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         consolidate(facade)
         _remember(
             facade,
-            body="# Topic [sess-1:4]\n\nDetail 4.",
+            body="# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=3),
         )
         # The human edited the note → skip (no supersession).
@@ -267,13 +273,13 @@ def test_consolidate_supersede_default_off_is_idempotent(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         consolidate(facade)
         _remember(
             facade,
-            body="# Topic [sess-1:4]\n\nDetail 4.",
+            body="# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=3),
         )
         second = consolidate(facade)  # supersede=False (default)
@@ -291,7 +297,7 @@ def test_consolidate_synthesis_llm_uses_synthesized_body(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         client = _FakeLLMClient(_ok_result())
@@ -318,7 +324,7 @@ def test_consolidate_synthesis_degrade_falls_back_honestly(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         client = _FakeLLMClient(_degraded_result())
@@ -345,7 +351,7 @@ def test_consolidate_synthesis_llm_without_client_is_deterministic(tmp_path) -> 
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         # synthesis="llm" but no client → honest deterministic fallback (no LLM).
@@ -370,7 +376,7 @@ def _stub_episode(ep_id: str, subject: str, *, now: datetime):
         created_at=now,
         schema_version="1.1",
         provenance={"source_type": "agent", "extraction_mode": "skip"},
-        body=f"# {subject}\n\nDetail for {ep_id}.",
+        body=f"# {subject}\n\n{_DETAIL_TEXT}",
         subject=subject,
         valid_at=now,
         cognitive_type="episodic",
@@ -466,13 +472,13 @@ def test_consolidate_absorbs_untagged_agent_rival(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}.",
+                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         # The untagged rival: same cluster key, holds the key's fact_id.
         _remember(
             facade,
-            body="# deploy story\n\nA standalone untagged note.",
+            body=f"# deploy story\n\n{_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=5),
         )
         report = consolidate(facade)
@@ -503,12 +509,12 @@ def test_consolidate_absorb_is_idempotent(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}.",
+                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         _remember(
             facade,
-            body="# deploy story\n\nA standalone untagged note.",
+            body=f"# deploy story\n\n{_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=5),
         )
         first = consolidate(facade)
@@ -527,12 +533,12 @@ def test_consolidate_human_rival_keeps_collision_with_hint(tmp_path) -> None:
         for i in range(3):
             _remember(
                 facade,
-                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}.",
+                body=f"# Deploy story [sess-1:{i + 1}]\n\nAttempt {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         _remember(
             facade,
-            body="# deploy story\n\nA human-authored standalone note.",
+            body=f"# deploy story\n\nA human-authored note. {_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=5),
             source_type="human",
         )
@@ -641,7 +647,7 @@ def test_fallback_body_carries_every_member(tmp_path) -> None:
         for i in range(5):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1} unique.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1} unique. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         report = consolidate(facade)
@@ -666,7 +672,7 @@ def test_fallback_body_is_deterministic(tmp_path) -> None:
             for i in range(3):
                 _remember(
                     facade,
-                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                    body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                     now=T0 + timedelta(minutes=i),
                 )
             consolidate(facade)
@@ -692,7 +698,7 @@ def test_fallback_evidence_cap_and_excerpt_truncation(tmp_path) -> None:
             filler = (
                 "x" * (_MEMBER_EXCERPT_MAX_CHARS + 500)
                 if i == oversized_at
-                else f"Detail {i + 1}."
+                else f"Detail {i + 1}. {_DETAIL_TEXT}"
             )
             _remember(
                 facade,
@@ -720,7 +726,7 @@ def test_min_cluster_size_override(tmp_path) -> None:
         for i in range(2):
             _remember(
                 facade,
-                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}.",
+                body=f"# Topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
                 now=T0 + timedelta(minutes=i),
             )
         # Default N>=3: no cluster. With the knob at 2: distilled.
@@ -730,5 +736,91 @@ def test_min_cluster_size_override(tmp_path) -> None:
         assert report.clusters_found == 1
         assert report.items[0].source_count == 2
         assert report.items[0].status == "ACTIVE"
+    finally:
+        storage.close()
+
+
+# ---------------------------------------------------------------------------
+# Trivial-prompt gate: a cluster whose EVERY member carries no content below
+# the H1 (one-word prompts like "sigue") is left episodic — the distiller must
+# never mint an empty knowledge note ("sigue is sigue").
+# ---------------------------------------------------------------------------
+
+
+def test_consolidate_skips_all_trivial_cluster(tmp_path) -> None:
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(facade, body=f"# sigue [sess-1:{i + 1}]", now=T0 + timedelta(minutes=i))
+        report = consolidate(facade)
+        assert report.clusters_found == 1
+        assert report.items[0].status == "TRIVIAL"
+        assert report.items[0].ep_id is None
+        assert "trivial" in report.items[0].detail
+        eps = facade.get_vigente()
+        assert len(eps) == 3  # the sources only — no semantic note materialized
+        assert all(e.cognitive_type != "semantic" for e in eps)
+    finally:
+        storage.close()
+
+
+def test_consolidate_skips_capture_shape_prompts(tmp_path) -> None:
+    """The real capture shape (``## User prompt`` scaffold) is trivial too.
+
+    Production wrote ``# sigue\\n\\n## User prompt\\n\\nsigue`` — the useful
+    content is the trailing text alone; the ``##`` scaffold must not inflate
+    a one-word prompt into a substantive member."""
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# sigue [sess-1:{i + 1}]\n\n## User prompt\n\nsigue",
+                now=T0 + timedelta(minutes=i),
+            )
+        report = consolidate(facade)
+        assert report.clusters_found == 1
+        assert report.items[0].status == "TRIVIAL"
+        eps = facade.get_vigente()
+        assert all(e.cognitive_type != "semantic" for e in eps)
+    finally:
+        storage.close()
+
+
+def test_consolidate_trivial_mixed_cluster_not_skipped(tmp_path) -> None:
+    """A single substantive member keeps the cluster (conservative gate)."""
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        _remember(facade, body="# sigue [sess-1:1]", now=T0)
+        _remember(facade, body="# sigue [sess-1:2]", now=T0 + timedelta(minutes=1))
+        _remember(
+            facade,
+            body=(
+                "# sigue [sess-1:3]\n\n"
+                "The recall roundtrip returned an empty index; root cause was the "
+                "stale .seahorse/observer socket path — re-running observe start fixed it."
+            ),
+            now=T0 + timedelta(minutes=2),
+        )
+        report = consolidate(facade)
+        assert report.clusters_found == 1
+        assert report.items[0].status == "ACTIVE"
+        eps = facade.get_vigente()
+        assert any(e.cognitive_type == "semantic" for e in eps)
+    finally:
+        storage.close()
+
+
+def test_consolidate_trivial_gate_is_idempotent(tmp_path) -> None:
+    """Second run over the same trivial cluster: no new rows, no distill."""
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(facade, body=f"# ok [sess-1:{i + 1}]", now=T0 + timedelta(minutes=i))
+        first = consolidate(facade)
+        second = consolidate(facade)
+        assert first.items[0].status == "TRIVIAL"
+        assert second.items[0].status == "TRIVIAL"
+        assert len(second.items) == len(first.items)
     finally:
         storage.close()
