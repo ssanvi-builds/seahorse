@@ -55,15 +55,16 @@ def register(app: typer.Typer, *, out) -> None:
         ),
     ) -> None:
         """POST a hook event to the observer socket (called by the hooks)."""
-        from seahorse.cli.errors import CliVaultNotFound
+        from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
         from seahorse.observe.cli import run_observe_event
 
         try:
             cfg = ctx.obj.resolved_config(allow_pointer=False)
-        except CliVaultNotFound:
+        except (CliConfigInvalid, CliVaultNotFound):
             # Hook contract: never abort the agent session. A session launched
-            # in a non-vault directory has nothing to capture into — drop the
-            # event silently (never fall back to the global pointer: its
-            # target moves across setups and would leak into another vault).
+            # in a non-vault directory (or with a corrupt seahorse.toml) has
+            # nothing usable to capture into — drop the event silently (never
+            # fall back to the global pointer: its target moves across setups
+            # and would leak into another vault).
             return
         run_observe_event(cfg, fmt=ctx.obj.fmt, out=out(ctx), agent_id=agent_id)

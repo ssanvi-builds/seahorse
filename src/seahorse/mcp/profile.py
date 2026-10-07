@@ -280,6 +280,11 @@ def main(
     from seahorse.facade.types import FacadeConfig
 
     try:
+        # Deliberately UNGATED (allow_pointer defaults True, unlike the hook
+        # paths): the MCP server is long-lived and explicitly configured —
+        # zero-config `seahorse-mcp` setups resolve through the pointer, and
+        # gating it would silently capture nothing (data loss), the inverse
+        # failure of the hook paths (seahorse/cli/config.py docstring).
         vault = resolve_vault(Path(args.vault) if args.vault else None)
         cfg = load_config(vault, explicit_config=Path(args.config) if args.config else None)
         # Honor seahorse.toml exactly as `seahorse mcp` does (CliContext.facade):

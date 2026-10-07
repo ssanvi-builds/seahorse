@@ -46,7 +46,7 @@ from seahorse.cli.config import (
     resolve_vault,
 )
 from seahorse.cli.doctor import run_doctor
-from seahorse.cli.errors import CliVaultNotFound
+from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
 from seahorse.cli.exit_codes import EXIT_SUCCESS, translate
 from seahorse.cli.importer import run_import
 from seahorse.cli.management import run_init, run_reserved, run_status, run_uuid7
@@ -439,13 +439,14 @@ def consolidate(
     """
     try:
         config = ctx.obj.resolved_config(allow_pointer=not auto)
-    except CliVaultNotFound:
+    except (CliVaultNotFound, CliConfigInvalid):
         if not auto:
             raise  # a human running consolidate should see the real error
-        # The stop hook must never abort the agent session: without a vault
-        # resolvable from the session cwd, auto-consolidation is a silent no-op.
+        # The stop hook must never abort the agent session: without a usable
+        # vault (nothing resolvable from the session cwd, or a corrupt
+        # seahorse.toml), auto-consolidation is a silent no-op.
         if ctx.obj.fmt == "human":
-            _out(ctx).write("consolidate: no vault resolved from the current directory — no-op\n")
+            _out(ctx).write("consolidate: no usable vault — no-op\n")
         else:
             _out(ctx).write('{"auto": true, "ran": false, "reason": "no-vault"}\n')
         return
@@ -455,7 +456,7 @@ def consolidate(
             if ctx.obj.fmt == "human":
                 _out(ctx).write("consolidate: auto-consolidation off — no-op\n")
             else:
-                _out(ctx).write('{"auto": false, "ran": false}\n')
+                _out(ctx).write('{"auto": false, "ran": false, "reason": "off"}\n')
             return
         synthesis = "skip"
     run_consolidate(

@@ -92,3 +92,60 @@ def test_consolidate_auto_never_reads_the_global_pointer(tmp_path, monkeypatch) 
     monkeypatch.setattr(f"{POINTER_MODULE}.read_global_pointer", _boom)
     code, out, err = invoke(["consolidate", "--auto"])
     assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# corrupt config — CliConfigInvalid (exit 83) must also be a silent no-op
+# ---------------------------------------------------------------------------
+
+
+def _corrupt_cwd_vault(tmp_path, monkeypatch) -> None:
+    """A vault resolvable from the cwd whose seahorse.toml fails to parse."""
+    broken = tmp_path / "broken-vault"
+    (broken / ".seahorse").mkdir(parents=True)
+    (broken / ".seahorse" / "seahorse.toml").write_text("not toml [[[\n", encoding="utf-8")
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    monkeypatch.chdir(broken)
+
+
+def test_observe_event_with_corrupt_config_is_silent_noop(tmp_path, monkeypatch) -> None:
+    """A corrupt vault config: the hook drops the event (never exit 83)."""
+    _corrupt_cwd_vault(tmp_path, monkeypatch)
+    code, out, err = invoke(["observe", "event"])
+    assert code == 0
+    assert out == ""
+    assert err == ""
+
+
+def test_consolidate_auto_with_corrupt_config_is_silent_noop(tmp_path, monkeypatch) -> None:
+    """A corrupt vault config: the stop hook no-ops (never exit 83)."""
+    _corrupt_cwd_vault(tmp_path, monkeypatch)
+    code, out, err = invoke(["consolidate", "--auto"])
+    assert code == 0
+    assert "no-op" in out
+    assert err == ""
+
+
+# ---------------------------------------------------------------------------
+# JSON payloads — the no-vault and off branches are symmetric
+# ---------------------------------------------------------------------------
+
+
+def test_consolidate_auto_no_vault_json_reason(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _pointer_to(tmp_path, monkeypatch, initialized=False)
+    _non_vault_cwd(tmp_path, monkeypatch)
+    code, out, err = invoke(["--json", "consolidate", "--auto"])
+    assert code == 0
+    import json
+
+    assert json.loads(out) == {"auto": True, "ran": False, "reason": "no-vault"}
+
+
+def test_consolidate_auto_off_json_reason(vault) -> None:
+    """The off branch carries a reason too (schema symmetric with no-vault)."""
+    import json
+
+    code, out, err = invoke(["--json", "--vault", str(vault), "consolidate", "--auto"])
+    assert code == 0
+    assert json.loads(out) == {"auto": False, "ran": False, "reason": "off"}
