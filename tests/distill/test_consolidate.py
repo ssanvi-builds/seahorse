@@ -204,7 +204,7 @@ def test_consolidate_supersedes_when_new_episodes_arrive(tmp_path) -> None:
         # A new episode arrives (the representative changes).
         _remember(
             facade,
-            body="# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
+            body=f"# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=3),
         )
         second = consolidate(facade, supersede=True)
@@ -253,7 +253,7 @@ def test_consolidate_supersede_respects_human_edits(tmp_path) -> None:
         consolidate(facade)
         _remember(
             facade,
-            body="# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
+            body=f"# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=3),
         )
         # The human edited the note → skip (no supersession).
@@ -279,7 +279,7 @@ def test_consolidate_supersede_default_off_is_idempotent(tmp_path) -> None:
         consolidate(facade)
         _remember(
             facade,
-            body="# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
+            body=f"# Topic [sess-1:4]\n\nDetail 4. {_DETAIL_TEXT}",
             now=T0 + timedelta(minutes=3),
         )
         second = consolidate(facade)  # supersede=False (default)
@@ -756,7 +756,7 @@ def test_consolidate_skips_all_trivial_cluster(tmp_path) -> None:
         assert report.clusters_found == 1
         assert report.items[0].status == "TRIVIAL"
         assert report.items[0].ep_id is None
-        assert "trivial" in report.items[0].detail
+        assert "left episodic" in report.items[0].detail
         eps = facade.get_vigente()
         assert len(eps) == 3  # the sources only — no semantic note materialized
         assert all(e.cognitive_type != "semantic" for e in eps)
@@ -822,5 +822,45 @@ def test_consolidate_trivial_gate_is_idempotent(tmp_path) -> None:
         assert first.items[0].status == "TRIVIAL"
         assert second.items[0].status == "TRIVIAL"
         assert len(second.items) == len(first.items)
+    finally:
+        storage.close()
+
+
+def test_consolidate_trivial_cluster_with_existing_note_names_the_note(tmp_path) -> None:
+    """A trivial cluster whose key already has a knowledge note says so.
+
+    Set-up: the key's substantive sources were consolidated and later
+    invalidated (a forget pass simulates their natural expiry), so the cluster
+    below is only-trivial — a leftover-note situation the report names."""
+    facade, storage = _facade(tmp_path / "seahorse.db")
+    try:
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# topic [sess-1:{i + 1}]\n\nDetail {i + 1}. {_DETAIL_TEXT}",
+                now=T0 + timedelta(minutes=i),
+            )
+        first = consolidate(facade)
+        assert first.items[0].status == "ACTIVE"
+        stale = [
+            e
+            for e in facade.get_vigente()
+            if e.cognitive_type != "semantic"
+        ]
+        for e in stale:
+            facade.forget(
+                e.id,
+                reason="expired between consolidations",
+                by={"source_type": "agent", "agent_id": "a1", "session_id": "sess-1"},
+            )
+        for i in range(3):
+            _remember(
+                facade,
+                body=f"# topic [sess-2:{i + 1}]",
+                now=T0 + timedelta(hours=1, minutes=i),
+            )
+        second = consolidate(facade)
+        assert [item.status for item in second.items] == ["TRIVIAL"]
+        assert "a knowledge note for this key already exists" in second.items[0].detail
     finally:
         storage.close()

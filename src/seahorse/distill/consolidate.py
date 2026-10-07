@@ -49,13 +49,14 @@ _RESOLUTION_HINT = (
 # one-word prompts ("sigue", "listo" — useful content below the H1 is just the
 # prompt text) recur and cluster into EMPTY knowledge notes. A cluster where
 # EVERY member's useful body is at most ``_TRIVIAL_BODY_MAX_CHARS`` is left
-# episodic: recurring prompt noise, not knowledge. A mixed cluster — one
-# substantive member among trivial ones — is distilled as usual (conservative
-# gate; the substantive member is the evidence).
+# episodic. A mixed cluster — one substantive member among trivial ones — is
+# distilled as usual (conservative gate; the substantive member is the
+# evidence). The gate is unconditional: real knowledge never travels as a
+# sub-40-char H1-only body — write it as a full episode or improve the note.
 _TRIVIAL_BODY_MAX_CHARS = 40
 _TRIVIAL_DETAIL = (
-    "all members trivial — no useful content below the H1; left episodic "
-    "(recurring prompt noise, not knowledge)"
+    "all members carry little or no useful content below the H1 "
+    f"(<= {_TRIVIAL_BODY_MAX_CHARS} chars each) — left episodic"
 )
 
 
@@ -260,23 +261,26 @@ def consolidate(
     clusters = cluster_episodes(sources, min_size=min_cluster_size)
     items: list[ConsolidateItem] = []
     for cluster in clusters:
+        existing = existing_notes.get(cluster.key)
         if all(
             len(_useful_body(ep)) <= _TRIVIAL_BODY_MAX_CHARS
             for ep in cluster.episodes
         ):
-            # Every member is prompt noise — minting a knowledge note here
-            # produced empty subjects like "sigue is sigue" (2026-10-07).
+            # No member carries distillable content — minting a knowledge note
+            # here produced empty subjects like "sigue is sigue" (2026-10-07).
             # The sources stay episodic; the report names the skip.
+            detail = _TRIVIAL_DETAIL + (
+                "; a knowledge note for this key already exists" if existing else ""
+            )
             items.append(
                 ConsolidateItem(
                     key=cluster.key,
                     source_count=len(cluster.episodes),
                     status="TRIVIAL",
-                    detail=_TRIVIAL_DETAIL,
+                    detail=detail,
                 )
             )
             continue
-        existing = existing_notes.get(cluster.key)
         supersede_ep_id: str | None = None
         if existing is not None:
             if not supersede:
