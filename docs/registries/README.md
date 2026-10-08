@@ -18,12 +18,18 @@ publish to external services — do them at release time, after the tag).
    and in the `packages[]` entry). Bump it in the same commit as the
    `pyproject.toml` bump; versions are immutable once published.
 2. **Schema gotchas** (validated against `2025-12-11`): `description` is
-   capped at 100 chars; `repository` needs `source` (`"github"`), `id` (the
-   GitHub repo ID **as a string** — `gh api repos/<owner>/<repo> --jq '.id'`)
-   and `url`. Re-validate before publishing:
+   capped at 100 chars. The LIVE registry (OpenAPI v1.0.0, checked
+   2026-10-08) is stricter than the file schema: top-level fields are only
+   `$schema, _meta, description, icons, name, packages, remotes,
+   repository, title, version, websiteUrl` — `authors`, `license` and
+   `homepage` are rejected as "unexpected property" (map `homepage` to
+   `websiteUrl`). Re-validate both against the local schema AND the live
+   `POST /v0.1/validate` before publishing:
    ```bash
    curl -sL https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json -o /tmp/server.schema.json
    uvx --with jsonschema --from python python -c "import json,jsonschema; jsonschema.validate(json.load(open('server.json')), json.load(open('/tmp/server.schema.json'))); print('VALID')"
+   curl -s -X POST https://registry.modelcontextprotocol.io/v0.1/validate \
+     -H "Content-Type: application/json" --data @server.json -w "\nHTTP %{http_code}\n"
    ```
 2. **Ownership verification** (PyPI package type): the README must contain the
    literal string `mcp-name: io.github.ssanvi-builds/seahorse-memory` — it is
