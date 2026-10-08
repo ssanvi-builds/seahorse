@@ -194,7 +194,19 @@ per-IP rate limiting (`429`), a 256 KiB body cap (`413`), Origin checking
 ### Beyond loopback
 
 Remote consumers need an HTTPS URL, and the server does no TLS itself — bind
-loopback and put a reverse proxy or tunnel in front:
+loopback and put a reverse proxy or tunnel in front. The `seahorse remote`
+wizard automates the whole path and prints paste-ready blocks per app:
+
+```bash
+seahorse remote start    # server daemon + cloudflared quick tunnel; prints
+                         # the public /mcp URL, the token and per-app blocks
+seahorse remote status   # reprints current state and the instructions
+seahorse remote stop     # closes the tunnel first, then the server
+```
+
+The wizard's logs (`<vault>/.seahorse/remote/`) carry the listen line and any
+server crash, but the HTTP server does not log individual requests — quiet by
+design. Manually, if you prefer two terminals:
 
 ```bash
 cloudflared tunnel --url http://127.0.0.1:8767   # or: ngrok http 127.0.0.1:8767
@@ -204,6 +216,56 @@ cloudflared tunnel --url http://127.0.0.1:8767   # or: ngrok http 127.0.0.1:8767
 between the internet and your vault. Use a long token, keep the tunnel URL
 private, and let the proxy terminate TLS. The in-memory rate limit resets on
 restart — it deters abuse; it is not an access-control layer.
+
+#### Quick-tunnel readiness: URL printed ≠ URL reachable
+
+Observed on live quick tunnels (2026-10-01 through 2026-10-06):
+
+- The hostname's DNS record can take **minutes** to appear globally (~5 min
+  on one start, ~5 s on the next). The wizard reports the URL as soon as
+  cloudflared prints it — a consumer that cannot connect right away should
+  retry after a minute or two.
+- In the first seconds after the URL appears, the edge may answer
+  **530 (Cloudflare error 1033)** while the tunnel connections register.
+  Retry.
+- The quick-tunnel URL changes on every restart — reconnect the consumer.
+  Named tunnels (a Cloudflare account plus DNS) are the stable alternative.
+- The hostname itself **dies server-side after roughly a day** while the
+  cloudflared process stays up: it logs `Unauthorized: Tunnel not found` in
+  an endless retry loop and the DNS record is gone. Observed three times
+  (two tunnels from 2026-10-03 found dead on 2026-10-05; a fresh one from
+  2026-10-05 dead ~20 h later). Two consequences: a live `pid` does not
+  mean the URL works (the wizard's reuse check cannot see this), and a
+  connection that worked yesterday may need the wizard re-run — quick
+  tunnels are a "spin up fresh, use now" tool, not an always-on endpoint.
+
+#### What real clients do on this wire
+
+Verified with claude-code 2.1.280 over a public tunnel (2026-10-01):
+
+- It opens with a `server/discover` probe at protocol version `2026-07-28`.
+  The strict per-request version check answers
+  `400 unsupported MCP-Protocol-Version` and the client degrades cleanly to
+  `initialize` (`2025-11-25`) — strictness does not break real clients.
+- One `GET /mcp` probe answers `405` (POST-only surface); the client
+  continues normally.
+- No `Origin` header is sent — the `403` Origin rule does not trigger for
+  CLI clients. Server-side web consumers may differ; not yet observed.
+- Everything arrives from loopback: the per-IP rate limiter sees a single
+  bucket behind the tunnel. Cloudflare preserves the original client IP in
+  `Cf-Connecting-Ip` should per-origin limiting ever be needed.
+
+The paste-ready connection blocks for ChatGPT, Gemini (web and CLI) and
+Claude Code come from `seahorse remote start` — one source, never
+hand-copied into this file. Each block carries its own verification status:
+ChatGPT is documented from official sources but **not verified on a live
+account** (it requires a paid plan); Gemini web is a live-verified negative —
+consumer Gemini has no bearer-token path (OAuth-only, 2026-10-05), so
+bearer-only Seahorse cannot register there; Claude Code is verified over a
+live tunnel (2026-10-01, claude-code 2.1.280); the Gemini CLI roundtrip is
+deferred to the v1.8.0 provider-testing round (the Antigravity client hit
+an account-eligibility loop on 2026-10-06 — findings recorded, verification
+re-opened for v1.8.0).
 
 ## Listings
 

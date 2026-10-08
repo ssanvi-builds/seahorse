@@ -5,9 +5,9 @@ building them here means the three surfaces cannot drift. Every block is
 copy-pasteable by a non-technical user: the public MCP URL and the vault's
 bearer token go exactly where the app's UI expects them.
 
-The Gemini web block is an honest placeholder until the connector experiment
-defines where a consumer custom app accepts credentials (if it does at all) —
-invented instructions are worse than none.
+The Gemini web block is the connector experiment's conclusion (2026-10-01):
+the custom-app feature is region-gated and OAuth-only, so nothing there is
+paste-ready — the block states the gate rather than inventing instructions.
 """
 
 from __future__ import annotations
@@ -28,12 +28,18 @@ CHATGPT_UNVERIFIED = (
     "(Plus/Pro/Business/Enterprise/Edu)"
 )
 
-# The consumer Gemini web app's custom-app credential mechanism is under
-# verification (connector experiment pending); the block stays honest until
-# that experiment lands (see docs/connect.md).
-GEMINI_WEB_PENDING = (
-    "credential mechanism under verification — see docs/connect.md; the "
-    "Gemini CLI works today (block below)"
+# Consumer Gemini web (gemini.google.com) custom MCP apps — the connector
+# experiment's result (2026-10-01, sources: Google's official help page for
+# Gemini Spark custom apps + a live check on an EU personal account, where the
+# option does not appear): US-only for personal accounts (18+, Keep Activity
+# on); where available the connection is OAuth — Dynamic Client Registration
+# preferred, manual OAuth credentials via "Show more" otherwise, and NO
+# bearer-token field. Seahorse is bearer-only by design → its memory is not
+# consumable there; the Gemini CLI is the working path.
+GEMINI_WEB_GATED = (
+    "US-only for personal accounts (per Google's help, checked 2026-10-01) "
+    "and OAuth-based when available — Seahorse is bearer-only by design, so "
+    "it cannot connect there today; use the Gemini CLI below"
 )
 
 APP_KEYS = ("chatgpt", "gemini_web", "gemini_cli", "claude_code")
@@ -65,17 +71,17 @@ def chatgpt_block(mcp_url: str, token: str) -> str:
     )
 
 
-def gemini_web_block(mcp_url: str, _token: str) -> str:
-    """Consumer Gemini web custom app — honest placeholder pre-experiment.
+def gemini_web_block(_mcp_url: str, _token: str) -> str:
+    """Consumer Gemini web custom app — the gate, observed and documented.
 
-    The token is deliberately unused (``_token``): the experiment must first
-    define where a consumer custom app accepts credentials at all.
+    Both arguments are deliberately unused: the web flow has no bearer-token
+    field (OAuth-only), the feature is region-gated, and pasting the URL into
+    a UI that refuses to offer the path would suggest a dead route works.
     """
     return (
         "— Gemini (web app) —\n"
         "  gemini.google.com → Settings → Connected Apps → Add a custom app\n"
-        f"  MCP server URL:  {mcp_url}\n"
-        f"  Credentials: {GEMINI_WEB_PENDING}."
+        f"  Not available: {GEMINI_WEB_GATED}."
     )
 
 
@@ -122,7 +128,7 @@ def human_instructions(app: str, *, mcp_url: str, token: str) -> str:
 __all__ = [
     "SECURITY_WARNING",
     "CHATGPT_UNVERIFIED",
-    "GEMINI_WEB_PENDING",
+    "GEMINI_WEB_GATED",
     "APP_KEYS",
     "APP_CHOICES",
     "chatgpt_block",

@@ -30,12 +30,16 @@ def test_chatgpt_block_interpolates_url_token_and_carries_the_note():
     assert ri.CHATGPT_UNVERIFIED in block
 
 
-def test_gemini_web_block_is_an_honest_placeholder():
-    # Pre-experiment: no invented credential instructions — the pending note
-    # is the contract; the token stays OUT of the block until verified.
+def test_gemini_web_block_documents_the_gate_not_instructions():
+    # Post-experiment (2026-10-01): the consumer custom-app feature is
+    # US-gated and OAuth-only — the block states the gate and deliberately
+    # carries NEITHER the URL (a dead route must not look paste-ready) NOR
+    # the token (no field for it anywhere).
     block = ri.gemini_web_block(URL, TOKEN)
-    assert URL in block
-    assert ri.GEMINI_WEB_PENDING in block
+    assert ri.GEMINI_WEB_GATED in block
+    assert "OAuth" in block
+    assert "US" in block
+    assert URL not in block
     assert TOKEN not in block
 
 
