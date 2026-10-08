@@ -4,6 +4,83 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-08
+
+The last mile for a non-technical user with their memory in several apps:
+the `seahorse remote` wizard automates server + public tunnel + per-app
+paste-ready instructions, and the connector experiments document what real
+clients do on that wire — verified where verified, honest negatives where
+the client cannot connect.
+
+### Added
+
+- **`seahorse remote start | stop | status` — the remote wizard** — one
+  command starts the HTTP server daemon and a cloudflared quick tunnel
+  (daemonized, surviving the terminal — the process-manager pattern of the
+  session observer: pidfiles + logs in `<vault>/.seahorse/remote/`),
+  reuses each live process independently (the tunnel keeps its URL across
+  a server respawn), and prints the public `/mcp` URL, the token and
+  per-app paste-ready instruction blocks (ChatGPT, Gemini web, Gemini
+  CLI, Claude Code) in human or `--json` form. `stop` closes the tunnel
+  first, then the server (idempotent); `status` reprints everything.
+  cloudflared missing → offer to `brew install` (consent required; no-TTY
+  prints the line) and exit 100 when unavailable; `start` failures
+  unwind what they spawned and exit 101 (new exit codes 100/101, the
+  64–99 band is closed). Opening a NEW tunnel asks for explicit
+  confirmation (prompt, `--yes`, or exit 2 on no-TTY).
+- **`scripts/e2e-remote-setup.sh`** — a sandboxed end-to-end of the
+  wizard itself: a real daemonized server + a fake cloudflared, asserts
+  the printed URL/token/blocks, exercises the server over the tunnel
+  address, and proves `remote stop` leaves zero orphans. Not CI-gated.
+- **Connector-experiment findings in `docs/connect.md`** — quick-tunnel
+  readiness (URL printed ≠ URL reachable: minutes-scale DNS propagation,
+  530/1033 in the first seconds, URL changes on every restart, hostnames
+  die server-side after roughly a day while cloudflared stays up) and
+  what real clients do on the wire (claude-code 2.1.280 over a live
+  tunnel: a non-spec `server/discover` probe degrades cleanly past the
+  strict version check, one `GET /mcp` → 405 probe, no Origin header,
+  `Cf-Connecting-Ip` preserved behind the tunnel). Per-app honest status:
+  ChatGPT documented-but-unverified (paid plan), Gemini web a
+  live-verified negative (no bearer-token path, OAuth-only), Gemini CLI
+  available today.
+
+### Fixed
+
+- **Hook paths never leak into the global vault pointer** — `observe
+  event` and `consolidate --auto` (launched from arbitrary session cwd)
+  resolved through the global pointer fallback, so a session outside
+  any vault silently captured into whatever vault was registered last
+  (the 2026-10-07 wrong-vault incident). Hook paths now resolve
+  explicit → env → cwd only, and resolution/config failure — exit 82
+  AND the previously-unhandled corrupt-`seahorse.toml` failure (exit 83)
+  — is a silent no-op (the hook contract: never abort the agent session).
+  (`7cc137d`, `6540b46`)
+- **Hook-captured junk no longer clusters into empty knowledge notes** —
+  one-word prompts ("sigue") recur and distilled into subjects like
+  "sigue is sigue". A cluster whose EVERY member's useful content is
+  ≤40 chars is left episodic and reported `TRIVIAL` (a mixed cluster —
+  one substantive member — still distills, conservatively); when a
+  knowledge note for the key already exists, the report says so.
+  (`7960569`, `b26fb70`)
+- **Wizard stale-log readiness** — child logs were appended and the
+  readiness poll scanned the whole file, so a respawned server/tunnel
+  was declared ready on its PREDECESSOR's lines (a "ready" URL that was
+  dead). Logs are truncated at spawn. (`ed5f45e`)
+- **`write_llm_config` wiped vault sections** — writing `[llm]`
+  config rewrote the whole `seahorse.toml`, erasing `[observe]`,
+  `[materialize]` and `[http]` (and the captured bearer token) on real
+  machines. Config writes are now spliced, never wholesale. (`86561b1`)
+- **SIGINT startup race in the remote server** — a Ctrl-C during
+  startup could wedge before the signal handler was installed. (`dc95a54`)
+
+### Deferred
+
+- **Gemini / Antigravity provider integration** — the CLI wizard path
+  exists and the connector findings are documented, but a full
+  provider-integration claim waits for the v1.8.0 provider-testing
+  round (the Antigravity client hit an account-eligibility loop on
+  2026-10-06; findings recorded, verification re-opened).
+
 ## [1.6.0] - 2026-09-30
 
 Fase 2: the same `io.seahorse.memory/v1` MCP server now also speaks

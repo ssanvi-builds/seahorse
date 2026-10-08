@@ -1,7 +1,7 @@
 {
   "name": "seahorse-memory",
   "display_name": "Seahorse — persistent memory for agents",
-  "description": "Persistent, bi-temporal memory for LLM agents over stdio MCP: append-only episodes (valid_at/created_at), supersedes chains, procedural skills, and a session-context bootstrap — backed by an Obsidian-native vault the human reads and edits.",
+  "description": "Persistent bi-temporal memory for LLM agents over stdio or HTTP MCP: append-only episodes (valid_at/created_at), supersedes chains, procedural skills, and a session-context bootstrap — backed by an Obsidian-native vault the human reads and edits.",
   "repository": {
     "type": "git",
     "url": "https://github.com/ssanvi-builds/seahorse"

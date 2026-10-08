@@ -6,7 +6,7 @@ history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state
 
-What works today (v1.6.0):
+What works today (v1.7.0):
 
 - **Distribution on PyPI as `seahorse-memory`** — the name `seahorse` was taken
   by an unrelated project, so the distribution is published as `seahorse-memory`
@@ -22,6 +22,15 @@ What works today (v1.6.0):
   per-request rate limiting, body caps, Origin and protocol-version checks.
   Parity with stdio is by construction — one `handle_request` seam, one
   shared protocol session proven over both transports.
+- **The remote wizard** — `seahorse remote start | stop | status` automates
+  the whole exposure path: daemonized HTTP server + cloudflared quick
+  tunnel (processes surviving the terminal, each reused independently),
+  a consent gate before opening anything public, and per-app
+  paste-ready instruction blocks (ChatGPT, Gemini web, Gemini CLI,
+  Claude Code) in human or `--json` form. Verified per app — where a
+  client cannot connect (consumer Gemini's OAuth-only web path), the
+  docs say so rather than invent instructions. Provider integration
+  testing for Gemini/Antigravity is the v1.8.0 round.
 - **Bi-temporal, append-only memory engine** — every episode carries both when it
   became true (`valid_at`) and when it was recorded (`created_at`), so the
   knowledge base is reproducible at any past point in time. Supersession
@@ -165,7 +174,9 @@ checks. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test locally
   the adoption gate produces data; cross-project sync and the web viewer
   follow that gate. (The re-sequenced remote MCP server — Streamable HTTP —
   shipped in v1.6.0 as a standard expansion that also serves the local
-  free tier.)
+  free tier; the `seahorse remote` wizard wrapped it in v1.7.0, and
+  real-provider verification (Gemini CLI, Antigravity) is the v1.8.0
+  provider-testing round.)
 - **Long term** — a managed cloud offering as a later phase, gated by adoption,
   and wider adoption of the memory standard across agents and harnesses.
 
