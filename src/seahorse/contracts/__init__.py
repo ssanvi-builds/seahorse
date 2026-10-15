@@ -11,6 +11,9 @@ Ownership:
 - AuditEvent             -> the engine (contracts.engine)
 - freshness_of           -> the engine's pure derivation (contracts.engine);
                            shared with progressive disclosure
+- is_valid_at_t /
+  is_known_at_t          -> the bi-temporal axis predicates (contracts.pit);
+                           shared with the engine readers and hybrid retrieval
 - IndexRowData, PITKind  -> progressive disclosure / the BFS axis (contracts.index)
 - FusedCandidate         -> hybrid retrieval, materialized by progressive
                            disclosure (contracts.retrieval)
@@ -51,6 +54,7 @@ from seahorse.contracts.persistence import (
     VectorHit,
     VectorIndexRepository,
 )
+from seahorse.contracts.pit import is_known_at_t, is_valid_at_t
 from seahorse.contracts.retrieval import FusedCandidate
 
 __all__ = [
@@ -82,4 +86,6 @@ __all__ = [
     "VectorIndexRepository",
     "WriteResult",
     "freshness_of",
+    "is_known_at_t",
+    "is_valid_at_t",
 ]

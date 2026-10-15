@@ -42,8 +42,9 @@ Implementation notes:
   ``episode_repo.get(ep_id).cognitive_type``. The cheaper no-body read from
   ``episode_index`` is a medium-term addition (an ``index_repo`` param), not in
   this standalone signature.
-- The chain-PIT predicates follow the disclosure layer's ``_pit_ok`` helper
-  (state_at = valid-time axis ONLY; known_at = transaction-time axis ONLY), so
+- The chain-PIT predicates delegate to ``seahorse.contracts.pit`` (the single
+  home for the bi-temporal axis predicates — ``is_valid_at_t`` / ``is_known_at_t``,
+  state_at = valid-time axis ONLY; known_at = transaction-time axis ONLY), so
   the two bi-temporal axes never mix within one predicate.
 - ``HopsCapExceeded`` is handled by ``safe_hops = min(hops, MAX_HOPS_MVP1)``
   BEFORE the call. If the repository raises despite the cap (a source bug), it
@@ -74,6 +75,7 @@ from seahorse.contracts.persistence import (
     VectorHit,
     VectorIndexRepository,
 )
+from seahorse.contracts.pit import is_known_at_t, is_valid_at_t
 from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
@@ -739,8 +741,8 @@ def _project_chain(
     ``chain_from`` returns the WHOLE chain ordered by ``created_at`` asc and
     takes NO ``t``; this module projects it read-only under PIT (it never mutates
     the chain — ``EpisodeRepository`` exposes no chain mutators). Predicates
-    follow the disclosure layer's ``_pit_ok`` helper (the bi-temporal axes never
-    mix; see module docstring).
+    delegate to ``seahorse.contracts.pit`` (the bi-temporal axes never mix; see
+    module docstring).
     """
     if pit is None:
         projected = _chain_active_now(chain, now)
@@ -776,14 +778,10 @@ def _chain_vigent_at(chain: Sequence[Episode], t: datetime) -> Episode | None:
     """``state_at`` projection. Valid-time axis ONLY (``valid_at``/``invalid_at``);
     ``expired_at`` (transaction_time) is NOT considered. The LAST
     current-state-at-``t`` is the active version at ``t`` (chain is
-    ``created_at``-ascending). Predicate (disclosure layer ``_pit_ok``):
-    ``valid_at is None or valid_at <= t`` ("from forever" is valid at any ``t``)
-    ``and (invalid_at is None or invalid_at > t)``."""
-    candidates = [
-        e
-        for e in chain
-        if (e.valid_at is None or e.valid_at <= t) and (e.invalid_at is None or e.invalid_at > t)
-    ]
+    ``created_at``-ascending). Predicate: ``is_valid_at_t``
+    (``seahorse.contracts.pit`` — the single home for the bi-temporal axis
+    predicates)."""
+    candidates = [e for e in chain if is_valid_at_t(e, t)]
     return candidates[-1] if candidates else None
 
 
@@ -791,9 +789,8 @@ def _chain_known_at(chain: Sequence[Episode], t: datetime) -> list[Episode]:
     """``known_at`` projection. Transaction-time axis ONLY (``created_at``/
     ``expired_at``); ``valid_at``/``invalid_at`` are NOT considered. Returns ALL
     episodes the system knew at ``t`` (chain is ``created_at``-ascending).
-    Predicate (disclosure layer ``_pit_ok``): ``created_at <= t and (expired_at
-    is None or expired_at > t)``."""
-    return [e for e in chain if e.created_at <= t and (e.expired_at is None or e.expired_at > t)]
+    Predicate: ``is_known_at_t`` (``seahorse.contracts.pit``)."""
+    return [e for e in chain if is_known_at_t(e, t)]
 
 
 

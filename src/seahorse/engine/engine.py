@@ -29,6 +29,7 @@ from seahorse.contracts.engine import (
 )
 from seahorse.contracts.episode import Episode
 from seahorse.contracts.persistence import AuditEventRepository
+from seahorse.contracts.pit import is_known_at_t, is_valid_at_t
 from seahorse.engine import errors
 from seahorse.engine.canonical import canonical_body_hash
 from seahorse.engine.collision import (
@@ -486,9 +487,7 @@ class BiTemporalEngine:
         if ep is None:
             return False
         pit = point_in_time.astimezone(UTC)
-        after_valid = ep.valid_at is None or ep.valid_at <= pit
-        before_invalid = ep.invalid_at is None or pit < ep.invalid_at
-        return after_valid and before_invalid
+        return is_valid_at_t(ep, pit)
 
     def is_known_at(self, ep_id: str, point_in_time: datetime) -> bool:
         """PIT system predicate, NULL-safe.
@@ -501,9 +500,7 @@ class BiTemporalEngine:
         if ep is None:
             return False
         pit = point_in_time.astimezone(UTC)
-        after_created = ep.created_at <= pit
-        before_expired = ep.expired_at is None or pit < ep.expired_at
-        return after_created and before_expired
+        return is_known_at_t(ep, pit)
 
     def audit_log(self, ep_id: str) -> list[AuditEvent]:
         """Audit events whose ``target_id`` is ``ep_id`` (delegates to the persistence layer)."""
