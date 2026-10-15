@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TextIO
 
 from seahorse.cli.output import OutputFormat, render_index_rows, render_message
-from seahorse.cli.primitives import _build_provenance, _require_le, _timed
+from seahorse.cli.validation import _build_provenance, _require_le, _timed
 from seahorse.facade.facade import MemoryFacade
 from seahorse.procedural.operations import record_procedure
 from seahorse.procedural.trust import SkillDelivery, TrustLevel, gate_skill

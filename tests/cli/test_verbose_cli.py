@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import re
 
-from seahorse.cli.primitives import _timed
+from seahorse.cli.validation import _timed
 from tests.cli.conftest import invoke
 
 
