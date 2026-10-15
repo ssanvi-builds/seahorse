@@ -123,10 +123,16 @@ class WriteGuards:
     def _i3_invalid_at_null_before(self, ep: Episode) -> None:
         # invalid_at is set once null->now. Re-invalidating an already
         # invalidated episode is a storage-idempotency conflict (the repo's
-        # WHERE invalid_at IS NULL would affect 0 rows).
+        # WHERE invalid_at IS NULL would affect 0 rows). The message points
+        # only at current-release primitives (improve/remember): revalidate
+        # is a reserved later-release primitive, so advertising it here sent
+        # the user to another dead end (E_NOT_IN_MVP_0).
         if ep.invalid_at is not None:
             raise InvalidationConflictError(
-                f"invalid_at already set on {ep.id}; use revalidate()"
+                f"invalid_at already set on {ep.id}; the record is already "
+                f"superseded or forgotten. Correct the episode that currently "
+                f"holds this fact (improve <head>); if none holds it, re-add "
+                f"the fact with remember"
             )
 
     def _i5_valid_le_now(self, ep: Episode, now: datetime) -> None:

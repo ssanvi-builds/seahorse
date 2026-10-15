@@ -132,8 +132,14 @@ def test_improve_already_invalidated_target_raises(engine):
     eng, repo, audit = engine
     _apply(eng, "e1", "# Madrid\n")
     eng.forget("e1", reason="r", by={"agent_id": "a"}, now=LATER)
-    with pytest.raises(InvalidationConflictError):
+    with pytest.raises(InvalidationConflictError) as exc:
         eng.improve("e1", "# Madrid\nv2\n", by={"source_type": "human"}, now=LATER)
+    # Same message contract as the forget guard: the remedy points at
+    # current-release primitives (improve/remember), never at the reserved
+    # revalidate() stub.
+    assert "superseded or forgotten" in str(exc.value)
+    assert "improve" in str(exc.value)
+    assert "revalidate" not in str(exc.value)
 
 
 def test_improve_pending_target_cannot_be_edited(engine):

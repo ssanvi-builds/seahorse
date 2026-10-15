@@ -4,6 +4,20 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-10-15
+
+### Fixed
+
+- **`improve`/`forget` on an already-invalidated target no longer advertise
+  `revalidate()`** — the stale-target error said "use revalidate()": a reserved
+  later-release primitive that raises `E_NOT_IN_MVP_0`, so the remedy pointed
+  at a locked door. The message now states the actual state (the record is
+  superseded or forgotten) and the current-release way out: correct the
+  episode that currently holds the fact (`improve <head>`), or re-add it with
+  `remember` if none does. Message contract pinned by the two engine tests
+  (mentions improve, never revalidate). Follow-up of the 1.4.0 adversarial
+  review lesson: a failed write should name its way out.
+
 ## [1.7.0] - 2026-10-08
 
 The last mile for a non-technical user with their memory in several apps:

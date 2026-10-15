@@ -150,8 +150,13 @@ def test_forget_chain_ok_on_vigente_active():
 
 def test_forget_i3_rejects_already_invalidated():
     ep = _episode(invalid_at=PAST)
-    with pytest.raises(InvalidationConflictError):
+    with pytest.raises(InvalidationConflictError) as exc:
         WriteGuards().validate(ep, repo=_FakeRepo(), op="forget", now=NOW)
+    # The message points at current-release primitives (improve/remember),
+    # never at the reserved revalidate() stub.
+    assert "superseded or forgotten" in str(exc.value)
+    assert "improve" in str(exc.value)
+    assert "revalidate" not in str(exc.value)
 
 
 def test_forget_i5_rejects_pending_ingest():
