@@ -1,6 +1,7 @@
 """Install smoke (optional + slow) — validates the "clone, install, run"
 promise for a real user: build the wheel, install it in a FRESH venv, and
-confirm both console scripts (``seahorse`` + ``seahorse-mcp``) resolve and run.
+confirm all three console scripts (``seahorse`` + ``seahorse-mcp`` +
+``seahorse-memory``) resolve and run.
 
 Gated off by default (it builds + installs, ~30-60s): set
 ``SEAHORSE_RUN_INSTALL_SMOKE=1`` to run, e.g.
@@ -68,6 +69,15 @@ def test_install_and_console_scripts_resolve(tmp_path: Path) -> None:
         [str(bin_dir / "seahorse-mcp"), "--help"], capture_output=True, text=True, timeout=30
     )
     assert r.returncode == 0, f"seahorse-mcp --help failed:\n{r.stderr}"
+    assert "io.seahorse.memory/v1" in r.stdout
+
+    # seahorse-memory is an alias for the MCP server entry point, added so the
+    # package-launcher name (the PyPI distribution) resolves to a runnable
+    # command (hol-guard PR #2989).
+    r = subprocess.run(
+        [str(bin_dir / "seahorse-memory"), "--help"], capture_output=True, text=True, timeout=30
+    )
+    assert r.returncode == 0, f"seahorse-memory --help failed:\n{r.stderr}"
     assert "io.seahorse.memory/v1" in r.stdout
 
     # serverInfo.version is single-sourced from the installed metadata: confirm

@@ -4,6 +4,16 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-10-16
+
+### Added
+
+- **`seahorse-memory` console script** — an alias for the MCP server entry
+  point (`seahorse.mcp.profile:main`). The PyPI distribution is
+  `seahorse-memory`, but a package-launcher (e.g. `uvx seahorse-memory`) needs
+  a same-named command to run; until now only `seahorse` and `seahorse-mcp`
+  were exposed. Install-smoke now asserts all three scripts resolve.
+
 ## [1.7.1] - 2026-10-15
 
 ### Fixed
