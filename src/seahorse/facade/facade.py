@@ -484,7 +484,7 @@ class MemoryFacade:
         ``extraction_mode='consolidated'`` — the marker is the note's regime,
         not its authorship (the human authorship stays in ``by.source_type``
         and ``supersedes_reason=CORRECTION``). Without the inheritance the
-        successor dropped out of the consolidated regime: ``_is_consolidated``
+        successor dropped out of the consolidated regime: ``is_consolidated``
         stopped matching, the next ``consolidate`` created a duplicate note,
         and the successor stopped materializing/embedding. The other skip keys
         (``model_used``/``prompt_hash``/``confidence``) are still forced.
@@ -502,11 +502,9 @@ class MemoryFacade:
         """
         self._validate_improve_input(ep_id, new_body, by)
         old = self._engine.get(ep_id)
-        inherits_consolidated = (
-            old is not None
-            and old.cognitive_type == "semantic"
-            and old.provenance.get("extraction_mode") == "consolidated"
-        )
+        from seahorse.distill.consolidate import is_consolidated
+
+        inherits_consolidated = old is not None and is_consolidated(old)
         effective_by: dict[str, Any] = {
             **by,
             "extraction_mode": "consolidated" if inherits_consolidated else "skip",
