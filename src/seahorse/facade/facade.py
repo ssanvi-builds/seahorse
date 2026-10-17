@@ -37,6 +37,7 @@ from seahorse.contracts.engine import (
     FreshnessView,
     WriteResult,
 )
+from seahorse.contracts.episode import is_consolidated, normalize_derived_from
 from seahorse.contracts.index import PIT_KIND_VALUES, PITKind
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import (
@@ -502,8 +503,6 @@ class MemoryFacade:
         """
         self._validate_improve_input(ep_id, new_body, by)
         old = self._engine.get(ep_id)
-        from seahorse.distill.consolidate import is_consolidated
-
         inherits_consolidated = old is not None and is_consolidated(old)
         effective_by: dict[str, Any] = {
             **by,
@@ -537,12 +536,10 @@ class MemoryFacade:
     def _inherited_membership(self, old: Any, ep_id: str) -> list[dict[str, str]]:
         """The superseded note's membership the successor keeps, with the
         lineage closed by the superseded note itself (F3.2 improve decision).
-        Lazy import: ``distill`` pulls the engine; the facade must not import
-        it at module load. Self-referencing edges are dropped — the closing
-        ``supersedes`` edge replaces them (an episode never cites itself as
-        its own evidence)."""
-        from seahorse.distill.distill import normalize_derived_from
-
+        The parse is the contract-level ``normalize_derived_from`` (tolerant,
+        shared with the distill path). Self-referencing edges are dropped —
+        the closing ``supersedes`` edge replaces them (an episode never cites
+        itself as its own evidence)."""
         edges = [
             edge
             for edge in normalize_derived_from(old.provenance.get("derived_from"))
@@ -724,12 +721,8 @@ class MemoryFacade:
 
         # Knowledge notes: the distilled surface (consolidated notes written by
         # `seahorse consolidate`, `project_doc` notes written by the agent).
-        # `is_consolidated` is the same predicate consolidate/management use —
-        # one definition of "this episode is a knowledge note". Lazy import to
-        # mirror `distill()` below (distill is a facade client, but its leaf
-        # imports are engine/llm contracts only — no cycle).
-        from seahorse.distill.consolidate import is_consolidated
-
+        # `is_consolidated` is the contract-level predicate (one definition;
+        # consolidate/management use the same one).
         knowledge = [
             e
             for e in eps

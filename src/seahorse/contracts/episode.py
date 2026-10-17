@@ -55,10 +55,13 @@ accepted deviation (Pydantic v2 is the canonical schema tool). Only
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class Episode(BaseModel):
@@ -150,3 +153,62 @@ class Episode(BaseModel):
     def provenance_json(self) -> str:
         """Serialize provenance for the TEXT column with ``json_valid`` CHECK."""
         return json.dumps(self.provenance, sort_keys=True, separators=(",", ":"))
+
+
+# ---------- episode contract vocabulary (F3.2 membership edges + regime) ----
+# These belong to the EPISODE contract, not to the distill layer: they read
+# fields of the contract shape itself. Distill is one producer of the
+# consolidated regime (and of membership edges) via engine.remember/ improve;
+# consumers (facade improve/context, CLI management, consolidate) live in
+# layers ABOVE both, so the shared definitions live DOWNSTREAM of all of them
+# — here, on the leaf module every layer already imports. A consumer importing
+# a producer's vocabulary (facade reaching UP into distill) is a layer
+# inversion; importing contract vocabulary is not.
+
+EDGE_EVIDENCE = "evidence"
+EDGE_SUPERSEDES = "supersedes"
+
+
+def is_consolidated(ep: Any) -> bool:
+    """True iff ``ep`` is a consolidated knowledge note (the distill OUTPUT).
+
+    The regime two fields make: ``cognitive_type=semantic`` plus
+    ``extraction_mode=consolidated`` in the provenance. Single definition
+    shared by the consolidate driver (who filters sources), the facade
+    (``improve`` regime inheritance, ``context`` bootstrap) and the CLI
+    management surface — one predicate, no per-consumer inline copies.
+    """
+    return (
+        ep.cognitive_type == "semantic"
+        and ep.provenance.get("extraction_mode") == "consolidated"
+    )
+
+
+def normalize_derived_from(raw: Any) -> list[dict[str, str]]:
+    """Parse an ``x-seahorse-derived-from`` / ``derived_from`` membership into
+    the canonical ``{id, edge_kind}`` shape (F3.2).
+
+    Tolerant by policy (the same policy as every ``x-*`` field — preserve,
+    never reject): dicts with a string ``id`` pass through verbatim, unknown
+    ``edge_kind`` values are preserved, and a plain string entry — the minimal
+    shape a third-party producer may emit — is promoted to ``evidence``.
+    Unusable entries (no id, non-string id, non-string non-dict) are skipped
+    with a warning: membership parse must never crash a write. NO dedupe here
+    — callers own dedupe, by ``(id, edge_kind)`` pair (they have the
+    known-set, the parser does not).
+    """
+    if not isinstance(raw, list):
+        return []
+    edges: list[dict[str, str]] = []
+    for entry in raw:
+        if isinstance(entry, dict):
+            edge_id = entry.get("id")
+            if isinstance(edge_id, str):
+                edges.append(entry)
+            else:
+                logger.warning("derived_from entry without a string id skipped: %r", entry)
+        elif isinstance(entry, str):
+            edges.append({"id": entry, "edge_kind": EDGE_EVIDENCE})
+        else:
+            logger.warning("derived_from entry of unusable type skipped: %r", entry)
+    return edges

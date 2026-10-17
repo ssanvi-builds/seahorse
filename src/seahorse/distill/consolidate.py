@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from seahorse.contracts.engine import InvalidationConflictError, NotFound
+from seahorse.contracts.episode import is_consolidated
 from seahorse.distill.cluster import MIN_CLUSTER_SIZE, Cluster, cluster_episodes
 from seahorse.distill.synthesis import synthesize_cluster
 from seahorse.engine.errors import E_COLLISION_EXISTS, EngineError
@@ -87,14 +88,6 @@ class ConsolidateReport:
 
     clusters_found: int = 0
     items: list[ConsolidateItem] = field(default_factory=list)
-
-
-def is_consolidated(ep: Any) -> bool:
-    """True iff ``ep`` is a consolidated knowledge note (the distill OUTPUT)."""
-    return (
-        ep.cognitive_type == "semantic"
-        and ep.provenance.get("extraction_mode") == "consolidated"
-    )
 
 
 def unconsolidated_sources(

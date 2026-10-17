@@ -30,6 +30,7 @@ from typing import Any, TextIO
 from seahorse.cli.config import SeahorseConfig, is_initialized, write_default_config
 from seahorse.cli.errors import CliNotInMVP0
 from seahorse.cli.output import OutputFormat, render_message
+from seahorse.contracts.episode import is_consolidated
 from seahorse.facade import new_uuid7
 
 # Reserved management commands → Cat C CLI_NOT_IN_MVP_0 (75), with the reason
@@ -97,7 +98,7 @@ def _memory_snapshot(config: SeahorseConfig) -> dict[str, Any]:
         return {"status": "no db yet"}
     from datetime import UTC, datetime
 
-    from seahorse.distill.consolidate import is_consolidated, unconsolidated_sources
+    from seahorse.distill.consolidate import unconsolidated_sources
     from seahorse.facade.factory import build_facade
 
     try:

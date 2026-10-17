@@ -18,46 +18,18 @@ import logging
 from typing import Any
 
 from seahorse.contracts.engine import WriteResult
+from seahorse.contracts.episode import (
+    EDGE_EVIDENCE,
+    EDGE_SUPERSEDES,
+    normalize_derived_from,
+)
 from seahorse.distill.cluster import cluster_key
 from seahorse.engine.ids import new_uuid7
 from seahorse.write_path.extract import derive_summary
 
 SUPERSEDES_REASON_MERGE = "merge"
 
-_EDGE_EVIDENCE = "evidence"
-_EDGE_SUPERSEDES = "supersedes"
-
 logger = logging.getLogger(__name__)
-
-
-def normalize_derived_from(raw: Any) -> list[dict[str, str]]:
-    """Parse an ``x-seahorse-derived-from`` / ``derived_from`` membership into
-    the canonical ``{id, edge_kind}`` shape (F3.2).
-
-    Tolerant by policy (the same policy as every ``x-*`` field — preserve,
-    never reject): dicts with a string ``id`` pass through verbatim, unknown
-    ``edge_kind`` values are preserved, and a plain string entry — the minimal
-    shape a third-party producer may emit — is promoted to ``evidence``.
-    Unusable entries (no id, non-string id, non-string non-dict) are skipped
-    with a warning: membership parse must never crash a write. NO dedupe here
-    — callers own dedupe, by ``(id, edge_kind)`` pair (they have the
-    known-set, the parser does not).
-    """
-    if not isinstance(raw, list):
-        return []
-    edges: list[dict[str, str]] = []
-    for entry in raw:
-        if isinstance(entry, dict):
-            edge_id = entry.get("id")
-            if isinstance(edge_id, str):
-                edges.append(entry)
-            else:
-                logger.warning("derived_from entry without a string id skipped: %r", entry)
-        elif isinstance(entry, str):
-            edges.append({"id": entry, "edge_kind": _EDGE_EVIDENCE})
-        else:
-            logger.warning("derived_from entry of unusable type skipped: %r", entry)
-    return edges
 
 
 def _derived_from(
@@ -84,7 +56,7 @@ def _derived_from(
     (the same policy as every ``x-*`` field).
     """
     edges: list[dict[str, str]] = [
-        {"id": ep_id, "edge_kind": _EDGE_EVIDENCE} for ep_id in source_ep_ids
+        {"id": ep_id, "edge_kind": EDGE_EVIDENCE} for ep_id in source_ep_ids
     ]
     if supersede_ep_id is None:
         return edges
@@ -96,7 +68,7 @@ def _derived_from(
             if pair not in known and edge["id"] != supersede_ep_id:
                 edges.append(edge)
                 known.add(pair)
-    edges.append({"id": supersede_ep_id, "edge_kind": _EDGE_SUPERSEDES})
+    edges.append({"id": supersede_ep_id, "edge_kind": EDGE_SUPERSEDES})
     return edges
 
 
