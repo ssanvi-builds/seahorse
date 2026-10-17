@@ -232,12 +232,17 @@ _HOOK_EVENT_TYPES: dict[str, str] = {
 }
 
 
-def _read_hook_input() -> dict:
+def read_hook_payload() -> dict:
     """Read the hook payload Claude Code passes on stdin (JSON line).
 
+    The ``observe event`` CLI command calls this BEFORE resolving the vault
+    (the payload carries the session's ``cwd``/``project_dir``) and hands the
+    parsed result to :func:`run_observe_event` via ``hook_input`` — stdin is
+    read exactly once per hook process.
+
     Claude Code delivers every hook event as a JSON object on stdin —
-    ``hook_event_name`` / ``session_id`` / ``tool_name`` / ``tool_input`` / ...
-    The legacy env-var contract (``CLAUDE_HOOK_EVENT_NAME`` etc.) never
+    ``hook_event_name`` / ``session_id`` / ``cwd`` / ``tool_name`` / ``tool_input``
+    / ... The legacy env-var contract (``CLAUDE_HOOK_EVENT_NAME`` etc.) never
     existed in the harness, but it is kept as fallback for tests and manual
     invocations. Anything unreadable → empty dict: the hook must never
     abort the session.
@@ -252,6 +257,23 @@ def _read_hook_input() -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}  # observer failure is a silent no-op (never abort the session)
+
+
+def session_vault_hints(hook_input: dict) -> list[Path]:
+    """The session-identity directories the payload carries, in priority order.
+
+    Claude Code stamps each hook event with where the session lives (its
+    current working directory; some harnesses name the field differently —
+    both ``cwd`` and ``project_dir`` are honored). Non-string or empty values
+    are ignored: the payload is third-party data, parsed tolerantly like
+    every other contract field.
+    """
+    hints: list[Path] = []
+    for key in ("cwd", "project_dir"):
+        value = hook_input.get(key)
+        if isinstance(value, str) and value:
+            hints.append(Path(value).expanduser())
+    return hints
 
 
 def _hook_field(hook_input: dict, key: str, env_name: str) -> str:
@@ -391,7 +413,12 @@ def _inject_context(cfg: SeahorseConfig, out: TextIO) -> None:
 
 
 def run_observe_event(
-    cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO, agent_id: str = ""
+    cfg: SeahorseConfig,
+    *,
+    fmt: OutputFormat,
+    out: TextIO,
+    agent_id: str = "",
+    hook_input: dict | None = None,
 ) -> None:
     """POST a hook event to the observer socket (called by the Claude Code hooks).
 
@@ -415,10 +442,14 @@ def run_observe_event(
     Context injection: on SessionStart (regardless of capture success), the
     bootstrap context is emitted as a single ``hookSpecificOutput`` JSON line
     — the only stdout the hook ever produces.
+
+    ``hook_input`` (optional) is the payload already parsed by the CLI wiring
+    (``read_hook_payload`` before vault resolution); None re-reads stdin.
     """
     if cfg.observe is None:
         return  # observer not set up — silent no-op (never abort the session)
-    hook_input = _read_hook_input()
+    if hook_input is None:
+        hook_input = read_hook_payload()
     event_name = _hook_field(hook_input, "hook_event_name", "CLAUDE_HOOK_EVENT_NAME")
     event_type = _HOOK_EVENT_TYPES.get(event_name)
     if event_type is None:

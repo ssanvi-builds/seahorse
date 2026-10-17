@@ -54,17 +54,36 @@ def register(app: typer.Typer, *, out) -> None:
             help="Attribute the event to this agent when the hook payload has none.",
         ),
     ) -> None:
-        """POST a hook event to the observer socket (called by the hooks)."""
-        from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
-        from seahorse.observe.cli import run_observe_event
+        """POST a hook event to the observer socket (called by the hooks).
 
+        The vault resolves from the SESSION identity first (the payload's
+        ``cwd``/``project_dir`` — what the client says about the session), not
+        from this process's cwd: a claude process launched or resumed from a
+        sibling vault used to route every write of that session into the
+        wrong vault (the feni<->herald leak, 2026-10-17). Nothing resolves →
+        the event is dropped.
+        """
+        from seahorse.cli.config import load_config, resolve_vault
+        from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
+        from seahorse.observe.cli import (
+            read_hook_payload,
+            run_observe_event,
+            session_vault_hints,
+        )
+
+        hook_input = read_hook_payload()
         try:
-            cfg = ctx.obj.resolved_config(allow_pointer=False)
+            vault = resolve_vault(
+                ctx.obj.vault, allow_pointer=False, hint_dirs=session_vault_hints(hook_input)
+            )
+            cfg = load_config(vault)
         except (CliConfigInvalid, CliVaultNotFound):
-            # Hook contract: never abort the agent session. A session launched
-            # in a non-vault directory (or with a corrupt seahorse.toml) has
+            # Hook contract: never abort the agent session. A session whose
+            # identity resolves nowhere (or with a corrupt seahorse.toml) has
             # nothing usable to capture into — drop the event silently (never
             # fall back to the global pointer: its target moves across setups
             # and would leak into another vault).
             return
-        run_observe_event(cfg, fmt=ctx.obj.fmt, out=out(ctx), agent_id=agent_id)
+        run_observe_event(
+            cfg, fmt=ctx.obj.fmt, out=out(ctx), agent_id=agent_id, hook_input=hook_input
+        )

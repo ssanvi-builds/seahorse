@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -1011,3 +1012,119 @@ def test_context_command_vault_precedes_subcommand(tmp_path) -> None:
     assert cmd.index("--vault") < cmd.index("context")
     assert str(cfg.vault) in cmd
     assert "seahorse.cli.app" in cmd
+
+
+# ---------------------------------------------------------------------------
+# session-identity vault resolution (the 2026-10-17 wrong-vault leak)
+# ---------------------------------------------------------------------------
+
+
+def test_session_vault_hints_from_payload() -> None:
+    """cwd/project_dir from the payload become the hints, in priority order.
+
+    Non-string and empty values are ignored (the payload is third-party
+    data — tolerant parse, like every other x-* field).
+    """
+    from seahorse.observe.cli import session_vault_hints
+
+    assert session_vault_hints({"cwd": "/tmp/a", "project_dir": "/tmp/b"}) == [
+        Path("/tmp/a"),
+        Path("/tmp/b"),
+    ]
+    assert session_vault_hints({"project_dir": "/tmp/b"}) == [Path("/tmp/b")]
+    assert session_vault_hints({"cwd": ""}) == []
+    assert session_vault_hints({"cwd": 7}) == []
+    assert session_vault_hints({}) == []
+
+
+def test_observe_event_hook_input_injected(tmp_path, monkeypatch) -> None:
+    """``hook_input`` replaces the stdin read (the CLI owns the single read).
+
+    The stdin payload here would map to ``stop``; the injected one must win —
+    the runner must not re-read stdin when the wiring already parsed it.
+    """
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"hook_event_name": "Stop", "session_id": "sess-stdin"})),
+    )
+    posted: list = []
+    _capture_post(monkeypatch, posted)
+    run_observe_event(
+        _cfg_observe(tmp_path),
+        fmt="human",
+        out=_out(),
+        hook_input={
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "sess-inj",
+            "prompt": "hi",
+        },
+    )
+    assert posted == [
+        {
+            "session_id": "sess-inj",
+            "event_type": "user_prompt_submit",
+            "payload": {"prompt": "hi"},
+        }
+    ]
+
+
+def _init_vault(tmp_path, name: str) -> Path:
+    """A real initialized vault on disk (``[seahorse]`` + ``[observe]``)."""
+    vault = tmp_path / name
+    seahorse_dir = vault / ".seahorse"
+    seahorse_dir.mkdir(parents=True)
+    (seahorse_dir / "seahorse.toml").write_text(
+        '[seahorse]\ndb_path = "seahorse.db"\n\n[observe]\n', encoding="utf-8"
+    )
+    return vault
+
+
+def test_observe_event_payload_cwd_beats_hook_process_cwd(tmp_path, monkeypatch) -> None:
+    """The payload's session cwd routes the event to the RIGHT vault.
+
+    The claude process (and the hook child) may run under a sibling vault —
+    launched or resumed from it — while the session belongs to another one.
+    Resolution must follow the session, not the process (feni <-> herald,
+    2026-10-17).
+    """
+    launched = _init_vault(tmp_path, "launched-vault")
+    target = _init_vault(tmp_path, "target-vault")
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    monkeypatch.chdir(launched)
+    import seahorse.cli.config as cli_config
+
+    monkeypatch.setattr(cli_config, "read_global_pointer", lambda: None)
+
+    posted: list = []
+    captured_cfgs: list = []
+
+    def _fake_post(cfg, raw):
+        captured_cfgs.append(cfg)
+        posted.append(raw)
+        return 200, ""
+
+    monkeypatch.setattr("seahorse.observe.cli._post_event", _fake_post)
+    from seahorse.cli.config import load_config, resolve_vault
+    from seahorse.observe.cli import session_vault_hints
+
+    hook_input = {
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "sess-cwd",
+        "cwd": str(target),
+        "prompt": "hi",
+    }
+    vault = resolve_vault(None, allow_pointer=False, hint_dirs=session_vault_hints(hook_input))
+    cfg = load_config(vault)
+
+    def _app_like_event() -> None:
+        run_observe_event(cfg, fmt="human", out=_out(), hook_input=hook_input)
+
+    _app_like_event()
+    assert [c.vault for c in captured_cfgs] == [target]
+    assert posted == [
+        {
+            "session_id": "sess-cwd",
+            "event_type": "user_prompt_submit",
+            "payload": {"prompt": "hi"},
+        }
+    ]

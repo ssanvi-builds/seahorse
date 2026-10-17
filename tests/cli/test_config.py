@@ -157,6 +157,48 @@ def test_resolve_vault_nothing_resolves_raises(monkeypatch, tmp_path):
         resolve_vault(None)
 
 
+def test_resolve_vault_session_hints_beat_cwd(monkeypatch, tmp_path):
+    """Hook payload session dirs (cwd/project_dir) beat the process cwd.
+
+    The 2026-10-17 wrong-vault leak: a claude process launched or resumed
+    from a sibling vault routed every hook write of that session into the
+    sibling's DB. The session identity arrives in the hook payload — it must
+    win over the process-cwd walk-up.
+    """
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
+    session_vault = tmp_path / "session-vault"
+    write_default_config(session_vault)
+    process_vault = tmp_path / "process-vault"
+    write_default_config(process_vault)
+    monkeypatch.chdir(process_vault)
+    resolved = resolve_vault(
+        None, allow_pointer=False, hint_dirs=[tmp_path / "unrelated", session_vault]
+    )
+    assert resolved == session_vault.resolve()
+
+
+def test_resolve_vault_hint_dirs_walk_up(monkeypatch, tmp_path):
+    """A hint INSIDE a vault resolves the vault root (same walk as cwd)."""
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
+    vault = tmp_path / "vault"
+    write_default_config(vault)
+    session_subdir = vault / "notes"
+    session_subdir.mkdir()
+    resolved = resolve_vault(None, allow_pointer=False, hint_dirs=[session_subdir])
+    assert resolved == vault.resolve()
+
+
+def test_resolve_vault_hint_dirs_none_is_cwd_fallback(monkeypatch, tmp_path):
+    """Hints absent (or empty) keep the classic cwd walk-up behavior."""
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    _isolate_pointer(monkeypatch, tmp_path)
+    monkeypatch.chdir(tmp_path)
+    write_default_config(tmp_path)
+    assert resolve_vault(None, allow_pointer=False, hint_dirs=[]) == tmp_path.resolve()
+
+
 # ---------------------------------------------------------------------------
 # global vault pointer (~/.config/seahorse/vault) + parent-directory walk.
 # ---------------------------------------------------------------------------

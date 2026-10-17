@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import sys
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -289,7 +290,10 @@ def is_initialized(vault: Path) -> bool:
 
 
 def resolve_vault(
-    explicit: Path | None, *, allow_pointer: bool = True
+    explicit: Path | None,
+    *,
+    allow_pointer: bool = True,
+    hint_dirs: Sequence[Path] | None = None,
 ) -> Path:
     """Resolve the vault directory per the current-release discovery order.
 
@@ -301,6 +305,14 @@ def resolve_vault(
     — resolving through it there captures into an unrelated vault
     (the wrong-vault leak, 2026-10-07). Hook-invoked commands disable it;
     human commands keep the convenience.
+
+    ``hint_dirs`` are session-identity directories handed in by the caller
+    (the ``observe event`` hook wires the payload's ``cwd``/``project_dir``
+    here). Each hint walks up like the process cwd does, but takes precedence
+    over it: a claude process launched or resumed from a sibling vault used
+    to route every hook write of that session into the sibling's DB
+    (the wrong-vault leak, 2026-10-17). Explicit ``--vault`` and
+    ``$SEAHORSE_VAULT`` stay above the hints (operator authority).
     """
     if explicit is not None:
         vault = explicit.expanduser().resolve()
@@ -316,6 +328,12 @@ def resolve_vault(
         if not vault.is_dir():
             raise CliVaultNotFound(hint=f"${_VAULT_ENV}={env} is not an existing directory")
         return vault
+
+    for hint in hint_dirs or ():
+        hint_resolved = hint.expanduser().resolve()
+        for candidate in (hint_resolved, *hint_resolved.parents):
+            if is_initialized(candidate):
+                return candidate
 
     cwd = Path.cwd().resolve()
     for candidate in (cwd, *cwd.parents):
