@@ -1037,6 +1037,54 @@ def test_session_vault_hints_from_payload() -> None:
     assert session_vault_hints({}) == []
 
 
+def test_harness_project_dir_env(monkeypatch, tmp_path) -> None:
+    """$CLAUDE_PROJECT_DIR is the stable identity ("where the session started").
+
+    It must rank ABOVE the payload cwd: a session that cd-s into a sibling
+    vault changes the payload cwd (and the hook child's process cwd) — the
+    env stays put (the docs' explicit contrast). Absent/non-directory values
+    return None (fall through to the payload hints).
+    """
+    from seahorse.observe.cli import harness_project_dir
+
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    assert harness_project_dir() is None
+
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "nope"))
+    assert harness_project_dir() is None
+
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project))
+    assert harness_project_dir() == project
+
+
+def test_harness_project_dir_beats_payload_cwd(tmp_path, monkeypatch) -> None:
+    """Full app-like wiring: harness env outranks the payload cwd.
+
+    The t6 case: a herald session cd-s into feni; the hooks (and the payload
+    cwd) resolve feni while the session belongs to Herald. Resolution must
+    follow the env's stable project root.
+    """
+    launched = _init_vault(tmp_path, "launched-vault")
+    target = _init_vault(tmp_path, "target-vault")
+    cd_into = _init_vault(tmp_path, "cd-into-vault")
+    monkeypatch.delenv("SEAHORSE_VAULT", raising=False)
+    monkeypatch.chdir(launched)
+    import seahorse.cli.config as cli_config
+
+    monkeypatch.setattr(cli_config, "read_global_pointer", lambda: None)
+    from seahorse.cli.config import load_config, resolve_vault
+    from seahorse.observe.cli import harness_project_dir, session_vault_hints
+
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(target))
+    hook_input = {"cwd": str(cd_into), "hook_event_name": "UserPromptSubmit"}
+    hints = [harness_project_dir(), *session_vault_hints(hook_input)]
+    vault = resolve_vault(None, allow_pointer=False, hint_dirs=hints)
+    cfg = load_config(vault)
+    assert cfg.vault == target
+
+
 def test_observe_event_hook_input_injected(tmp_path, monkeypatch) -> None:
     """``hook_input`` replaces the stdin read (the CLI owns the single read).
 

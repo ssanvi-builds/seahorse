@@ -9,6 +9,8 @@ machinery must not load for every other command.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 
@@ -56,25 +58,33 @@ def register(app: typer.Typer, *, out) -> None:
     ) -> None:
         """POST a hook event to the observer socket (called by the hooks).
 
-        The vault resolves from the SESSION identity first (the payload's
-        ``cwd``/``project_dir`` — what the client says about the session), not
-        from this process's cwd: a claude process launched or resumed from a
-        sibling vault used to route every write of that session into the
-        wrong vault (the feni<->herald leak, 2026-10-17). Nothing resolves →
-        the event is dropped.
+        The vault resolves from the SESSION identity first — the harness
+        project root ($CLAUDE_PROJECT_DIR, "where the session started", immune
+        to mid-session cd-s) then the payload's cwd/project_dir — never from
+        this process's cwd: a session that cd-s into a sibling vault used to
+        route every write into the wrong vault (the feni<->herald leak,
+        2026-10-17). Nothing resolves → the event is dropped.
         """
         from seahorse.cli.config import load_config, resolve_vault
         from seahorse.cli.errors import CliConfigInvalid, CliVaultNotFound
         from seahorse.observe.cli import (
+            harness_project_dir,
             read_hook_payload,
             run_observe_event,
             session_vault_hints,
         )
 
         hook_input = read_hook_payload()
+        # Identity priority: the harness project root (stable across the
+        # session's own cd-s) first, then the payload session dirs (cwd/project_dir).
+        hints: list[Path] = []
+        project_dir = harness_project_dir()
+        if project_dir is not None:
+            hints.append(project_dir)
+        hints.extend(session_vault_hints(hook_input))
         try:
             vault = resolve_vault(
-                ctx.obj.vault, allow_pointer=False, hint_dirs=session_vault_hints(hook_input)
+                ctx.obj.vault, allow_pointer=False, hint_dirs=hints
             )
             cfg = load_config(vault)
         except (CliConfigInvalid, CliVaultNotFound):

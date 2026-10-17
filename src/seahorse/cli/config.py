@@ -307,10 +307,12 @@ def resolve_vault(
     human commands keep the convenience.
 
     ``hint_dirs`` are session-identity directories handed in by the caller
-    (the ``observe event`` hook wires the payload's ``cwd``/``project_dir``
-    here). Each hint walks up like the process cwd does, but takes precedence
-    over it: a claude process launched or resumed from a sibling vault used
-    to route every hook write of that session into the sibling's DB
+    (the ``observe event`` hook wires ``$CLAUDE_PROJECT_DIR`` — the stable
+    project root "where the session started" — plus the payload's
+    ``cwd``/``project_dir``). Each hint walks up like the process cwd does,
+    but takes precedence over it: a session that cd-s into a sibling vault
+    changes the hook process's cwd, and resolution by that evolving cwd
+    routed every hook write of the session into the wrong vault
     (the wrong-vault leak, 2026-10-17). Explicit ``--vault`` and
     ``$SEAHORSE_VAULT`` stay above the hints (operator authority).
     """

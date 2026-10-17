@@ -262,11 +262,12 @@ def read_hook_payload() -> dict:
 def session_vault_hints(hook_input: dict) -> list[Path]:
     """The session-identity directories the payload carries, in priority order.
 
-    Claude Code stamps each hook event with where the session lives (its
-    current working directory; some harnesses name the field differently —
-    both ``cwd`` and ``project_dir`` are honored). Non-string or empty values
-    are ignored: the payload is third-party data, parsed tolerantly like
-    every other contract field.
+    Non-string and empty values are ignored: the payload is third-party data,
+    parsed tolerantly like every other contract field. NOTE: the payload
+    ``cwd`` tracks Claude's evolving working directory (the hook doc is
+    explicit: it is "the new directory after Claude runs ``cd``") — it is a
+    weaker identity than the harness project root;
+    :func:`harness_project_dir` ranks above it.
     """
     hints: list[Path] = []
     for key in ("cwd", "project_dir"):
@@ -274,6 +275,25 @@ def session_vault_hints(hook_input: dict) -> list[Path]:
         if isinstance(value, str) and value:
             hints.append(Path(value).expanduser())
     return hints
+
+
+def harness_project_dir() -> Path | None:
+    """``$CLAUDE_PROJECT_DIR`` — the harness's stable project root.
+
+    The hook docs define it as "the project root where the session started"
+    and explicitly contrast it with the payload ``cwd`` (which follows
+    mid-session ``cd``s). Only Claude Code hook children get it; other
+    harnesses fall through to the payload hints. The 2026-10-17 feni<->herald
+    leak captured herald-session events into feni because a session ``cd``-ed
+    into a sibling vault and the hooks resolved by the evolving cwd — this is
+    the identity that cannot drift.
+    """
+    value = os.environ.get("CLAUDE_PROJECT_DIR")
+    if value:
+        candidate = Path(value).expanduser()
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def _hook_field(hook_input: dict, key: str, env_name: str) -> str:
