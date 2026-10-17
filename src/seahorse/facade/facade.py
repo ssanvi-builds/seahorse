@@ -384,7 +384,7 @@ class MemoryFacade:
         subject_filter: str | None = None,
         session_boost: bool = False,
     ) -> list[IndexRow]:
-        """Recall the INDEX level (current-state listing / later hybrid).
+        """Recall the INDEX level (query-filtered current-state listing / later hybrid).
 
         Boundary validation only: ``query`` non-empty; PIT is refused before
         any read UNLESS the injected retriever declares ``supports_pit`` (the
@@ -394,6 +394,9 @@ class MemoryFacade:
         ``Retriever`` (extension point); the retriever produces
         ``FusedCandidate`` and the facade forwards the (possibly PIT) candidates
         to ``materialize_index``. The facade NEVER constructs ``IndexRow``.
+        In the listing regime the query FILTERS (case-insensitive substring,
+        subject/title/body) but does not rank — the matched subset keeps the
+        deterministic listing order (documented; the hybrid regime ranks).
         ``session_boost`` (default-OFF) is the two-stage seam's
         session-restricted re-rank — DISABLED by default (the authoritative
         LMEB-S run proved it net-harmful: 0.424 vs 0.533 pure RRF); the

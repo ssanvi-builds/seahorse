@@ -4,6 +4,35 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-17
+
+### Fixed
+
+- **`observe event` resolves the vault from the session, not the process cwd**
+  — Claude Code stamps hook events with where the session lives
+  (`$CLAUDE_PROJECT_DIR` = the stable project root "where the session
+  started"; the payload `cwd` is documented to follow mid-session `cd`s).
+  Resolution now walks the harness project root and the payload session dirs
+  before the process cwd. Previously a session launched or resumed from — or
+  `cd`-ing into — a sibling vault routed every hook capture and MCP write of
+  that session into the sibling's DB (the feni<->herald cross-capture,
+  2026-10-17). Explicit `--vault`/`$SEAHORSE_VAULT` keep operator priority;
+  unresolvable sessions still drop the event silently; Codex payloads keep
+  the legacy chain.
+
+### Changed
+
+- **Listing recall filters by the query substring** — in the ranking-free
+  listing regime (`seahorse recall` without the `embeddings` extra), the
+  query used to be accepted and ignored: new-first `top_k` buried every
+  older episode and callers believed they had searched. A non-empty query
+  now filters case-insensitively (whole query as one needle over
+  subject/title/body) in the current-state AND PIT listings; the matched
+  subset keeps the deterministic listing order (the regime is still
+  ranking-free — documented in the MCP tool description); a no-match recall
+  is EMPTY, not the full listing. The hybrid regime (embeddings installed)
+  is unchanged.
+
 ## [1.7.2] - 2026-10-16
 
 ### Added

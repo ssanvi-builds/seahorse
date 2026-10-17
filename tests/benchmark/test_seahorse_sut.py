@@ -90,7 +90,7 @@ def test_query_returns_response_with_bridge(sut, fake_reader):
     sut.ingest(
         [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
     )
-    resp = sut.query("What is the capital of France?")
+    resp = sut.query("France")
     assert resp.answer == "Paris"
     assert resp.retrieved_ep_ids
     assert resp.retrieved_session_ids == ("s1",)
@@ -129,7 +129,7 @@ def test_query_body_mode_hydrates_the_full_body(sut, fake_reader):
     context — the A4 concern the reader-context A/B measures."""
     sut._context_mode = "body"  # noqa: SLF001 — test hook
     _session_with_mid_turn_answer(sut)
-    resp = sut.query("What does project X use?")
+    resp = sut.query("project X")
     assert resp.answer == "Paris"  # the fake reader's canned answer
     context = fake_reader.calls[-1][1]
     assert "RISC-V" in context
@@ -140,7 +140,7 @@ def test_query_summary_mode_does_not_hydrate_body(sut, fake_reader):
     derived summary (the FIRST SENTENCE) ONLY — the mid-body answer never
     reaches the reader (progressive disclosure, INDEX level)."""
     _session_with_mid_turn_answer(sut)
-    sut.query("What does project X use?")
+    sut.query("project X")
     context = fake_reader.calls[-1][1]
     assert "RISC-V" not in context
     assert "deployment pipeline" in context
@@ -154,7 +154,7 @@ def test_query_records_index_rerank_latency_when_enabled(sut, fake_reader):
     sut.ingest(
         [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
     )
-    resp = sut.query("What is the capital of France?")
+    resp = sut.query("France")
     assert "index_rerank" in resp.latency_ms
     assert resp.latency_ms["index_rerank"] >= 0
 
@@ -166,7 +166,7 @@ def test_query_omits_index_rerank_when_disabled(sut, fake_reader):
     sut.ingest(
         [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
     )
-    resp = sut.query("What is the capital of France?")
+    resp = sut.query("France")
     assert "index_rerank" not in resp.latency_ms
 
 

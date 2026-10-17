@@ -5,9 +5,11 @@ behind a ``Retriever`` extension point makes the listing → hybrid recall-regim
 swap a single-point change at the composition root (``build_facade`` passes a
 different ``Retriever``), not a multi-touch-point edit across facade/MCP/CLI.
 
-This is the current-release impl: the canonical recall is the **current-state
-listing** ordered by ``created_at`` desc (``ep_id`` asc tie-break, deterministic),
-with no ranking by ``query``. It produces synthetic
+This is the current-release impl: the canonical recall is a **query-filtered
+current-state listing** — case-insensitive substring (subject/title/body), then
+``created_at`` desc (``ep_id`` asc tie-break, deterministic), with no RANKING
+by ``query``. The whole query is one needle (no tokenization); a no-match
+recall is EMPTY, not the full listing. It produces synthetic
 ``FusedCandidate(score=0.0, sources=())`` — the body-less shape
 ``materialize_index`` projects into the INDEX level. A later release will swap
 in an adapter over ``seahorse.retrieval.recall`` (kNN + BM25 + RRF); that
@@ -71,14 +73,32 @@ class _PitSource(Protocol):
     ) -> list[Episode]: ...
 
 
+def _matches_query(ep: Episode, query: str) -> bool:
+    """Case-insensitive substring match of the whole query (one needle, no
+    tokenization) over the episode's text fields (subject/title/body). None
+    fields are skipped; an episode matches when ANY field contains the
+    needle. The facade already rejects blank queries, so ``query`` reaches
+    here non-empty."""
+    needle = query.strip().lower()
+    if not needle:
+        return True
+    return any(text and needle in text.lower() for text in (ep.subject, ep.title, ep.body))
+
+
 class VigenteListingRetriever:
     """Current-release ``Retriever``: current-state listing, deterministic order, no ranking.
 
     Construct with the engine (for ``get_vigente``), the clock, the facade
     config (for the ``top_k`` clamp) and — to serve PIT recall — the optional
     ``pit_source`` (the repository ``query_state_at`` / ``query_known_at``
-    slice). ``recall`` ignores ``query`` for ranking (the canonical recall is
-    the full listing, PIT-resolved or current-state).
+    slice). ``recall`` filters by the query substring (case-insensitive,
+    subject/title/body — the whole query as one needle, no tokenization):
+    an accepted-but-ignored query used to make callers believe they had
+    searched, and the newest-first ``top_k`` buried every older episode
+    (feni's K-series under the herald capture, 2026-10-17). This regime is
+    still RANKING-FREE: within the matched subset the order stays the
+    deterministic listing order (no relevance), and a ``no-match`` recall
+    returns EMPTY, not the full listing.
 
     ``supports_pit`` is an instance attribute: True iff a ``pit_source`` was
     injected. Without one the facade refuses a caller pit before consulting
@@ -114,17 +134,18 @@ class VigenteListingRetriever:
 
         Without a pit: the current-state listing (``get_vigente``). With one:
         the ``pit_source`` slice resolved at ``pit.t`` (routing by axis, the
-        ``t`` forwarded verbatim). ``query`` and ``session_boost`` are accepted
-        for Retriever-surface parity but never rank: the listing regime has no
-        re-rank, PIT or not.
+        ``t`` forwarded verbatim). The query FILTERS (case-insensitive
+        substring over subject/title/body) — it never ranks: the listing
+        regime has no re-rank, PIT or not. ``session_boost`` stays inert for
+        the same reason.
         """
-        del query  # not used for ranking (the later adapter uses it).
         if pit is None:
             eps = self._engine.get_vigente(subject=subject_filter, now=self._clock())
         else:
             eps = self._query_at(pit, subject_filter)
         if cognitive_type is not None:
             eps = [e for e in eps if e.cognitive_type == cognitive_type]
+        eps = [e for e in eps if _matches_query(e, query)]
         # Deterministic order: created_at desc, ep_id asc tie-break.
         # Two stable sorts: first ep_id asc, then created_at desc (stable keeps
         # ep_id asc for ties).

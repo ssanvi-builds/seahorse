@@ -49,8 +49,11 @@ def _remember(facade, body, *, now, valid_at=None, title=None, by=None):
     )
 
 
-def _ep_ids(facade, pit) -> set[str]:
-    return {r.ep_id for r in facade.recall("any", pit=pit)}
+def _ep_ids(facade, pit, query: str) -> set[str]:
+    """The listing is now query-FILTERED: the needle must match the fixture's
+    own content (subject/title/body) for the PIT-set assertions to see the
+    rows (the 2026-10-17 listing filter)."""
+    return {r.ep_id for r in facade.recall(query, pit=pit)}
 
 
 class TestFactoryWiring:
@@ -85,13 +88,13 @@ class TestImproveRoundTrip:
             first = _remember(facade, "Sergio lives in Madrid", now=T0, title="home")
             facade.improve(first.ep_id, "Sergio lives in Barcelona", by=BY, now=T1)
 
-            pit_rows = _ep_ids(facade, PITPoint(kind="state_at", t=T0))
+            pit_rows = _ep_ids(facade, PITPoint(kind="state_at", t=T0), query="sergio")
             # A stays state-valid at T0 (invalid_at=T1 > T0). A' ALSO resolves —
             # it is state-valid at T0 too (valid_at NULL, "from forever") and
             # state_at does not filter the creation axis (that is known_at's job).
             assert first.ep_id in pit_rows
 
-            now_rows = _ep_ids(facade, pit=None)
+            now_rows = _ep_ids(facade, pit=None, query="sergio")
             # The current-state listing serves only the vigent successor.
             assert first.ep_id not in now_rows
             assert len(now_rows) == 1
@@ -106,9 +109,9 @@ class TestForgetRoundTrip:
             first = _remember(facade, "Deploy behind oauth", now=T0, title="deploy")
             facade.forget(first.ep_id, reason="done", by=BY, now=T1)
 
-            pit_rows = _ep_ids(facade, PITPoint(kind="state_at", t=T0))
+            pit_rows = _ep_ids(facade, PITPoint(kind="state_at", t=T0), query="deploy")
             assert first.ep_id in pit_rows  # the row survives PIT before the forget
-            now_rows = _ep_ids(facade, pit=None)
+            now_rows = _ep_ids(facade, pit=None, query="deploy")
             assert first.ep_id not in now_rows  # soft-deleted from the current state
         finally:
             storage.close()
@@ -129,15 +132,15 @@ class TestStateAtPredicate:
                 by={"source_type": "human", "agent_id": "human", "session_id": "s"},
             )
 
-            pit_rows = _ep_ids(facade, PITPoint(kind="state_at", t=T1))
+            pit_rows = _ep_ids(facade, PITPoint(kind="state_at", t=T1), query="contract")
             assert pit_rows == set()  # valid_at=T2 > T1: not yet true (PENDING)
             # The same row IS state-valid at its own valid_at boundary.
-            pit_at_t2 = _ep_ids(facade, PITPoint(kind="state_at", t=T2))
+            pit_at_t2 = _ep_ids(facade, PITPoint(kind="state_at", t=T2), query="contract")
             assert len(pit_at_t2) == 1
             # The no-pit current-state listing excludes future-dated rows too
             # (get_vigente post-filters valid_at <= now); the PENDING distinction
             # the two regimes share — state_at just moves the boundary to t.
-            now_rows = _ep_ids(facade, pit=None)
+            now_rows = _ep_ids(facade, pit=None, query="contract")
             assert now_rows == set()
         finally:
             storage.close()
@@ -147,7 +150,7 @@ class TestStateAtPredicate:
         facade, storage = _build(tmp_path)
         try:
             first = _remember(facade, "Sergio was born in Spain", now=T0, title="origin")
-            rows = _ep_ids(facade, PITPoint(kind="state_at", t=T0))
+            rows = _ep_ids(facade, PITPoint(kind="state_at", t=T0), query="sergio")
             assert rows == {first.ep_id}
         finally:
             storage.close()
@@ -162,9 +165,9 @@ class TestKnownAtRoundTrip:
                 first.ep_id, "Sergio lives in Barcelona", by=BY, now=T1
             )
 
-            known_t0 = _ep_ids(facade, PITPoint(kind="known_at", t=T0))
+            known_t0 = _ep_ids(facade, PITPoint(kind="known_at", t=T0), query="sergio")
             assert known_t0 == {first.ep_id}
-            known_t1 = _ep_ids(facade, PITPoint(kind="known_at", t=T1))
+            known_t1 = _ep_ids(facade, PITPoint(kind="known_at", t=T1), query="sergio")
             # known_at does NOT track supersession (no invalid axis): A is still
             # known at T1 (created_at=T0 <= T1, expired_at NULL) — the knowledge
             # axis accumulates; supersession is state_at's + the chain's job.
@@ -180,7 +183,7 @@ class TestListingInvariantUnderPit:
             first = _remember(facade, "Fact one", now=T0, title="f1")
             # The stub query embedder raises E_NOT_IN_MVP_0 when invoked: a
             # successful PIT recall proves the embedder was never called.
-            rows = facade.recall("sergio", pit=PITPoint(kind="state_at", t=T1))
+            rows = facade.recall("fact", pit=PITPoint(kind="state_at", t=T1))
             assert [r.ep_id for r in rows] == [first.ep_id]
             # The vector/FTS repos stay untouched (empty — nothing indexed them).
             assert storage.vector.count() == 0

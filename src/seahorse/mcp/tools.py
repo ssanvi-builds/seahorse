@@ -319,8 +319,12 @@ TOOL_LIST: list[dict[str, Any]] = [
     },
     {
         "name": "recall",
-        "description": "Recall the INDEX level (current-state listing, no body). "
-        "Ranking-free; PIT is accepted (pit/pit_kind/pit_t, resolved before the "
+        "description": "Recall the INDEX level (query-filtered current-state listing, "
+        "no body). Without the embeddings extra this is ranking-free: the query "
+        "filters by case-insensitive substring (subject/title/body) — it does not "
+        "rank; the matched rows keep the deterministic newest-first order. "
+        "Install seahorse[embeddings] for semantic (relevance-ranked) recall. "
+        "PIT is accepted (pit/pit_kind/pit_t, resolved before the "
         "read — PIT is refused only in recall_full). Rows carry "
         "cognitive_type; the cognitive_type parameter filters it (e.g. "
         '"project_doc" for design notes). Chain recall_full on the top hits to '
