@@ -7,7 +7,7 @@ Without an explicit step that creates ``supersedes`` chains via
 The simulator DERIVES the ``(fact_key, old_version, new_version)`` pairs from
 the haystack when the adapter does not expose them explicitly — turns sharing a
 ``fact_key`` across sessions, ordered by date, form update pairs. The old
-version's ep_id is resolved from the SUT's ``fact_key_to_ep_id`` map (the
+version's ep_id is resolved from the SUT's bridge (``sut.bridge``, the
 first ingested version); if absent, the old version is ingested fresh.
 """
 
@@ -45,7 +45,7 @@ class KnowledgeUpdateSimulator:
                 if p.get("old_ep_id") is None:
                     key = p.get("fact_key")
                     if isinstance(key, str):
-                        p["old_ep_id"] = self._sut.fact_key_to_ep_id.get(key)
+                        p["old_ep_id"] = self._sut.bridge.fact_key_to_ep_id.get(key)
             if pairs:
                 updates[inst.instance_id] = pairs
         return updates
@@ -76,7 +76,7 @@ class KnowledgeUpdateSimulator:
             pairs.append(
                 {
                     "fact_key": key,
-                    "old_ep_id": self._sut.fact_key_to_ep_id.get(key),
+                    "old_ep_id": self._sut.bridge.fact_key_to_ep_id.get(key),
                     "old_body": old["body"],
                     "new_body": new["body"],
                     "session_id": new["session_id"],

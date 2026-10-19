@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from seahorse.benchmark.contracts import SessionBridge
 from seahorse.benchmark.sut.seahorse_sut import SeahorseSUT
 from seahorse.facade import build_facade
 from tests.benchmark.conftest import FakeReaderLLM, FakeTokenizer
@@ -25,7 +26,6 @@ def sut(tmp_path, fake_reader, fake_tokenizer):
         lambda: build_facade(tmp_path / "bench2.db", retrieval_available=False)[0],
         reader_llm=fake_reader,
         tokenizer=fake_tokenizer,
-        fact_id_to_session={},
     )
     yield sut
     storage.close()
@@ -41,9 +41,10 @@ def test_ingest_populates_bridge(sut):
         [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
     )
     assert len(ep_ids) == 1
-    assert len(sut.fact_id_to_session) == 1
-    assert len(sut._ep_id_to_session) == 1
-    assert set(sut._ep_id_to_session.values()) == {"s1"}
+    bridge = sut.bridge
+    assert len(bridge.fact_id_to_session) == 1
+    assert len(bridge.ep_id_to_session) == 1
+    assert set(bridge.ep_id_to_session.values()) == {"s1"}
 
 
 def test_sut_accepts_prepopulated_bridge(tmp_path, fake_reader, fake_tokenizer):
@@ -56,13 +57,15 @@ def test_sut_accepts_prepopulated_bridge(tmp_path, fake_reader, fake_tokenizer):
         lambda: build_facade(tmp_path / "bench2.db")[0],
         reader_llm=fake_reader,
         tokenizer=fake_tokenizer,
-        fact_id_to_session={"f1": "s1"},
-        ep_id_to_session={"e1": "s1"},
-        fact_key_to_ep_id={"france-capital": "e1"},
+        bridge=SessionBridge(
+            ep_id_to_session={"e1": "s1"},
+            fact_id_to_session={"f1": "s1"},
+            fact_key_to_ep_id={"france-capital": "e1"},
+        ),
     )
-    assert sut.fact_id_to_session == {"f1": "s1"}
-    assert sut._ep_id_to_session == {"e1": "s1"}
-    assert sut.fact_key_to_ep_id == {"france-capital": "e1"}
+    assert sut.bridge.fact_id_to_session == {"f1": "s1"}
+    assert sut.bridge.ep_id_to_session == {"e1": "s1"}
+    assert sut.bridge.fact_key_to_ep_id == {"france-capital": "e1"}
     storage.close()
 
 
@@ -73,7 +76,6 @@ def test_ingest_temporal_mode_sets_valid_at(sut):
         sut._facade_factory,
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
         temporal_mode=True,
     )
     ep_ids = temporal.ingest(
@@ -235,7 +237,7 @@ def test_apply_knowledge_updates_creates_supersedes(sut):
     )
     assert len(new_ep_ids) == 1
     # The new version is in session s2 via the ep_id bridge
-    assert sut._ep_id_to_session[new_ep_ids[0]] == "s2"
+    assert sut.bridge.ep_id_to_session[new_ep_ids[0]] == "s2"
     # The old version is invalidated
     rows = sut._facade.recall("France", k=10)
     assert all(r.invalid_at is None for r in rows)  # recall returns current-state versions only
@@ -246,10 +248,12 @@ def test_reset_clears_bridges(sut):
     sut.ingest(
         [_session("s1", d, [{"body": "# France\n\nThe capital is Paris.", "title": "France"}])]
     )
-    assert sut.fact_id_to_session
+    assert sut.bridge.fact_id_to_session
     sut.reset()
-    assert not sut.fact_id_to_session
-    assert not sut._ep_id_to_session
+    bridge = sut.bridge
+    assert not bridge.fact_id_to_session
+    assert not bridge.ep_id_to_session
+    assert not bridge.fact_key_to_ep_id
 
 
 def test_identity_reports_experiment_flags(sut):
@@ -271,7 +275,6 @@ def test_identity_reports_decay_config_when_wired(tmp_path, fake_reader, fake_to
         lambda: build_facade(tmp_path / "bench2.db", retrieval_available=False)[0],
         reader_llm=fake_reader,
         tokenizer=fake_tokenizer,
-        fact_id_to_session={},
         score_source="mvp1_decay",
         decay_config={"default_half_life_days": 347.0},
     )
@@ -301,7 +304,6 @@ def test_query_passes_state_at_pit_in_temporal_mode(sut):
         lambda: _SpyFacade(),
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
         temporal_mode=True,
     )
     d = datetime(2026, 1, 1, tzinfo=UTC)
@@ -325,7 +327,6 @@ def test_query_pit_queries_false_queries_active_now(sut):
         lambda: _SpyFacade(),
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
         temporal_mode=True,
         pit_queries=False,
     )
@@ -347,7 +348,6 @@ def test_query_no_pit_without_question_date(sut):
         lambda: _SpyFacade(),
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
         temporal_mode=True,
     )
     temporal.query("What is the capital?")  # no question_date
@@ -375,9 +375,83 @@ def test_query_falls_back_without_pit_when_unsupported(sut):
         lambda: _G2Facade(),
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
         temporal_mode=True,
     )
     d = datetime(2026, 1, 1, tzinfo=UTC)
     temporal.query("What was the capital on day 1?", question_date=d)
     assert calls == [PITPoint(kind="state_at", t=d), None]  # pit attempt + fallback
+
+
+# ---------------------------------------------------------------- session bridge
+
+
+def test_bridge_property_snapshots_internal_maps(sut):
+    """The bridge is the SUT's retrieval state as a first-class snapshot --
+    all three maps, no `# private-field` sniffing."""
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    sut.ingest(
+        [
+            _session(
+                "s1",
+                d,
+                [
+                    {
+                        "body": "# France\n\nThe capital is Paris.",
+                        "title": "France",
+                        "fact_key": "france-capital",
+                    }
+                ],
+            )
+        ]
+    )
+    bridge = sut.bridge
+    assert set(bridge.ep_id_to_session.values()) == {"s1"}
+    assert len(bridge.fact_id_to_session) == 1
+    assert "france-capital" in bridge.fact_key_to_ep_id
+
+
+def test_bridge_ctor_seeds_copies(tmp_path, fake_reader, fake_tokenizer):
+    """Anti-aliasing (the template-shared-across-N-variants guard): the SUT
+    copies the seed mappings so caller-side mutation OR later SUT writes never
+    leak into the SUT's state. The bridge container is frozen but does not
+    deep-copy what callers hand it (documented: pass mappings you no longer
+    mutate) — the SUT-side copies are the guarantee."""
+    seed_map = {"e1": "s1"}
+    seed = SessionBridge(
+        ep_id_to_session=seed_map, fact_id_to_session={}, fact_key_to_ep_id={}
+    )
+    facade, storage = build_facade(tmp_path / "bench.db")
+    sut = SeahorseSUT(
+        facade,
+        lambda: build_facade(tmp_path / "bench2.db")[0],
+        reader_llm=fake_reader,
+        tokenizer=fake_tokenizer,
+        bridge=seed,
+    )
+    # caller-side post-handoff mutation does not reach the SUT
+    seed_map["e9"] = "s9"
+    assert sut.bridge.ep_id_to_session == {"e1": "s1"}
+    # the SUT writes into its OWN state, never into the handed object's view
+    # beyond that caller mutation; snapshot taken pre-write stays stable
+    pre_write = sut.bridge
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    sut.ingest(
+        [_session("s2", d, [{"body": "# Lyon\n\nThe Rhone runs through Lyon."}])]
+    )
+    assert pre_write.ep_id_to_session == {"e1": "s1"}
+    # and the SUT state grew from the seed (seeded mapping visible + new write)
+    assert set(sut.bridge.ep_id_to_session.values()) == {"s1", "s2"}
+    storage.close()
+
+
+def test_bridge_snapshot_tracks_later_writes(sut):
+    """A snapshot is a VALUE: an old read stays empty while the SUT writes;
+    fresh reads see the writes (never cached)."""
+    bridge_before = sut.bridge
+    assert not bridge_before.ep_id_to_session
+    d = datetime(2026, 1, 1, tzinfo=UTC)
+    sut.ingest(
+        [_session("s1", d, [{"body": "# France\n\nThe capital is Paris."}])]
+    )
+    assert not bridge_before.ep_id_to_session
+    assert len(sut.bridge.ep_id_to_session) == 1

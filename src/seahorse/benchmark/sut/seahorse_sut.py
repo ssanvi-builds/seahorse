@@ -5,11 +5,13 @@ Delegation purity: the SUT knows ONLY ``MemoryFacade`` and its return types
 ``Episode``). It never imports engine, persistence, or hybrid-retrieval
 internals.
 
-The SUT owns the retrieval bridge: ``fact_id_to_session`` is populated from each
-``WriteResult.fact_id`` after ``remember``; the accurate ``ep_id_to_session``
-map (which also covers the new versions created by ``improve``) resolves
-``retrieved_session_ids`` for the metrics. ``fact_key_to_ep_id`` lets the
-``KnowledgeUpdateSimulator`` resolve the old version of a fact.
+The SUT owns the retrieval bridge and exposes it first-class as ``bridge``, a
+frozen ``SessionBridge`` snapshot (fresh copies per access). ``fact_id_to_session``
+is populated from each ``WriteResult.fact_id`` after ``remember``; the accurate
+``ep_id_to_session`` map (which also covers the new versions created by
+``improve``) resolves ``retrieved_session_ids`` for the metrics.
+``fact_key_to_ep_id`` lets the ``KnowledgeUpdateSimulator`` resolve the old
+version of a fact.
 
 ``score_source`` is the experiment variant; the SUT detects the honest regime at
 runtime — if every recall score is 0.0, the hybrid retrieval is not wired and
@@ -23,7 +25,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from seahorse.benchmark.contracts import SUTResponse
+from seahorse.benchmark.contracts import SessionBridge, SUTResponse
 from seahorse.disclosure.types import PITPoint
 from seahorse.facade import MemoryFacade
 from seahorse.facade.errors import PitRecallNotSupportedMVP0
@@ -42,7 +44,7 @@ class SeahorseSUT:
         *,
         reader_llm: Any,
         tokenizer: Any,
-        fact_id_to_session: dict[str, str],
+        bridge: SessionBridge | None = None,
         agent_id: str = "seahorse-benchmark",
         top_k: int = 10,
         enable_progressive_disclosure: bool = False,
@@ -54,8 +56,6 @@ class SeahorseSUT:
         rerank_enabled: bool = False,
         embed_mode: str = "body+summary",
         context_mode: str = "summary",
-        ep_id_to_session: dict[str, str] | None = None,
-        fact_key_to_ep_id: dict[str, str] | None = None,
     ) -> None:
         self._facade = facade
         self._facade_factory = facade_factory
@@ -72,15 +72,30 @@ class SeahorseSUT:
         self._rerank_enabled = rerank_enabled
         self._embed_mode = embed_mode
         self._context_mode = context_mode
-        # Retrieval bridge: fact_id→session (spec contract) + ep_id→session
-        # (accurate, covers improve-created versions) + fact_key→ep_id (for the
-        # KnowledgeUpdateSimulator). The warm-DB path pre-populates the bridge
-        # from a shared corpus template so a variant SUT over a copied DB skips
-        # re-ingestion.
-        self.fact_id_to_session = fact_id_to_session
-        self._ep_id_to_session: dict[str, str] = dict(ep_id_to_session or {})
-        self.fact_key_to_ep_id: dict[str, str] = dict(fact_key_to_ep_id or {})
+        # Retrieval bridge internals: fact_id→session (spec contract) +
+        # ep_id→session (accurate, covers improve-created versions) +
+        # fact_key→ep_id (for the KnowledgeUpdateSimulator). The warm-DB path
+        # pre-populates from a shared corpus template via ``bridge=`` -- the
+        # seed is COPIED into variant-private state so a shared template
+        # snapshot is never aliased across variants.
+        seed = bridge or SessionBridge.empty()
+        self._fact_id_to_session: dict[str, str] = dict(seed.fact_id_to_session)
+        self._ep_id_to_session: dict[str, str] = dict(seed.ep_id_to_session)
+        self._fact_key_to_ep_id: dict[str, str] = dict(seed.fact_key_to_ep_id)
         self._detected_score_source: str | None = None
+
+    @property
+    def bridge(self) -> SessionBridge:
+        """A fresh ``SessionBridge`` snapshot of the three maps.
+
+        Recomputed per access (never cached): reads reflect ingest/apply
+        writes made after a previous snapshot was taken.
+        """
+        return SessionBridge(
+            ep_id_to_session=dict(self._ep_id_to_session),
+            fact_id_to_session=dict(self._fact_id_to_session),
+            fact_key_to_ep_id=dict(self._fact_key_to_ep_id),
+        )
 
     # ------------------------------------------------------------------ ingest
 
@@ -118,9 +133,9 @@ class SeahorseSUT:
                     self._ep_id_to_session[wr.ep_id] = session_id
                     key = turn.get("fact_key")
                     if key is not None:
-                        self.fact_key_to_ep_id.setdefault(key, wr.ep_id)
+                        self._fact_key_to_ep_id.setdefault(key, wr.ep_id)
                 if wr.fact_id is not None:
-                    self.fact_id_to_session[wr.fact_id] = session_id
+                    self._fact_id_to_session[wr.fact_id] = session_id
         return ep_ids
 
     # ------------------------------------------------- knowledge updates
@@ -145,7 +160,7 @@ class SeahorseSUT:
             new_ep_ids.append(new_ep.id)
             self._ep_id_to_session[new_ep.id] = u["session_id"]
             if new_ep.fact_id is not None:
-                self.fact_id_to_session[new_ep.fact_id] = u["session_id"]
+                self._fact_id_to_session[new_ep.fact_id] = u["session_id"]
         return new_ep_ids
 
     # ------------------------------------------------------------------ query
@@ -282,9 +297,9 @@ class SeahorseSUT:
     def reset(self) -> None:
         """Fresh facade via the factory + cleared bridges (fresh DB per run)."""
         self._facade = self._facade_factory()
-        self.fact_id_to_session.clear()
+        self._fact_id_to_session.clear()
         self._ep_id_to_session.clear()
-        self.fact_key_to_ep_id.clear()
+        self._fact_key_to_ep_id.clear()
         self._detected_score_source = None
 
     # ---------------------------------------------------------------- identity

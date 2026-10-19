@@ -7,12 +7,12 @@ passes between them.
 Delegation purity: these contracts reference NO internal Seahorse component.
 ``SUTResponse`` carries the retrieval bridge (``retrieved_fact_ids`` +
 ``retrieved_session_ids``) so Recall@k/nDCG@k are computable over the
-``fact_id → session_id`` map populated by the ``CorpusBuilder``.
+``fact_id → session_id`` map resolved by the SUT.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -82,9 +82,9 @@ class SUTResponse:
     """A single query's answer + retrieval trace + efficiency measurements.
 
     ``retrieved_fact_ids`` and ``retrieved_session_ids`` are the retrieval
-    bridge: the SUT resolves each ``IndexRow.fact_id`` to its session via the
-    ``fact_id → session_id`` map. ``tokens_consumed_measured`` is REAL (via the
-    reader tokenizer), never ``len*50``.
+    bridge: the SUT resolves each ``IndexRow.fact_id`` to its session via its
+    ``fact_id → session_id`` bridge. ``tokens_consumed_measured`` is REAL (via
+    the reader tokenizer), never ``len*50``.
     """
 
     answer: str
@@ -100,6 +100,29 @@ class SUTResponse:
     reader_latency_ms: float = 0.0
     total_query_latency_ms: float = 0.0
     sut_metadata: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SessionBridge:
+    """The retrieval-bridge snapshot a benchmark SUT exposes.
+
+    An IMMUTABLE snapshot of the three session maps the SUT owns while
+    ingesting: ``ep_id→session`` (metrics + experiments — also covers the
+    improve-created versions), ``fact_id→session`` (the spec contract from
+    each ``WriteResult.fact_id``), ``fact_key→ep_id`` (how the
+    ``KnowledgeUpdateSimulator`` resolves a fact's old version). Callers pass
+    mappings they no longer mutate; the SUT copies on BOTH read (the
+    ``bridge`` property) and seed (the ctor) so a warm-DB template snapshot
+    is never aliased across variants.
+    """
+
+    ep_id_to_session: Mapping[str, str]
+    fact_id_to_session: Mapping[str, str]
+    fact_key_to_ep_id: Mapping[str, str]
+
+    @classmethod
+    def empty(cls) -> SessionBridge:
+        return cls({}, {}, {})
 
 
 @runtime_checkable
@@ -184,6 +207,7 @@ __all__ = [
     "BenchmarkDataset",
     "DatasetLoader",
     "SUTResponse",
+    "SessionBridge",
     "MemorySystemSUT",
     "MetricReport",
     "MetricResult",

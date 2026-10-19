@@ -64,7 +64,6 @@ def _make_runner(tmp_path, dataset, *, reader=None, tokenizer=None):
             lambda: build_facade(tmp_path / "bench2.db")[0],
             reader_llm=reader,
             tokenizer=tokenizer,
-            fact_id_to_session={},
         )
 
     reporter = _RecordingReporter()
@@ -120,7 +119,6 @@ def test_level_probe_runner_measures_p95(tmp_path, synthetic_dataset):
         lambda: build_facade(tmp_path / "bench2.db")[0],
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
     )
     CorpusBuilder(sut).ingest(synthetic_dataset)
     probe = LevelProbeRunner(sut, sample_size=5)
@@ -142,14 +140,9 @@ def test_run_skip_ingest_uses_prepopulated_bridge(tmp_path, synthetic_dataset):
         lambda: build_facade(tmp_path / "template2.db")[0],
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
     )
     CorpusBuilder(template_sut).ingest(synthetic_dataset)
-    bridge = {
-        "ep_id_to_session": dict(template_sut._ep_id_to_session),
-        "fact_id_to_session": dict(template_sut.fact_id_to_session),
-        "fact_key_to_ep_id": dict(template_sut.fact_key_to_ep_id),
-    }
+    bridge = template_sut.bridge
     storage.close()
 
     # 2. Run the runner over a copy of the template DB with skip_ingest=True.
@@ -165,9 +158,8 @@ def test_run_skip_ingest_uses_prepopulated_bridge(tmp_path, synthetic_dataset):
             lambda: build_facade(tmp_path / "bench2.db")[0],
             reader_llm=FakeReaderLLM(),
             tokenizer=FakeTokenizer(),
-            fact_id_to_session=dict(bridge["fact_id_to_session"]),
-            ep_id_to_session=dict(bridge["ep_id_to_session"]),
-            fact_key_to_ep_id=dict(bridge["fact_key_to_ep_id"]),
+            # The ctor copies the seed into variant-private state.
+            bridge=bridge,
         )
 
     runner = EvaluationRunner(

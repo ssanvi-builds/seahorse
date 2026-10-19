@@ -20,7 +20,6 @@ def sut(tmp_path):
         lambda: build_facade(tmp_path / "bench2.db")[0],
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
     )
     yield sut
     storage.close()
@@ -92,7 +91,7 @@ def test_apply_creates_supersedes_chain(sut, synthetic_dataset):
     assert "q2" in new_ep_ids
     assert len(new_ep_ids["q2"]) == 1
     # The new version is in the ep_id bridge under session s2
-    assert sut._ep_id_to_session[new_ep_ids["q2"][0]] == "s2"
+    assert sut.bridge.ep_id_to_session[new_ep_ids["q2"][0]] == "s2"
 
 
 def test_apply_ingests_old_version_when_missing(sut):

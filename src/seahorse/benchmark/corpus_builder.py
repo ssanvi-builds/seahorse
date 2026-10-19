@@ -9,7 +9,7 @@ determination in knowledge-update.
 
 The builder collects the union of all haystack sessions across instances and
 delegates to the SUT's ``ingest`` (which owns the per-turn ``remember`` and the
-retrieval bridge). Returns the ``fact_id → session_id`` map.
+retrieval bridge, exposed as the SUT's ``bridge`` snapshot).
 """
 
 from __future__ import annotations
@@ -64,20 +64,21 @@ def earliest_session_date(dataset: BenchmarkDataset) -> datetime:
 class CorpusBuilder:
     """Ingests the benchmark haystack into the SUT (skip-mode, deterministic).
 
-    The first release is Seahorse-only: the builder reads the
-    ``fact_id_to_session`` bridge the ``SeahorseSUT`` owns. External SUTs (a
-    medium-term goal) would expose their own bridge.
+    The first release is Seahorse-only: the builder delegates to the SUT's
+    ``ingest`` — the retrieval bridge the SUT owns is exposed on the SUT
+    (``sut.bridge``). External SUTs (a medium-term goal) would expose their own
+    bridge.
     """
 
     def __init__(self, sut: SeahorseSUT) -> None:
         self._sut = sut
 
-    def ingest(self, dataset: BenchmarkDataset) -> dict[str, str]:
-        """Ingest all haystack sessions (deduplicated by session_id); return the
-        fact_id→session_id bridge.
+    def ingest(self, dataset: BenchmarkDataset) -> None:
+        """Ingest all haystack sessions (deduplicated by session_id).
 
         Sessions repeat across questions (each question carries its own
         haystack); deduplicating by ``session_id`` avoids redundant ingestion.
+        The retrieval bridge lives on the SUT (``sut.bridge``).
         """
         seen: set[str] = set()
         sessions: list[dict] = []
@@ -89,7 +90,6 @@ class CorpusBuilder:
                 seen.add(sid)
                 sessions.append(session)
         self._sut.ingest(sessions)
-        return self._sut.fact_id_to_session
 
 
 __all__ = ["AdvancingClock", "CorpusBuilder", "earliest_session_date"]

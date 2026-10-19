@@ -32,7 +32,7 @@ from typing import Any, cast
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.config import BenchmarkConfig
-from seahorse.benchmark.contracts import BenchmarkDataset, DatasetLoader
+from seahorse.benchmark.contracts import BenchmarkDataset, DatasetLoader, SessionBridge
 from seahorse.benchmark.corpus_builder import (
     AdvancingClock,
     CorpusBuilder,
@@ -127,7 +127,7 @@ class CorpusTemplate:
     """
 
     db_path: Path
-    bridge: dict
+    bridge: SessionBridge
     clock_base: datetime
     clock_delta: float
 
@@ -310,7 +310,6 @@ def _build_template(
         lambda: facade,
         reader_llm=reader,
         tokenizer=tokenizer,
-        fact_id_to_session={},
         temporal_mode=temporal,
         top_k=base_config.top_k,
         score_source="mvp1_rrf",
@@ -324,11 +323,7 @@ def _build_template(
     for inst_id, ep_ids in new_ep_ids.items():
         inst = next(i for i in dataset.instances if i.instance_id == inst_id)
         inst.metadata["new_ep_ids_after_improve"] = ep_ids
-    bridge = {
-        "ep_id_to_session": dict(sut._ep_id_to_session),
-        "fact_id_to_session": dict(sut.fact_id_to_session),
-        "fact_key_to_ep_id": dict(sut.fact_key_to_ep_id),
-    }
+    bridge = sut.bridge
     clock_base = clock.position()
     storage.close()
     return CorpusTemplate(
@@ -530,9 +525,9 @@ def _run_variant(
             lambda: _facade("bench2.db"),
             reader_llm=reader,
             tokenizer=tokenizer,
-            fact_id_to_session=(
-                dict(template.bridge["fact_id_to_session"]) if template else {}
-            ),
+            # The ctor COPIES the seed into variant-private state: one shared
+            # template snapshot must never be aliased across variants.
+            bridge=template.bridge if template is not None else None,
             temporal_mode=variant_config.temporal_mode,
             pit_queries=pit_queries,
             top_k=variant_config.top_k,
@@ -541,12 +536,6 @@ def _run_variant(
             decay_config=variant_config.decay_config,
             rerank_enabled=variant_config.rerank_enabled,
             embed_mode=variant_config.embed_mode,
-            ep_id_to_session=(
-                dict(template.bridge["ep_id_to_session"]) if template else None
-            ),
-            fact_key_to_ep_id=(
-                dict(template.bridge["fact_key_to_ep_id"]) if template else None
-            ),
         )
         sut_holder["sut"] = sut
         return sut

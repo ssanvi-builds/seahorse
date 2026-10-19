@@ -136,7 +136,6 @@ def run_benchmark(
             )[0],
             reader_llm=reader,
             tokenizer=tokenizer,
-            fact_id_to_session={},
             temporal_mode=temporal,
             top_k=top_k,
             score_source=score_source,

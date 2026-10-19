@@ -54,13 +54,12 @@ def test_corpus_builder_ingests_and_returns_bridge(tmp_path, synthetic_dataset):
         lambda: build_facade(tmp_path / "bench2.db")[0],
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
     )
     builder = CorpusBuilder(sut)
-    bridge = builder.ingest(synthetic_dataset)
-    assert bridge, "the bridge must be populated"
+    builder.ingest(synthetic_dataset)  # bridge ownership lives on the SUT now
+    assert sut.bridge.fact_id_to_session, "the bridge must be populated"
     # The France fact (in s1) maps to s1
-    assert "s1" in set(bridge.values())
+    assert "s1" in set(sut.bridge.fact_id_to_session.values())
     storage.close()
 
 
@@ -71,11 +70,10 @@ def test_corpus_builder_ingests_all_sessions(tmp_path, synthetic_dataset):
         lambda: build_facade(tmp_path / "bench2.db")[0],
         reader_llm=FakeReaderLLM(),
         tokenizer=FakeTokenizer(),
-        fact_id_to_session={},
     )
     builder = CorpusBuilder(sut)
     builder.ingest(synthetic_dataset)
     # s1 (France) + s3 (Project) ingested; s2's France collides (same subject,
     # superseded later by the KnowledgeUpdateSimulator via improve)
-    assert len(sut._ep_id_to_session) >= 2
+    assert len(sut.bridge.ep_id_to_session) >= 2
     storage.close()

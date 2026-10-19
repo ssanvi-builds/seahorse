@@ -14,6 +14,7 @@ from seahorse.benchmark.contracts import (
     MetricReport,
     MetricResult,
     Reporter,
+    SessionBridge,
     SUTResponse,
 )
 
@@ -99,3 +100,27 @@ def test_protocols_are_runtime_checkable():
     assert getattr(MemorySystemSUT, "_is_protocol", False)
     assert getattr(Metric, "_is_protocol", False)
     assert getattr(Reporter, "_is_protocol", False)
+
+
+def test_session_bridge_empty_is_all_empty():
+    bridge = SessionBridge.empty()
+    assert bridge.ep_id_to_session == {}
+    assert bridge.fact_id_to_session == {}
+    assert bridge.fact_key_to_ep_id == {}
+
+
+def test_session_bridge_is_frozen():
+    bridge = SessionBridge.empty()
+    with pytest.raises(FrozenInstanceError):
+        bridge.ep_id_to_session = {}  # type: ignore[misc]
+
+
+def test_session_bridge_round_trips_mappings():
+    bridge = SessionBridge(
+        ep_id_to_session={"e1": "s1"},
+        fact_id_to_session={"f1": "s1"},
+        fact_key_to_ep_id={"france-capital": "e1"},
+    )
+    assert bridge.ep_id_to_session["e1"] == "s1"
+    assert bridge.fact_id_to_session["f1"] == "s1"
+    assert bridge.fact_key_to_ep_id["france-capital"] == "e1"
