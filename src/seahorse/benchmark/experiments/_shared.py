@@ -1,8 +1,9 @@
 """Shared internals for the benchmark experiment modules (private).
 
-The experiment modules repeat a handful of fixture/ingest/measurement helpers
-byte-for-byte (the doubles must stay deterministic and identical across
-experiments, so the copies were deliberate until they could be unified). This
+The experiment modules once repeated a handful of fixture/ingest/measurement
+helpers byte-for-byte (the doubles must stay deterministic and identical across
+experiments, so the copies were deliberate until they could be unified — the
+episode ingest loops are now ONE ``ingest_episodes``). This
 module is the single benchmark-internal home for those helpers — it imports
 ONLY the contracts/facade types (no experiment module), so it stays dependency-
 free at import time (the heavy backends stay lazy inside the functions).
@@ -20,7 +21,8 @@ Deliberately NOT shared with the core (benchmark-internal by design):
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -63,71 +65,76 @@ def stub_episode(ep_id: str, body: str) -> Episode:
     )
 
 
-def ingest_episodes_session_map(
-    facade: Any, episodes: Sequence[Episode]
-) -> dict[str, str]:
-    """Ingest episodes via the facade write path (skip mode) → stored ep_id→session."""
-    ep_id_to_session: dict[str, str] = {}
-    for ep in episodes:
-        result = facade.remember(
-            RememberPayload(
-                body=ep.body or "",
-                by=cast(Provenance, dict(ep.provenance)),
-                valid_at=ep.valid_at,
-                cognitive_type=ep.cognitive_type,
-                title=ep.title,
-                summary=ep.summary,
-            ),
-            skip_extraction=True,
-        )
-        if result.ep_id is not None:
-            ep_id_to_session[result.ep_id] = ep.provenance.get("session_id", "")
-    return ep_id_to_session
+@dataclass(frozen=True)
+class EpisodeIngestResult:
+    """One skip-mode episode ingest, everything the consumers reduce from it.
+
+    ``stored`` keeps only what the engine accepted (collisions — ``WriteResult.ep_id``
+    None — are excluded); ``id_map`` maps the ORIGINAL ``Episode.id`` to the
+    STORED ep_id (the engine derives a deterministic UUIDv5 for importer source,
+    which may differ); ``ep_id_to_session``/``fact_key_to_ep_id`` resolve from
+    provenance.
+    """
+
+    stored: list[Episode]
+    id_map: dict[str, str]
+    ep_id_to_session: dict[str, str]
+    fact_key_to_ep_id: dict[str, str]
 
 
-def ingest_episodes_stored_with_ids(
-    facade: Any, episodes: list[Episode]
-) -> tuple[list[Episode], dict[str, str]]:
-    """Ingest episodes via the facade's ``remember`` (the single write path, skip mode).
+def ingest_episodes(
+    facade: Any,
+    episodes: Sequence[Episode],
+    *,
+    now_of: Callable[[Episode], datetime] | None = None,
+) -> EpisodeIngestResult:
+    """The single Episode-shape remember loop (skip mode) for the experiments.
 
-    Returns ``(stored, id_map)`` where ``id_map`` maps the ORIGINAL episode id
-    to the STORED ``ep_id`` (the engine derives a deterministic UUIDv5 for
-    importer source, which may differ from ``Episode.id``). Episodes rejected by
-    a collision (``WriteResult.ep_id`` is None) are NOT stored and excluded.
+    ``now_of`` resolves each remember's ``now`` (decay forces ``created_at`` so
+    its bias reads the fixture's own timestamps; everybody else leaves the
+    facade clock). ``fact_key_to_ep_id`` is FIRST-wins (``setdefault`` — SeahorseSUT
+    parity; decay's per-version keys are unique per corpus, so its local
+    last-wins loop was equivalent). Empty-string/absent fact keys are skipped.
     """
     stored: list[Episode] = []
     id_map: dict[str, str] = {}
+    ep_id_to_session: dict[str, str] = {}
+    fact_key_to_ep_id: dict[str, str] = {}
     for ep in episodes:
+        payload = RememberPayload(
+            body=ep.body or "",
+            by=cast(Provenance, dict(ep.provenance)),
+            valid_at=ep.valid_at,
+            cognitive_type=ep.cognitive_type,
+            title=ep.title,
+            summary=ep.summary,
+        )
         result = facade.remember(
-            RememberPayload(
-                body=ep.body or "",
-                by=cast(Provenance, dict(ep.provenance)),
-                valid_at=ep.valid_at,
-                cognitive_type=ep.cognitive_type,
-                title=ep.title,
-                summary=ep.summary,
-            ),
-            extraction_mode="skip",
+            payload, extraction_mode="skip", now=now_of(ep) if now_of else None
         )
         if result.ep_id is None:
             continue  # COLLISION — not stored, not in the corpus
         stored.append(ep.model_copy(update={"id": result.ep_id}))
         id_map[ep.id] = result.ep_id
-    return stored, id_map
+        ep_id_to_session[result.ep_id] = ep.provenance.get("session_id", "")
+        key = ep.provenance.get("fact_key")
+        if key:
+            fact_key_to_ep_id.setdefault(str(key), result.ep_id)
+    return EpisodeIngestResult(
+        stored=stored,
+        id_map=id_map,
+        ep_id_to_session=ep_id_to_session,
+        fact_key_to_ep_id=fact_key_to_ep_id,
+    )
 
 
-def ingest_episodes_stored(facade: Any, episodes: list[Episode]) -> list[Episode]:
-    """Ingest episodes via the facade's ``remember`` (the single write path, skip mode).
-
-    Returns the episodes with their STORED ``ep_id`` (the engine derives the id
-    — a deterministic UUIDv5 for importer source, which may differ from
-    ``Episode.id``). Episodes rejected by a collision (``WriteResult.ep_id`` is
-    None) are NOT stored and are excluded from the corpus.
-    """
-    # The collision-skip loop is identical to ``ingest_episodes_stored_with_ids``
-    # minus the id map — one implementation, two return shapes.
-    stored, _ = ingest_episodes_stored_with_ids(facade, episodes)
-    return stored
+def session_to_ep_ids(ep_id_to_session: Mapping[str, str]) -> dict[str, list[str]]:
+    """The session→[stored ep_ids] inverse, ep order preserved inside each
+    session (the three within-session experiments' byte-identical reduction)."""
+    inverse: dict[str, list[str]] = {}
+    for ep_id, sid in ep_id_to_session.items():
+        inverse.setdefault(sid, []).append(ep_id)
+    return inverse
 
 
 def golden_session_ep_ids(

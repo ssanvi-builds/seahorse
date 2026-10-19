@@ -59,9 +59,7 @@ from seahorse.benchmark.experiments._shared import (
     golden_session_ep_ids as _golden_session_ep_ids,
 )
 from seahorse.benchmark.experiments._shared import (
-    ingest_episodes_session_map as _ingest_episodes,
-)
-from seahorse.benchmark.experiments._shared import (
+    ingest_episodes,
     is_fallback_regime,
 )
 from seahorse.benchmark.experiments._shared import (
@@ -69,6 +67,9 @@ from seahorse.benchmark.experiments._shared import (
 )
 from seahorse.benchmark.experiments._shared import (
     recall_rows as _recall_rows,
+)
+from seahorse.benchmark.experiments._shared import (
+    session_to_ep_ids as _session_to_ep_ids,
 )
 from seahorse.benchmark.experiments._shared import (
     stub_episode as _stub_episode,
@@ -248,7 +249,7 @@ def _build_synthetic_corpus(
     facade, storage = build_facade(
         db_path, retrieval_available=True, passage_embedder=HashEmbedder()
     )
-    ep_id_to_session = _ingest_episodes(facade, episodes)
+    ep_id_to_session = ingest_episodes(facade, episodes).ep_id_to_session
     return facade, storage, questions, ep_id_to_session
 
 
@@ -286,9 +287,7 @@ def _measure_context_assembly(
     top_k: int,
 ) -> ContextAssemblyExperimentResult:
     """Run the gap-decomposition measurement over one corpus."""
-    session_to_ep_ids: dict[str, list[str]] = {}
-    for ep_id, sid in ep_id_to_session.items():
-        session_to_ep_ids.setdefault(sid, []).append(ep_id)
+    session_to_ep_ids = _session_to_ep_ids(ep_id_to_session)
 
     episode_hits: list[float] = []
     context_hits: list[float] = []

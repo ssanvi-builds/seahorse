@@ -41,19 +41,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments._shared import (
     FALLBACK_G2 as _FALLBACK_G2,
 )
 from seahorse.benchmark.experiments._shared import (
+    ingest_episodes,
     is_fallback_regime,
 )
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
 from seahorse.facade import build_facade
-from seahorse.facade.types import FacadeConfig, Provenance, RememberPayload
+from seahorse.facade.types import FacadeConfig
 
 # The k for the FAMA-style / MPA measurement (harness default).
 DECAY_TOP_K = 10
@@ -259,41 +260,6 @@ def _make_synthetic_episodes() -> tuple[list[Episode], list[tuple[str, str, str]
     return episodes, fact_specs
 
 
-def _ingest_episodes(
-    facade: Any, episodes: list[Episode]
-) -> tuple[list[Episode], dict[str, str]]:
-    """Ingest episodes via the facade's ``remember`` (the single write path, skip mode).
-
-    ``now=ep.created_at`` is passed so the engine force-sets ``created_at`` to
-    the corpus timestamp (the decay bias reads the age spread). Returns the
-    stored episodes (with the engine-derived ``ep_id``) and the
-    ``fact_key -> ep_id`` map. Episodes rejected by a collision
-    (``WriteResult.ep_id`` is None) are NOT stored and are excluded.
-    """
-    stored: list[Episode] = []
-    ep_id_by_key: dict[str, str] = {}
-    for ep in episodes:
-        result = facade.remember(
-            RememberPayload(
-                body=ep.body or "",
-                by=cast(Provenance, dict(ep.provenance)),
-                valid_at=ep.valid_at,
-                cognitive_type=ep.cognitive_type,
-                title=ep.title,
-                summary=ep.summary,
-            ),
-            extraction_mode="skip",
-            now=ep.created_at,
-        )
-        if result.ep_id is None:
-            continue  # COLLISION — not stored, not in the corpus
-        stored.append(ep.model_copy(update={"id": result.ep_id}))
-        key = ep.provenance.get("fact_key")
-        if key:
-            ep_id_by_key[str(key)] = result.ep_id
-    return stored, ep_id_by_key
-
-
 def build_synthetic_corpus(
     db_path: Path,
 ) -> tuple[Any, Any, list[Episode], list[tuple[str, str, str]]]:
@@ -312,7 +278,8 @@ def build_synthetic_corpus(
         # ``config.top_k``, so the config must allow the over-fetch.
         config=FacadeConfig(top_k=DECAY_OVERFETCH_K),
     )
-    stored, ep_id_by_key = _ingest_episodes(facade, episodes)
+    result = ingest_episodes(facade, episodes, now_of=lambda ep: ep.created_at)
+    stored, ep_id_by_key = result.stored, result.fact_key_to_ep_id
     facts = [
         (query, ep_id_by_key[old_key], ep_id_by_key[new_key])
         for query, old_key, new_key in fact_specs

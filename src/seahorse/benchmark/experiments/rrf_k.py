@@ -41,9 +41,7 @@ from seahorse.benchmark.experiments._shared import (
     FALLBACK_G2 as _FALLBACK_G2,
 )
 from seahorse.benchmark.experiments._shared import (
-    ingest_episodes_stored_with_ids as _ingest_episodes,
-)
-from seahorse.benchmark.experiments._shared import (
+    ingest_episodes,
     is_fallback_regime,
 )
 from seahorse.benchmark.experiments.lmeb_corpus import (
@@ -191,7 +189,8 @@ def build_synthetic_corpus(
     facade, storage = build_facade(
         db_path, retrieval_available=True, passage_embedder=HashEmbedder()
     )
-    stored, id_map = _ingest_episodes(facade, episodes)
+    result = ingest_episodes(facade, episodes)
+    stored, id_map = result.stored, result.id_map
     remapped = [
         RrfKQuestion(query=q.query, answer_ep_id=id_map[q.answer_ep_id])
         for q in questions

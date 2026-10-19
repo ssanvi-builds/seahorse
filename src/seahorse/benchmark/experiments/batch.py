@@ -41,9 +41,7 @@ from seahorse.benchmark.experiments._shared import (
     FALLBACK_G2 as _FALLBACK_G2,
 )
 from seahorse.benchmark.experiments._shared import (
-    ingest_episodes_stored as _ingest_episodes,
-)
-from seahorse.benchmark.experiments._shared import (
+    ingest_episodes,
     is_fallback_regime,
 )
 from seahorse.benchmark.experiments._shared import (
@@ -210,7 +208,7 @@ def build_synthetic_corpus(db_path: Path) -> tuple[Any, Any, list[Episode]]:
     facade, storage = build_facade(
         db_path, retrieval_available=True, passage_embedder=HashEmbedder()
     )
-    stored = _ingest_episodes(facade, episodes)
+    stored = ingest_episodes(facade, episodes).stored
     return facade, storage, stored
 
 
@@ -229,7 +227,7 @@ def build_real_corpus(
         result = import_record(obs, "claude-mem")
         episodes.extend(result["notes"])
     facade, storage = build_facade(db_path, retrieval_available=True)
-    stored = _ingest_episodes(facade, episodes)
+    stored = ingest_episodes(facade, episodes).stored
     return facade, storage, stored
 
 
