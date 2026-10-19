@@ -22,6 +22,7 @@ import pytest
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import IndexRow, PITPoint
 from seahorse.facade.errors import EmptyQueryError, PitRecallNotSupportedMVP0
+from seahorse.retrieval.constants import RERANK_OVERFETCH_K
 from tests.facade.conftest import make_facade
 
 
@@ -44,7 +45,7 @@ class RecordingRetriever:
         rrf_k: int | None = None,
         rerank_text: str = "summary",
         reranker=None,
-        k_rerank: int = 20,
+        k_rerank: int = RERANK_OVERFETCH_K,
     ) -> tuple[FusedCandidate, ...]:
         self.calls.append(
             {
@@ -237,4 +238,4 @@ class TestRankingKnobForwarding:
         assert call["rrf_k"] is None
         assert call["rerank_text"] == "summary"
         assert call["reranker"] is None
-        assert call["k_rerank"] == 20
+        assert call["k_rerank"] == RERANK_OVERFETCH_K

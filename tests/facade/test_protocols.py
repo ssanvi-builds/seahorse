@@ -76,3 +76,15 @@ class _FakeRetriever:
 
 def test_runtime_checkable_satisfies_retriever_protocol():
     assert isinstance(_FakeRetriever(), _RetrieverLike)
+
+def test_retriever_signature_parity():
+    """C3 pattern: the real retrievers match the protocol signature exactly --
+    the seam's kwargs contract is pinned, not just the behavior."""
+    import inspect
+
+    from seahorse.facade.hybrid_retriever import HybridRetriever
+    from seahorse.facade.vigente_retriever import VigenteListingRetriever
+
+    proto = list(inspect.signature(_RetrieverLike.recall).parameters)
+    for impl in (HybridRetriever.recall, VigenteListingRetriever.recall):
+        assert list(inspect.signature(impl).parameters) == proto

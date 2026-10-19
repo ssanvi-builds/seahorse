@@ -40,10 +40,12 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from seahorse.contracts.episode import Episode
+from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import TOP_K, PITPoint
 from seahorse.facade.errors import InvalidPITKind
 from seahorse.facade.types import FacadeConfig
+from seahorse.retrieval.constants import RERANK_OVERFETCH_K
 
 
 @runtime_checkable
@@ -131,8 +133,8 @@ class VigenteListingRetriever:
         session_boost: bool = False,
         rrf_k: int | None = None,
         rerank_text: str = "summary",
-        reranker=None,
-        k_rerank: int = 20,
+        reranker: QueryReranker | None = None,
+        k_rerank: int = RERANK_OVERFETCH_K,
     ) -> tuple[FusedCandidate, ...]:
         # ``rrf_k``/``rerank_*``/``k_rerank`` are accepted for signature parity
         # with the hybrid regime and IGNORED: the listing regime filters but
