@@ -26,10 +26,11 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from seahorse.benchmark.contracts import SessionBridge, SUTResponse
+from seahorse.benchmark.ingest import turn_payload
 from seahorse.disclosure.types import PITPoint
 from seahorse.facade import MemoryFacade
 from seahorse.facade.errors import PitRecallNotSupportedMVP0
-from seahorse.facade.types import Provenance, RememberPayload
+from seahorse.facade.types import Provenance
 
 _MIN_DT = datetime.min.replace(tzinfo=UTC)
 
@@ -116,16 +117,12 @@ class SeahorseSUT:
             session_id = session["session_id"]
             date = session.get("date")
             for turn in session.get("turns", []):
-                payload = RememberPayload(
-                    body=turn["body"],
-                    by=Provenance(
-                        source_type="human" if self._temporal_mode else "agent",
-                        agent_id=self._agent_id,
-                        session_id=session_id,
-                    ),
-                    valid_at=date if self._temporal_mode else None,
-                    title=turn.get("title"),
-                    summary=turn.get("summary"),
+                payload = turn_payload(
+                    turn,
+                    session_id,
+                    temporal=self._temporal_mode,
+                    valid_at=date,
+                    agent_id=self._agent_id,
                 )
                 wr = self._facade.remember(payload, skip_extraction=True)
                 if wr.ep_id is not None:

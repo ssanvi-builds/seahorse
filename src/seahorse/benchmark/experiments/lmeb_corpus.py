@@ -17,16 +17,13 @@ seed — ``subsample.subsample_dataset``); the authoritative runs default to it
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from seahorse.benchmark.contracts import BenchmarkDataset
 from seahorse.benchmark.experiments.subsample import subsample_dataset
+from seahorse.benchmark.ingest import remember_sessions
 from seahorse.facade import build_facade
-from seahorse.facade.types import Provenance, RememberPayload
-
-_MIN_DT = datetime.min.replace(tzinfo=UTC)
 
 
 def load_lmeb_subsample(dataset_config: str = "s", *, subsample: bool = True) -> BenchmarkDataset:
@@ -60,38 +57,19 @@ def ingest_haystack(
 ) -> tuple[list[str], dict[str, str]]:
     """Ingest the dataset's haystack sessions via the facade write path (skip mode).
 
-    Sessions are deduped by ``session_id`` across instances (the same session is
-    in many questions' haystacks — re-ingesting would hit collisions) and
-    ordered oldest-first (the first version of a fact before its successor).
-    Returns ``(stored_ep_ids, ep_id_to_session)`` — the bridge the session-level
-    recall metrics resolve retrieved ep_ids through.
+    The exact SeahorseSUT payload shape, shared: ``benchmark/ingest.remember_sessions``
+    dedups by ``session_id`` across instances (the same session is in many
+    questions' haystacks — re-ingesting would hit NOOP idempotency) and orders
+    oldest-first (the first version of a fact before its successor). Returns
+    ``(stored_ep_ids, ep_id_to_session)`` — the bridge the session-level recall
+    metrics resolve retrieved ep_ids through.
     """
-    sessions_by_id: dict[str, dict] = {}
-    for inst in dataset.instances:
-        for session in inst.haystack:
-            sessions_by_id.setdefault(session["session_id"], session)
-    sessions = sorted(sessions_by_id.values(), key=lambda s: s.get("date") or _MIN_DT)
-    ep_ids: list[str] = []
-    ep_id_to_session: dict[str, str] = {}
-    for session in sessions:
-        session_id = session["session_id"]
-        date = session.get("date")
-        for turn in session.get("turns", []):
-            payload = RememberPayload(
-                body=turn["body"],
-                by=Provenance(
-                    source_type="human" if temporal else "agent",
-                    agent_id="seahorse-benchmark",
-                    session_id=session_id,
-                ),
-                valid_at=date if temporal else None,
-                title=turn.get("title"),
-            )
-            wr = facade.remember(payload, skip_extraction=True)
-            if wr.ep_id is not None:
-                ep_ids.append(wr.ep_id)
-                ep_id_to_session[wr.ep_id] = session_id
-    return ep_ids, ep_id_to_session
+    sessions = [
+        session for inst in dataset.instances for session in inst.haystack
+    ]
+    # remember_sessions dedups by session_id and orders oldest-first; the
+    # payload shape is the single-homed ``turn_payload`` (the SUT's own).
+    return remember_sessions(facade, sessions, temporal=temporal)
 
 
 __all__ = [
