@@ -129,7 +129,14 @@ class VigenteListingRetriever:
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
         session_boost: bool = False,
+        rrf_k: int | None = None,
+        rerank_text: str = "summary",
+        reranker=None,
+        k_rerank: int = 20,
     ) -> tuple[FusedCandidate, ...]:
+        # ``rrf_k``/``rerank_*``/``k_rerank`` are accepted for signature parity
+        # with the hybrid regime and IGNORED: the listing regime filters but
+        # never ranks.
         """Listing -> synthetic FusedCandidates (score=0.0, no sources), PIT-aware.
 
         Without a pit: the current-state listing (``get_vigente``). With one:

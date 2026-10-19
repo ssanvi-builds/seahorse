@@ -65,7 +65,14 @@ class _Fallback:
         return []
 
 
-def _make(*, vec_count=3, fts_count=3, dim=384, fallback=None, config=None) -> HybridRetriever:
+class _Reranker:
+    def rerank(self, query: str, docs):
+        return [0.9 for _ in docs]
+
+
+def _make(
+    *, vec_count=3, fts_count=3, dim=384, fallback=None, config=None, reranker=None
+) -> HybridRetriever:
     return HybridRetriever(
         embedder=_Emb(dim),
         vector_repo=_Vec(vec_count),
@@ -75,6 +82,7 @@ def _make(*, vec_count=3, fts_count=3, dim=384, fallback=None, config=None) -> H
         clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
         config=config or FacadeConfig(),
         fallback=fallback or _Fallback(),
+        reranker=reranker,
     )
 
 
@@ -228,3 +236,48 @@ class TestPitDegrade:
         hybrid = _make(vec_count=0, fts_count=0, fallback=_Fallback())
         with pytest.raises(PitRecallNotSupportedMVP0):
             hybrid.recall("madrid", pit=pit, k=5)
+
+
+def test_hybrid_recall_forwards_ranking_knobs_to_engine(monkeypatch) -> None:
+    import seahorse.retrieval.engine as re_mod
+
+    calls: list[dict] = []
+
+    def fake_recall(query: str, **kwargs):
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr(re_mod, "recall", fake_recall)
+    reranker = _Reranker()
+    _make().recall("q", rrf_k=12, rerank_text="body", reranker=reranker, k_rerank=7)
+    kw = calls[0]
+    assert kw["rrf_k"] == 12
+    assert kw["rerank_text"] == "body"
+    assert kw["k_rerank"] == 7
+    assert kw["reranker"] is reranker
+
+
+def test_hybrid_recall_reranker_none_inherits_composition_root(monkeypatch) -> None:
+    import seahorse.retrieval.engine as re_mod
+
+    calls: list[dict] = []
+
+    monkeypatch.setattr(re_mod, "recall", lambda query, **kwargs: calls.append(kwargs) or [])
+    reranker = _Reranker()
+    _make(reranker=reranker).recall("q")
+    assert calls[0]["reranker"] is reranker
+
+
+def test_hybrid_recall_default_knobs_match_engine_defaults(monkeypatch) -> None:
+    import seahorse.retrieval.engine as re_mod
+    from seahorse.retrieval.constants import RERANK_OVERFETCH_K
+
+    calls: list[dict] = []
+
+    monkeypatch.setattr(re_mod, "recall", lambda query, **kwargs: calls.append(kwargs) or [])
+    _make().recall("q")
+    kw = calls[0]
+    assert kw["rrf_k"] is None
+    assert kw["rerank_text"] == "summary"
+    assert kw["reranker"] is None
+    assert kw["k_rerank"] == RERANK_OVERFETCH_K

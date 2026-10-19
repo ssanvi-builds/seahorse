@@ -41,6 +41,10 @@ class RecordingRetriever:
         cognitive_type: str | None,
         subject_filter: str | None,
         session_boost: bool = False,
+        rrf_k: int | None = None,
+        rerank_text: str = "summary",
+        reranker=None,
+        k_rerank: int = 20,
     ) -> tuple[FusedCandidate, ...]:
         self.calls.append(
             {
@@ -50,6 +54,10 @@ class RecordingRetriever:
                 "cognitive_type": cognitive_type,
                 "subject_filter": subject_filter,
                 "session_boost": session_boost,
+                "rrf_k": rrf_k,
+                "rerank_text": rerank_text,
+                "reranker": reranker,
+                "k_rerank": k_rerank,
             }
         )
         return self._candidates
@@ -205,3 +213,28 @@ class TestRetrieverDefaultWiring:
         assert len(engine.get_vigente_calls) == 1
         # And the facade's retriever is the first-release impl, not a stub.
         assert isinstance(f._retriever, VigenteListingRetriever)
+
+class TestRankingKnobForwarding:
+    """C4: the facade recall seam exposes the engine's ranking knobs."""
+
+    def test_recall_forwards_ranking_knobs_verbatim(self, fake_retriever) -> None:
+        facade, _log = make_facade(retriever=fake_retriever)
+        facade.recall(
+            "sergio", rrf_k=12, rerank_text="body", reranker="RR", k_rerank=7
+        )
+        call = fake_retriever.calls[-1]
+        assert call["rrf_k"] == 12
+        assert call["rerank_text"] == "body"
+        assert call["reranker"] == "RR"
+        assert call["k_rerank"] == 7
+
+    def test_recall_ranking_knob_defaults_are_engine_aligned(
+        self, fake_retriever
+    ) -> None:
+        facade, _log = make_facade(retriever=fake_retriever)
+        facade.recall("sergio")
+        call = fake_retriever.calls[-1]
+        assert call["rrf_k"] is None
+        assert call["rerank_text"] == "summary"
+        assert call["reranker"] is None
+        assert call["k_rerank"] == 20

@@ -20,9 +20,11 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from seahorse.contracts.engine import AuditEvent, Episode, FreshnessView, WriteResult
+from seahorse.contracts.rerank import QueryReranker
 from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import FullDetail, IndexRow, PITPoint, TimelineWindow
 from seahorse.facade.types import ExtractionMode, RememberPayload
+from seahorse.retrieval.constants import RERANK_OVERFETCH_K
 
 
 @runtime_checkable
@@ -132,4 +134,8 @@ class _RetrieverLike(Protocol):
         cognitive_type: str | None,
         subject_filter: str | None,
         session_boost: bool = False,
+        rrf_k: int | None = None,
+        rerank_text: str = "summary",
+        reranker: QueryReranker | None = None,
+        k_rerank: int = RERANK_OVERFETCH_K,
     ) -> Sequence[FusedCandidate]: ...

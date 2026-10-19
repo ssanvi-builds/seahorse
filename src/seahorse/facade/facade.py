@@ -39,6 +39,7 @@ from seahorse.contracts.engine import (
 )
 from seahorse.contracts.episode import is_consolidated, normalize_derived_from
 from seahorse.contracts.index import PIT_KIND_VALUES, PITKind
+from seahorse.contracts.rerank import QueryReranker
 from seahorse.disclosure.types import (
     TOP_K,
     FullDetail,
@@ -73,6 +74,7 @@ from seahorse.facade.types import (
     Provenance,
     RememberPayload,
 )
+from seahorse.retrieval.constants import RERANK_OVERFETCH_K
 
 _logger = logging.getLogger("seahorse.facade")
 
@@ -280,6 +282,10 @@ class MemoryFacade:
         cognitive_type: str | None = None,
         subject_filter: str | None = None,
         session_boost: bool = False,
+        rrf_k: int | None = None,
+        rerank_text: str = "summary",
+        reranker: QueryReranker | None = None,
+        k_rerank: int = RERANK_OVERFETCH_K,
     ) -> list[IndexRow]:
         """Recall the INDEX level (query-filtered current-state listing / later hybrid).
 
@@ -298,6 +304,15 @@ class MemoryFacade:
         session-restricted re-rank — DISABLED by default (the authoritative
         LMEB-S run proved it net-harmful: 0.424 vs 0.533 pure RRF); the
         benchmark passes False explicitly to measure the pure-RRF baseline.
+
+        C4 ranking knobs (hybrid regime only; the listing regime is inert):
+        ``rrf_k`` overrides the RRF constant (the benchmark sweep);
+        ``rerank_text`` picks the reranked text (``summary`` | ``body``);
+        ``reranker`` is the per-call cross-encoder OVERRIDE — ``None`` inherits
+        the composition root's reranker, so "no rerank" is owned by the facade
+        built without one, not by the call; ``k_rerank`` is the rerank
+        overfetch budget. Passing these on a non-PIT-capable listing
+        retriever is a no-op.
         """
         if not query or not query.strip():
             raise EmptyQueryError()
@@ -313,6 +328,10 @@ class MemoryFacade:
             cognitive_type=cognitive_type,
             subject_filter=subject_filter,
             session_boost=session_boost,
+            rrf_k=rrf_k,
+            rerank_text=rerank_text,
+            reranker=reranker,
+            k_rerank=k_rerank,
         )
         # The facade forwards the (possibly PIT) candidates to materialize_index.
         return self._shaper.materialize_index(candidates, pit=pit, now=self._clock())

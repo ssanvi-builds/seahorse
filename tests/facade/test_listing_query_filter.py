@@ -112,3 +112,18 @@ class TestOrderPreserved:
         # Same created_at across the matched pair -> ep_id asc tie-break.
         result = _retriever(eps).recall("alpha", pit=None)
         assert [c.ep_id for c in result] == ["e-a", "e-b"]
+
+class TestRankingKnobsInert:
+    def test_recall_accepts_ranking_knobs_as_inert(self) -> None:
+        eps = [_ep("e1", subject="alpha note")]
+        result = _retriever(eps).recall(
+            "alpha",
+            pit=None,
+            rrf_k=12,
+            rerank_text="body",
+            reranker=lambda query, docs: [0.0 for _ in docs],
+            k_rerank=5,
+        )
+        # The listing regime filters but never ranks: the knobs are accepted
+        # and ignored (signature parity with the hybrid regime).
+        assert [c.ep_id for c in result] == ["e1"]
