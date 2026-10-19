@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import pytest
 
-from seahorse.contracts.persistence import EmbeddingsCacheRepository
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.sqlite_embeddings_cache import SqliteEmbeddingsCacheRepository
@@ -29,8 +28,8 @@ def _vec(seed: int) -> bytes:
     return bytes([seed, 0, 0, 0, seed, 0, 0, 0])
 
 
-def test_structurally_satisfies_protocol(cache: SqliteEmbeddingsCacheRepository) -> None:
-    assert isinstance(cache, EmbeddingsCacheRepository)
+def test_repo_shape(cache: SqliteEmbeddingsCacheRepository) -> None:
+    # Collapsed contract (C3): the concrete repo is the surface.
     assert not hasattr(cache, "atomic")
 
 

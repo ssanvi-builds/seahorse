@@ -33,11 +33,11 @@ from seahorse.contracts.persistence import (
     ParsedNote,
     RebuildDivergence,
     RebuildReport,
-    SidecarIndexRepository,
 )
 from seahorse.frontmatter.adapter import parse_file
 from seahorse.frontmatter.discovery import discover_notes
 from seahorse.frontmatter.subject import fact_id_of, normalize_subject, raw_subject
+from seahorse.persistence.sqlite_sidecar import SqliteSidecarIndexRepository
 
 
 def _body_hash(body: str) -> str:
@@ -101,7 +101,7 @@ def iter_parsed_notes(vault_root: Path) -> Iterable[ParsedNote]:
 
 def rebuild_from_vault(
     vault_root: Path,
-    sidecar: SidecarIndexRepository,
+    sidecar: SqliteSidecarIndexRepository,
     *,
     secondary_index_wipes: Sequence[Callable[[sqlite3.Connection], None]] = (),
     live_body: Callable[[str], str | None] | None = None,

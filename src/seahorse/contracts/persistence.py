@@ -1,20 +1,33 @@
-"""The nine repository Protocols owned by the persistence layer.
+"""Persistence contracts — the repository seams that earned their keep.
 
-These are the storage frontier the persistence layer owns and the other
-components (the embedder, progressive disclosure, the BFS axis, hybrid
-retrieval) consume. Signatures are signed contracts; do NOT deviate.
+Inventory verdict (C3 deepening, 2026-10-19 — "two adapters means a real
+seam; one means a hypothetical one"):
+
+- ``EpisodeIndexRepository`` / ``VectorIndexRepository`` /
+  ``FullTextIndexRepository``: Protocol. Each has a SQLite implementation
+  AND in-memory test doubles across the disclosure/retrieval suites (the
+  interface IS their test surface). Signatures are signed contracts.
+- Collapsed to the concrete SQLite types (single adapter, no test doubles —
+  the Protocol was a mirror of the implementation): ``AuditEventRepository``
+  (engine consumer → ``SqliteAuditEventRepository``),
+  ``SidecarIndexRepository`` (frontmatter rebuild consumer →
+  ``SqliteSidecarIndexRepository``), ``EmbeddingsCacheRepository``
+  (embeddings cache consumer → ``SqliteEmbeddingsCacheRepository``).
+- Deleted: ``ReindexJobRepository`` — a Protocol typed by NO consumer (the
+  storage accessor was already concrete). ``ReindexJob`` stays: it is the
+  payload the concrete repo returns and the e2e smoke exercises.
+
+The frozen dataclasses at the top are payloads contracts (returned by / handed
+to the persistence layer), not seams.
 """
 
 from __future__ import annotations
 
-import sqlite3
-from collections.abc import Callable, Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
-from seahorse.contracts.engine import AuditEvent
 from seahorse.contracts.episode import Episode
 from seahorse.contracts.index import IndexRowData, PITKind
 
@@ -106,8 +119,8 @@ class EpisodeIndexRepository(Protocol):
 # ---------------------------------------------------------------------------
 # VectorIndexRepository — fold-into-upsert + distinct_model_identities
 # Owned by the persistence layer; operated by the embedder via this Protocol
-# (no own connection). Current release: Protocol materialized; SQLite impl
-# deferred to a later release (no sqlite-vec dep).
+# (no own connection). SQLite impl: ``persistence/vector_index.py``
+# (sqlite-vec); a later embedder stack swaps in over the same Protocol.
 # ---------------------------------------------------------------------------
 
 
@@ -142,8 +155,8 @@ class VectorIndexRepository(Protocol):
 
 # ---------------------------------------------------------------------------
 # FullTextIndexRepository
-# Current release: Protocol materialized; SQLite impl deferred to a later
-# release (no FTS5 dep).
+# SQLite impl: ``persistence/fts_index.py`` (FTS5 + BM25); a later engine
+# stack swaps in over the same Protocol.
 # ---------------------------------------------------------------------------
 
 
@@ -161,21 +174,10 @@ class FullTextIndexRepository(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# AuditEventRepository. AuditEvent type defined by the engine (the persistence
-# layer stores).
+# AuditEventRepository / SidecarIndexRepository / EmbeddingsCacheRepository /
+# ReindexJobRepository — collapsed or deleted (see module docstring).
+# ``ReindexJob`` stays as the concrete repo's payload contract.
 # ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class AuditEventRepository(Protocol):
-    def append(self, event: AuditEvent) -> None: ...
-    def query(
-        self,
-        *,
-        target_id: str | None = None,
-        session_id: str | None = None,
-        since: datetime | None = None,
-    ) -> list[AuditEvent]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +251,7 @@ class RebuildConflict:
 
 @dataclass(frozen=True)
 class RebuildReport:
-    """Result of ``SidecarIndexRepository.rebuild_all`` (clear-then-rebuild).
+    """Result of ``SqliteSidecarIndexRepository.rebuild_all`` (clear-then-rebuild).
 
     Clear-then-rebuild (not upsert) keeps ``.md`` the source of truth and the
     SQLite index a derived cache: ``episode_index`` + ``episode_paths`` are
@@ -273,54 +275,12 @@ class RebuildReport:
     divergences: list[RebuildDivergence] = field(default_factory=list)
 
 
-@runtime_checkable
-class SidecarIndexRepository(Protocol):
-    def put_path(self, ep_id: str, file_path: str, mtime_ms: int, size: int) -> None: ...
-    def get_path(self, ep_id: str) -> tuple[str, int, int] | None: ...
-
-    @contextmanager
-    def reindex(self, ep_id: str, file_path: str, mtime_ms: int, size: int) -> Iterator[None]: ...
-
-    def rebuild_all(
-        self,
-        notes: Iterable[ParsedNote],
-        *,
-        secondary_index_wipes: Sequence[Callable[[sqlite3.Connection], None]] = (),
-    ) -> RebuildReport: ...
-        # Clear episode_index + episode_paths and repopulate from notes (ruamel-free;
-        # the caller builds ParsedNote from parsed .md files). See RebuildReport
-        # + RebuildConflict for the honesty contract (never silent).
-        # secondary_index_wipes runs caller-supplied wipe hooks in the clear phase
-        # so vec0/FTS do not leave ghost hits on a vault rebuild.
-
-
 # ---------------------------------------------------------------------------
-# EmbeddingsCacheRepository. Key: (content_hash, model_identity, role).
-# Owned by the persistence layer; operated by the embedder via this Protocol
-# (no own connection).
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
-class EmbeddingsCacheRepository(Protocol):
-    def batch_lookup(
-        self, model_identity: str, role: str, content_hashes: Sequence[str]
-    ) -> dict[str, bytes]: ...
-    def batch_insert(
-        self,
-        model_identity: str,
-        role: str,
-        content_hashes: Sequence[str],
-        vectors: Sequence[bytes],
-    ) -> None: ...
-    def count(self) -> int: ...
-    def trim(self, max_rows: int) -> None: ...
-
-
-# ---------------------------------------------------------------------------
-# ReindexJobRepository. reindex_jobs DDL. Owned by the persistence layer,
-# operated by the embedder. Methods are setters in the current release (no
-# state-transition guards).
+# Collapsed/deleted (see module docstring): AuditEventRepository → engine
+# accepts ``SqliteAuditEventRepository``; SidecarIndexRepository → frontmatter
+# rebuild accepts ``SqliteSidecarIndexRepository``; EmbeddingsCacheRepository
+# → ``SqliteEmbeddingsCacheRepository``; ReindexJobRepository deleted (no
+# typed consumer). ``ReindexJob`` stays as the concrete repo's payload.
 # ---------------------------------------------------------------------------
 
 
@@ -334,13 +294,3 @@ class ReindexJob:
     status: str  # running | paused | done | failed
     started_at: str
     finished_at: str | None
-
-
-@runtime_checkable
-class ReindexJobRepository(Protocol):
-    def create(self, *, model_from: str, model_to: str, total: int) -> int: ...
-    def start(self, job_id: int) -> None: ...
-    def pause(self, job_id: int) -> None: ...
-    def finish(self, job_id: int) -> None: ...
-    def fail(self, job_id: int) -> None: ...
-    def list(self, *, status: str | None = None) -> list[ReindexJob]: ...

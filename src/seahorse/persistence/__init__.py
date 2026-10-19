@@ -1,9 +1,11 @@
 """Seahorse Persistence Layer.
 
-Storage-agnostic front: Protocols live in ``seahorse.contracts.persistence``;
-SQLite implementations live here. The current release ships the relational
-repos; the vec0 and FTS5 implementations are deferred to a later release
-(Protocol stubs raise NotImplementedError).
+SQLite implementations of the persistence contracts. The seams that earned
+their keep (``EpisodeIndexRepository`` / ``VectorIndexRepository`` /
+``FullTextIndexRepository`` — the interfaces the disclosure and retrieval
+suites test against) live in ``seahorse.contracts.persistence``; the
+single-adapter repos (episode, audit, sidecar, embeddings cache, reindex
+jobs) are concrete here.
 """
 
 __all__: list[str] = []

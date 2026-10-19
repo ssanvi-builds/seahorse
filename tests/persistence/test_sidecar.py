@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 
 from seahorse.contracts.episode import Episode
-from seahorse.contracts.persistence import ParsedNote, SidecarIndexRepository
+from seahorse.contracts.persistence import ParsedNote
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.sqlite_sidecar import SqliteSidecarIndexRepository
@@ -73,8 +73,9 @@ def _index_rows(sidecar: SqliteSidecarIndexRepository) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def test_structurally_satisfies_protocol(sidecar: SqliteSidecarIndexRepository) -> None:
-    assert isinstance(sidecar, SidecarIndexRepository)
+def test_repo_shape_no_atomic(sidecar: SqliteSidecarIndexRepository) -> None:
+    # Collapsed contract (C3): the sidecar stays an index-cache surface —
+    # no engine-style atomic transaction manager on it.
     assert not hasattr(sidecar, "atomic")
 
 

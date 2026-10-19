@@ -16,8 +16,8 @@ from collections.abc import Sequence
 from typing import Any
 
 from seahorse.contracts.embeddings import QueryEmbedder
-from seahorse.contracts.persistence import EmbeddingsCacheRepository
 from seahorse.embeddings.types import ModelIdentity
+from seahorse.persistence.sqlite_embeddings_cache import SqliteEmbeddingsCacheRepository
 
 _LRU_CAP = 4096
 
@@ -35,7 +35,7 @@ class CachedQueryEmbedder:
     def __init__(
         self,
         inner: QueryEmbedder,
-        cache_repo: EmbeddingsCacheRepository,
+        cache_repo: SqliteEmbeddingsCacheRepository,
         model_identity: ModelIdentity,
     ) -> None:
         self._inner = inner

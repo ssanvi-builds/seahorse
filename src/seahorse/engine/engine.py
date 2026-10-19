@@ -28,7 +28,6 @@ from seahorse.contracts.engine import (
     freshness_of,
 )
 from seahorse.contracts.episode import Episode
-from seahorse.contracts.persistence import AuditEventRepository
 from seahorse.contracts.pit import is_known_at_t, is_valid_at_t
 from seahorse.engine import errors
 from seahorse.engine.canonical import canonical_body_hash
@@ -41,6 +40,7 @@ from seahorse.engine.collision import (
 from seahorse.engine.guards import WriteGuards
 from seahorse.engine.ids import deterministic_id, new_uuid7
 from seahorse.frontmatter.schema import SupersedesReason
+from seahorse.persistence.sqlite_audit import SqliteAuditEventRepository
 
 _STATUS_ACTIVE = "ACTIVE"
 _STATUS_PENDING = "PENDING_INGEST"
@@ -60,7 +60,7 @@ class BiTemporalEngine:
     def __init__(
         self,
         repo: EpisodeRepository,
-        audit: AuditEventRepository,
+        audit: SqliteAuditEventRepository,
         *,
         guards: WriteGuards | None = None,
         collision: CollisionDetector | None = None,

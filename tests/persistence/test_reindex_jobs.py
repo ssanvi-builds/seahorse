@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from seahorse.contracts.persistence import ReindexJobRepository
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.sqlite_reindex_jobs import SqliteReindexJobRepository
@@ -20,8 +19,9 @@ def jobs(tmp_path) -> SqliteReindexJobRepository:
     mgr.close()
 
 
-def test_structurally_satisfies_protocol(jobs: SqliteReindexJobRepository) -> None:
-    assert isinstance(jobs, ReindexJobRepository)
+def test_repo_shape_no_atomic(jobs: SqliteReindexJobRepository) -> None:
+    # Deleted contract (C3): the concrete repo remains the surface — no
+    # engine-style atomic transaction manager on it.
     assert not hasattr(jobs, "atomic")
 
 

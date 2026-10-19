@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from seahorse.contracts.engine import AuditEvent
-from seahorse.contracts.persistence import AuditEventRepository
 from seahorse.persistence.connection import ConnectionManager
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.sqlite_audit import SqliteAuditEventRepository
@@ -36,9 +35,10 @@ def _event(
     )
 
 
-def test_structurally_satisfies_protocol(audit: SqliteAuditEventRepository) -> None:
-    assert isinstance(audit, AuditEventRepository)
-    assert not hasattr(audit, "atomic")  # no own atomic()
+def test_repo_shape_no_atomic(audit: SqliteAuditEventRepository) -> None:
+    # Collapsed contract (C3): the concrete repo is the surface — no
+    # engine-style atomic() transaction manager on it.
+    assert not hasattr(audit, "atomic")
 
 
 def test_append_then_query_by_target(audit: SqliteAuditEventRepository) -> None:

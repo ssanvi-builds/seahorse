@@ -20,12 +20,12 @@ from seahorse.contracts import (
     ReindexJob,
 )
 from seahorse.contracts.persistence import (
-    EmbeddingsCacheRepository,
     FullTextIndexRepository,
-    ReindexJobRepository,
-    SidecarIndexRepository,
     VectorIndexRepository,
 )
+from seahorse.persistence.sqlite_embeddings_cache import SqliteEmbeddingsCacheRepository
+from seahorse.persistence.sqlite_reindex_jobs import SqliteReindexJobRepository
+from seahorse.persistence.sqlite_sidecar import SqliteSidecarIndexRepository
 
 
 def test_episode_has_signed_field_set():
@@ -207,23 +207,28 @@ def test_vector_index_repository_upsert_is_folded():
     assert hasattr(VectorIndexRepository, "distinct_model_identities")
 
 
-def test_embeddings_cache_repository_keyed_by_model_role_hash():
-    sig_lookup = inspect.signature(EmbeddingsCacheRepository.batch_lookup)
+def test_embeddings_cache_keyed_by_model_role_hash():
+    # Collapsed contract (C3): the SQLite repo IS the signature surface.
+    sig_lookup = inspect.signature(SqliteEmbeddingsCacheRepository.batch_lookup)
     assert set(sig_lookup.parameters) >= {"model_identity", "role", "content_hashes"}
-    sig_insert = inspect.signature(EmbeddingsCacheRepository.batch_insert)
+    sig_insert = inspect.signature(SqliteEmbeddingsCacheRepository.batch_insert)
     assert set(sig_insert.parameters) >= {"model_identity", "role", "content_hashes", "vectors"}
 
 
 def test_reindex_job_repository_methods():
+    # Deleted contract (C3): the method surface lives on the concrete repo.
     for m in ("create", "start", "pause", "finish", "fail", "list"):
-        assert hasattr(ReindexJobRepository, m), f"missing {m}"
+        assert hasattr(SqliteReindexJobRepository, m), f"missing {m}"
 
 
 def test_sidecar_repository_typed_methods_no_raw_sql():
+    # Collapsed contract (C3): the SQLite sidecar is the signature surface.
     for m in ("put_path", "get_path", "reindex"):
-        assert hasattr(SidecarIndexRepository, m), f"missing {m}"
+        assert hasattr(SqliteSidecarIndexRepository, m), f"missing {m}"
     # No method accepts a raw SQL predicate string.
-    for _name, member in inspect.getmembers(SidecarIndexRepository, predicate=inspect.isfunction):
+    for _name, member in inspect.getmembers(
+        SqliteSidecarIndexRepository, predicate=inspect.isfunction
+    ):
         sig = inspect.signature(member)
         assert "predicate_sql" not in sig.parameters
 

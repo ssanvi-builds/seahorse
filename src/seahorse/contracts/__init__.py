@@ -39,8 +39,6 @@ from seahorse.contracts.index import (
     PITKind,
 )
 from seahorse.contracts.persistence import (
-    AuditEventRepository,
-    EmbeddingsCacheRepository,
     EpisodeIndexRepository,
     FtsDoc,
     FullTextHit,
@@ -49,8 +47,6 @@ from seahorse.contracts.persistence import (
     RebuildConflict,
     RebuildReport,
     ReindexJob,
-    ReindexJobRepository,
-    SidecarIndexRepository,
     VectorHit,
     VectorIndexRepository,
 )
@@ -59,8 +55,6 @@ from seahorse.contracts.retrieval import FusedCandidate
 
 __all__ = [
     "AuditEvent",
-    "AuditEventRepository",
-    "EmbeddingsCacheRepository",
     "Episode",
     "EpisodeIndexRepository",
     "EpisodeRepository",
@@ -80,8 +74,6 @@ __all__ = [
     "RebuildConflict",
     "RebuildReport",
     "ReindexJob",
-    "ReindexJobRepository",
-    "SidecarIndexRepository",
     "VectorHit",
     "VectorIndexRepository",
     "WriteResult",
