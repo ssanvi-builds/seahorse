@@ -281,6 +281,10 @@ def run_rrf_k_experiment(
     (the real corpus, authoritative — the reproducible 100 subsample by
     default; ``subsample=False`` opts into the full-corpus overnight run).
     ``db_path`` defaults to a fresh temp DB (reproducible).
+
+    The facade caps ``k`` at its config's ``top_k`` (the inherited facade
+    contract over ``engine.recall``'s verbatim ``k``); the declared
+    measurement is recall@10 either way.
     """
     if corpus not in ("synthetic", "lmeb-s"):
         raise ValueError(

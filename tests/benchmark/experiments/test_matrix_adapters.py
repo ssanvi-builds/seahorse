@@ -158,6 +158,79 @@ def test_matrix_run_drives_variant_loop(monkeypatch: pytest.MonkeyPatch):
     assert captured[0]["output_dir"] == Path("benchmark-output")
 
 
+def test_matrix_run_warm_db_default_builds_empty_cache(monkeypatch: pytest.MonkeyPatch):
+    """warm_db=True without an outer cache starts with an EMPTY cache dict --
+    a regression here would share templates across fresh-DB runs (a lying
+    fingerprint) or re-embed per variant (silent and expensive)."""
+    from seahorse.benchmark.experiments import runner as runner_mod
+    from seahorse.benchmark.experiments import variants as variants_mod
+
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        variants_mod, "variants_for", lambda name: iter([SimpleNamespace(name="v0")])
+    )
+    monkeypatch.setattr(runner_mod, "_load_dataset", _fake_dataset)
+    monkeypatch.setattr(
+        runner_mod,
+        "_run_variant",
+        lambda **kwargs: captured.append(kwargs) or SimpleNamespace(variant=kwargs["variant"]),
+    )
+    EmbedMatrixExperiment().run(_ctx(warm_db=True, template_cache=None))
+    assert captured[0]["template_cache"] == {}
+
+
+def test_matrix_run_fresh_db_passes_no_cache(monkeypatch: pytest.MonkeyPatch):
+    from seahorse.benchmark.experiments import runner as runner_mod
+    from seahorse.benchmark.experiments import variants as variants_mod
+
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        variants_mod, "variants_for", lambda name: iter([SimpleNamespace(name="v0")])
+    )
+    monkeypatch.setattr(runner_mod, "_load_dataset", _fake_dataset)
+    monkeypatch.setattr(
+        runner_mod,
+        "_run_variant",
+        lambda **kwargs: captured.append(kwargs) or SimpleNamespace(variant=kwargs["variant"]),
+    )
+    EmbedMatrixExperiment().run(_ctx(warm_db=False, template_cache=None))
+    assert captured[0]["template_cache"] is None
+
+
+@pytest.mark.parametrize("experiment", ["recency", "decay_rrf"])
+def test_run_experiment_force_pit_resolves_through_ctx(
+    monkeypatch: pytest.MonkeyPatch, experiment: str
+):
+    """The ADR-03 chain end-to-end through the C4 seam: run_experiment forces
+    pit_queries=False for the recency/decay matrices (the gate lives in
+    _resolve_pit_queries; the resolved value rides ExperimentContext into
+    _run_variant)."""
+    from seahorse.benchmark.experiments import decide as decide_mod
+    from seahorse.benchmark.experiments import runner as runner_mod
+    from seahorse.benchmark.experiments import variants as variants_mod
+
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        variants_mod,
+        "variants_for",
+        lambda name: iter([SimpleNamespace(name="v0"), SimpleNamespace(name="v1")]),
+    )
+    monkeypatch.setattr(runner_mod, "_load_dataset", _fake_dataset)
+    monkeypatch.setattr(
+        runner_mod,
+        "_run_variant",
+        lambda **kwargs: captured.append(kwargs) or SimpleNamespace(variant=kwargs["variant"]),
+    )
+    monkeypatch.setattr(
+        decide_mod, "decide_recency", lambda baseline, sweep: {"decision": "stub"}
+    )
+    monkeypatch.setattr(
+        decide_mod, "decide_decay_rrf", lambda baseline, variant: {"decision": "stub"}
+    )
+    runner.run_experiment(experiment=experiment, corpus="synthetic", pit_queries=True)
+    assert captured[0]["pit_queries"] is False
+
+
 def test_matrix_run_warm_db_passes_outer_cache(monkeypatch: pytest.MonkeyPatch):
     from seahorse.benchmark.experiments import runner as runner_mod
     from seahorse.benchmark.experiments import variants as variants_mod
