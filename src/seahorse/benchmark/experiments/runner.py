@@ -46,6 +46,7 @@ from seahorse.benchmark.experiments.decide import (
     decide_recency,
     decide_rerank,
 )
+from seahorse.benchmark.experiments.protocol import ExperimentReport
 from seahorse.benchmark.experiments.synthetic import (
     HashEmbedder,
     HashReranker,
@@ -112,23 +113,6 @@ def _clock_delta_seconds(dataset: BenchmarkDataset) -> float:
     if span <= 0:
         return _CLOCK_DELTA_DAYS
     return span / n_turns
-
-
-@dataclass(frozen=True)
-class ExperimentReport:
-    """The full experiment artifact: per-variant results + the verdict.
-
-    ``batch_result`` is set only for the per-turn batching experiment, which is
-    a standalone measurement (no per-variant ``EvaluationRunner`` results) —
-    the turn-cluster recall@k + the decision.
-    """
-
-    experiment: str
-    corpus: str
-    temporal_mode: bool
-    results: tuple[ExperimentResult, ...]
-    decision: dict
-    batch_result: Any | None = None
 
 
 @dataclass(frozen=True)

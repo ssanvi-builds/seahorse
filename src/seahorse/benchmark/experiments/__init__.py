@@ -25,8 +25,12 @@ from seahorse.benchmark.experiments.decide import (
     decide_recency,
     decide_rerank,
 )
-from seahorse.benchmark.experiments.runner import (
+from seahorse.benchmark.experiments.protocol import (
+    Experiment,
+    ExperimentContext,
     ExperimentReport,
+)
+from seahorse.benchmark.experiments.runner import (
     run_experiment,
 )
 from seahorse.benchmark.experiments.variants import (
@@ -44,6 +48,8 @@ from seahorse.benchmark.experiments.variants import (
 __all__ = [
     "EXPERIMENTS",
     "CORPORA",
+    "Experiment",
+    "ExperimentContext",
     "ExperimentVariant",
     "ExperimentResult",
     "ExperimentReport",
