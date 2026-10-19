@@ -116,8 +116,28 @@ def test_remember_sessions_matches_sut_ingest_parity(tmp_path):
     # the temporal payloads agree: human source, valid_at, summary passthrough
     d_a = facade_a.recall_full([ep_ids_a[0]])[0].episode
     d_b = facade_b.recall_full([ep_ids_b[0]])[0].episode
+    # the helper's synthesized agent identity matches the SUT's default --
+    # a drift between _BENCHMARK_AGENT_ID and the SUT ctor default must fail
+    assert d_a.provenance["agent_id"] == d_b.provenance["agent_id"] == "seahorse-benchmark"
     assert d_a.provenance["source_type"] == d_b.provenance["source_type"] == "human"
     assert d_a.valid_at == d_b.valid_at == _D0
     assert d_a.summary == d_b.summary == "cap"
     storage_a.close()
     storage_b.close()
+
+
+def test_remember_sessions_oldest_first_decides_the_survivor(tmp_path):
+    """The oldest-first sort is CORRECTNESS, not convenience: with the engine's
+    one-active-per-subject rule, the first-ingested version of a fact survives
+    and its successor collides -- ingest the successor first and the survivor
+    flips (LMEB knowledge-update payloads make this case real)."""
+    facade, storage = build_facade(tmp_path / "bench.db", retrieval_available=False)
+    sessions = [
+        # the successor (same subject, newer) listed FIRST in the input
+        _session("s2", _D1, [{"body": "# France\n\nSuccessor body.", "title": "France"}]),
+        _session("s1", _D0, [{"body": "# France\n\nOriginal body.", "title": "France"}]),
+    ]
+    ep_ids, ep_id_to_session = remember_sessions(facade, sessions)
+    assert len(ep_ids) == 1
+    assert set(ep_id_to_session.values()) == {"s1"}  # the OLDER session won
+    storage.close()

@@ -102,7 +102,7 @@ class SeahorseSUT:
 
     def ingest(self, sessions: Sequence[dict]) -> list[str]:
         """Ingest haystack sessions via ``MemoryFacade.remember`` with
-        ``extraction_mode=skip``.
+        ``skip_extraction=True``.
 
         ``source_type='human'`` + ``valid_at=session_date`` in temporal mode (a
         human source permits an arbitrary valid_at; the guard forces skip).
