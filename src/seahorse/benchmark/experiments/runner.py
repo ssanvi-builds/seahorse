@@ -24,7 +24,6 @@ from __future__ import annotations
 import copy
 import logging
 import shutil
-import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,13 +38,10 @@ from seahorse.benchmark.corpus_builder import (
     CorpusBuilder,
     earliest_session_date,
 )
-from seahorse.benchmark.experiments.decide import (
-    ExperimentResult,
-    decide_decay_rrf,
-    decide_embed,
-    decide_recency,
-    decide_rerank,
+from seahorse.benchmark.experiments import (
+    matrix,  # noqa: F401 -- composition point: registers the matrix adapters
 )
+from seahorse.benchmark.experiments.decide import ExperimentResult
 from seahorse.benchmark.experiments.protocol import (
     Experiment,
     ExperimentContext,
@@ -61,9 +57,7 @@ from seahorse.benchmark.experiments.variants import (
     CORPORA,
     EXPERIMENTS,
     ExperimentVariant,
-    variants_for,
 )
-from seahorse.benchmark.harness.reader_llm import ReaderLLMClient
 from seahorse.benchmark.harness.tokenizer import Tokenizer
 from seahorse.benchmark.knowledge_update_simulator import KnowledgeUpdateSimulator
 from seahorse.benchmark.metrics.efficiency import (
@@ -345,56 +339,9 @@ def _build_template(
     )
 
 
-_MATRIX_EXPERIMENTS: tuple[str, ...] = ("recency", "rerank", "embed", "decay_rrf")
-
-
 def render_experiment_report(report: ExperimentReport) -> str:
-    """Human-readable sweep table + decision block (for the CLI).
-
-    Standalone experiments route through their registered adapter's render
-    (each module's ``render_*_report``); the variant matrices go through the
-    shared matrix table.
-    """
-    if report.experiment in _MATRIX_EXPERIMENTS:
-        return _render_matrix_report(report)
+    """Human-readable experiment report (for the CLI): adapter-owned rendering."""
     return get_experiment(report.experiment).render(report)
-
-
-def _render_matrix_report(report: ExperimentReport) -> str:
-    """The variant sweep table + the experiment-specific inserts + decision."""
-    lines = [
-        f"# Benchmark experiment: {report.experiment}  (corpus={report.corpus}, "
-        f"temporal={report.temporal_mode})",
-        "",
-        f"{'variant':<28} {'detected':<20} {'recall@10':>9} {'ndcg@10':>8}",
-    ]
-    for r in report.results:
-        recall = r.metric("recall@10").global_value if "recall@10" in r.metrics else float("nan")
-        ndcg = r.metric("ndcg@10").global_value if "ndcg@10" in r.metrics else float("nan")
-        lines.append(
-            f"{r.variant.name:<28} {r.detected_score_source:<20} "
-            f"{recall:>9.3f} {ndcg:>8.3f}"
-        )
-    if report.experiment == "recency":
-        lines.append("")
-        lines.append("recall@10 by slice (temporal-reasoning / knowledge-update):")
-        for r in report.results:
-            by_slice = r.metric("recall@10").by_slice
-            tr = by_slice.get("temporal-reasoning", float("nan"))
-            ku = by_slice.get("knowledge-update", float("nan"))
-            lines.append(f"  {r.variant.name:<28} tr={tr:.3f} ku={ku:.3f}")
-    if report.experiment == "rerank":
-        lines.append("")
-        lines.append("p95_index_rerank_ms (rerank-path INDEX latency):")
-        for r in report.results:
-            p95 = r.metric("latency_p95_rerank_ms").global_value
-            lines.append(f"  {r.variant.name:<28} p95={p95:.0f}ms")
-    lines.append("")
-    lines.append("## Decision")
-    lines.append(f"decision: {report.decision.get('decision')}")
-    lines.append(f"flip: {report.decision.get('flip')}")
-    lines.append(f"reason: {report.decision.get('reason', '')}")
-    return "\n".join(lines)
 
 
 def _assemble_report(
@@ -475,82 +422,29 @@ def run_experiment(
     # the bias is actually testable.
     pit_queries = _resolve_pit_queries(experiment, pit_queries)
 
-    if experiment not in _MATRIX_EXPERIMENTS:
-        adapter = get_experiment(experiment)
-        if corpus not in adapter.corpora:
-            raise ValueError(
-                f"{adapter.name} experiment corpus must be "
-                f"{' or '.join(repr(c) for c in adapter.corpora)}, got {corpus!r}"
-            )
-        ctx = ExperimentContext(
-            corpus=corpus,
-            top_k=top_k,
-            subsample=subsample,
-            temporal=temporal,
-            pit_queries=pit_queries,
-            output_dir=output_dir,
-            reader_llm=reader_llm,
-            reader_model=reader_model,
-            judge_model=judge_model,
-            strong_reader_model=strong_reader_model,
-            context_mode=context_mode,
-            warm_db=warm_db,
-            template_cache=template_cache,
+    adapter = get_experiment(experiment)
+    if corpus not in adapter.corpora:
+        raise ValueError(
+            f"{adapter.name} experiment corpus must be "
+            f"{' or '.join(repr(c) for c in adapter.corpora)}, got {corpus!r}"
         )
-        return _assemble_report(adapter, adapter.run(ctx), corpus, temporal)
-
-    base_config = BenchmarkConfig(
-        adapter="lmeb" if corpus == "lmeb-s" else "synthetic",
-        dataset_config="s",
+    ctx = ExperimentContext(
+        corpus=corpus,
+        top_k=top_k,
+        subsample=subsample,
+        temporal=temporal,
+        pit_queries=pit_queries,
+        output_dir=output_dir,
+        reader_llm=reader_llm,
         reader_model=reader_model,
         judge_model=judge_model,
-        temporal_mode=temporal,
-        output_dir=output_dir,
-        top_k=top_k,
+        strong_reader_model=strong_reader_model,
+        context_mode=context_mode,
+        warm_db=warm_db,
+        template_cache=template_cache,
     )
-    base_config.validate()
-    dataset = _load_dataset(corpus, subsample=subsample)
-    tokenizer = Tokenizer()
-    reader = reader_llm or ReaderLLMClient(reader_model)
-    registry = make_metric_registry(tokenizer)
-    variants = variants_for(experiment)
-    cache = template_cache if template_cache is not None else ({} if warm_db else None)
+    return _assemble_report(adapter, adapter.run(ctx), corpus, temporal)
 
-    results: list[ExperimentResult] = []
-    with tempfile.TemporaryDirectory(prefix="seahorse-exp-") as tmp:
-        for variant in variants:
-            results.append(
-                _run_variant(
-                    base_config=base_config,
-                    variant=variant,
-                    dataset=dataset,
-                    corpus=corpus,
-                    tmp=Path(tmp),
-                    output_dir=Path(output_dir),
-                    reader=reader,
-                    tokenizer=tokenizer,
-                    registry=registry,
-                    template_cache=cache,
-                    pit_queries=pit_queries,
-                )
-            )
-
-    baseline, sweep = results[0], results[1:]
-    if experiment == "recency":
-        decision = decide_recency(baseline, sweep)
-    elif experiment == "rerank":
-        decision = decide_rerank(baseline, sweep[0])
-    elif experiment == "decay_rrf":
-        decision = decide_decay_rrf(baseline, sweep[0])
-    else:
-        decision = decide_embed(baseline, sweep[0])
-    return ExperimentReport(
-        experiment=experiment,
-        corpus=corpus,
-        temporal_mode=temporal,
-        results=tuple(results),
-        decision=decision,
-    )
 
 
 def _run_variant(

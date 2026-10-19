@@ -30,6 +30,7 @@ from seahorse.benchmark.experiments.protocol import (
     ExperimentContext,
     ExperimentReport,
 )
+from seahorse.benchmark.experiments.registry import get_experiment
 from seahorse.benchmark.experiments.runner import (
     run_experiment,
 )
@@ -53,6 +54,7 @@ __all__ = [
     "ExperimentVariant",
     "ExperimentResult",
     "ExperimentReport",
+    "get_experiment",
     "NDCG_DEGRADATION_PP",
     "RECALL_IMPROVEMENT_PP",
     "NDCG_IMPROVEMENT_PP",

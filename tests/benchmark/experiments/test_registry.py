@@ -25,7 +25,7 @@ from seahorse.benchmark.experiments.registry import (
     get_experiment,
     register,
 )
-from seahorse.benchmark.experiments.variants import EXPERIMENTS
+from seahorse.benchmark.experiments.variants import CORPORA
 
 _STUB_RESULT: dict = {"regime": "stub"}
 _STUB_DECISION: dict = {"decision": "stub"}
@@ -89,19 +89,15 @@ def _wire_reader_quality(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def test_standalone_registry_is_complete():
-    matrix = {"recency", "rerank", "embed", "decay_rrf"}
-    assert set(EXPERIMENT_REGISTRY) == set(EXPERIMENTS) - matrix
-    assert len(EXPERIMENT_REGISTRY) == 13
-
-
 def test_adapters_satisfy_experiment_protocol():
     for adapter in EXPERIMENT_REGISTRY.values():
         assert isinstance(adapter, Experiment)
 
 
-def test_adapter_modules_resolve_with_declared_attrs():
+def test_standalone_adapter_modules_resolve_with_declared_attrs():
     for adapter in EXPERIMENT_REGISTRY.values():
+        if not isinstance(adapter, StandaloneExperiment):
+            continue
         mod = importlib.import_module(adapter.module)
         for attr in (adapter.run_attr, adapter.decide_attr, adapter.render_attr):
             assert callable(getattr(mod, attr)), (adapter.name, attr)
@@ -148,14 +144,20 @@ def test_standalone_experiment_is_frozen():
 # ---------------------------------------------------------------------------
 
 
+def _bad_corpus(adapter: Experiment) -> str:
+    """A corpus the adapter rejects (the first CORPORA id not in its set)."""
+    return next(c for c in CORPORA if c not in adapter.corpora)
+
+
 @pytest.mark.parametrize(
-    "name, bad_corpus",
-    [("batch", "lmeb-s")]
-    + [(name, "claude-mem") for name in EXPERIMENT_REGISTRY if name != "batch"],
+    "name",
+    [name for name, adapter in EXPERIMENT_REGISTRY.items() if adapter.corpora != tuple(CORPORA)],
+    ids=str,
 )
-def test_standalone_adapters_reject_out_of_corpora(name: str, bad_corpus: str):
+def test_standalone_adapters_reject_out_of_corpora(name: str):
+    adapter = EXPERIMENT_REGISTRY[name]
     with pytest.raises(ValueError, match=f"{name} experiment corpus must be"):
-        runner.run_experiment(experiment=name, corpus=bad_corpus)
+        runner.run_experiment(experiment=name, corpus=_bad_corpus(adapter))
 
 
 # ---------------------------------------------------------------------------
