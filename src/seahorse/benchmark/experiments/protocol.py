@@ -67,12 +67,19 @@ class Experiment(Protocol):
 
     Note: ``runtime_checkable`` validates only the METHODS (run/decide/render);
     the data members (name/corpora/matrix) are invisible to ``isinstance`` —
-    structural conformance is pinned by test instead.
+    structural conformance is pinned by test instead. The members are declared
+    read-only properties: adapters are immutable, so the protocol must not
+    advertise a setter.
     """
 
-    name: str
-    corpora: tuple[str, ...]
-    matrix: bool
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def corpora(self) -> tuple[str, ...]: ...
+
+    @property
+    def matrix(self) -> bool: ...
 
     def run(self, ctx: ExperimentContext) -> Any: ...
 

@@ -68,17 +68,22 @@ def test_experiment_context_is_frozen():
 # ---------------------------------------------------------------------------
 
 
+def _member_return_hints(member: str) -> dict:
+    """Hints of a protocol property member (read-only structural member)."""
+    prop = Experiment.__dict__[member]
+    assert isinstance(prop, property), member
+    return typing.get_type_hints(prop.fget)
+
+
 def test_experiment_protocol_data_members():
-    hints = typing.get_type_hints(Experiment)
-    assert hints["name"] is str
-    assert hints["matrix"] is bool
-    assert hints["corpora"] == tuple[str, ...]
+    assert _member_return_hints("name")["return"] is str
+    assert _member_return_hints("matrix")["return"] is bool
+    assert _member_return_hints("corpora")["return"] == tuple[str, ...]
 
 
 def test_experiment_protocol_methods():
     for method in ("run", "decide", "render"):
         assert callable(getattr(Experiment, method))
-    assert typing.get_type_hints(Experiment)["corpora"] == tuple[str, ...]
 
 
 class _FullAdapter:
