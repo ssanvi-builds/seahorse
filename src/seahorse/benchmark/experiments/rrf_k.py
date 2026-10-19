@@ -4,8 +4,9 @@ Falsifies the hypothesis "RRF_K=60 flattens the top-rank advantage so much that
 multi-source presence dominates over strong single-source relevance". The
 production constant is ``RRF_K=60`` (``retrieval/constants.py``), explicitly
 "fixed up front, never tuned on a batch". This experiment sweeps
-``RRF_K ∈ {10, 20, 40, 60}`` over the real engine path (``recall`` +
-``rrf_fuse``) and measures recall@10 per value.
+``RRF_K ∈ {10, 20, 40, 60}`` over the hybrid retrieval seam through the
+facade (``MemoryFacade.recall`` + ``rrf_fuse``) and measures recall@10 per
+value.
 
 Metrics:
 - **recall@10 per RRF_K**: for each query, whether the golden answer episode is
@@ -33,7 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments._shared import (
@@ -49,13 +50,10 @@ from seahorse.benchmark.experiments.lmeb_corpus import (
     build_real_facade,
     ingest_haystack,
     load_lmeb_subsample,
-    real_query_embedder,
 )
 from seahorse.benchmark.experiments.synthetic import HashEmbedder
 from seahorse.contracts.episode import Episode
-from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder
 from seahorse.facade import build_facade
-from seahorse.retrieval.engine import recall
 
 # The k for the recall@k measurement (harness default).
 RRF_K_TOP_K = 10
@@ -226,13 +224,11 @@ def build_real_corpus(
 
 def _measure(
     facade: Any,
-    storage: Any,
     episodes: list[Episode],
     questions: list[RrfKQuestion],
     top_k: int,
     *,
     ep_id_to_session: dict[str, str] | None = None,
-    embedder: Any | None = None,
 ) -> tuple[tuple[tuple[int, float], ...], int, int, str]:
     """Run the recall@10 measurement per RRF_K value.
 
@@ -243,13 +239,12 @@ def _measure(
     Synthetic questions resolve at EPISODE level (``answer_ep_id``); real
     LMEB-S questions resolve at SESSION level (``golden_session_ids`` +
     ``ep_id_to_session`` bridge) — any retrieved episode from the golden session
-    counts. ``embedder`` defaults to the deterministic hash (synthetic); the
-    caller passes the REAL query embedder for the LMEB-S run.
+    counts. Every query goes through the facade recall seam (the ``rrf_k``
+    ranking knob); the query embedder is the corpus facade's own (composition
+    root — the real fastembed backend for LMEB-S).
     """
     ep_ids = {ep.id for ep in episodes}
     n_episodes = len(ep_id_to_session) if ep_id_to_session else len(ep_ids)
-    if embedder is None:
-        embedder = cast(Any, AsyncToSyncQueryEmbedder(HashEmbedder()))
     regime = "hybrid"
     recall_by_rrf_k: list[tuple[int, float]] = []
     for rrf_k in RRF_K_SWEEP:
@@ -257,17 +252,7 @@ def _measure(
         for q in questions:
             if q.answer_ep_id and q.answer_ep_id not in ep_ids:
                 continue  # the synthetic answer episode was not stored (collision)
-            rows = recall(
-                q.query,
-                pit=None,
-                embedder=embedder,
-                vector_repo=storage.vector,
-                fts_repo=storage.fts,
-                episode_repo=storage.episodes,
-                index_repo=storage.episode_index,
-                k=top_k,
-                rrf_k=rrf_k,
-            )
+            rows = facade.recall(q.query, k=top_k, rrf_k=rrf_k)
             if is_fallback_regime(rows):
                 regime = _FALLBACK_G2
             if q.golden_session_ids and ep_id_to_session:
@@ -306,21 +291,17 @@ def run_rrf_k_experiment(
     if corpus == "synthetic":
         facade, storage, episodes, questions = build_synthetic_corpus(db)
         bridge = None
-        embedder = None
     else:
         facade, storage, episodes, questions, bridge = build_real_corpus(
             db, subsample=subsample
         )
-        embedder = real_query_embedder()
     try:
         recall_by_rrf_k, n_queries, n_episodes, regime = _measure(
             facade,
-            storage,
             episodes,
             questions,
             top_k,
             ep_id_to_session=bridge,
-            embedder=embedder,
         )
     finally:
         storage.close()

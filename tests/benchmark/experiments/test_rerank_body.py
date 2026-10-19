@@ -209,7 +209,6 @@ class TestSessionLevelRecall:
         try:
             recall_baseline, _, recall_body, n_queries, n_episodes, regime = _measure(
                 facade,
-                storage,
                 [],
                 questions,
                 RERANK_BODY_TOP_K,
@@ -240,13 +239,20 @@ class TestRunRerankBodyRealWiring:
             fake_build_real,
         )
         monkeypatch.setattr(
-            "seahorse.benchmark.experiments.rerank_body.real_query_embedder",
-            lambda: None,
-        )
-        monkeypatch.setattr(
             "seahorse.benchmark.experiments.rerank_body._build_real_reranker",
             lambda: None,
         )
         result = run_rerank_body_experiment(corpus="lmeb-s", subsample=False)
         assert calls["subsample"] is False
         assert result.regime == "hybrid"
+
+
+def test_no_raw_engine_import() -> None:
+    """Delegation purity (the SUT claim, mirrored): the rerank A/B goes through
+    the facade recall seam, not raw ``engine.recall`` with storage repos."""
+    import inspect
+
+    import seahorse.benchmark.experiments.rerank_body as rerank_body_mod
+
+    assert "retrieval.engine" not in inspect.getsource(rerank_body_mod)
+    assert not hasattr(rerank_body_mod, "recall")

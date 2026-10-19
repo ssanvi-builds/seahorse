@@ -222,7 +222,6 @@ class TestSessionLevelRecall:
         try:
             recall_by_rrf_k, n_queries, n_episodes, regime = _measure(
                 facade,
-                storage,
                 [],
                 questions,
                 RRF_K_TOP_K,
@@ -247,7 +246,6 @@ class TestSessionLevelRecall:
         try:
             recall_by_rrf_k, _, _, regime = _measure(
                 facade,
-                storage,
                 [],
                 questions + [ghost],
                 RRF_K_TOP_K,
@@ -274,9 +272,6 @@ class TestRunRrfKExperimentRealWiring:
         monkeypatch.setattr(
             "seahorse.benchmark.experiments.rrf_k.build_real_corpus", fake_build_real
         )
-        monkeypatch.setattr(
-            "seahorse.benchmark.experiments.rrf_k.real_query_embedder", lambda: None
-        )
         result = run_rrf_k_experiment(corpus="lmeb-s", subsample=False)
         assert calls["subsample"] is False
         assert result.regime == "hybrid"
@@ -292,8 +287,16 @@ class TestRunRrfKExperimentRealWiring:
         monkeypatch.setattr(
             "seahorse.benchmark.experiments.rrf_k.build_real_corpus", fake_build_real
         )
-        monkeypatch.setattr(
-            "seahorse.benchmark.experiments.rrf_k.real_query_embedder", lambda: None
-        )
         run_rrf_k_experiment(corpus="lmeb-s")  # default -> the documented subsample
         assert calls["subsample"] is True
+
+
+def test_no_raw_engine_import() -> None:
+    """Delegation purity (the SUT claim, mirrored): the sweep goes through the
+    facade recall seam, not raw ``engine.recall`` with storage repos."""
+    import inspect
+
+    import seahorse.benchmark.experiments.rrf_k as rrf_k_mod
+
+    assert "retrieval.engine" not in inspect.getsource(rrf_k_mod)
+    assert not hasattr(rrf_k_mod, "recall")

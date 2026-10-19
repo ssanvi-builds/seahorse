@@ -36,7 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from seahorse.benchmark._tmpdirs import mkdtemp_scoped
 from seahorse.benchmark.experiments._shared import (
@@ -52,13 +52,10 @@ from seahorse.benchmark.experiments.lmeb_corpus import (
     build_real_facade,
     ingest_haystack,
     load_lmeb_subsample,
-    real_query_embedder,
 )
 from seahorse.benchmark.experiments.synthetic import HashEmbedder, HashReranker
 from seahorse.contracts.episode import Episode
-from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder
 from seahorse.facade import build_facade
-from seahorse.retrieval.engine import recall
 
 # The k for the recall@k measurement (harness default).
 RERANK_BODY_TOP_K = 10
@@ -251,13 +248,11 @@ def build_real_corpus(
 
 def _measure(
     facade: Any,
-    storage: Any,
     episodes: list[Episode],
     questions: list[RerankBodyQuestion],
     top_k: int,
     *,
     ep_id_to_session: dict[str, str] | None = None,
-    embedder: Any | None = None,
     reranker: Any = None,
 ) -> tuple[float, float, float, int, int, str]:
     """Run the recall@10 measurement across the three rerank configurations.
@@ -269,14 +264,14 @@ def _measure(
     Synthetic questions resolve at EPISODE level (``answer_ep_id``); real
     LMEB-S questions resolve at SESSION level (``golden_session_ids`` +
     ``ep_id_to_session`` bridge) — any retrieved episode from the golden session
-    counts. ``embedder``/``reranker`` default to the deterministic hash doubles
-    (synthetic); the caller passes the REAL query embedder + cross-encoder for
-    the LMEB-S run.
+    counts. Every query goes through the facade recall seam: the baseline leg
+    inherits the composition-root reranker (no rerank for the synthetic hash
+    corpus), the summary/body legs override with the passed cross-encoder. The
+    query embedder is the corpus facade's own (composition root — the real
+    fastembed backend for LMEB-S).
     """
     ep_ids = {ep.id for ep in episodes}
     n_episodes = len(ep_id_to_session) if ep_id_to_session else len(ep_ids)
-    if embedder is None:
-        embedder = cast(Any, AsyncToSyncQueryEmbedder(HashEmbedder()))
     reranker = reranker if reranker is not None else HashReranker()
     regime = "hybrid"
 
@@ -286,14 +281,8 @@ def _measure(
         for q in questions:
             if q.answer_ep_id and q.answer_ep_id not in ep_ids:
                 continue  # the synthetic answer episode was not stored (collision)
-            rows = recall(
+            rows = facade.recall(
                 q.query,
-                pit=None,
-                embedder=embedder,
-                vector_repo=storage.vector,
-                fts_repo=storage.fts,
-                episode_repo=storage.episodes,
-                index_repo=storage.episode_index,
                 k=top_k,
                 reranker=reranker if rerank_text is not None else None,
                 k_rerank=RERANK_BODY_OVERFETCH_K,
@@ -346,24 +335,20 @@ def run_rerank_body_experiment(
     if corpus == "synthetic":
         facade, storage, episodes, questions = build_synthetic_corpus(db)
         bridge = None
-        embedder = None
         reranker = None
     else:
         facade, storage, episodes, questions, bridge = build_real_corpus(
             db, subsample=subsample
         )
-        embedder = real_query_embedder()
         reranker = _build_real_reranker()
     try:
         recall_baseline, recall_summary, recall_body, n_queries, n_episodes, regime = (
             _measure(
                 facade,
-                storage,
                 episodes,
                 questions,
                 top_k,
                 ep_id_to_session=bridge,
-                embedder=embedder,
                 reranker=reranker,
             )
         )

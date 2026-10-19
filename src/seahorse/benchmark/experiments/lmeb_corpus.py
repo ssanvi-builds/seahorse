@@ -55,19 +55,6 @@ def build_real_facade(db_path: Path | str) -> tuple[Any, Any]:
     return build_facade(db_path, retrieval_available=True)
 
 
-def real_query_embedder() -> Any:
-    """The sync query seam over the real fastembed backend (for ``engine.recall``).
-
-    The standalone ``_measure`` functions call ``recall`` directly (they sweep
-    ``rrf_k``/``rerank_text``/``reranker``, which the facade's ``recall`` does
-    not expose); the query embedder must be the REAL one, not the synthetic hash.
-    """
-    from seahorse.embeddings.fastembed_backend import build_fastembed_embedder  # lazy
-    from seahorse.embeddings.query_adapter import AsyncToSyncQueryEmbedder  # lazy
-
-    return AsyncToSyncQueryEmbedder(build_fastembed_embedder())
-
-
 def ingest_haystack(
     facade: Any, dataset: BenchmarkDataset, *, temporal: bool = False
 ) -> tuple[list[str], dict[str, str]]:
@@ -110,5 +97,4 @@ def ingest_haystack(
 __all__ = [
     "ingest_haystack",
     "load_lmeb_subsample",
-    "real_query_embedder",
 ]
