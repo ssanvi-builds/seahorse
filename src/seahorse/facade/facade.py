@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any, Protocol, cast, get_args, runtime_checkable
+from typing import Any, cast, get_args
 
 from seahorse.contracts.embeddings import QueryEmbedder
 from seahorse.contracts.engine import (
@@ -39,7 +39,6 @@ from seahorse.contracts.engine import (
 )
 from seahorse.contracts.episode import is_consolidated, normalize_derived_from
 from seahorse.contracts.index import PIT_KIND_VALUES, PITKind
-from seahorse.contracts.retrieval import FusedCandidate
 from seahorse.disclosure.types import (
     TOP_K,
     FullDetail,
@@ -57,6 +56,13 @@ from seahorse.facade.errors import (
     InvalidPITKind,
     PitRecallNotSupportedMVP0,
     SeahorseError,
+)
+from seahorse.facade.protocols import (
+    _EngineLike,
+    _MaterializerLike,
+    _RetrieverLike,
+    _ShaperLike,
+    _WritePathLike,
 )
 from seahorse.facade.stub_embedder import StubQueryEmbedder
 from seahorse.facade.types import (
@@ -93,115 +99,6 @@ def _default_clock() -> datetime:
 def _default_primitive_log(op: str, result: str) -> None:
     _logger.info("primitive op=%s result=%s", op, result)
 
-
-@runtime_checkable
-class _ShaperLike(Protocol):
-    def materialize_index(
-        self, candidates: Sequence[FusedCandidate], *, pit: PITPoint | None, now: datetime | None
-    ) -> list[IndexRow]: ...
-
-    def materialize_timeline(
-        self,
-        anchor_ep_id: str,
-        *,
-        axis: Any,
-        pit: PITPoint | None,
-        hops: int = 1,
-        now: datetime | None = None,
-    ) -> TimelineWindow: ...
-
-    def materialize_full(
-        self, ep_ids: Sequence[str], *, pit: PITPoint | None, now: datetime | None
-    ) -> list[FullDetail]: ...
-
-
-@runtime_checkable
-class _WritePathLike(Protocol):
-    def ingest(
-        self,
-        payload: RememberPayload,
-        extraction_mode: ExtractionMode,
-        *,
-        now: datetime | None = ...,
-    ) -> WriteResult: ...
-
-
-@runtime_checkable
-class _MaterializerLike(Protocol):
-    """The materializer surface the facade needs (structural).
-
-    The facade never constructs or configures the materializer — the
-    composition root injects it (same pattern as ``on_episode_indexed``). The
-    facade only calls ``materialize`` (ACTIVE write / distill / improve
-    successor) and ``invalidate`` (forget / improve old episode) and treats
-    both as best-effort side effects (M9: never fail the write path).
-    """
-
-    def materialize(self, ep: Episode) -> Any: ...
-
-    def invalidate(self, ep: Episode) -> Any: ...
-
-
-@runtime_checkable
-class _EngineLike(Protocol):
-    def get(self, ep_id: str) -> Episode | None: ...
-
-    def get_vigente(
-        self, subject: str | None = ..., *, now: datetime | None = ...
-    ) -> list[Episode]: ...
-
-    def improve(
-        self,
-        ep_id: str,
-        new_body: str,
-        *,
-        by: dict,
-        valid_at: datetime | None = ...,
-        reason: str = ...,
-        now: datetime | None = ...,
-    ) -> Episode: ...
-
-    def forget(
-        self, ep_id: str, *, reason: str, by: dict, now: datetime | None = ...
-    ) -> Episode: ...
-
-    def freshness_view(self, ep_id: str, *, now: datetime | None = ...) -> FreshnessView: ...
-
-    def audit_log(self, ep_id: str) -> list[AuditEvent]: ...
-
-    def follow_supersedes_chain(self, ep_id: str) -> list[Episode]: ...
-
-
-@runtime_checkable
-class _RetrieverLike(Protocol):
-    """Recall-policy extension point: produces ranked ``FusedCandidate`` for progressive disclosure.
-
-    The current-release impl is ``VigenteListingRetriever`` (current-state
-    listing, no ranking/PIT). A later release swaps in an adapter over
-    ``seahorse.retrieval.recall`` (kNN+BM25+RRF) at the composition root — a
-    single-point change. The facade owns boundary validation (empty query, PIT
-    refusal) + the shaper call; the retriever owns listing/filter/truncate +
-    ranking.
-
-    PIT capability is a DATA attribute (not a method) — the facade reads
-    ``getattr(retriever, "supports_pit", False)`` before delegating. A retriever
-    that does not declare it (e.g. the listing regime) causes the facade to
-    refuse a caller pit before any read; the later-release ``HybridRetriever``
-    declares it True and receives the pit verbatim. ``@runtime_checkable`` does
-    NOT check data attributes, which is why the facade uses ``getattr`` with a
-    False default.
-    """
-
-    def recall(
-        self,
-        query: str,
-        *,
-        pit: PITPoint | None,
-        k: int,
-        cognitive_type: str | None,
-        subject_filter: str | None,
-        session_boost: bool = False,
-    ) -> Sequence[FusedCandidate]: ...
 
 
 class MemoryFacade:
