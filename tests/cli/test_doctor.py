@@ -12,6 +12,8 @@ import io
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,10 +30,10 @@ def _write(vault: Path, body: str) -> Path:
     return cfg
 
 
-def _doctor(config, monkeypatch, litellm: bool = False) -> dict:
+def _doctor(config, monkeypatch, litellm: bool = False, **run_kwargs) -> dict:
     monkeypatch.setattr("seahorse.cli.doctor._litellm_installed", lambda: litellm)
     out = io.StringIO()
-    run_doctor(config, fmt="json", out=out)
+    run_doctor(config, fmt="json", out=out, **run_kwargs)
     return json.loads(out.getvalue())
 
 
@@ -996,3 +998,87 @@ class TestMaterializeConfigured:
         assert check["status"] == "OK"
         assert "consolidated" in check["detail"]
         assert "Memory" in check["detail"]
+
+
+class TestContextProbeRunner:
+    """C11: the probe's subprocess is injectable — every branch is unit-testable
+    without spawning the real CLI (the live test above stays as the e2e proof)."""
+
+    def _cfg(self, tmp_path):
+        write_default_config(tmp_path)
+        return load_config(tmp_path)
+
+    def test_runner_receives_exact_argv_and_kwargs(self, tmp_path) -> None:
+        cfg = self._cfg(tmp_path)
+        calls = []
+
+        def runner(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="ctx")
+
+        ok, detail = _context_probe(cfg, runner=runner)
+        assert ok is True
+        assert detail == "ok (3 chars)"
+        argv, kwargs = calls[0]
+        assert argv == [
+            sys.executable,
+            "-m",
+            "seahorse.cli.app",
+            "--vault",
+            str(cfg.vault),
+            "context",
+        ]
+        assert kwargs == {
+            "capture_output": True,
+            "text": True,
+            "timeout": 10.0,
+            "check": False,
+        }
+
+    def test_oserror_is_warn(self, tmp_path) -> None:
+        cfg = self._cfg(tmp_path)
+
+        def runner(argv, **kwargs):
+            raise OSError("no interpreter")
+
+        ok, detail = _context_probe(cfg, runner=runner)
+        assert ok is False
+        assert detail.startswith("error: ")
+
+    def test_timeout_is_warn(self, tmp_path) -> None:
+        cfg = self._cfg(tmp_path)
+
+        def runner(argv, **kwargs):
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=kwargs.get("timeout"))
+
+        ok, detail = _context_probe(cfg, runner=runner)
+        assert ok is False
+        assert detail.startswith("error: ")
+
+    def test_nonzero_exit_is_warn(self, tmp_path) -> None:
+        cfg = self._cfg(tmp_path)
+
+        def runner(argv, **kwargs):
+            return subprocess.CompletedProcess(args=argv, returncode=83, stdout="")
+
+        assert _context_probe(cfg, runner=runner) == (False, "exit 83")
+
+    def test_empty_stdout_is_warn(self, tmp_path) -> None:
+        cfg = self._cfg(tmp_path)
+
+        def runner(argv, **kwargs):
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="   \n")
+
+        assert _context_probe(cfg, runner=runner) == (False, "empty context")
+
+    def test_run_doctor_threads_the_runner(self, tmp_path, monkeypatch) -> None:
+        """The runner reaches the probe through run_doctor -> family checks."""
+        cfg = self._cfg(tmp_path)
+
+        def runner(argv, **kwargs):
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="x" * 7)
+
+        payload = _doctor(cfg, monkeypatch, runner=runner)
+        ctx = next(c for c in payload["checks"] if c["check"] == "context")
+        assert ctx["status"] == "OK"
+        assert ctx["detail"] == "ok (7 chars)"

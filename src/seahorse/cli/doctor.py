@@ -20,6 +20,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import TextIO
 
@@ -209,8 +210,18 @@ def _observer_check(config: SeahorseConfig) -> tuple[str, str]:
     )
 
 
-def _context_probe(config: SeahorseConfig) -> tuple[bool, str]:
-    """Render the SessionStart context through the real CLI (end-to-end)."""
+def _context_probe(
+    config: SeahorseConfig,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess] | None = None,
+) -> tuple[bool, str]:
+    """Render the SessionStart context through the real CLI (end-to-end).
+
+    ``runner`` is the subprocess seam (C11): defaults to ``subprocess.run``
+    resolved at CALL time, so every result branch is unit-testable without
+    spawning the real CLI.
+    """
+    run = runner or subprocess.run
     cmd = [
         sys.executable,
         "-m",
@@ -220,7 +231,7 @@ def _context_probe(config: SeahorseConfig) -> tuple[bool, str]:
         "context",
     ]
     try:
-        res = subprocess.run(  # noqa: S603
+        res = run(  # noqa: S603
             cmd,
             capture_output=True,
             text=True,
@@ -448,7 +459,11 @@ def _llm_family_checks(config: SeahorseConfig) -> list[dict[str, str]]:
     return checks
 
 
-def _capture_family_checks(config: SeahorseConfig) -> list[dict[str, str]]:
+def _capture_family_checks(
+    config: SeahorseConfig,
+    *,
+    runner: Callable[..., subprocess.CompletedProcess] | None = None,
+) -> list[dict[str, str]]:
     """Capture end-to-end: db, hooks, observer, health, context render."""
     checks: list[dict[str, str]] = []
 
@@ -463,7 +478,12 @@ def _capture_family_checks(config: SeahorseConfig) -> list[dict[str, str]]:
     checks.append({"check": "observer", "status": obs_status, "detail": obs_detail})
     cap_status, cap_detail = _capture_health_check(config)
     checks.append({"check": "capture_health", "status": cap_status, "detail": cap_detail})
-    ctx_ok, ctx_detail = _context_probe(config)
+    # Forward the runner only when supplied: existing tests replace
+    # ``_context_probe`` with a one-arg lambda (the seam must stay optional).
+    if runner is None:
+        ctx_ok, ctx_detail = _context_probe(config)
+    else:
+        ctx_ok, ctx_detail = _context_probe(config, runner=runner)
     checks.append(
         {"check": "context", "status": "OK" if ctx_ok else "WARN", "detail": ctx_detail}
     )
@@ -791,6 +811,7 @@ def run_doctor(
     fmt: OutputFormat = "human",
     out: TextIO,
     fix: bool = False,
+    runner: Callable[..., subprocess.CompletedProcess] | None = None,
 ) -> None:
     """Render the diagnostic report for the resolved vault config.
 
@@ -801,7 +822,10 @@ def run_doctor(
     checks: list[dict[str, str]] = []
 
     checks.extend(_llm_family_checks(config))
-    checks.extend(_capture_family_checks(config))
+    if runner is None:
+        checks.extend(_capture_family_checks(config))
+    else:
+        checks.extend(_capture_family_checks(config, runner=runner))
     checks.extend(_agent_surface_checks())
     checks.extend(_environment_checks(config))
 
