@@ -921,7 +921,7 @@ def migrate_cmd(
         None, "--up-to", help="Cap the highest migration version to apply (inclusive)."
     ),
 ) -> None:
-    """Apply SCHEMA migrations to the sidecar DB (DDL 001–009)."""
+    """Apply pending SCHEMA migrations to the sidecar DB (snapshots it first)."""
     run_migrate(ctx.obj.resolved_config(), up_to=up_to, fmt=ctx.obj.fmt, out=_out(ctx))
 
 

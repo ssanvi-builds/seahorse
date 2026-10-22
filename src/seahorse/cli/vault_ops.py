@@ -55,6 +55,7 @@ from seahorse.cli.config import SEAHORSE_DIR_NAME, SeahorseConfig
 from seahorse.cli.errors import CliMigrationDeferred, CliRebuildConflicts, CliUsageError
 from seahorse.cli.output import OutputFormat, render_message
 from seahorse.persistence.connection import ConnectionManager
+from seahorse.persistence.migrations.backup import backup_before_migration
 from seahorse.persistence.migrations.migrator import (
     apply_migrations,
     current_version,
@@ -76,6 +77,11 @@ def run_migrate(
     ``up_to`` caps the highest migration version (inclusive); ``None`` applies
     all pending. Negative ``up_to`` is a CLI usage error (exit 2). The DB parent
     dir is created if missing (bootstrap semantics, matching ``init``).
+
+    When migrations are pending the DB is snapshotted first (``<db>.bak-<ts>``,
+    WAL included); the path is reported so the operator knows where the
+    recoverable copy is. A failed snapshot aborts the run — never migrate a
+    live vault without its safety net.
     """
     if up_to is not None and up_to < 0:
         raise CliUsageError(f"--up-to must be a non-negative integer, got {up_to}")
@@ -85,6 +91,7 @@ def run_migrate(
     mgr = ConnectionManager(config.db_path, pool_size=0, extensions=("vec0",))
     mgr.open()
     try:
+        backup = backup_before_migration(mgr.writer, config.db_path, up_to=up_to)
         applied = apply_migrations(mgr.writer, up_to=up_to)
         schema_version = current_version(mgr.writer)
         latest = latest_available_version()
@@ -93,6 +100,7 @@ def run_migrate(
     payload = {
         "command": "migrate",
         "db_path": str(config.db_path),
+        "backup": str(backup) if backup is not None else None,
         "applied": applied,
         "schema_version": schema_version,
         "up_to": up_to,
@@ -100,6 +108,7 @@ def run_migrate(
     }
     human = (
         f"Migrate: {config.db_path}\n"
+        f"  backup:           {backup if backup is not None else 'none (nothing pending)'}\n"
         f"  applied:          {applied}\n"
         f"  schema_version:    {schema_version}\n"
         f"  up_to:             {up_to if up_to is not None else 'latest'}\n"

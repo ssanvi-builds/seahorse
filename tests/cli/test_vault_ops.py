@@ -135,6 +135,26 @@ def test_migrate_negative_up_to_raises_usage(tmp_path):
         run_migrate(cfg, up_to=-1, fmt="human", out=_out())
 
 
+def test_migrate_snapshots_a_legacy_db_and_reports_the_path(tmp_path):
+    _v, cfg = _config(tmp_path)
+    run_migrate(cfg, up_to=8, fmt="json", out=_out())  # leave the DB behind
+    assert list(cfg.db_path.parent.glob("*.bak-*")) == []  # fresh DB: nothing to lose
+
+    o = _out()
+    run_migrate(cfg, up_to=None, fmt="json", out=o)
+    obj = json.loads(o.getvalue())
+    assert obj["applied"] == 4
+    assert obj["backup"] is not None
+    backup = Path(obj["backup"])
+    assert backup.exists()
+    assert backup.name.startswith("seahorse.db.bak-")
+    assert backup.parent == cfg.db_path.parent
+
+    text = _out()
+    run_migrate(cfg, up_to=None, fmt="human", out=text)
+    assert "none (nothing pending)" in text.getvalue()
+
+
 def test_migrate_human_output(tmp_path):
     _v, cfg = _config(tmp_path)
     o = _out()

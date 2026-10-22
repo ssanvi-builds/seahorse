@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from seahorse.persistence.connection import ConnectionManager
+from seahorse.persistence.migrations.backup import backup_before_migration
 from seahorse.persistence.migrations.migrator import apply_migrations
 from seahorse.persistence.sqlite_audit import SqliteAuditEventRepository
 from seahorse.persistence.sqlite_embeddings_cache import (
@@ -63,9 +64,13 @@ class Storage:
         # enables the extension. ``sqlite_vec`` is loaded lazily inside
         # ``ConnectionManager._load_extensions``, never at import time.
         self._cm = ConnectionManager(db_path, pool_size=pool_size, extensions=("vec0",))
+        self._db_path = Path(db_path)
+        # Set by ``_migrate`` when a pending migration forced a snapshot; the
+        # CLI surfaces it so an operator knows where the recoverable copy is.
+        self.last_migration_backup: Path | None = None
         self._cm.open()
         try:
-            apply_migrations(self._cm.writer)  # clone-and-run: schema ready on construct
+            self._migrate()  # clone-and-run: schema ready on construct
         except BaseException:
             # If migrations fail the Storage is unusable; close the manager so
             # the writer + reader pool do not leak (no caller reference exists).
@@ -148,9 +153,20 @@ class Storage:
 
     # -- lifecycle -------------------------------------------------------------
 
+    def _migrate(self) -> None:
+        """Snapshot the DB when migrations are pending, then apply them.
+
+        The snapshot runs first and fails loud: migrating a live vault without
+        a recoverable copy is the outcome the backup exists to prevent.
+        """
+        self.last_migration_backup = backup_before_migration(
+            self._cm.writer, self._db_path
+        )
+        apply_migrations(self._cm.writer)
+
     def open(self) -> None:
         """Apply migrations idempotently. Idempotent: re-applying is a no-op."""
-        apply_migrations(self._cm.writer)
+        self._migrate()
 
     def close(self) -> None:
         self._cm.close()

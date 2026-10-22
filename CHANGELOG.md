@@ -4,6 +4,19 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Pre-migration snapshot of the sidecar DB** — the migration runner was
+  already atomic per migration, but atomicity protects the schema, not the
+  data a future migration could strand. Opening a vault with pending
+  migrations now snapshots the DB first via SQLite's online backup API (WAL
+  folded in, one consistent file) to `<db>.bak-<YYYYmmdd-HHMMSS>`, and
+  `seahorse migrate` reports the path. A fresh DB and a fully-migrated DB
+  create nothing (the hot path pays only a version read). A failed snapshot
+  aborts the migration instead of proceeding without its safety net.
+
 ## [1.8.1] - 2026-10-22
 
 No runtime changes: this release re-publishes the 1.8.0 code, whose PyPI
