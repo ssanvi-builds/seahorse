@@ -4,6 +4,27 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-10-22
+
+No runtime changes: this release re-publishes the 1.8.0 code, whose PyPI
+publish job failed on a red test gate.
+
+### Fixed
+
+- **CI gate red since 2026-10-19** — five recall smoke tests still encoded the
+  pre-1.8.0 contract ("recall ignores the query beyond a non-empty check") and
+  queried needles absent from the stored bodies, so the new substring filter
+  returned nothing. The tests now query a needle that exists in the body (and
+  the subprocess lifecycle uses a body token both episodes share, keeping the
+  two-row listing and the `-k 1` clamp observable). Test-only; the runtime
+  behaviour is unchanged.
+
+### Changed
+
+- **GitHub Actions off Node 20** — `checkout@v7`, `setup-python@v7`,
+  `cache/{restore,save}@v6` and `setup-uv@v10.3.2` all run on the Node 24
+  runtime, clearing the deprecation warning on every job. CI-only.
+
 ## [1.8.0] - 2026-10-17
 
 ### Fixed
