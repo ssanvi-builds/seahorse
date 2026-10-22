@@ -27,7 +27,13 @@ from tests.facade.conftest import make_facade
 
 
 class RecordingRetriever:
-    """Fake ``Retriever`` that records calls and returns configurable candidates."""
+    """Fake ``Retriever`` that records calls and returns configurable candidates.
+
+    ``supports_pit = False`` is EXPLICIT: the capability is a protocol member,
+    and this double pins the refusal path (absent used to mean incapable).
+    """
+
+    supports_pit = False
 
     def __init__(self, candidates: tuple[FusedCandidate, ...] | None = None) -> None:
         self.calls: list[dict[str, Any]] = []

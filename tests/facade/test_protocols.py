@@ -56,6 +56,12 @@ def test_protocol_surfaces():
         assert callable(getattr(EngineLikeP, member))
     for member in ("recall",):
         assert callable(getattr(RetrieverLikeP, member))
+    # supports_pit is a read-only PROTOCOL MEMBER (property), not a doc note.
+    support = RetrieverLikeP.__dict__["supports_pit"]
+    assert isinstance(support, property)
+    import typing
+
+    assert typing.get_type_hints(support.fget)["return"] is bool
 
 
 class _FakeRetriever:

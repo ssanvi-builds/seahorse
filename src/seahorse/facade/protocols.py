@@ -116,14 +116,20 @@ class _RetrieverLike(Protocol):
     refusal) + the shaper call; the retriever owns listing/filter/truncate +
     ranking.
 
-    PIT capability is a DATA attribute (not a method) — the facade reads
-    ``getattr(retriever, "supports_pit", False)`` before delegating. A retriever
-    that does not declare it (e.g. the listing regime) causes the facade to
-    refuse a caller pit before any read; the later-release ``HybridRetriever``
-    declares it True and receives the pit verbatim. ``@runtime_checkable`` does
-    NOT check data attributes, which is why the facade uses ``getattr`` with a
-    False default.
+    PIT capability is declared here as a read-only member (``supports_pit``):
+    a plain class/instance attribute satisfies it structurally. The facade
+    still reads it via ``getattr(retriever, "supports_pit", False)`` — a
+    defensive default, not a typing gap: ``@runtime_checkable`` ``isinstance``
+    checks member PRESENCE (hasattr-based, 3.11+) while ``issubclass`` raises
+    for non-method members, so ``getattr`` keeps "absent means incapable" true
+    even for untyped doubles. A retriever that does not declare it (e.g. a
+    deliberately PIT-less double) causes the facade to refuse a caller pit
+    before any read; ``VigenteListingRetriever`` declares it dynamically
+    (True iff a pit source is wired) and ``HybridRetriever`` declares True.
     """
+
+    @property
+    def supports_pit(self) -> bool: ...
 
     def recall(
         self,

@@ -28,6 +28,7 @@ from seahorse.disclosure.shaper import DisclosureShaperImpl
 from seahorse.embeddings.types import EMBED_MODES
 from seahorse.engine.engine import BiTemporalEngine
 from seahorse.facade.facade import MemoryFacade
+from seahorse.facade.protocols import _RetrieverLike
 from seahorse.facade.types import FacadeConfig
 from seahorse.facade.vigente_retriever import VigenteListingRetriever
 from seahorse.llm import LLMClient
@@ -143,7 +144,9 @@ def build_facade(
     )
     clk = clock or _default_clock
     cfg = config or FacadeConfig()
-    retriever: Any  # HybridRetriever (retrieval) or VigenteListingRetriever (listing)
+    # HybridRetriever (retrieval) or VigenteListingRetriever (listing) — the
+    # protocol annotation makes the supports_pit member a checked contract.
+    retriever: _RetrieverLike
     retrieval = _resolve_retrieval(embedder, retrieval_available, passage_embedder)
     if retrieval is not None:
         query_embedder, passage_embedder = retrieval

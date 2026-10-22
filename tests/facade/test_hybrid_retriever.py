@@ -57,6 +57,8 @@ class _Graph:
 
 
 class _Fallback:
+    supports_pit = False  # explicit: the capability is a protocol member
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, object]] = []
 
