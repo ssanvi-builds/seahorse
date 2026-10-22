@@ -191,8 +191,8 @@ class TestPitForwardWhenCapable:
         assert shaper.index_calls[0]["pit"] == pit
 
     def test_retriever_without_capability_still_refuses_pit(self, seam_facade) -> None:
-        # The default RecordingRetriever has no supports_pit -> the facade still
-        # refuses before delegating (the existing pin, kept green).
+        # RecordingRetriever declares supports_pit=False -> the facade refuses
+        # before delegating (the declared-member path).
         f, retriever = seam_facade
         pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
         with pytest.raises(PitRecallNotSupportedMVP0):
@@ -245,3 +245,41 @@ class TestRankingKnobForwarding:
         assert call["rerank_text"] == "summary"
         assert call["reranker"] is None
         assert call["k_rerank"] == RERANK_OVERFETCH_K
+
+
+class _BareRetriever:
+    """An UNTYPED double WITHOUT ``supports_pit`` -- the path the facade's
+    ``getattr(..., False)`` default exists for (the declared-member test above
+    pins the other path; this one pins the fallback). Deliberately NOT a
+    RecordingRetriever subclass: inheriting would bring the attribute back.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def recall(
+        self,
+        query: str,
+        *,
+        pit: PITPoint | None,
+        k: int,
+        cognitive_type: str | None,
+        subject_filter: str | None,
+        session_boost: bool = False,
+        rrf_k: int | None = None,
+        rerank_text: str = "summary",
+        reranker=None,
+        k_rerank: int = 20,
+    ) -> tuple[FusedCandidate, ...]:
+        self.calls.append({"query": query, "pit": pit})
+        return ()
+
+
+def test_retriever_without_the_attribute_uses_the_getattr_default(shaper, clock) -> None:
+    bare = _BareRetriever()
+    assert not hasattr(bare, "supports_pit")
+    f, _log = make_facade(shaper=shaper, retriever=bare, clock=clock)
+    pit = PITPoint(kind="state_at", t=datetime(2026, 1, 1, tzinfo=UTC))
+    with pytest.raises(PitRecallNotSupportedMVP0):
+        f.recall("sergio", pit=pit)
+    assert bare.calls == []

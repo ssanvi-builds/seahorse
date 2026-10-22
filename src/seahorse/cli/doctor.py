@@ -818,14 +818,13 @@ def run_doctor(
     ``fix=True`` attempts the repairs Seahorse owns for every actionable
     (WARN/FAIL) check in ``_REPAIRABLE_CHECKS`` and appends one
     ``fix:<check>`` line per attempt — the diagnosis itself is untouched.
+    ``runner`` is the subprocess seam for the context probe (defaults to the
+    real ``subprocess.run``).
     """
     checks: list[dict[str, str]] = []
 
     checks.extend(_llm_family_checks(config))
-    if runner is None:
-        checks.extend(_capture_family_checks(config))
-    else:
-        checks.extend(_capture_family_checks(config, runner=runner))
+    checks.extend(_capture_family_checks(config, runner=runner))
     checks.extend(_agent_surface_checks())
     checks.extend(_environment_checks(config))
 

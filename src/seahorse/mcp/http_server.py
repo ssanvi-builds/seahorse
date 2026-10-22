@@ -21,7 +21,7 @@ import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TextIO
+from typing import TextIO, cast
 
 from seahorse.facade.facade import MemoryFacade
 from seahorse.mcp.profile import _SERVER_VERSION, handle_request
@@ -114,10 +114,12 @@ class _MCPHandler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def _method_not_allowed(self) -> None:
-        self._reject(
-            405,
-            detail="method not allowed; use POST",
-            extra_headers={"Allow": "POST"},
+        self._send_reject(
+            build_reject(
+                405,
+                detail="method not allowed; use POST",
+                extra_headers={"Allow": "POST"},
+            )
         )
 
     def _handle_post(self) -> None:
@@ -132,7 +134,7 @@ class _MCPHandler(BaseHTTPRequestHandler):
         if isinstance(decision, Reject):
             self._send_reject(decision)
             return
-        assert isinstance(decision, ReadBody)  # phase A only yields ReadBody
+        decision = cast(ReadBody, decision)  # phase A only yields ReadBody
         body = self.rfile.read(decision.length)  # the ONLY body read
         post = post_body_decision(
             origin=self.headers.get("Origin"),
@@ -145,7 +147,7 @@ class _MCPHandler(BaseHTTPRequestHandler):
         if isinstance(post, Reject):
             self._send_reject(post)
             return
-        assert isinstance(post, Dispatch)  # phase B only yields Dispatch
+        post = cast(Dispatch, post)  # phase B only yields Dispatch
         request = post.request
         try:
             with self.request_lock:
@@ -177,25 +179,6 @@ class _MCPHandler(BaseHTTPRequestHandler):
         if payload:
             self.wfile.write(payload)
         self.close_connection = True
-
-    def _reject(
-        self,
-        status: int,
-        *,
-        retry_after: int | None = None,
-        detail: str = "request rejected",
-        extra_headers: dict[str, str] | None = None,
-    ) -> None:
-        # Shared payload builder: the 405 path and the pipeline reject with the
-        # exact same bytes/headers by construction.
-        self._send_reject(
-            build_reject(
-                status,
-                retry_after=retry_after,
-                detail=detail,
-                extra_headers=extra_headers,
-            )
-        )
 
     def _send_reject(self, reject: Reject) -> None:
         self._send(

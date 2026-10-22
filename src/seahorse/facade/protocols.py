@@ -120,11 +120,14 @@ class _RetrieverLike(Protocol):
     a plain class/instance attribute satisfies it structurally. The facade
     still reads it via ``getattr(retriever, "supports_pit", False)`` — a
     defensive default, not a typing gap: ``@runtime_checkable`` ``isinstance``
-    checks member PRESENCE (hasattr-based, 3.11+) while ``issubclass`` raises
-    for non-method members, so ``getattr`` keeps "absent means incapable" true
-    even for untyped doubles. A retriever that does not declare it (e.g. a
-    deliberately PIT-less double) causes the facade to refuse a caller pit
-    before any read; ``VigenteListingRetriever`` declares it dynamically
+    checks member PRESENCE (``getattr_static``-based on 3.12+, ``hasattr``
+    before; property getters are not executed) while ``issubclass`` raises for
+    non-method members, so ``getattr`` keeps "absent means incapable" true even
+    for untyped doubles. NOTE: declaring the member HARDENS ``isinstance`` —
+    a double that previously passed by omission now fails. A retriever that
+    does not declare it (e.g. a deliberately PIT-less double) causes the facade
+    to refuse a caller pit before any read; ``VigenteListingRetriever`` declares
+    it dynamically
     (True iff a pit source is wired) and ``HybridRetriever`` declares True.
     """
 

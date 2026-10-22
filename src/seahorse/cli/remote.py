@@ -173,8 +173,10 @@ def _live_pid(
     it cannot do through the ``(running, pid)`` tuple.
     """
     pid = procutil.read_pid(pid_path)
+    if pid is None:
+        return None
     alive = (runtime or _default_runtime()).is_alive
-    return pid if pid is not None and alive(pid) else None
+    return pid if alive(pid) else None
 
 
 def server_liveness(
@@ -279,7 +281,8 @@ def _wait_for_match(
 
     Returns ``None`` on timeout or child death — the caller raises
     ``CliRemoteStartFailed`` with the child's name (and tears down whatever
-    else it spawned).
+    else it spawned). Callers MUST pass ``timeout_s``/``poll_s`` from the same
+    runtime they hand in (the function cannot enforce that itself).
     """
     r = runtime or _default_runtime()
     deadline = r.clock() + timeout_s
@@ -338,7 +341,9 @@ def resolve_cloudflared(*, which: Which | None = None) -> str | None:
 
 def _offer_brew_install(*, runtime: RemoteRuntime | None = None) -> str | None:
     """Offer ``brew install cloudflared`` with explicit consent (Sergio's
-    chosen UX); ``None`` when declined or impossible (no TTY, no brew).
+    chosen UX); ``None`` when declined or impossible (no TTY, no brew) AND when
+    brew fails, hangs (timeout) or vanishes mid-run (OSError) — all of them are
+    an unavailable cloudflared, not a crash.
 
     brew's output goes to the terminal uncaptured — a silent 5-minute
     install looks broken to the non-technical user this wizard serves.

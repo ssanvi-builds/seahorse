@@ -10,8 +10,9 @@ home here as two pure PHASE functions, mirroring the exact order of ADR-013:
 - ``post_body_decision`` — Origin → Accept → protocol version → JSON parse.
   Returns ``Reject`` or ``Dispatch(request)``.
 
-``build_reject`` is the single reject-payload builder (shared with the 405
-path), so the wire bytes and headers are constructed in one place. The socket
+``build_reject`` is the single builder for the ``{"error": ...}`` reject
+payloads (shared with the 405 path); the JSON-RPC parse error keeps its own
+distinct shape by definition. The socket
 handler stays as the adapter: it extracts the header primitives (case-
 insensitive ``email.message.Message`` lookups happen there) and performs the
 single ``rfile.read`` after ``ReadBody``.
@@ -24,7 +25,7 @@ import json
 import urllib.parse
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Protocol
 
 _SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25",)
 _LOOPBACK_HOSTNAMES = ("localhost", "127.0.0.1", "::1")
@@ -65,7 +66,7 @@ class ReadBody:
 
 @dataclass(frozen=True)
 class Dispatch:
-    request: Any
+    request: object
 
 
 PreBodyDecision = Reject | ReadBody

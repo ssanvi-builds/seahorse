@@ -1103,3 +1103,69 @@ def test_status_uses_injected_liveness(tmp_path) -> None:
     payload = _json(out)
     assert payload["running"] is True
     assert payload["server"]["pid"] == 11
+
+
+def test_start_forwards_runtime_to_spawn(tmp_path, monkeypatch) -> None:
+    """The seam only pays off if run_remote_start actually passes runtime=:
+    a module-level recorder must stay untouched while the runtime popen is
+    used (a dropped keyword would fall back to _default_runtime())."""
+    cfg = _cfg(tmp_path)
+
+    def module_popen(*args, **kwargs):
+        raise AssertionError("module subprocess.Popen used — runtime not forwarded")
+
+    monkeypatch.setattr(remote.subprocess, "Popen", module_popen)
+    runtime_spawns: list[list[str]] = []
+
+    def runtime_popen(argv, **kwargs):
+        runtime_spawns.append(list(argv))
+        return _Proc(FAKE_PID)
+
+    clock, sleep, _now = _fake_time()
+    runtime = _runtime(
+        clock=clock,
+        sleep=sleep,
+        popen=runtime_popen,
+        is_alive=lambda pid: False,  # dies before ready -> fast fail after spawn
+    )
+    with pytest.raises(CliRemoteStartFailed):
+        remote.run_remote_start(cfg, fmt="human", out=_out(), no_tunnel=True, runtime=runtime)
+    assert runtime_spawns  # the spawn went through the injected popen
+
+
+def test_start_foreground_forwards_runtime_to_the_loop(tmp_path, monkeypatch) -> None:
+    """foreground=True must hand the runtime to _run_foreground: a dropped
+    keyword would fall back to the real os.kill during teardown."""
+    cfg = _cfg(tmp_path)
+
+    def module_kill(pid, sig):
+        raise AssertionError("module os.kill used — runtime not forwarded")
+
+    monkeypatch.setattr(os, "kill", module_kill)
+
+    def runtime_popen(argv, **kwargs):
+        stdout = kwargs["stdout"]
+        stdout.write(f"seahorse-mcp: listening on {SERVER_URL}\n".encode())
+        return _Proc(FAKE_PID)
+
+    calls = {"n": 0}
+
+    def is_alive(pid: int) -> bool:
+        calls["n"] += 1
+        return calls["n"] == 1  # alive for the first probe, dies after
+
+    clock, sleep, _now = _fake_time()
+    kills, kill = _recording_kill()
+    runtime = _runtime(
+        clock=clock,
+        sleep=sleep,
+        popen=runtime_popen,
+        is_alive=is_alive,
+        kill=kill,
+        stop_term_wait_s=0.0,
+    )
+    with pytest.raises(CliRemoteStartFailed):
+        remote.run_remote_start(
+            cfg, fmt="human", out=_out(), no_tunnel=True, foreground=True, runtime=runtime
+        )
+    assert kills and not remote.server_pid_file(cfg).exists()
