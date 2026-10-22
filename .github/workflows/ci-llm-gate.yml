@@ -66,10 +66,10 @@ jobs:
           --health-interval=10s --health-timeout=5s --health-retries=10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -81,7 +81,7 @@ jobs:
       # bind-mount source is not writable by the runner on a cache hit, the
       # restore fails gracefully here and the pull step re-downloads (~0.6GB).
       - name: Cache Ollama models (restore — best effort)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ~/.ollama
           key: ollama-qwen3-0.6b-v1
@@ -123,7 +123,7 @@ jobs:
           grep -qE '[0-9]+ passed' "$RUNNER_TEMP/llm-gate.log"
 
       - name: Cache Ollama models (save — best effort)
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.ollama
           key: ollama-qwen3-0.6b-v1
