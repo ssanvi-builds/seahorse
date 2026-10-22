@@ -31,8 +31,10 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from seahorse.cli import procutil
 from seahorse.cli.config import SeahorseConfig, load_config
@@ -68,12 +70,71 @@ TUNNEL_POLL_INTERVAL_S = 0.5
 # stop: SIGTERM first (graceful), SIGKILL after this budget (orphan-proof).
 STOP_TERM_WAIT_S = 3.0
 STOP_POLL_INTERVAL_S = 0.05
+FOREGROUND_POLL_INTERVAL_S = 0.5
 BREW_INSTALL_TIMEOUT_S = 300.0
 
 INSTALL_LINE = (
     "brew install cloudflared  (or: "
     "https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/)"
 )
+
+
+Spawn = Callable[..., Any]  # returns an object with .pid
+Run = Callable[..., Any]  # returns an object with .returncode
+Kill = Callable[[int, int], None]
+IsAlive = Callable[[int], bool]
+Which = Callable[[str], "str | None"]
+
+
+@dataclass(frozen=True)
+class RemoteRuntime:
+    """The process/time seams of the wizard (C11), with no default values.
+
+    Construct with ``_default_runtime()`` and override fields in tests:
+    ``dataclasses.replace(remote._default_runtime(), kill=fake_kill, ...)``.
+    Defaults are deliberately NOT dataclass field defaults: those bind at class
+    definition time and would capture the unpatched ``time.sleep``/``Popen``,
+    breaking the existing monkeypatch-based tests. ``_default_runtime``
+    snapshots the module attributes at CALL time instead.
+    """
+
+    clock: Callable[[], float]
+    sleep: Callable[[float], None]
+    popen: Spawn
+    run: Run
+    kill: Kill
+    is_alive: IsAlive
+    which: Which
+    server_ready_timeout_s: float
+    server_poll_interval_s: float
+    tunnel_ready_timeout_s: float
+    tunnel_poll_interval_s: float
+    stop_term_wait_s: float
+    stop_poll_interval_s: float
+    foreground_poll_interval_s: float
+    brew_install_timeout_s: float
+
+
+def _default_runtime() -> RemoteRuntime:
+    """Snapshot the real seams NOW (call-time late binding — see the docstring
+    of ``RemoteRuntime``)."""
+    return RemoteRuntime(
+        clock=time.monotonic,
+        sleep=time.sleep,
+        popen=subprocess.Popen,
+        run=subprocess.run,
+        kill=os.kill,
+        is_alive=procutil.pid_alive,
+        which=shutil.which,
+        server_ready_timeout_s=SERVER_READY_TIMEOUT_S,
+        server_poll_interval_s=SERVER_POLL_INTERVAL_S,
+        tunnel_ready_timeout_s=TUNNEL_READY_TIMEOUT_S,
+        tunnel_poll_interval_s=TUNNEL_POLL_INTERVAL_S,
+        stop_term_wait_s=STOP_TERM_WAIT_S,
+        stop_poll_interval_s=STOP_POLL_INTERVAL_S,
+        foreground_poll_interval_s=FOREGROUND_POLL_INTERVAL_S,
+        brew_install_timeout_s=BREW_INSTALL_TIMEOUT_S,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +163,9 @@ def tunnel_log_file(cfg: SeahorseConfig) -> Path:
     return remote_dir(cfg) / TUNNEL_LOG_FILENAME
 
 
-def _live_pid(pid_path: Path) -> int | None:
+def _live_pid(
+    pid_path: Path, *, runtime: RemoteRuntime | None = None
+) -> int | None:
     """The pid recorded in ``pid_path`` when a live process owns it, else ``None``.
 
     The ``None``-when-dead shape lets the start flow narrow with ``is None``
@@ -110,17 +173,22 @@ def _live_pid(pid_path: Path) -> int | None:
     it cannot do through the ``(running, pid)`` tuple.
     """
     pid = procutil.read_pid(pid_path)
-    return pid if pid is not None and procutil.pid_alive(pid) else None
+    alive = (runtime or _default_runtime()).is_alive
+    return pid if pid is not None and alive(pid) else None
 
 
-def server_liveness(cfg: SeahorseConfig) -> tuple[bool, int | None]:
+def server_liveness(
+    cfg: SeahorseConfig, *, runtime: RemoteRuntime | None = None
+) -> tuple[bool, int | None]:
     """``(running, pid)`` from the pid file + a kernel liveness check."""
-    pid = _live_pid(server_pid_file(cfg))
+    pid = _live_pid(server_pid_file(cfg), runtime=runtime)
     return pid is not None, pid
 
 
-def tunnel_liveness(cfg: SeahorseConfig) -> tuple[bool, int | None]:
-    pid = _live_pid(tunnel_pid_file(cfg))
+def tunnel_liveness(
+    cfg: SeahorseConfig, *, runtime: RemoteRuntime | None = None
+) -> tuple[bool, int | None]:
+    pid = _live_pid(tunnel_pid_file(cfg), runtime=runtime)
     return pid is not None, pid
 
 
@@ -129,7 +197,13 @@ def tunnel_liveness(cfg: SeahorseConfig) -> tuple[bool, int | None]:
 # ---------------------------------------------------------------------------
 
 
-def _spawn_child(argv: list[str], *, log_path: Path, start_new_session: bool) -> int:
+def _spawn_child(
+    argv: list[str],
+    *,
+    log_path: Path,
+    start_new_session: bool,
+    runtime: RemoteRuntime | None = None,
+) -> int:
     """Spawn a child logging to ``log_path``; return its pid.
 
     The log is opened exclusive-write: a respawn owns its log from line 0.
@@ -148,7 +222,8 @@ def _spawn_child(argv: list[str], *, log_path: Path, start_new_session: bool) ->
     if start_new_session:
         kwargs["start_new_session"] = True
     with open(log_path, "wb") as log:
-        proc = subprocess.Popen(argv, stdout=log, stderr=log, **kwargs)  # noqa: S603
+        popen = (runtime or _default_runtime()).popen
+        proc = popen(argv, stdout=log, stderr=log, **kwargs)  # noqa: S603
     return proc.pid
 
 
@@ -192,7 +267,13 @@ def _extract_match(log_path: Path, pattern: re.Pattern[str]) -> str | None:
 
 
 def _wait_for_match(
-    log_path: Path, pattern: re.Pattern[str], *, timeout_s: float, poll_s: float, pid: int
+    log_path: Path,
+    pattern: re.Pattern[str],
+    *,
+    timeout_s: float,
+    poll_s: float,
+    pid: int,
+    runtime: RemoteRuntime | None = None,
 ) -> str | None:
     """Poll ``log_path`` until ``pattern`` matches, or the child dies.
 
@@ -200,14 +281,15 @@ def _wait_for_match(
     ``CliRemoteStartFailed`` with the child's name (and tears down whatever
     else it spawned).
     """
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
+    r = runtime or _default_runtime()
+    deadline = r.clock() + timeout_s
+    while r.clock() < deadline:
         found = _extract_match(log_path, pattern)
         if found:
             return found
-        if not procutil.pid_alive(pid):
+        if not r.is_alive(pid):
             return None
-        time.sleep(poll_s)
+        r.sleep(poll_s)
     return _extract_match(log_path, pattern)
 
 
@@ -216,19 +298,22 @@ def _bound_port(server_url: str) -> int:
     return int(server_url.rsplit(":", 1)[1])
 
 
-def _terminate(pid: int, pid_path: Path) -> None:
+def _terminate(
+    pid: int, pid_path: Path, *, runtime: RemoteRuntime | None = None
+) -> None:
     """SIGTERM → wait → SIGKILL fallback → remove the pid file (idempotent)."""
+    r = runtime or _default_runtime()
     try:
-        os.kill(pid, signal.SIGTERM)
+        r.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         procutil.remove_pid(pid_path)
         return
-    deadline = time.monotonic() + STOP_TERM_WAIT_S
-    while procutil.pid_alive(pid) and time.monotonic() < deadline:
-        time.sleep(STOP_POLL_INTERVAL_S)
-    if procutil.pid_alive(pid):
+    deadline = r.clock() + r.stop_term_wait_s
+    while r.is_alive(pid) and r.clock() < deadline:
+        r.sleep(r.stop_poll_interval_s)
+    if r.is_alive(pid):
         with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
+            r.kill(pid, signal.SIGKILL)
     procutil.remove_pid(pid_path)
 
 
@@ -237,7 +322,7 @@ def _terminate(pid: int, pid_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def resolve_cloudflared() -> str | None:
+def resolve_cloudflared(*, which: Which | None = None) -> str | None:
     """The cloudflared binary path, or ``None`` when not installed.
 
     ``SEAHORSE_CLOUDFLARED_BIN`` (sandbox/e2e override) wins verbatim — and
@@ -248,17 +333,18 @@ def resolve_cloudflared() -> str | None:
     override = os.environ.get("SEAHORSE_CLOUDFLARED_BIN")
     if override:
         return override
-    return shutil.which("cloudflared")
+    return (which or shutil.which)("cloudflared")
 
 
-def _offer_brew_install() -> str | None:
+def _offer_brew_install(*, runtime: RemoteRuntime | None = None) -> str | None:
     """Offer ``brew install cloudflared`` with explicit consent (Sergio's
     chosen UX); ``None`` when declined or impossible (no TTY, no brew).
 
     brew's output goes to the terminal uncaptured — a silent 5-minute
     install looks broken to the non-technical user this wizard serves.
     """
-    brew = shutil.which("brew")
+    r = runtime or _default_runtime()
+    brew = r.which("brew")
     if brew is None:
         return None
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
@@ -268,18 +354,26 @@ def _offer_brew_install() -> str | None:
     answer = input("[y/N] ").strip().lower()
     if answer not in ("y", "yes"):
         return None
-    result = subprocess.run(  # noqa: S603
-        [brew, "install", "cloudflared"], timeout=BREW_INSTALL_TIMEOUT_S, check=False
-    )
+    try:
+        result = r.run(  # noqa: S603
+            [brew, "install", "cloudflared"],
+            timeout=r.brew_install_timeout_s,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # A hung/vanished brew is an UNAVAILABLE cloudflared: fail loud at the
+        # caller (CliCloudflaredMissing), never as a raw traceback.
+        return None
     if result.returncode != 0:
         return None
-    return shutil.which("cloudflared")
+    return r.which("cloudflared")
 
 
-def _ensure_cloudflared() -> str:
-    cloudflared = resolve_cloudflared()
+def _ensure_cloudflared(*, runtime: RemoteRuntime | None = None) -> str:
+    r = runtime or _default_runtime()
+    cloudflared = resolve_cloudflared(which=r.which)
     if cloudflared is None and not os.environ.get("SEAHORSE_CLOUDFLARED_BIN"):
-        cloudflared = _offer_brew_install()
+        cloudflared = _offer_brew_install(runtime=r)
     if cloudflared is None:
         raise CliCloudflaredMissing(INSTALL_LINE)
     return cloudflared
@@ -347,12 +441,14 @@ def run_remote_start(
     yes: bool = False,
     no_tunnel: bool = False,
     foreground: bool = False,
+    runtime: RemoteRuntime | None = None,
 ) -> None:
     """The wizard: token → preflight → consent → server → tunnel → blocks."""
+    r = runtime or _default_runtime()
     cfg, token = _ensure_token(cfg)
     tunnel_wanted = not no_tunnel
-    server_pid = _live_pid(server_pid_file(cfg))
-    tunnel_pid = _live_pid(tunnel_pid_file(cfg)) if tunnel_wanted else None
+    server_pid = _live_pid(server_pid_file(cfg), runtime=r)
+    tunnel_pid = _live_pid(tunnel_pid_file(cfg), runtime=r) if tunnel_wanted else None
     server_reused = server_pid is not None
     tunnel_reused = tunnel_pid is not None
 
@@ -361,7 +457,7 @@ def run_remote_start(
     # opens no new public exposure, so it needs no gate.)
     cloudflared: str | None = None
     if tunnel_wanted and tunnel_pid is None:
-        cloudflared = _ensure_cloudflared()
+        cloudflared = _ensure_cloudflared(runtime=r)
         if not _confirm_tunnel(yes=yes):
             render_message(
                 {"started": False, "aborted": True},
@@ -377,18 +473,20 @@ def run_remote_start(
             _server_argv(cfg, port),
             log_path=server_log_file(cfg),
             start_new_session=not foreground,
+            runtime=r,
         )
         procutil.write_pid(server_pid_file(cfg), server_pid)
     server_url = _wait_for_match(
         server_log_file(cfg),
         _SERVER_URL_RE,
-        timeout_s=SERVER_READY_TIMEOUT_S,
-        poll_s=SERVER_POLL_INTERVAL_S,
+        timeout_s=r.server_ready_timeout_s,
+        poll_s=r.server_poll_interval_s,
         pid=server_pid,
+        runtime=r,
     )
     if server_url is None:
         if not server_reused:
-            _terminate(server_pid, server_pid_file(cfg))
+            _terminate(server_pid, server_pid_file(cfg), runtime=r)
         raise CliRemoteStartFailed("server", server_log_file(cfg))
 
     # Tunnel: reuse when live (same URL survives a server respawn), else spawn.
@@ -405,21 +503,23 @@ def run_remote_start(
                 _tunnel_argv(cloudflared, _bound_port(server_url)),
                 log_path=tunnel_log_file(cfg),
                 start_new_session=not foreground,
+                runtime=r,
             )
             procutil.write_pid(tunnel_pid_file(cfg), tunnel_pid)
             tunnel_url = _wait_for_match(
                 tunnel_log_file(cfg),
                 _TUNNEL_URL_RE,
-                timeout_s=TUNNEL_READY_TIMEOUT_S,
-                poll_s=TUNNEL_POLL_INTERVAL_S,
+                timeout_s=r.tunnel_ready_timeout_s,
+                poll_s=r.tunnel_poll_interval_s,
                 pid=tunnel_pid,
+                runtime=r,
             )
             if tunnel_url is None:
                 # Close exposure first, then the server we spawned — the
                 # wizard never leaves a half-started state behind.
-                _terminate(tunnel_pid, tunnel_pid_file(cfg))
+                _terminate(tunnel_pid, tunnel_pid_file(cfg), runtime=r)
                 if not server_reused:
-                    _terminate(server_pid, server_pid_file(cfg))
+                    _terminate(server_pid, server_pid_file(cfg), runtime=r)
                 raise CliRemoteStartFailed("tunnel", tunnel_log_file(cfg))
 
     _render_start(
@@ -436,46 +536,58 @@ def run_remote_start(
     )
 
     if foreground:
-        _run_foreground(cfg, server_pid=server_pid, tunnel_pid=tunnel_pid)
+        _run_foreground(cfg, server_pid=server_pid, tunnel_pid=tunnel_pid, runtime=r)
 
 
 def _run_foreground(
-    cfg: SeahorseConfig, *, server_pid: int, tunnel_pid: int | None
+    cfg: SeahorseConfig,
+    *,
+    server_pid: int,
+    tunnel_pid: int | None,
+    runtime: RemoteRuntime | None = None,
 ) -> None:
     """Block until Ctrl-C or a child death; teardown both either way."""
+    r = runtime or _default_runtime()
     died = None
     try:
         while True:
-            if not procutil.pid_alive(server_pid):
+            if not r.is_alive(server_pid):
                 died = "server"
                 break
-            if tunnel_pid is not None and not procutil.pid_alive(tunnel_pid):
+            if tunnel_pid is not None and not r.is_alive(tunnel_pid):
                 died = "tunnel"
                 break
-            time.sleep(0.5)
+            r.sleep(r.foreground_poll_interval_s)
     except KeyboardInterrupt:
         pass
     finally:
-        _terminate(server_pid, server_pid_file(cfg))
+        _terminate(server_pid, server_pid_file(cfg), runtime=r)
         if tunnel_pid is not None:
-            _terminate(tunnel_pid, tunnel_pid_file(cfg))
+            _terminate(tunnel_pid, tunnel_pid_file(cfg), runtime=r)
     if died is not None:
         log = server_log_file(cfg) if died == "server" else tunnel_log_file(cfg)
         raise CliRemoteStartFailed(died, log)
 
 
-def run_remote_stop(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> None:
+def run_remote_stop(
+    cfg: SeahorseConfig,
+    *,
+    fmt: OutputFormat,
+    out: TextIO,
+    runtime: RemoteRuntime | None = None,
+) -> None:
     """Close the tunnel FIRST (exposure), then the server; idempotent."""
+    r = runtime or _default_runtime()
     stopped: dict[str, int] = {}
     for name, pid_path in (
         ("tunnel", tunnel_pid_file(cfg)),
         ("server", server_pid_file(cfg)),
     ):
         pid = procutil.read_pid(pid_path)
-        if pid is None or not procutil.pid_alive(pid):
+        if pid is None or not r.is_alive(pid):
             procutil.remove_pid(pid_path)  # stale pidfile cleanup
             continue
-        _terminate(pid, pid_path)
+        _terminate(pid, pid_path, runtime=r)
         stopped[name] = pid
     if not stopped:
         render_message(
@@ -492,11 +604,16 @@ def run_remote_stop(cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO) -> N
 
 
 def run_remote_status(
-    cfg: SeahorseConfig, *, fmt: OutputFormat, out: TextIO, app: str = "all"
+    cfg: SeahorseConfig,
+    *,
+    fmt: OutputFormat,
+    out: TextIO,
+    app: str = "all",
+    runtime: RemoteRuntime | None = None,
 ) -> None:
     """Read-only: live state + the same instructions ``start`` prints."""
-    server_running, server_pid = server_liveness(cfg)
-    tunnel_running, tunnel_pid = tunnel_liveness(cfg)
+    server_running, server_pid = server_liveness(cfg, runtime=runtime)
+    tunnel_running, tunnel_pid = tunnel_liveness(cfg, runtime=runtime)
     server_url = _extract_match(server_log_file(cfg), _SERVER_URL_RE) if server_running else None
     tunnel_url = _extract_match(tunnel_log_file(cfg), _TUNNEL_URL_RE) if tunnel_running else None
     token = os.environ.get("SEAHORSE_HTTP_TOKEN") or cfg.http.token

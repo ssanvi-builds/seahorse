@@ -11,6 +11,7 @@ rendering backed by ``remote_instructions``.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import os
@@ -765,3 +766,340 @@ def test_remote_start_rejects_unknown_app(vault) -> None:
     assert "slack" in err
     for choice in APP_CHOICES:  # the message teaches the valid values
         assert choice in err
+
+# ---------------------------------------------------------------------------
+# Injected runtime (C11): process/time seams, no real sleeps or signals.
+# ---------------------------------------------------------------------------
+
+
+def _fake_time():
+    """A monotonic-clock pair: advancing sleep mutates the frozen fake clock.
+
+    Contract: ALWAYS use the pair together — a no-op sleep over a frozen clock
+    makes the poll loops spin forever.
+    """
+    now = [0.0]
+
+    def clock() -> float:
+        return now[0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    return clock, sleep, now
+
+
+class _Proc:
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+
+
+def _runtime(**overrides):
+    return dataclasses.replace(remote._default_runtime(), **overrides)
+
+
+def _recording_kill():
+    kills: list[tuple[int, int]] = []
+
+    def kill(pid: int, sig: int) -> None:
+        kills.append((pid, sig))
+
+    return kills, kill
+
+
+def test_default_runtime_reads_module_attributes_at_call_time(monkeypatch) -> None:
+    """The lazy-binding contract: _default_runtime() snapshots NOW, so the
+    existing monkeypatch-based tests (patched subprocess/time) keep working."""
+    monkeypatch.setattr(remote, "STOP_TERM_WAIT_S", 0.2)
+    sentinel_sleep = lambda seconds: None  # noqa: E731
+    monkeypatch.setattr(remote.time, "sleep", sentinel_sleep)
+    runtime = remote._default_runtime()
+    assert runtime.stop_term_wait_s == 0.2
+    assert runtime.sleep is sentinel_sleep
+
+
+def test_wait_for_match_returns_match_after_polls(tmp_path) -> None:
+    clock, sleep, _now = _fake_time()
+    log = tmp_path / "c.log"
+    log.write_text("", encoding="utf-8")
+    calls = {"n": 0}
+
+    def ticking_sleep(seconds: float) -> None:
+        calls["n"] += 1
+        sleep(seconds)
+        if calls["n"] == 3:
+            log.write_text(
+                "seahorse-mcp: listening on http://127.0.0.1:9000\n", encoding="utf-8"
+            )
+
+    runtime = _runtime(clock=clock, sleep=ticking_sleep, is_alive=lambda pid: True)
+    found = remote._wait_for_match(
+        log, remote._SERVER_URL_RE, timeout_s=10.0, poll_s=0.1, pid=1, runtime=runtime
+    )
+    assert found == "http://127.0.0.1:9000"
+    assert calls["n"] == 3  # poll cadence honored
+
+
+def test_wait_for_match_deadline_final_reread(tmp_path) -> None:
+    """The final re-read at the loop exit wins a race with a late write."""
+    clock, sleep, _now = _fake_time()
+    log = tmp_path / "c.log"
+    log.write_text("", encoding="utf-8")
+    calls = {"n": 0}
+
+    def late_write(seconds: float) -> None:
+        calls["n"] += 1
+        sleep(seconds)
+        if calls["n"] == 2:  # written as the deadline expires
+            log.write_text(
+                "seahorse-mcp: listening on http://127.0.0.1:9001\n", encoding="utf-8"
+            )
+
+    runtime = _runtime(clock=clock, sleep=late_write, is_alive=lambda pid: True)
+    found = remote._wait_for_match(
+        log, remote._SERVER_URL_RE, timeout_s=0.4, poll_s=0.2, pid=1, runtime=runtime
+    )
+    assert found == "http://127.0.0.1:9001"
+
+
+def test_wait_for_match_timeout_without_match(tmp_path) -> None:
+    clock, sleep, _now = _fake_time()
+    log = tmp_path / "c.log"
+    log.write_text("", encoding="utf-8")
+    sleeps = []
+    runtime = _runtime(
+        clock=clock, sleep=lambda s: (sleeps.append(s), sleep(s)), is_alive=lambda pid: True
+    )
+    found = remote._wait_for_match(
+        log, remote._SERVER_URL_RE, timeout_s=0.4, poll_s=0.2, pid=1, runtime=runtime
+    )
+    assert found is None
+    assert len(sleeps) == 2  # 0.0 and 0.2 are < 0.4; 0.4 is not
+
+
+def test_wait_for_match_dead_child_returns_none_without_sleeping(tmp_path) -> None:
+    clock, sleep, _now = _fake_time()
+    log = tmp_path / "c.log"
+    log.write_text("", encoding="utf-8")
+    sleeps = []
+    runtime = _runtime(
+        clock=clock, sleep=lambda s: sleeps.append(s), is_alive=lambda pid: False
+    )
+    assert (
+        remote._wait_for_match(
+            log, remote._SERVER_URL_RE, timeout_s=10.0, poll_s=0.1, pid=1, runtime=runtime
+        )
+        is None
+    )
+    assert sleeps == []  # child death short-circuits the poll
+
+
+def test_start_readiness_timeout_with_live_silent_server_tears_down(
+    tmp_path, monkeypatch, spawn_calls
+) -> None:
+    cfg = _cfg(tmp_path)
+    spawn_calls.silent.add("server")
+    clock, sleep, _now = _fake_time()
+    kills, kill = _recording_kill()
+    runtime = _runtime(
+        clock=clock,
+        sleep=sleep,
+        is_alive=lambda pid: True,
+        kill=kill,
+        stop_term_wait_s=0.0,
+        server_ready_timeout_s=0.2,
+        server_poll_interval_s=0.1,
+    )
+    with pytest.raises(CliRemoteStartFailed):
+        remote.run_remote_start(
+            cfg, fmt="human", out=_out(), no_tunnel=True, runtime=runtime
+        )
+    assert kills == [
+        (FAKE_PID, signal.SIGTERM),
+        (FAKE_PID, signal.SIGKILL),
+    ]
+    assert not remote.server_pid_file(cfg).exists()
+
+
+def test_terminate_sigkills_when_child_ignores_sigterm(tmp_path) -> None:
+    pid_path = tmp_path / "server.pid"
+    _write_pid(pid_path, 4242)
+    clock, sleep, _now = _fake_time()
+    kills, kill = _recording_kill()
+    runtime = _runtime(
+        clock=clock, sleep=sleep, is_alive=lambda pid: True, kill=kill, stop_term_wait_s=0.0
+    )
+    remote._terminate(4242, pid_path, runtime=runtime)
+    assert kills == [(4242, signal.SIGTERM), (4242, signal.SIGKILL)]
+    assert not pid_path.exists()
+
+
+def test_terminate_process_lookup_error_removes_pidfile(tmp_path) -> None:
+    pid_path = tmp_path / "server.pid"
+    _write_pid(pid_path, 4242)
+    clock, sleep, _now = _fake_time()
+    sleeps = []
+
+    def killing(pid: int, sig: int) -> None:
+        raise ProcessLookupError
+
+    runtime = _runtime(
+        clock=clock,
+        sleep=lambda s: sleeps.append(s),
+        is_alive=lambda p: True,
+        kill=killing,
+    )
+    remote._terminate(4242, pid_path, runtime=runtime)
+    assert sleeps == []
+    assert not pid_path.exists()
+
+
+def test_terminate_sigkill_lookup_error_suppressed(tmp_path) -> None:
+    pid_path = tmp_path / "server.pid"
+    _write_pid(pid_path, 4242)
+    clock, sleep, _now = _fake_time()
+
+    def killing(pid: int, sig: int) -> None:
+        if sig == signal.SIGKILL:
+            raise ProcessLookupError
+
+    runtime = _runtime(
+        clock=clock, sleep=sleep, is_alive=lambda p: True, kill=killing, stop_term_wait_s=0.0
+    )
+    remote._terminate(4242, pid_path, runtime=runtime)  # must not raise
+    assert not pid_path.exists()
+
+
+def test_spawn_child_propagates_oserror_and_leaves_truncated_log(tmp_path) -> None:
+    def broken_popen(*args, **kwargs):
+        raise OSError("exec failed")
+
+    runtime = _runtime(popen=broken_popen)
+    log = tmp_path / "child.log"
+    log.write_text("old incarnation line\n", encoding="utf-8")
+    with pytest.raises(OSError):
+        remote._spawn_child(["true"], log_path=log, start_new_session=False, runtime=runtime)
+    assert log.read_text(encoding="utf-8") == ""  # owned log, truncated first
+
+
+def test_brew_install_nonzero_is_missing(tmp_path, monkeypatch) -> None:
+    cfg = _cfg(tmp_path)
+    monkeypatch.delenv("SEAHORSE_CLOUDFLARED_BIN", raising=False)
+    monkeypatch.setattr("sys.stdin", _FakeTTYOut())
+    monkeypatch.setattr("sys.stdout", _FakeTTYOut())
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+    runtime = _runtime(
+        which=lambda name: "/opt/homebrew/bin/brew" if name == "brew" else None,
+        run=lambda argv, **kwargs: subprocess.CompletedProcess(args=argv, returncode=1),
+    )
+    with pytest.raises(CliCloudflaredMissing):
+        remote.run_remote_start(cfg, fmt="human", out=_out(), runtime=runtime)
+
+
+def test_brew_install_timeout_is_missing(tmp_path, monkeypatch) -> None:
+    """A hung brew must fail loud (CliCloudflaredMissing), not escape as a
+    traceback (the pre-seam behavior)."""
+    cfg = _cfg(tmp_path)
+    monkeypatch.delenv("SEAHORSE_CLOUDFLARED_BIN", raising=False)
+    monkeypatch.setattr("sys.stdin", _FakeTTYOut())
+    monkeypatch.setattr("sys.stdout", _FakeTTYOut())
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+
+    def hanging(argv, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=kwargs.get("timeout"))
+
+    runtime = _runtime(
+        which=lambda name: "/opt/homebrew/bin/brew" if name == "brew" else None,
+        run=hanging,
+    )
+    with pytest.raises(CliCloudflaredMissing):
+        remote.run_remote_start(cfg, fmt="human", out=_out(), runtime=runtime)
+
+
+def test_brew_install_success_but_binary_absent(tmp_path, monkeypatch) -> None:
+    cfg = _cfg(tmp_path)
+    monkeypatch.delenv("SEAHORSE_CLOUDFLARED_BIN", raising=False)
+    monkeypatch.setattr("sys.stdin", _FakeTTYOut())
+    monkeypatch.setattr("sys.stdout", _FakeTTYOut())
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+    runtime = _runtime(
+        which=lambda name: "/opt/homebrew/bin/brew" if name == "brew" else None,
+        run=lambda argv, **kwargs: subprocess.CompletedProcess(args=argv, returncode=0),
+    )
+    with pytest.raises(CliCloudflaredMissing):
+        remote.run_remote_start(cfg, fmt="human", out=_out(), runtime=runtime)
+
+
+def test_foreground_tunnel_death_fails_naming_tunnel(tmp_path) -> None:
+    cfg = _cfg(tmp_path)
+    _write_pid(remote.server_pid_file(cfg), 11)
+    _write_pid(remote.tunnel_pid_file(cfg), 22)
+    clock, sleep, _now = _fake_time()
+    kills, kill = _recording_kill()
+    alive = {11: True, 22: False}
+    runtime = _runtime(
+        clock=clock,
+        sleep=sleep,
+        is_alive=lambda pid: alive.get(pid, False),
+        kill=kill,
+        stop_term_wait_s=0.0,
+    )
+    with pytest.raises(CliRemoteStartFailed) as exc_info:
+        remote._run_foreground(cfg, server_pid=11, tunnel_pid=22, runtime=runtime)
+    assert "tunnel" in str(exc_info.value) or "tunnel" in exc_info.value.detail
+    assert {11, 22} == {pid for pid, _ in kills}
+    assert not remote.server_pid_file(cfg).exists()
+    assert not remote.tunnel_pid_file(cfg).exists()
+
+
+def test_foreground_uses_poll_interval(tmp_path) -> None:
+    cfg = _cfg(tmp_path)
+    _write_pid(remote.server_pid_file(cfg), 11)
+    clock, sleep, _now = _fake_time()
+    sleeps = []
+    alive_calls = {"n": 0}
+
+    def is_alive(pid: int) -> bool:
+        alive_calls["n"] += 1
+        return alive_calls["n"] <= 2  # dies on the third check
+
+    kills, kill = _recording_kill()
+    runtime = _runtime(
+        clock=clock,
+        sleep=lambda s: (sleeps.append(s), sleep(s)),
+        is_alive=is_alive,
+        kill=kill,
+        stop_term_wait_s=0.0,
+        foreground_poll_interval_s=0.5,
+    )
+    with pytest.raises(CliRemoteStartFailed):
+        remote._run_foreground(cfg, server_pid=11, tunnel_pid=None, runtime=runtime)
+    assert sleeps == [0.5, 0.5]
+
+
+def test_stop_uses_injected_liveness_and_kill(tmp_path) -> None:
+    cfg = _cfg(tmp_path)
+    _write_pid(remote.server_pid_file(cfg), 11)
+    _write_pid(remote.tunnel_pid_file(cfg), 22)
+    clock, sleep, _now = _fake_time()
+    kills, kill = _recording_kill()
+    runtime = _runtime(
+        clock=clock, sleep=sleep, is_alive=lambda pid: True, kill=kill, stop_term_wait_s=0.0
+    )
+    out = _out()
+    remote.run_remote_stop(cfg, fmt="json", out=out, runtime=runtime)
+    term_pids = [pid for pid, sig in kills if sig == signal.SIGTERM]
+    assert term_pids == [22, 11]  # tunnel first (exposure), then the server
+    assert _json(out)["stopped"] is True
+
+
+def test_status_uses_injected_liveness(tmp_path) -> None:
+    cfg = _cfg(tmp_path)
+    _write_pid(remote.server_pid_file(cfg), 11)
+    _write_log(remote.server_log_file(cfg), LISTEN_LINE)
+    runtime = _runtime(is_alive=lambda pid: True)
+    out = _out()
+    remote.run_remote_status(cfg, fmt="json", out=out, runtime=runtime)
+    payload = _json(out)
+    assert payload["running"] is True
+    assert payload["server"]["pid"] == 11
