@@ -290,7 +290,9 @@ def test_init_then_remember_then_recall(vault, tmp_path):
     assert code == 0, err
     assert "Remembered" in out
 
-    code, out, err = invoke(["--vault", str(vault), "recall", "anything"])
+    # The query filters in BOTH regimes (listing: substring; hybrid: ranking),
+    # so the needle must appear in the body — "anything" would be a no-match.
+    code, out, err = invoke(["--vault", str(vault), "recall", "hello"])
     assert code == 0, err
     assert "1 results" in out
 
@@ -309,9 +311,10 @@ def test_remember_json_output(vault):
 
 def test_remember_jsonl_shortcut(vault):
     """--jsonl is a shortcut for --format jsonl."""
-    invoke(["--vault", str(vault), "remember", "a"])
-    invoke(["--vault", str(vault), "remember", "b"])
-    code, out, err = invoke(["--vault", str(vault), "--jsonl", "recall", "x"])
+    invoke(["--vault", str(vault), "remember", "alpha note"])
+    invoke(["--vault", str(vault), "remember", "beta note"])
+    # "note" matches both bodies in the listing regime (substring filter).
+    code, out, err = invoke(["--vault", str(vault), "--jsonl", "recall", "note"])
     assert code == 0, err
     lines = [line for line in out.splitlines() if line.strip()]
     assert len(lines) == 2
@@ -336,9 +339,9 @@ def test_quiet_suppresses_stdout(vault):
 
 
 def test_recall_jsonl_one_per_row(vault):
-    invoke(["--vault", str(vault), "remember", "a"])
-    invoke(["--vault", str(vault), "remember", "b"])
-    code, out, err = invoke(["--vault", str(vault), "--format", "jsonl", "recall", "x"])
+    invoke(["--vault", str(vault), "remember", "alpha note"])
+    invoke(["--vault", str(vault), "remember", "beta note"])
+    code, out, err = invoke(["--vault", str(vault), "--format", "jsonl", "recall", "note"])
     assert code == 0, err
     lines = [line for line in out.splitlines() if line.strip()]
     assert len(lines) == 2

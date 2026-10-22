@@ -146,6 +146,8 @@ def test_stdio_recall_pit_serves_pit_listing(vault: Path) -> None:
         ep_id = tool_result(_recv(proc))["ep_id"]
 
         # known_at BEFORE the write → the row is not known yet (empty listing).
+        # "PIT" matches the body, so the emptiness is the time filter's doing,
+        # not a no-match on the query substring (listing regime).
         _send(
             proc,
             {
@@ -155,7 +157,7 @@ def test_stdio_recall_pit_serves_pit_listing(vault: Path) -> None:
                 "params": {
                     "name": "recall",
                     "arguments": {
-                        "query": "anything",
+                        "query": "PIT",
                         "pit_kind": "known_at",
                         "pit_t": "2000-01-01T00:00:00Z",
                     },
@@ -174,7 +176,7 @@ def test_stdio_recall_pit_serves_pit_listing(vault: Path) -> None:
                 "params": {
                     "name": "recall",
                     "arguments": {
-                        "query": "anything",
+                        "query": "PIT",
                         "pit_kind": "known_at",
                         "pit_t": "2099-01-01T00:00:00Z",
                     },

@@ -105,30 +105,31 @@ def test_status_db_absent_before_first_write(vault: Path) -> None:
 
 
 def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
-    # A survivor episode with NO "madrid" token — the positive control for
-    # both recall assertions. First-release recall ignores the query beyond a
-    # non-empty check and returns the full current-state listing, so
-    # query="madrid" must surface the survivor too; and after improve+forget
-    # the survivor is the only current-state episode left, so its presence (not
-    # just the absence of the invalidated ids) is what proves forget worked.
+    # Both bodies carry the shared "note" needle: the query FILTERS in both
+    # regimes (listing: case-insensitive substring; hybrid: ranking), so a
+    # needle shared by both episodes is what makes the two-row listing and the
+    # --top-k clamp observable at all. The survivor keeps a Paris token so the
+    # final post-forget recall has something left to return.
     r = _run(
-        ["remember", "Paris is the capital of France", "--title", "geo"],
+        ["remember", "note: Paris is the capital of France", "--title", "geo"],
         vault=vault,
         json_out=True,
     )
     assert r.returncode == 0, r.stderr
     survivor_id = _j(r.stdout)["ep_id"]
 
-    r = _run(["remember", "Sergio lives in Madrid", "--title", "home"], vault=vault, json_out=True)
+    r = _run(
+        ["remember", "note: Sergio lives in Madrid", "--title", "home"],
+        vault=vault,
+        json_out=True,
+    )
     assert r.returncode == 0, r.stderr
     wr = _j(r.stdout)
     assert wr["status"] == "ACTIVE"
     ep_id = wr["ep_id"]
 
-    # recall("madrid") returns the FULL current-state listing — both episodes
-    # appear regardless of the query token (proves the first release does NOT
-    # filter by query).
-    r = _run(["recall", "madrid"], vault=vault, json_out=True)
+    # recall("note") matches both current-state episodes.
+    r = _run(["recall", "note"], vault=vault, json_out=True)
     assert r.returncode == 0, r.stderr
     rows = _j(r.stdout)
     ids = [row["ep_id"] for row in rows]
@@ -137,7 +138,7 @@ def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
 
     # --top-k 1 clamps the listing to one row (proves k is honored + the
     # listing is ordered, not capped to zero somewhere upstream).
-    r = _run(["recall", "madrid", "-k", "1"], vault=vault, json_out=True)
+    r = _run(["recall", "note", "-k", "1"], vault=vault, json_out=True)
     assert r.returncode == 0, r.stderr
     clamped = _j(r.stdout)
     assert len(clamped) == 1
@@ -147,7 +148,7 @@ def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
     details = _j(r.stdout)
     assert len(details) == 1
     assert details[0]["episode"]["id"] == ep_id
-    assert details[0]["episode"]["body"] == "Sergio lives in Madrid"
+    assert details[0]["episode"]["body"] == "note: Sergio lives in Madrid"
 
     r = _run(["recall-timeline", ep_id], vault=vault, json_out=True)
     assert r.returncode == 0, r.stderr
@@ -155,7 +156,7 @@ def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
     assert window["anchor_ep_id"] == ep_id
 
     r = _run(
-        ["improve", ep_id, "Sergio lives in Barcelona", "--reason", "correction"],
+        ["improve", ep_id, "note: Sergio lives in Barcelona", "--reason", "correction"],
         vault=vault,
         json_out=True,
     )
@@ -173,7 +174,7 @@ def test_full_lifecycle_remember_recall_improve_forget(vault: Path) -> None:
     # current-state episode is the survivor — assert its presence AND the exact
     # count, not just the absence of the invalidated ids (which would pass
     # vacuously against an empty listing).
-    r = _run(["recall", "madrid"], vault=vault, json_out=True)
+    r = _run(["recall", "note"], vault=vault, json_out=True)
     assert r.returncode == 0
     ids = [row["ep_id"] for row in _j(r.stdout)]
     assert ep_id not in ids
