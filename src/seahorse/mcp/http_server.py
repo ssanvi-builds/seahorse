@@ -5,17 +5,19 @@ dispatch decides everything past the envelope. The server enforces an
 adversarial pipeline per request (ADR-013): rate limit → auth → path → body
 caps → Origin → Accept → protocol version → parse → dispatch. Transport
 errors use 4xx/5xx; domain JSON-RPC errors ride in HTTP 200 by design.
+
+The guards themselves single-home in ``request_policy`` (pure, socket-free);
+this module is the socket adapter: it extracts the header primitives and does
+the ONE body read after the pre-body phase allows it (auth-before-body).
 """
 
 from __future__ import annotations
 
-import hmac
 import json
 import sys
 import threading
 import time
 import traceback
-import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,15 +25,19 @@ from typing import TextIO
 
 from seahorse.facade.facade import MemoryFacade
 from seahorse.mcp.profile import _SERVER_VERSION, handle_request
+from seahorse.mcp.request_policy import (
+    Dispatch,
+    ReadBody,
+    Reject,
+    RequestPolicy,
+    build_reject,
+    post_body_decision,
+    pre_body_decision,
+)
 
 __all__ = ["HttpServeConfig", "build_http_server", "serve_http"]
 
-_SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25",)
-_LOOPBACK_HOSTNAMES = ("localhost", "127.0.0.1", "::1")
 _RATE_WINDOW_SECONDS = 60
-_ACCEPTABLE_MEDIA = ("application/json", "application/*", "*/*")
-_MCP_PATHS = ("/", "/mcp")
-_BEARER_PREFIX = "Bearer "
 
 
 @dataclass(frozen=True)
@@ -82,7 +88,7 @@ class _MCPHandler(BaseHTTPRequestHandler):
     timeout = 30
 
     facade: MemoryFacade
-    config: HttpServeConfig
+    policy: RequestPolicy
     limiter: _RateLimiter
     request_lock: threading.Lock
 
@@ -115,52 +121,32 @@ class _MCPHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_post(self) -> None:
-        allowed, retry_after = self.limiter.allow(self.client_address[0])
-        if not allowed:
-            self._reject(429, retry_after=retry_after, detail="rate limit exceeded")
+        decision = pre_body_decision(
+            authorization=self.headers.get("Authorization"),
+            content_length=self.headers.get("Content-Length"),
+            client_ip=self.client_address[0],
+            path=self.path,
+            policy=self.policy,
+            limiter=self.limiter,
+        )
+        if isinstance(decision, Reject):
+            self._send_reject(decision)
             return
-        if not self._token_ok():
-            self._reject(
-                401,
-                detail="missing or invalid bearer token",
-                extra_headers={"WWW-Authenticate": "Bearer"},
-            )
+        assert isinstance(decision, ReadBody)  # phase A only yields ReadBody
+        body = self.rfile.read(decision.length)  # the ONLY body read
+        post = post_body_decision(
+            origin=self.headers.get("Origin"),
+            host=self.headers.get("Host"),
+            accept=self.headers.get("Accept"),
+            protocol_version=self.headers.get("MCP-Protocol-Version"),
+            body=body,
+            policy=self.policy,
+        )
+        if isinstance(post, Reject):
+            self._send_reject(post)
             return
-        if self.path not in _MCP_PATHS:
-            self._reject(404, detail="not found")
-            return
-        raw_length = self.headers.get("Content-Length")
-        if raw_length is None:
-            self._reject(411, detail="Content-Length required")
-            return
-        try:
-            declared = int(raw_length)
-        except ValueError:
-            self._reject(411, detail="Content-Length required")
-            return
-        if declared < 0:
-            self._reject(411, detail="Content-Length required")
-            return
-        if declared > self.config.max_body_bytes:
-            self._reject(413, detail="body too large")
-            return
-        body = self.rfile.read(declared)
-        if not self._origin_ok():
-            self._reject(403, detail="origin not allowed")
-            return
-        if not self._accept_ok():
-            self._reject(406, detail="unacceptable Accept header")
-            return
-        version = self.headers.get("MCP-Protocol-Version")
-        if version is not None and version not in _SUPPORTED_PROTOCOL_VERSIONS:
-            self._reject(400, detail="unsupported MCP-Protocol-Version")
-            return
-        try:
-            request = json.loads(body.decode("utf-8"))
-        except ValueError:
-            err = {"code": -32700, "message": "Parse error"}
-            self._send(400, json.dumps({"jsonrpc": "2.0", "error": err}).encode("utf-8"))
-            return
+        assert isinstance(post, Dispatch)  # phase B only yields Dispatch
+        request = post.request
         try:
             with self.request_lock:
                 response = handle_request(self.facade, request)
@@ -174,35 +160,6 @@ class _MCPHandler(BaseHTTPRequestHandler):
             self._send(202, b"")
             return
         self._send(200, json.dumps(response).encode("utf-8"))
-
-    def _token_ok(self) -> bool:
-        header = self.headers.get("Authorization", "")
-        provided = header[len(_BEARER_PREFIX):] if header.startswith(_BEARER_PREFIX) else ""
-        return hmac.compare_digest(provided.encode("utf-8"), self.config.token.encode("utf-8"))
-
-    def _origin_ok(self) -> bool:
-        origin = self.headers.get("Origin")
-        if origin is None:
-            return True
-        parsed = urllib.parse.urlparse(origin)
-        scheme = parsed.scheme.lower()
-        hostname = (parsed.hostname or "").lower()
-        if scheme not in ("http", "https") or not hostname:
-            return False
-        if hostname in _LOOPBACK_HOSTNAMES:
-            return True
-        host_header = self.headers.get("Host", "").split(":", 1)[0].strip("[]").lower()
-        return hostname == host_header
-
-    def _accept_ok(self) -> bool:
-        header = self.headers.get("Accept")
-        if header is None:
-            return False
-        for part in header.split(","):
-            media = part.split(";", 1)[0].strip().lower()
-            if media in _ACCEPTABLE_MEDIA:
-                return True
-        return False
 
     def _send(
         self,
@@ -229,11 +186,21 @@ class _MCPHandler(BaseHTTPRequestHandler):
         detail: str = "request rejected",
         extra_headers: dict[str, str] | None = None,
     ) -> None:
-        headers = dict(extra_headers) if extra_headers else {}
-        if retry_after is not None:
-            headers["Retry-After"] = str(max(retry_after, 1))
-        payload = json.dumps({"error": detail}).encode("utf-8")
-        self._send(status, payload, extra_headers=headers)
+        # Shared payload builder: the 405 path and the pipeline reject with the
+        # exact same bytes/headers by construction.
+        self._send_reject(
+            build_reject(
+                status,
+                retry_after=retry_after,
+                detail=detail,
+                extra_headers=extra_headers,
+            )
+        )
+
+    def _send_reject(self, reject: Reject) -> None:
+        self._send(
+            reject.status, reject.payload, extra_headers=dict(reject.headers)
+        )
 
 
 def _build_handler_class(
@@ -246,7 +213,9 @@ def _build_handler_class(
         pass
 
     _Handler.facade = facade
-    _Handler.config = config
+    _Handler.policy = RequestPolicy(
+        token=config.token, max_body_bytes=config.max_body_bytes
+    )
     _Handler.limiter = limiter
     _Handler.request_lock = threading.Lock()
     return _Handler
