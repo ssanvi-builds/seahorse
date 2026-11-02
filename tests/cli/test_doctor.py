@@ -371,6 +371,39 @@ class TestDbCheck:
         assert db["status"] == "FAIL"
         assert "writable" in db["detail"]
 
+
+class TestBackupsCheck:
+    """Pre-migration backups accumulating in .seahorse/ — count, never prune."""
+
+    def test_backups_none_ok(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        cfg = load_config(tmp_path)
+        cfg.db_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = _doctor(cfg, monkeypatch)
+        bk = next(c for c in payload["checks"] if c["check"] == "backups")
+        assert bk["status"] == "OK"
+
+    def test_backups_few_ok(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        cfg = load_config(tmp_path)
+        cfg.db_path.parent.mkdir(parents=True, exist_ok=True)
+        for stamp in ("20261022-172613", "20261023-080000"):
+            (cfg.db_path.parent / f"{cfg.db_path.name}.bak-{stamp}").touch()
+        payload = _doctor(cfg, monkeypatch)
+        bk = next(c for c in payload["checks"] if c["check"] == "backups")
+        assert bk["status"] == "OK"
+
+    def test_backups_many_warns(self, tmp_path, monkeypatch) -> None:
+        write_default_config(tmp_path)
+        cfg = load_config(tmp_path)
+        cfg.db_path.parent.mkdir(parents=True, exist_ok=True)
+        for i in range(6):
+            (cfg.db_path.parent / f"{cfg.db_path.name}.bak-{i}").touch()
+        payload = _doctor(cfg, monkeypatch)
+        bk = next(c for c in payload["checks"] if c["check"] == "backups")
+        assert bk["status"] == "WARN"
+        assert "prune" in bk["detail"]
+
     def test_observer_socket_absent_warns_autostart(self, tmp_path, monkeypatch) -> None:
         write_default_config(tmp_path)
         write_observe_config(tmp_path)
@@ -385,6 +418,22 @@ class TestDbCheck:
         obs = next(c for c in payload["checks"] if c["check"] == "observer")
         assert obs["status"] == "WARN"
         assert "setup" in obs["detail"]
+
+    def test_observer_hooks_installed_without_observe_names_section(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Hooks installed but [observe] dropped from the toml (incident
+        86561b1): the hook events fire into nowhere, so the WARN must name the
+        missing [observe] section — not the generic 'observer not configured'."""
+        monkeypatch.setenv(
+            "SEAHORSE_CLAUDE_SETTINGS",
+            str(_settings(tmp_path, ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"])),
+        )
+        _write(tmp_path, '[seahorse]\ndb_path = "x.db"\n')
+        payload = _doctor(load_config(tmp_path), monkeypatch)
+        obs = next(c for c in payload["checks"] if c["check"] == "observer")
+        assert obs["status"] == "WARN"
+        assert "[observe]" in obs["detail"]
 
     def test_context_probe_ok(self, tmp_path, monkeypatch) -> None:
         write_default_config(tmp_path)

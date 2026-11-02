@@ -46,6 +46,11 @@ _CONTEXT_PROBE_TIMEOUT_S = 10.0
 # silently-dead capture surfaces on the next doctor run.
 CAPTURE_HEALTH_WINDOW_DAYS = 7
 
+# Pre-migration backups above this count WARN (they never get pruned on their
+# own — a frequently-updated vault piles them up). Diagnosis only: the doctor
+# counts, it never deletes.
+_MAX_BACKUPS = 5
+
 # Check names doctor --fix can repair (via onboarding.repair_steps_for).
 # Per-harness MCP checks use the "mcp_registered:<harness>" prefix.
 _REPAIRABLE_CHECKS = frozenset(
@@ -188,9 +193,43 @@ def _db_check(config: SeahorseConfig) -> tuple[str, str]:
     return "OK", str(db)
 
 
+def _backups_check(config: SeahorseConfig) -> tuple[str, str]:
+    """Pre-migration backups accumulating next to the DB (v1.9.0 snapshot).
+
+    Every migration snapshots the DB as ``<db>.bak-<ts>``; those are never
+    pruned automatically, so a frequently-updated vault piles them up. This
+    counts them only — pruning stays the operator's call (the doctor diagnoses,
+    it never deletes data).
+    """
+    from seahorse.persistence.migrations.backup import BACKUP_SUFFIX
+
+    pattern = f"{config.db_path.name}{BACKUP_SUFFIX}*"
+    backups = sorted(config.db_path.parent.glob(pattern))
+    if not backups:
+        return "OK", "no backups yet"
+    if len(backups) <= _MAX_BACKUPS:
+        return "OK", f"{len(backups)} backup(s)"
+    return (
+        "WARN",
+        f"{len(backups)} backups accumulated in {config.db_path.parent}; "
+        "prune the older ones (they are pre-migration snapshots)",
+    )
+
+
 def _observer_check(config: SeahorseConfig) -> tuple[str, str]:
     """The observer worker as seen from the vault (pid liveness, not socket)."""
     if config.observe is None:
+        # Hooks installed but the [observe] section dropped from the toml
+        # (incident 86561b1) is a distinct trap from "never ran setup": the
+        # hook events fire into nowhere while capture_health can still read
+        # green via agent-side MCP writes, hiding the dead hook path.
+        if _hooks_check()[0] == "OK":
+            return (
+                "WARN",
+                "capture hooks installed but [observe] missing in "
+                ".seahorse/seahorse.toml — hook events are dropped; "
+                "run `seahorse setup`",
+            )
         return "WARN", "observer not configured; run `seahorse setup`"
     from seahorse.observe.cli import observer_liveness, socket_path
 
@@ -469,6 +508,8 @@ def _capture_family_checks(
 
     db_status, db_detail = _db_check(config)
     checks.append({"check": "db", "status": db_status, "detail": db_detail})
+    bk_status, bk_detail = _backups_check(config)
+    checks.append({"check": "backups", "status": bk_status, "detail": bk_detail})
 
     # Capture end-to-end: hooks installed in Claude Code, observer worker,
     # and the SessionStart context rendering through the real CLI.
