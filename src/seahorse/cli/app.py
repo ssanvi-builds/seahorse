@@ -661,22 +661,29 @@ def revalidate(
 def import_cmd(
     ctx: typer.Context,
     source: str | None = typer.Option(
-        None, "--source", help="claude-mem DB path (default: ~/.claude-mem/claude-mem.db)."
+        None,
+        "--source",
+        help="claude-mem DB path (default: ~/.claude-mem/claude-mem.db), "
+        "or the ChatGPT export directory (with --vendor chatgpt).",
+    ),
+    vendor: str = typer.Option(
+        "claude-mem", "--vendor", help="Import source: claude-mem (default) | chatgpt."
     ),
     mode: str = typer.Option(
         "dry-run", "--mode", help="dry-run (default) | commit."
     ),
     project: str | None = typer.Option(
-        None, "--project", help="Filter observations by project name."
+        None, "--project", help="Filter claude-mem observations by project name."
     ),
     output_dir: str | None = typer.Option(
         None, "--output-dir", help="Manifest output dir (default: not persisted)."
     ),
 ) -> None:
-    """Import claude-mem observations as canonical episodes (migration bridge)."""
+    """Import vendor data as canonical episodes (migration bridge)."""
     run_import(
         ctx.obj.facade(),
         source=source,
+        vendor=vendor,
         mode=mode,
         project=project,
         output_dir=output_dir,

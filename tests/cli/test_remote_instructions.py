@@ -62,7 +62,7 @@ def test_claude_code_block_is_a_paste_ready_command():
     [
         ("all", ("chatgpt", "gemini_web", "gemini_cli", "claude_code")),
         ("chatgpt", ("chatgpt",)),
-        ("gemini", ("gemini_web",)),
+        ("gemini", ("gemini_cli",)),
         ("gemini-cli", ("gemini_cli",)),
         ("claude-code", ("claude_code",)),
     ],

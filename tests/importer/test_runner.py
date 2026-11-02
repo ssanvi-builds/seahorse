@@ -188,3 +188,34 @@ class TestFailures:
     def test_invalid_mode_rejected(self, facade) -> None:
         with pytest.raises(ValueError, match="mode"):
             ImportRunner(facade).run([_record()], mode="bogus")
+
+
+class TestVendorThreading:
+    def _chatgpt_record(self) -> dict:
+        return {
+            "kind": "memory",
+            "id": "mem-1",
+            "text": "A saved memory",
+            "created_at": datetime(2026, 8, 1, 12, 0, tzinfo=UTC),
+        }
+
+    def test_chatgpt_manifest_carries_vendor_and_version(self, facade) -> None:
+        runner = ImportRunner(facade, vendor="chatgpt")
+        manifest = runner.run([self._chatgpt_record()], mode="dry-run")
+        assert manifest.vendor == "chatgpt"
+        assert manifest.importer_version == "importer@chatgpt@1.0.0"
+        assert manifest.aggregate["notes_emitted"] == 1
+
+    def test_chatgpt_commit_persists_importer_vendor(self, facade) -> None:
+        runner = ImportRunner(facade, vendor="chatgpt")
+        manifest = runner.run([self._chatgpt_record()], mode="commit")
+        ep_id = manifest.items[0].notes_emitted[0]["ep_id"]
+        ep = facade._engine._repo.get(ep_id)
+        assert ep.provenance["importer_vendor"] == "chatgpt"
+        assert ep.provenance["source_type"] == "importer"
+
+    def test_unknown_vendor_fails_loud(self, facade) -> None:
+        runner = ImportRunner(facade, vendor="mem0")
+        manifest = runner.run([self._chatgpt_record()], mode="dry-run")
+        assert manifest.aggregate["failures"] == 1
+        assert manifest.items[0].status == "failed"

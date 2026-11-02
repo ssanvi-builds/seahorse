@@ -20,6 +20,19 @@ from seahorse.contracts.episode import Episode
 MANIFEST_SCHEMA = "seahorse.importer.manifest/1.0"
 IMPORTER_VERSION = "importer@claude-mem@1.0.0"
 
+# Per-vendor importer version. The manifest must carry the version of the
+# importer that produced it, not a fixed constant — otherwise a chatgpt run
+# would misattribute its notes to claude-mem.
+IMPORTER_VERSIONS = {
+    "claude-mem": IMPORTER_VERSION,
+    "chatgpt": "importer@chatgpt@1.0.0",
+}
+
+
+def importer_version(vendor: str) -> str:
+    """The importer version string for ``vendor`` (falls back to claude-mem)."""
+    return IMPORTER_VERSIONS.get(vendor, IMPORTER_VERSION)
+
 
 class LossReport(TypedDict):
     """Per-record loss report. ALWAYS present, even if empty."""

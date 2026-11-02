@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from seahorse.facade.types import Provenance, RememberPayload
-from seahorse.importer.claude_mem import import_record
-from seahorse.importer.types import ImportItem, ImportManifest
+from seahorse.importer.dispatch import import_record
+from seahorse.importer.types import ImportItem, ImportManifest, importer_version
 
 _logger = logging.getLogger("seahorse.importer.runner")
 
@@ -60,12 +60,14 @@ class ImportRunner:
         self,
         facade: Any,
         *,
+        vendor: str = "claude-mem",
         run_id: str | None = None,
         output_dir: Path | str | None = None,
         on_collision: str = "skip",
     ) -> None:
         self._facade = facade
-        self._run_id = run_id or _make_run_id("claude-mem")
+        self._vendor = vendor
+        self._run_id = run_id or _make_run_id(vendor)
         self._on_collision = on_collision
         self._output_dir = Path(output_dir) if output_dir is not None else None
 
@@ -97,6 +99,8 @@ class ImportRunner:
 
         manifest = ImportManifest(
             run_id=self._run_id,
+            vendor=self._vendor,
+            importer_version=importer_version(self._vendor),
             mode=mode,
             started_at=started,
             ended_at=_now_iso(),
@@ -127,7 +131,7 @@ class ImportRunner:
         losses: Counter[str],
     ) -> ImportItem:
         try:
-            result = import_record(record, "claude-mem")
+            result = import_record(record, self._vendor)
         except Exception as exc:  # noqa: BLE001 — fail-loud per item, batch continues
             _logger.error("importer.record_failed seq=%s: %s", seq, exc)
             aggregate["failures"] += 1
@@ -138,7 +142,7 @@ class ImportRunner:
                 vendor_operation="ADD",
                 notes_emitted=[],
                 loss_report={
-                    "vendor": "claude-mem",
+                    "vendor": self._vendor,
                     "source_record_id": source_id,
                     "fields_lost": [],
                     "fields_synthesized": [],
@@ -220,7 +224,7 @@ class ImportRunner:
         RETURNED (``WriteResult.collisions_detected``), never raised.
         """
         by = cast(Provenance, dict(ep.provenance))
-        by["session_id"] = f"claude-mem-import-{self._run_id}"
+        by["session_id"] = f"{self._vendor}-import-{self._run_id}"
         payload = RememberPayload(
             body=ep.body or "",
             by=by,

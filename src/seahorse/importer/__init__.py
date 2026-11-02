@@ -16,7 +16,9 @@ claude-mem is NEVER a runtime dependency — the importer reads its local SQLite
 
 from __future__ import annotations
 
-from seahorse.importer.claude_mem import ClaudeMemReader, import_record
+from seahorse.importer.chatgpt import ChatGPTReader
+from seahorse.importer.claude_mem import ClaudeMemReader
+from seahorse.importer.dispatch import import_record
 from seahorse.importer.runner import ImportRunner
 from seahorse.importer.types import (
     IMPORTER_VERSION,
@@ -28,6 +30,7 @@ from seahorse.importer.types import (
 )
 
 __all__ = [
+    "ChatGPTReader",
     "ClaudeMemReader",
     "IMPORTER_VERSION",
     "ImportItem",

@@ -45,10 +45,13 @@ GEMINI_WEB_GATED = (
 APP_KEYS = ("chatgpt", "gemini_web", "gemini_cli", "claude_code")
 
 # CLI ``--app`` choice → instruction keys ("all" → every block).
+# ``gemini`` points at the CLI (the working path); the web block stays a
+# documented gate, not a proposed route. Codex is absent because it is
+# local-only (stdio + hooks capture) — no tunnel, no remote block.
 _APP_CHOICE_KEYS = {
     "all": APP_KEYS,
     "chatgpt": ("chatgpt",),
-    "gemini": ("gemini_web",),
+    "gemini": ("gemini_cli",),
     "gemini-cli": ("gemini_cli",),
     "claude-code": ("claude_code",),
 }

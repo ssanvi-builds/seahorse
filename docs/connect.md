@@ -157,6 +157,11 @@ HTTP (MCP spec `2025-11-25`): same 15 tools, same vault, byte-identical
 responses — a different wire. Use it only when stdio is impossible; locally,
 stdio is simpler and needs no token.
 
+Codex is local-only: it speaks stdio like Claude Code and captures sessions via
+its own hooks (see [Codex](#codex-automatic-capture-too) above), so it never
+needs the tunnel. The remote path exists for apps without a child process —
+Claude.ai, ChatGPT, Gemini.
+
 ```bash
 # Start the remote server (binds 127.0.0.1; --port 0 = ephemeral port):
 seahorse mcp --transport http --port 0
@@ -261,10 +266,12 @@ hand-copied into this file. Each block carries its own verification status:
 ChatGPT is documented from official sources but **not verified on a live
 account** (it requires a paid plan); Gemini web is a live-verified negative —
 consumer Gemini has no bearer-token path (OAuth-only, 2026-10-05), so
-bearer-only Seahorse cannot register there; Claude Code is verified over a
-live tunnel (2026-10-01, claude-code 2.1.280); the Gemini CLI roundtrip is
-deferred to the v1.8.0 provider-testing round (the Antigravity client hit
-an account-eligibility loop on 2026-10-06 — findings recorded, verification
+bearer-only Seahorse cannot register there; **the Gemini CLI is the official
+Gemini path** — `seahorse remote start --app gemini` prints its
+`gemini mcp add` command; Claude Code is verified over a live tunnel
+(2026-10-01, claude-code 2.1.280). The Gemini CLI roundtrip itself remains
+deferred to the v1.8.0 provider-testing round (the Antigravity client hit an
+account-eligibility loop on 2026-10-06 — findings recorded, verification
 re-opened for v1.8.0).
 
 ## Listings
