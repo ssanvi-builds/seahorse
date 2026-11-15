@@ -4,6 +4,35 @@ All notable changes to Seahorse are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-11-15
+
+### Added
+
+- **ChatGPT importer** — `seahorse import --vendor chatgpt --source <export-dir>`
+  reads a ChatGPT data export and maps it to canonical episodes: saved memories
+  (`memory.json`) become semantic notes, conversations (`conversations.json`)
+  become episodic notes with a bounded body (metadata + first user message, the
+  full transcript is never inlined). The importer is now vendor-dispatched
+  (per-vendor deterministic UUIDv5 id and version) instead of being hardcoded
+  to claude-mem.
+- **`seahorse doctor` backup and capture checks** — a WARN now surfaces when
+  pre-migration snapshots (`.bak-*`) accumulate next to the DB beyond a
+  threshold, and when capture hooks are installed but `[observe]` is missing
+  from `.seahorse/seahorse.toml` (hook events were being silently dropped).
+
+### Changed
+
+- **Gemini remote path is the CLI** — `seahorse remote start --app gemini` now
+  prints the working `gemini mcp add` block instead of the web-connector gate
+  (consumer Gemini web is OAuth-only with no bearer field, so bearer-only
+  Seahorse cannot register there).
+
+### Docs
+
+- **Codex documented as local-only** — Codex speaks stdio and captures via its
+  own hooks, so it never needs the remote tunnel; the tunnel is for apps
+  without a child process (Claude.ai, ChatGPT, Gemini).
+
 ## [1.9.0] - 2026-10-22
 
 ### Added
